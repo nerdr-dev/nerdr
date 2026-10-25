@@ -26,11 +26,12 @@ func argvAgent(t *testing.T, m *Model) string {
 }
 
 // startedWith is the command lines the stand-in was started with, once
-// it has been with a model.
+// it has been with a model. It waits up to 10s: CI's macOS runners can
+// take over 2s to start it.
 func startedWith(t *testing.T, out string) string {
 	t.Helper()
 	var b []byte
-	for range 100 {
+	for range 500 {
 		b, _ = os.ReadFile(out)
 		if strings.Contains(string(b), "--model\n") {
 			break
