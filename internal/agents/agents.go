@@ -23,7 +23,7 @@ import (
 	"time"
 	"unicode"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // Kind names an agent CLI. It doubles as the herdr detection manifest id

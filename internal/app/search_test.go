@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/agents"
 )
 
 // TestOpenConversation: a conversation an agent carries on goes to that

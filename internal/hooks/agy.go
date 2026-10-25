@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // nerdr's own hooks in Antigravity (agy), as in claude: read off the

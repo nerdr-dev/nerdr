@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 type harness struct {

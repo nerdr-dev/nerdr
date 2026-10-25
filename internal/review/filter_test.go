@@ -3,7 +3,7 @@ package review
 import (
 	"testing"
 
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/git"
 )
 
 func TestFilterFiles(t *testing.T) {

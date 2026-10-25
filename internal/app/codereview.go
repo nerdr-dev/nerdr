@@ -5,12 +5,12 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/codereview"
-	"nerdr/internal/config"
-	"nerdr/internal/git"
-	"nerdr/internal/hooks"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

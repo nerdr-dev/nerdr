@@ -7,9 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/hooks"
-	"nerdr/internal/spinoff"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // spinoffUsage is written for the agent, as whyUsage is.

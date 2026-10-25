@@ -9,7 +9,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/agents"
 )
 
 // TestMain puts do-nothing notify-send and osascript first on PATH: the

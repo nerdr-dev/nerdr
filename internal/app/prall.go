@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"nerdr/internal/git"
-	"nerdr/internal/github"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

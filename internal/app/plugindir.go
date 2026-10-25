@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
 // runDir opens the requested working directory beneath a trusted tab

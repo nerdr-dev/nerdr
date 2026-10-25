@@ -7,9 +7,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"nerdr/internal/hooks"
-	"nerdr/internal/state"
-	"nerdr/internal/usage"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/usage"
 )
 
 // TestUsageFromTheStatusLine: what a claude agent's status line reports

@@ -5,9 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/denied"
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // WorkTree is the id of the tree git would commit if everything in the

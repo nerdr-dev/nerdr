@@ -12,8 +12,8 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 
 	"github.com/BurntSushi/toml"
 )

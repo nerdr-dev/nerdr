@@ -7,8 +7,8 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/clean"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

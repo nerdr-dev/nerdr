@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // sendUsage is written for the agent, as readyUsage is.

@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/charmbracelet/x/ansi"
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/git"
 )
 
 func TestFolderArrowNavigation(t *testing.T) {

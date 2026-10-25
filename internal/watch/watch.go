@@ -27,9 +27,9 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/store"
 
 	"github.com/fsnotify/fsnotify"
 )

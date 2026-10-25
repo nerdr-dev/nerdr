@@ -28,7 +28,7 @@ import (
 	"sort"
 	"strings"
 
-	"nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/agents"
 )
 
 //go:embed */SKILL.md

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // When nerdr's window does not have focus, an agent that stops to ask

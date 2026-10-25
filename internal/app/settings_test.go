@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"

@@ -37,9 +37,9 @@ import (
 	"syscall"
 	"time"
 
-	"nerdr/internal/denied"
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // commonDirs caches each worktree's git common directory. The files are

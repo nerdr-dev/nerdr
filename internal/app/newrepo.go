@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/github"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

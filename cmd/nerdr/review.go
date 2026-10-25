@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"nerdr/internal/codereview"
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // reviewUsage is written for the agent, as whyUsage is.

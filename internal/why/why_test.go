@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 func writeNotes(t *testing.T, lines ...string) string {

@@ -4,7 +4,7 @@ package review
 // and loading it into the diff pane in each of its views.
 
 import (
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/git"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

@@ -17,8 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 // MaxSummary is the longest handoff taken, in bytes: it is typed into the

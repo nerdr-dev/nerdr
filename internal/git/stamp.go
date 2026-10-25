@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 )
 
 // stampRefsMost is the most refs Stamp looks at: a repository with more

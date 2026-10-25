@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // agentUsage is written for the agent, as sendUsage is.

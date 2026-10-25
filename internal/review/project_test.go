@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/analysis"
 )
 
 // TestProjectIsReadAgainInTheBackground covers the refresh not walking the

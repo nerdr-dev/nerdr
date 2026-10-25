@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // statusFrom sends `nerdr status` from agent a, and returns nerdr's answer.

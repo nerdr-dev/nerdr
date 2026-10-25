@@ -11,7 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // runProc is the program of a plugin's run, which nerdr runs, and what it

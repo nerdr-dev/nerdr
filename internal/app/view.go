@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

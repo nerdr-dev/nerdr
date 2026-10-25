@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strconv"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // holder holds, on macOS, a caffeinate: -i keeps the machine from idle

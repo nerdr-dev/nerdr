@@ -14,8 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // PR describes a pull request: the one open for a worktree's branch, or one

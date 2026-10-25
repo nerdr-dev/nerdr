@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"nerdr/internal/denied"
-	"nerdr/internal/detect"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/detect"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/charmbracelet/x/vt"

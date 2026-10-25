@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // A conversation's count is set, not added to; one that drops is a new

@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/hooks"
-	"nerdr/internal/state"
-	"nerdr/internal/usage"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/usage"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

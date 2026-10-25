@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/agents"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

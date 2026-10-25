@@ -11,10 +11,10 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/hooks"
-	"nerdr/internal/state"
-	limits "nerdr/internal/usage"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	limits "github.com/nerdr-dev/nerdr/internal/usage"
 )
 
 // The commands an agent sees and steers the rest of nerdr with: the tab's

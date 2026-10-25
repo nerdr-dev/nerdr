@@ -44,7 +44,7 @@ import (
 	"strings"
 	"sync"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 var (

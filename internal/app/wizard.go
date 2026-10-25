@@ -7,11 +7,11 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/config"
-	"nerdr/internal/github"
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"

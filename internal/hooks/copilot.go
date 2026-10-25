@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // nerdr's own hooks in copilot, as in claude: read off the screen, copilot

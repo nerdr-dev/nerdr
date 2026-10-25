@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"

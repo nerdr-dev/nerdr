@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/analysis"
 )
 
 func TestBuildDiffLinesWordHighlight(t *testing.T) {

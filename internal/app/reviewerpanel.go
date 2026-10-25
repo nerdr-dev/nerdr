@@ -5,8 +5,8 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

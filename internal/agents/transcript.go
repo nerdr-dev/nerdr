@@ -14,7 +14,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // A tab whose agent is switched hands the new agent what the old one did.

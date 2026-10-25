@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/input"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

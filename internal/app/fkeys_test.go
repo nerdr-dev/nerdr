@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/input"
-	"nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 // TestFKeysLeaveAShellAtItsPrompt: in a terminal pane, F1-F4 stay nerdr's

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/analysis"
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/git"
 )
 
 func TestStatusMark(t *testing.T) {

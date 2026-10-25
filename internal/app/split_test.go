@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

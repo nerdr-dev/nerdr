@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"nerdr/internal/git"
-	"nerdr/internal/order"
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 // orderUsage is written for the agent as much as for a person: it is what

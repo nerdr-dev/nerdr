@@ -3,7 +3,7 @@ package review
 import (
 	"strings"
 
-	"nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/github"
 
 	"github.com/charmbracelet/x/ansi"
 )

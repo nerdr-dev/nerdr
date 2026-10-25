@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/state"
-	"nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 // idleAgent gives tab tb a running pane, done, seen and left ago.

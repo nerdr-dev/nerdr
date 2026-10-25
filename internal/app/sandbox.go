@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/hooks"
-	"nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spinoff"
 )
 
 // An agent whose kind is set sandboxed = true runs in a sandbox its

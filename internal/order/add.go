@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 // Add records one line of the reading order and returns it as written. dir

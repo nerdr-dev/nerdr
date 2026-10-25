@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/config"
-	"nerdr/internal/input"
-	"nerdr/internal/state"
-	"nerdr/internal/term"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

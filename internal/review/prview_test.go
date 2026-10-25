@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
-	"nerdr/internal/git"
-	"nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/github"
 )
 
 func samplePR() github.PR {

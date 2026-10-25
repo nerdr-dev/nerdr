@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
 // An agent starts a plugin that watches: run returns at once, what the

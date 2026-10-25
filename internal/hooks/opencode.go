@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // nerdr's own plugin in opencode, as its hooks are in claude: read off the

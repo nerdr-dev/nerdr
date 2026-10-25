@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"nerdr/internal/why"
+	"github.com/nerdr-dev/nerdr/internal/why"
 )
 
 // whyUsage is written for the agent as much as for a person: it is what an

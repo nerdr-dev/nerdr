@@ -7,11 +7,11 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/config"
-	"nerdr/internal/github"
-	"nerdr/internal/review"
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/review"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 func tabsModel(t *testing.T, tabs ...state.Tab) *Model {

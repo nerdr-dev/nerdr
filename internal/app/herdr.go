@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"strconv"
 
-	"nerdr/internal/editor"
-	"nerdr/internal/launch"
-	"nerdr/internal/review"
-	"nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/launch"
+	"github.com/nerdr-dev/nerdr/internal/review"
+	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

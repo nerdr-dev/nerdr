@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"strings"
 
-	"nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/clean"
 )
 
 // Part is one piece of work for a tab of its own.

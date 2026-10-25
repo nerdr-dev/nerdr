@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/denied"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

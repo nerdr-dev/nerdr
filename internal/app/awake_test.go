@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/config"
 )
 
 type fakeKeeper struct{ sleep, screen bool }

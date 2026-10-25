@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"strings"
 
-	"nerdr/internal/analysis"
-	"nerdr/internal/git"
-	"nerdr/internal/term"
-	"nerdr/internal/why"
+	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/why"
 
 	"github.com/sergi/go-diff/diffmatchpatch"
 )

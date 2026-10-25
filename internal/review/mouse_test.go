@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/git"
 )
 
 // TestLayoutMatchesWhatIsDrawn is the test this whole design exists for: a

@@ -16,10 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/denied"
-	"nerdr/internal/spinoff"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // Tab is what is remembered about one tab.

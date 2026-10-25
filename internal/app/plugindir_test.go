@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/hooks"
-	"nerdr/internal/plugin"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // Test binaries need the same internal child entry point as cmd/nerdr.

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"syscall"
 
-	"nerdr/internal/hooks"
-	"nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
 // In a nerdr tab, an agent's run of a plugin is nerdr's: the agent asks

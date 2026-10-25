@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/config"
-	"nerdr/internal/hooks"
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
-	"nerdr/skills"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/skills"
 
 	"github.com/charmbracelet/x/ansi"
 )
