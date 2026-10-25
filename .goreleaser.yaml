@@ -43,7 +43,7 @@ homebrew_casks:
       owner: nerdr-dev
       name: homebrew-tap
       token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
-    homepage: https://nerdr-dev.github.io/nerdr/
+    homepage: https://nerdr.app/
     description: Run a team of coding agents, each in its own Git worktree, and review their work
     # No tap token (an empty secret, as on a fork): release, but leave the
     # tap alone.

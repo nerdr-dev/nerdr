@@ -20,7 +20,7 @@ import { Steps, Tabs, TabItem } from '@astrojs/starlight/components';
 <TabItem label="Install script">
 
 ```sh
-curl -fsSL https://nerdr-dev.github.io/nerdr/install.sh | sh
+curl -fsSL https://nerdr.app/install.sh | sh
 ```
 
 The script downloads the latest release for your system from GitHub,
@@ -29,7 +29,7 @@ checks it against the release's `checksums.txt` and puts `nerdr` in
 `NERDR_VERSION=v0.1.0` for a release other than the latest:
 
 ```sh
-curl -fsSL https://nerdr-dev.github.io/nerdr/install.sh | NERDR_VERSION=v0.1.0 sh
+curl -fsSL https://nerdr.app/install.sh | NERDR_VERSION=v0.1.0 sh
 ```
 
 Run it again to update.

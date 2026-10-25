@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs nerdr from its GitHub releases, on Linux or macOS:
 #
-#   curl -fsSL https://nerdr-dev.github.io/nerdr/install.sh | sh
+#   curl -fsSL https://nerdr.app/install.sh | sh
 #
 # NERDR_VERSION=v0.1.0 picks a release instead of the latest, and
 # NERDR_INSTALL_DIR a folder instead of ~/.local/bin.
