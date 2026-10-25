@@ -20,6 +20,7 @@ export default defineConfig({
 				'Run several coding agents at once, each in its own Git worktree, and review their work in one terminal app.',
 			favicon: '/favicon.svg',
 			customCss: ['./src/styles/nerdr.css'],
+			routeMiddleware: './src/routeData.ts',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/nerdr-dev/nerdr' }],
 			editLink: { baseUrl: 'https://github.com/nerdr-dev/nerdr/edit/main/docs/' },
 			lastUpdated: true,
