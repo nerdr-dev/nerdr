@@ -721,7 +721,7 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 		lines := []string{""}
 		for _, l := range wrapLines("No plugins. Put your own in "+tildePath(plugin.UserDir(config.Path()), homeDir())+
 			"/NAME, each a folder with a "+plugin.File+
-			". See https://nerdr-dev.github.io/nerdr/configure/plugins/.", textW, 20) {
+			". See https://nerdr.app/configure/plugins/.", textW, 20) {
 			lines = append(lines, " "+l)
 		}
 		return append(fitLines(lines, w, h-1), ansi.Truncate(keys, w, "…"))

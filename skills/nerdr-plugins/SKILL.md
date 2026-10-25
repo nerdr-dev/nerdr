@@ -92,7 +92,7 @@ background and returns at once, saying its run's id. Then:
 ## Making one
 
 Only when the user asks for a plugin. Read the guide first:
-https://nerdr-dev.github.io/nerdr/configure/plugins/, or
+https://nerdr.app/configure/plugins/, or
 `docs/src/content/docs/configure/plugins.mdx` in nerdr's repository. In
 short: a folder `NAME/` with a `plugin.toml` holding `description`,
 `run` (what agents run) and/or `ui` (a screen for F5), and `[[params]]`
