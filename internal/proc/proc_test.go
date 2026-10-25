@@ -7,7 +7,7 @@ import (
 	"syscall"
 	"testing"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // A program detached is in a process group, and a session, of its own:

@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/git"
 )
 
 // TestOpenWhyDetailFocusesThePanel covers the trap this fixes: while the

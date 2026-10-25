@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 func notifyModel(notify string, tabs ...*tab) *Model {

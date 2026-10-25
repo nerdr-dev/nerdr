@@ -3,9 +3,9 @@ package app
 import (
 	"strings"
 
-	"nerdr/internal/git"
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

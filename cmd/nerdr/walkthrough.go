@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"nerdr/internal/browser"
-	"nerdr/internal/store"
-	"nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/browser"
+	"github.com/nerdr-dev/nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 )
 
 // walkthroughUsage is written for the agent as much as for a person: it is

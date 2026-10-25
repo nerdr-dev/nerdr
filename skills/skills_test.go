@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/agents"
 )
 
 // TestSkillsAreValidForEveryAgent covers what claude, opencode and copilot

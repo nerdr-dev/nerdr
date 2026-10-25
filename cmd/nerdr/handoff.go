@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"nerdr/internal/handoff"
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/handoff"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // handoffUsage is written for the agent, as whyUsage is.

@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/config"
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

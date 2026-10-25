@@ -9,9 +9,9 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/hooks"
-	"nerdr/internal/plugin"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 func TestPluginValues(t *testing.T) {

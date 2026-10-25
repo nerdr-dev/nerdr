@@ -4,7 +4,7 @@ import (
 	"slices"
 	"time"
 
-	"nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/agents"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

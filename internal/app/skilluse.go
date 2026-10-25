@@ -7,9 +7,9 @@ import (
 	"sort"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/denied"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

@@ -4,7 +4,7 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/review"
+	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/hooks"
-	"nerdr/internal/input"
-	"nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 
 	"github.com/charmbracelet/x/ansi"
 )

@@ -28,9 +28,9 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/clean"
-	"nerdr/internal/git"
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 // FileName is the walkthroughs' file, in the folder internal/store keeps

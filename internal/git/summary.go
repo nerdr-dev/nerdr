@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 var shortStatRe = regexp.MustCompile(`(\d+) files? changed(?:, (\d+) insertions?\(\+\))?(?:, (\d+) deletions?\(-\))?`)

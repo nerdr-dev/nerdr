@@ -8,10 +8,10 @@ import (
 	"strings"
 	"unicode"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/browser"
-	"nerdr/internal/config"
-	"nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/browser"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/editor"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"

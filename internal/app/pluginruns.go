@@ -13,11 +13,11 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"nerdr/internal/clean"
-	"nerdr/internal/config"
-	"nerdr/internal/hooks"
-	"nerdr/internal/plugin"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

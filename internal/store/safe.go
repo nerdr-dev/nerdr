@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // The data folder is where agents write, and nerdr writes there too, as

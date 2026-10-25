@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/config"
-	"nerdr/internal/detect"
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/detect"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

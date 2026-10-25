@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	gitdata "nerdr/internal/git"
+	gitdata "github.com/nerdr-dev/nerdr/internal/git"
 )
 
 // A branch stacked on another tab's starts where that one is, unpushed

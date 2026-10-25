@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/textarea"
 	tea "github.com/charmbracelet/bubbletea"

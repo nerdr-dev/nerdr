@@ -17,7 +17,7 @@ import (
 	"sync"
 	"time"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 const source = "nerdr"

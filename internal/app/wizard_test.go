@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/github"
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/x/ansi"
 )

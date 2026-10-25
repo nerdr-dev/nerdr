@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/herdr"
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/herdr"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

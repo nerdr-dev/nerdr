@@ -1,8 +1,8 @@
 package review
 
 import (
-	"nerdr/internal/codereview"
-	"nerdr/internal/why"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/why"
 )
 
 // loadNotes is the why notes for the worktree, with the findings of its

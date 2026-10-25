@@ -20,7 +20,7 @@ import (
 	"syscall"
 	"time"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // Detach puts cmd in a session of its own when it starts, and returns it,

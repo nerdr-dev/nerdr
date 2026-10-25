@@ -11,8 +11,8 @@ import (
 	"strings"
 	"syscall"
 
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // NewFileContent returns the worktree content of an untracked file,

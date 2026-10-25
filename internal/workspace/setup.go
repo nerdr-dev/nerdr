@@ -17,10 +17,10 @@ import (
 	"syscall"
 	"time"
 
-	"nerdr/internal/denied"
-	gitdata "nerdr/internal/git"
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	gitdata "github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 
 	"github.com/BurntSushi/toml"
 )

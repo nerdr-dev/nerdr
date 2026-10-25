@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 // Add checks a note against the code and appends it to the repository's

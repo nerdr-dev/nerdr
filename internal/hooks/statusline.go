@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/proc"
-	"nerdr/internal/usage"
+	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/usage"
 )
 
 // claude gives its account's rate limits to its status line alone. So

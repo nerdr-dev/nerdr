@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"strings"
 
-	"nerdr/internal/launch"
+	"github.com/nerdr-dev/nerdr/internal/launch"
 )
 
 // Setting is the browser setting from the config: the command to open a

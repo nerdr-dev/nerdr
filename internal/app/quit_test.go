@@ -4,9 +4,9 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/hooks"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // TestQuitLeavesConversationsAlone: an agent stopped by quitting, which

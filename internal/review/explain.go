@@ -3,10 +3,10 @@ package review
 import (
 	tea "github.com/charmbracelet/bubbletea"
 
-	"nerdr/internal/browser"
-	"nerdr/internal/git"
-	"nerdr/internal/order"
-	"nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/browser"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 )
 
 // ExplainMsg asks nerdr to show what was recorded to explain a file — the

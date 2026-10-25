@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/git"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/state"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // TestPullRequestNeedsCommits covers c on a branch whose work is not

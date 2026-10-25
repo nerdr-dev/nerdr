@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"nerdr/internal/review"
+	"github.com/nerdr-dev/nerdr/internal/review"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"

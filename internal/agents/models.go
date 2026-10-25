@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // The models an agent can be started with, as the agent itself lists

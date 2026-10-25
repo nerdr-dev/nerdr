@@ -3,8 +3,8 @@ package app
 import (
 	"time"
 
-	"nerdr/internal/awake"
-	"nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/awake"
+	"github.com/nerdr-dev/nerdr/internal/config"
 )
 
 // keeper is what holds the machine awake; awake.Keeper but in tests.

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/proc"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/x/ansi"
 )

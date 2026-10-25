@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

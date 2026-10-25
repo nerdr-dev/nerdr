@@ -16,7 +16,7 @@ import (
 	"sort"
 	"time"
 
-	"nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 )
 
 // Window is one rate-limit window of an account: how much of it is used,

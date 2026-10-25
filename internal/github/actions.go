@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/git"
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // This file is what nerdr does with GitHub for a tab, rather than what the

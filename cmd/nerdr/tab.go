@@ -6,7 +6,7 @@ import (
 	"os"
 	"syscall"
 
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // tabSocket is the tab the command runs in and the socket of the nerdr

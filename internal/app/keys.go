@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/review"
-	"nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/review"
+	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"

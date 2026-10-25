@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // The leader exits on TERM, but its child keeps doing work until KILL.

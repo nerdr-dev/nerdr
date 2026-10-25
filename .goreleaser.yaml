@@ -1,0 +1,59 @@
+# Release build: the four binaries `make all` builds, as archives on a
+# GitHub release, with checksums and a Homebrew formula. Run by
+# .github/workflows/release.yml when a v* tag is pushed.
+version: 2
+
+project_name: nerdr
+
+before:
+  hooks:
+    - go mod tidy -diff
+
+builds:
+  - main: ./cmd/nerdr
+    binary: nerdr
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.releaseVersion={{ .Tag }}
+
+archives:
+  - formats: [tar.gz]
+    # No version in the name, so releases/latest/download/<name> always
+    # points at the newest release; install.sh relies on this.
+    name_template: "{{ .ProjectName }}-{{ .Os }}-{{ .Arch }}"
+    files:
+      - LICENSE
+      - NOTICE
+      - README.md
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+
+# A cask in nerdr-dev/homebrew-tap: brew install nerdr-dev/tap/nerdr.
+homebrew_casks:
+  - repository:
+      owner: nerdr-dev
+      name: homebrew-tap
+      token: '{{ envOrDefault "HOMEBREW_TAP_TOKEN" "" }}'
+    homepage: https://nerdr-dev.github.io/nerdr/
+    description: Run a team of coding agents, each in its own Git worktree, and review their work
+    # No tap token (an empty secret, as on a fork): release, but leave the
+    # tap alone.
+    skip_upload: '{{ if envOrDefault "HOMEBREW_TAP_TOKEN" "" }}false{{ else }}true{{ end }}'
+    dependencies:
+      - formula: git
+    # The binary is not signed; without this Gatekeeper refuses to start it.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/nerdr"]
+          end

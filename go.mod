@@ -1,4 +1,4 @@
-module nerdr
+module github.com/nerdr-dev/nerdr
 
 go 1.27.1
 

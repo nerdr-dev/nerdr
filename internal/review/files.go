@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/git"
-	"nerdr/internal/order"
-	"nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

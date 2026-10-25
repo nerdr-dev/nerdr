@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/codereview"
-	"nerdr/internal/detect"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/detect"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textarea"

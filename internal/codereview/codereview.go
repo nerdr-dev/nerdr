@@ -22,9 +22,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/clean"
-	"nerdr/internal/store"
-	"nerdr/internal/why"
+	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/why"
 )
 
 // fixMark is in the first line of every FixPrompt, for IsFixPrompt.

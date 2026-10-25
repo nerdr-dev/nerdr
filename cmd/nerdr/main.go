@@ -14,14 +14,14 @@ import (
 	"sync"
 	"syscall"
 
-	"nerdr/internal/app"
-	"nerdr/internal/browser"
-	"nerdr/internal/config"
-	"nerdr/internal/editor"
-	"nerdr/internal/hooks"
-	"nerdr/internal/input"
-	"nerdr/internal/state"
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/app"
+	"github.com/nerdr-dev/nerdr/internal/browser"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/store"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -176,10 +176,18 @@ func main() {
 	}
 }
 
-// version is the commit nerdr was built from, as Go records it, with
-// "+changes" when the tree had changes not committed; "unknown" when it
-// was not built from a git checkout.
+// releaseVersion is the release tag, such as "v0.1.0", set by the release
+// build with -ldflags "-X main.releaseVersion=...".
+var releaseVersion string
+
+// version is the release tag for a release build; otherwise the commit
+// nerdr was built from, as Go records it, with "+changes" when the tree
+// had changes not committed; "unknown" when it was not built from a git
+// checkout.
 func version() string {
+	if releaseVersion != "" {
+		return releaseVersion
+	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "unknown"

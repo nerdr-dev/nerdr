@@ -8,11 +8,11 @@ import (
 	"strings"
 	"testing"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/config"
-	"nerdr/internal/hooks"
-	"nerdr/internal/spinoff"
-	"nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {

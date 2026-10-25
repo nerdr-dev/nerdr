@@ -5,7 +5,7 @@ package review
 import (
 	"sync"
 
-	"nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/git"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

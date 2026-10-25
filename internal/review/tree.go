@@ -5,9 +5,9 @@ import (
 	"sort"
 	"strings"
 
-	"nerdr/internal/analysis"
-	"nerdr/internal/git"
-	"nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/order"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

@@ -3,8 +3,8 @@ package git
 import (
 	"strings"
 
-	"nerdr/internal/gitsafe"
-	"nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 )
 
 // DetectBase returns the branch the worktree's work is compared with: the

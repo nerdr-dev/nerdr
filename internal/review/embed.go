@@ -5,10 +5,10 @@ import (
 	"strconv"
 	"strings"
 
-	"nerdr/internal/git"
-	"nerdr/internal/order"
-	"nerdr/internal/walkthrough"
-	"nerdr/internal/why"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/why"
 
 	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"

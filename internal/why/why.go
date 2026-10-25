@@ -16,9 +16,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"nerdr/internal/clean"
-	"nerdr/internal/git"
-	"nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
 // FileName is the notes file, in the folder internal/store keeps records in.

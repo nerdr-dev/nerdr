@@ -33,14 +33,14 @@ import (
 	"syscall"
 	"time"
 
-	"nerdr/internal/agents"
-	"nerdr/internal/clean"
-	"nerdr/internal/codereview"
-	"nerdr/internal/denied"
-	"nerdr/internal/handoff"
-	"nerdr/internal/spinoff"
-	"nerdr/internal/usage"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/handoff"
+	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/usage"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // Report is one report from an integration.

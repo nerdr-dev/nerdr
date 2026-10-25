@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"nerdr/internal/github"
-	"nerdr/internal/term"
-	"nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

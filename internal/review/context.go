@@ -5,14 +5,14 @@ package review
 // the background.
 
 import (
-	"nerdr/internal/analysis"
-	"nerdr/internal/git"
-	"nerdr/internal/github"
-	"nerdr/internal/order"
-	"nerdr/internal/store"
-	"nerdr/internal/walkthrough"
-	"nerdr/internal/watch"
-	"nerdr/internal/why"
+	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/watch"
+	"github.com/nerdr-dev/nerdr/internal/why"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
