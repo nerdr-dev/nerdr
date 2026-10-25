@@ -2,15 +2,14 @@ import { getImage } from 'astro:assets';
 import { defineRouteMiddleware } from '@astrojs/starlight/route-data';
 import logo from './assets/nerdr-glasses.png';
 
-// Starlight's hero has no slot between the title and the tagline, so the
-// home page's logo (the entry with the empty id) goes in at the start of
-// the tagline.
+// Starlight's hero has no place for a logo, so the home page's (the entry
+// with the empty id) goes into the title, which the hero renders as HTML.
+// The title beside it names it, so its alt text is empty.
 export const onRequest = defineRouteMiddleware(async (context) => {
-	const { hero } = context.locals.starlightRoute.entry.data;
-	if (context.locals.starlightRoute.entry.id !== '' || !hero?.tagline) return;
+	const { entry } = context.locals.starlightRoute;
+	if (entry.id !== '' || !entry.data.hero) return;
 	const image = await getImage({ src: logo, width: 192 });
-	hero.tagline =
-		`<img class="hero-logo" src="${image.src}" width="96" height="96" ` +
-		`alt="The nerdr logo: a pair of glasses whose lenses are a yellow and a green status light">` +
-		hero.tagline;
+	entry.data.hero.title =
+		`<img class="hero-logo" src="${image.src}" width="96" height="96" alt="">` +
+		(entry.data.hero.title ?? entry.data.title);
 });
