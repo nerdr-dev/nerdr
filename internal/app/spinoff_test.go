@@ -145,6 +145,7 @@ func TestSpinoffPicksTheRepositories(t *testing.T) {
 	apiCommit := git(wts[0].Path, "rev-parse", "HEAD")
 
 	m := testModel(t)
+	fakeAgent(m, agents.Claude) // CI has no agent on the PATH
 	tb := m.cur()
 	tb.Worktrees = wts
 	ticked := func(pt spinoff.Part) []bool {

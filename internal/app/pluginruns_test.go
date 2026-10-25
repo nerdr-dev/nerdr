@@ -115,7 +115,12 @@ func TestPluginRunShown(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	tb := m.cur()
-	tb.Dir = t.TempDir()
+	// As pwd prints it: on macOS the temporary folder is behind a symlink.
+	dir, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	tb.Dir = dir
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "aaa", "description = \"Another.\"\nrun = [\"true\"]\n")
 	p := allowedPlugin(t, cfg, "deploy", "description = \"Deploys.\"\nrun = [\"./run.sh\"]\nshow = [\"values\", \"output\"]\n"+
