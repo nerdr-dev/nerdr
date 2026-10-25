@@ -48,3 +48,31 @@ npm run build     # checks every link, writes dist/
 ```
 
 A push to `main` that changes `docs/` publishes the site to GitHub Pages.
+
+## Releases
+
+Push a tag to release:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The Release workflow runs the tests, then
+[GoReleaser](https://goreleaser.com) (`.goreleaser.yaml`) builds the four
+binaries with the tag as `nerdr version`, puts them on a GitHub release
+as `nerdr-<os>-<arch>.tar.gz` with `checksums.txt`, and updates the cask
+in [nerdr-dev/homebrew-tap](https://github.com/nerdr-dev/homebrew-tap).
+The archive names carry no version, so `releases/latest/download/` always
+finds the newest; the install script, `docs/public/install.sh`, depends
+on that.
+
+The tap needs a repository secret, `HOMEBREW_TAP_TOKEN`: a fine-grained
+token with write access to the contents of `nerdr-dev/homebrew-tap`.
+Without it the release is made and the tap is left alone.
+
+To try a release build without publishing anything:
+
+```sh
+goreleaser release --snapshot --clean   # writes dist/
+```

@@ -41,13 +41,18 @@ the waiting list taking you to the agent with a question.*
 
 ## Install
 
-You need `git`, Go 1.27 or newer, and at least one coding agent on your
-PATH. Sign in to `gh` for pull requests, CI and issues.
+On Linux or macOS:
 
 ```sh
-git clone https://github.com/nerdr-dev/nerdr && cd nerdr
-make install          # installs to $(go env GOPATH)/bin
+curl -fsSL https://nerdr-dev.github.io/nerdr/install.sh | sh
 ```
+
+or with Homebrew, `brew install nerdr-dev/tap/nerdr`, or with Go 1.27 or
+newer, `go install github.com/nerdr-dev/nerdr/cmd/nerdr@latest`. The
+binaries are also on the [releases page](https://github.com/nerdr-dev/nerdr/releases).
+You need `git` and at least one coding agent on your PATH. Sign in to `gh`
+for pull requests, CI and issues. See [install](https://nerdr-dev.github.io/nerdr/start/install/)
+for the details and for building from source.
 
 Start it in the folder that holds your repositories:
 

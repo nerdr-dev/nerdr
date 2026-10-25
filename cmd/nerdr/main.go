@@ -176,10 +176,18 @@ func main() {
 	}
 }
 
-// version is the commit nerdr was built from, as Go records it, with
-// "+changes" when the tree had changes not committed; "unknown" when it
-// was not built from a git checkout.
+// releaseVersion is the release tag, such as "v0.1.0", set by the release
+// build with -ldflags "-X main.releaseVersion=...".
+var releaseVersion string
+
+// version is the release tag for a release build; otherwise the commit
+// nerdr was built from, as Go records it, with "+changes" when the tree
+// had changes not committed; "unknown" when it was not built from a git
+// checkout.
 func version() string {
+	if releaseVersion != "" {
+		return releaseVersion
+	}
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
 		return "unknown"
