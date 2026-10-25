@@ -1,0 +1,9 @@
+nerdr
+Copyright 2026 nerdr contributors
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product includes agent detection manifests from herdr
+(https://github.com/herdrdev/herdr, src/detect/manifests),
+Copyright herdr contributors, licensed under the Apache License 2.0.
+They are in internal/detect/manifests and are built into the nerdr binary.

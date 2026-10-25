@@ -1,0 +1,91 @@
+---
+title: The review panel
+description: Five screens beside the agent, F1 to F5. How to open them, size them and move around in them.
+---
+
+import { LinkCard, CardGrid } from '@astrojs/starlight/components';
+
+The review panel on the right holds what you need besides the agent: its
+changes, GitHub, tasks, skills and plugins. Each is a screen with an
+F-key.
+
+<CardGrid>
+	<LinkCard title="F1 Code changes" href="../code-changes/" description="Word-level diffs, the agent's notes, walkthroughs and questions on any line." />
+	<LinkCard title="F2 GitHub" href="../github/" description="Commit, push, pull requests, review comments, CI, your PRs and issues." />
+	<LinkCard title="F3 Tasks" href="../tasks/" description="Tasks lined up for the agent, sent when it is idle." />
+	<LinkCard title="F4 Skills" href="../skills/" description="The skills nerdr gives the agents, and how often they use them." />
+	<LinkCard title="F5 Plugins" href="../plugins/" description="Your own scripts, and the screens they bring." />
+</CardGrid>
+
+## Opening and closing
+
+While the panel is closed, its screens are a narrow column on the right,
+each F-key with a short name. Press an F-key or click one to open the
+panel on that screen, beside the agent. Click the open one again to close
+the panel. While the panel is kept open, the column gives way to a row of
+the screens above it.
+
+`F1`–`F5` open and focus a screen; `ctrl+q e 1`…`e 5` do the same, and
+`m` in the panel cycles the screens. `esc`, `ctrl+q a a` or a click gives
+the keyboard back to the agent. Press `?` in the panel for all of its
+commands.
+
+| After `ctrl+q` | Action |
+|---|---|
+| `e 1`…`e 5` | Open code changes, GitHub, tasks, skills or plugins |
+| `z e` | Show / hide the panel |
+| `z k` | Small panel, which folds again when you go back to the agent / keep it open |
+| `z z` | Make the panel full width |
+| `<` / `>` | Widen / narrow the panel |
+| `z l` | Choose a layout |
+
+<details>
+<summary>F-keys in terminals and on Mac laptops</summary>
+
+In a terminal pane at its prompt, F1–F5 still switch screens. A
+full-screen program there (htop, mc, vim) gets the function keys for
+itself: use `ctrl+q e 1`…`e 5` then. F6 and up always go to the program.
+
+A Mac laptop may need `fn` for the F-keys. Set `function_keys = false`
+to label the screens with their `ctrl+q e` shortcuts instead.
+
+</details>
+
+## Small, open or full width
+
+- **Small:** click `»` at the top of the panel, or press `ctrl+q z k`.
+  The panel opens when you pick a screen and folds again when the
+  keyboard goes back to the agent. Good for a quick look.
+- **Kept open:** click `«`. The panel stays beside the agent, as wide as
+  `panel_width` (50% by default). Drag the divider to resize it.
+- **Full width:** `ctrl+q z z`, for reading a large change.
+
+A panel kept open makes room for the tab's panes: while they would not
+all fit beside it, it becomes small by itself, and opens again once they
+fit. Click `«` to keep it open anyway.
+
+## Layouts
+
+`ctrl+q z l` lets you try the layouts: the arrows preview, `enter` saves
+and `esc` restores. Set `layout` to start in one:
+
+| `layout` | At start |
+|---|---|
+| `normal` | The agent, and the panel beside it |
+| `wide` | The agent with three quarters of the window |
+| `small` | The panel closed, folding again after a look |
+| `agent` | The agent alone, the panel closed |
+| `panel` | The panel full width |
+
+`ctrl+q z =` puts the agent left and the panel right at `panel_width`,
+`ctrl+q z +` gives the agent three quarters, and `ctrl+q z a` shows the
+agent alone.
+
+## Asking the agent from the panel
+
+Requests from the panel go to the tab's agent as messages, delivered when
+it is idle. Most open as drafts for you to read, edit and send.
+
+Read drafts before sending. Review comments and CI logs contain text from
+others, which may include instructions meant for the agent, and the agent
+acts within its permissions.

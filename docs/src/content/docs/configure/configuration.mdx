@@ -1,0 +1,203 @@
+---
+title: Configuration
+description: Every setting in nerdr's config file, what it does and its default.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+All settings live in `~/.config/nerdr/config.toml`, and all are optional.
+Change them in nerdr with `ctrl+q s`, or edit the file: nerdr reloads it
+within a few seconds and tells you which changes need a restart.
+
+## The settings dialog
+
+`ctrl+q s` lists every setting, the review settings and each agent's
+command, arguments and environment. Bold values are set by you; dimmed
+ones are defaults.
+
+| Key | Action |
+|---|---|
+| `↑` / `↓` | Select a setting |
+| `?` | Help for it |
+| `enter` | Toggle, cycle or edit it |
+| `←` / `→` | Change a number or a choice |
+| `d` | Restore the default |
+
+Enter lists as space-separated words, quoting values with spaces, and
+variables as `NAME=value`. Changes are saved at once without rewriting the
+rest of the file. Settings read only at start, such as `prefix`, `mouse`,
+`fps`, `worktrees_dir`, `install`, `data_dir` and `layout`, say "from
+nerdr's next start". New agent arguments apply to the next agent started;
+`ctrl+q a r` restarts the current one.
+
+## Keys and mouse
+
+| Setting | Default | |
+|---|---|---|
+| `prefix` | `"ctrl+q"` | The key before every nerdr command: any `ctrl+<letter>`. Avoid keys your agents use; herdr uses `ctrl+b`. |
+| `mouse` | `true` | Clicks, menus, the wheel and selecting text. Off, the terminal keeps its own selection. |
+| `function_keys` | `true` | Label the panel's screens F1–F5. Off, label them with `ctrl+q e 1`…`e 5`, for keyboards where the F-keys are hard to reach. |
+
+If the prefix letter is also a command key, that command moves to `q`,
+and quit moves to the prefix letter. Menus and hints follow.
+
+## Screen
+
+| Setting | Default | |
+|---|---|---|
+| `layout` | `"normal"` | The layout at start: `normal`, `wide`, `small`, `agent` or `panel`. See [Layouts](../../panel/overview/#layouts). |
+| `tab_bar` | `"left"` | Where the tabs go: `top`, `left`, or `left-small` (status lights only). |
+| `tab_details` | `true` | Changes, pull request and CI in the tab list. |
+| `panel_width` | `50` | The review panel's width beside the agent, in percent. |
+| `panel_labels` | `true` | Names beside the F-keys in the column on the right. Off, the column is narrower. |
+| `pane_min_width` | `60` | The narrowest a pane is shown side by side, in columns; past it, the panel and then the panes used longest ago fold away. |
+| `diff_colors` | `"nerdr"` | Colours of the changes in F1: `nerdr` or `github`. |
+| `status_lights` | `"dots"` | `dots`, or `symbols`: ◐ working, × needs input, ✓ done. |
+| `fps` | `60` | The most screen redraws per second, 1–120. Read at start. |
+
+### Screen redraws
+
+`fps` caps how often nerdr redraws the screen. A lower value uses less
+CPU: at 30, an idle nerdr uses about a third less, and typed text and
+agent output can appear up to one frame later, about 33 ms. Above 60
+makes little difference, since nerdr redraws an agent's output at most
+about 60 times a second.
+
+## Folders
+
+| Setting | Default | |
+|---|---|---|
+| `repo_dirs` | `[]` | More folders with repositories, such as `["~/code", "~/work"]`, besides the one nerdr starts in. |
+| `worktrees_dir` | `"~/worktrees-nerdr"` | Where new worktrees go; created as needed. A relative path is taken from the folder nerdr starts in, or beside it when that is a repository. |
+| `data_dir` | `""` | Where nerdr keeps what agents record about a change. See [below](#where-nerdr-keeps-its-data). |
+| `install` | asked at first start | Where nerdr may install skills, plugins and hooks for the agents: `home`, `worktree` or `off`. See [Skills](../../panel/skills/#where-skills-are-installed). |
+| `enabled_skills` | all | The skills that are on. See [Skills](../../panel/skills/#turning-skills-off). |
+
+### Where nerdr keeps its data
+
+`data_dir` holds what the agents record about a change: their
+explanations (`why.jsonl`, `order.jsonl`), code reviews (`reviews.jsonl`,
+`review-sessions.jsonl`), walkthroughs and handoffs (`handoff/`).
+
+| `data_dir` | Where, and for how long |
+|---|---|
+| Empty (default) | `.git/nerdr/` in the repository's Git folder: shared across worktrees, outside version control, kept when a worktree is deleted. |
+| A relative path, such as `.nerdr` | Inside each worktree, kept out of git through `.git/info/exclude`. For sandboxes that only reach the worktree. Deleted with the worktree. |
+| An absolute path, such as `~/nerdr-data` | One folder, with a subfolder per repository named after its main checkout. |
+
+The `.jsonl` files hold one JSON object per line, appended under a lock.
+At start, nerdr removes reading orders for deleted branches and reused
+branch names, except with an absolute `data_dir`. Why notes are kept.
+
+## Tabs
+
+| Setting | Default | |
+|---|---|---|
+| `max_tabs` | `20` | The most tabs open at once; `0` for no limit. |
+| `cold_days` | `5` | Mark tabs cold after this many idle days; `0` never. |
+| `sleep_after` | `0` | Minutes before agents done, seen and out of sight are stopped, to carry on when visited; `0` never. See [Agents asleep](../../use/progress/#agents-asleep). |
+| `close_merged` | `true` | Say in a tab's status panel when its pull requests are merged. |
+
+## Notifications and GitHub
+
+| Setting | Default | |
+|---|---|---|
+| `notify` | `"all"` | When to notify: `all`, `blocked` (needs input), `done` or `off`. |
+| `pr_notify` | `true` | Tell of failed checks and new reviews on your pull requests. Off, GitHub is not asked. |
+| `issue_notify` | `true` | Tell of issues newly assigned to you. Off, GitHub is not asked. |
+| `github_refresh` | `90` | Seconds between GitHub checks of the tab on screen, 15–3600; other checks scale with it. |
+| `herdr_focus_jump` | `true` | Inside herdr, go to the tab that needs you when herdr focuses nerdr. |
+| `claude_status_line` | `true` | Start claude with nerdr's status line, which reports the rate limits and then shows yours. See [Usage](../../use/progress/#usage-and-rate-limits). |
+
+## Programs
+
+| Setting | Default | |
+|---|---|---|
+| `shell` | `""` | The shell for terminal panes; empty uses `$SHELL`. |
+| `editor` | `""` | What `o` in F1 opens a file in, such as `"code"` or `"nvim"`; empty uses `$VISUAL`, then `$EDITOR`, then `vim`. |
+| `worktree_editor` | `""` | What `ctrl+q o` opens the worktree in; empty uses `code`. |
+| `browser` | `""` | The command a URL is opened with, such as `"firefox"` or `"open -a Safari"`; empty uses `$BROWSER`, then `xdg-open` or `open`. |
+
+## Plugins
+
+| Setting | Default | |
+|---|---|---|
+| `confirm_plugin_runs` | `false` | Ask before every agent's run of any plugin. See [Writing plugins](../plugins/#saying-yes-to-each-run). |
+
+## Keeping the machine awake
+
+| Setting | Default | |
+|---|---|---|
+| `keep_awake` | `"busy"` | `busy`: no sleep while an agent or reviewer works, and for a minute after. `always`: while nerdr runs. `off`. |
+| `keep_screen_on` | `false` | Also keep the screen from blanking and locking. |
+| `keep_screen_max` | `60` | Minutes after your last key or click in nerdr that the screen is kept on. |
+
+On Linux, nerdr holds a logind inhibitor against idle and requested
+suspend (`systemd-inhibit --list` shows it), and with `keep_screen_on`
+asks the desktop through `org.freedesktop.ScreenSaver`, which GNOME,
+Cinnamon, KDE and others follow. On macOS, nerdr uses `caffeinate -i`,
+adding `-d` for the screen. Closing a laptop lid still follows the
+system's lid setting.
+
+## Review
+
+The `[review]` table sets up [code review](../../use/code-review/).
+
+```toml
+[review]
+auto = false              # review without asking
+when = "ready"            # with auto: "ready" when the agent says so, "turn" after every turn that changes the worktree
+agent = "other"           # a different kind of agent, or a name such as "codex"
+rounds = 2                # review rounds before leaving findings to you
+send_findings = "ask"     # ask: keep in F3 and ask; auto: send to the agent directly
+
+[review.args]             # arguments for reviewers, after the agent's own
+codex = ["--sandbox", "read-only"]
+
+[review.models]           # the model each agent reviews with, in its own names
+codex = "gpt-6-astra"
+claude = "opus"
+```
+
+`agent = "other"` picks Codex to review Claude, and Claude to review the
+others; if that one is not installed, another installed agent.
+
+With `auto` and `when = "ready"`, the review starts when the agent says
+its work is ready with `nerdr ready`, which the `nerdr-request-review`
+skill has it do by itself when review is on. This skips reviews of work
+halfway done. Agents without that skill are reviewed after every turn.
+
+## Agents
+
+`[agents.<name>]` tables set how each agent is started: its command,
+arguments, environment, a wrapper or sandbox. See
+[Agents and sandboxes](../agents/).
+
+```toml
+[agents.claude]
+args = ["--model", "opus", "--permission-mode", "acceptEdits"]
+env = { MAX_THINKING_TOKENS = "16000" }
+
+[agents.copilot]
+command = ["my-sandbox", "--", "copilot"]
+args = ["--allow-all"]
+sandboxed = true
+```
+
+## Per repository: `.nerdr.toml`
+
+A `.nerdr.toml` at a repository's root copies local files into new
+worktrees and runs a setup command there:
+
+```toml
+copy  = [".env", ".env.*", "certs"]
+setup = "npm ci"
+```
+
+See [Getting a new worktree ready](../../use/tabs/#getting-a-new-worktree-ready-nerdrtoml).
+
+<Aside title="Files nerdr keeps">
+Besides the config, nerdr keeps its state in `~/.local/state/nerdr/`:
+saved tabs (`sessions/`), skill counts, approvals for `.nerdr.toml` and
+plugins, and its socket. See [How it works](../../reference/how-it-works/).
+</Aside>

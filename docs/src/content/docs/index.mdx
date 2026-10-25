@@ -1,0 +1,76 @@
+---
+title: nerdr
+description: Run several coding agents at once, each in its own Git worktree. Track progress, answer questions and review changes in one terminal app for Linux and macOS.
+template: splash
+hero:
+  tagline: Run a team of coding agents, each in its own Git worktree. Track their progress, answer their questions and review their work, all in one terminal.
+  image:
+    file: ../../assets/sidebar.png
+    alt: Three repositories, six worktrees in one with their status lights, an agent asking for permission, and its diff in F1
+  actions:
+    - text: Get started
+      link: start/install/
+      icon: right-arrow
+    - text: What is nerdr?
+      link: start/about/
+      variant: minimal
+    - text: GitHub
+      link: https://github.com/nerdr-dev/nerdr
+      icon: external
+      variant: minimal
+---
+
+import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+## One task, one tab
+
+Give each task a tab. nerdr creates a branch and a worktree from the latest
+`main` and starts your chosen agent in it. Fix a bug, build a feature and
+pick up an issue at the same time, without the agents stepping on each
+other.
+
+<video autoPlay loop muted playsInline controls aria-label="nerdr with three repositories: a new tab with Codex, switching repositories, the changes in F1, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question" style="width:100%">
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "overview.webm"} type="video/webm" />
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "overview.mp4"} type="video/mp4" />
+</video>
+
+<p style="text-align:center"><em>A new tab with Codex, the repositories and their status lights, Claude's changes in F1, the tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to the agent with a question.</em></p>
+
+<CardGrid>
+	<Card title="A worktree per task" icon="seti:git">
+		Every tab is its own branch and worktree. Start from `main`, a GitHub
+		issue, a pull request or another tab's branch. Close the tab and nerdr
+		cleans up the worktree and the branch.
+	</Card>
+	<Card title="Progress at a glance" icon="seti:notebook">
+		Status lights show which agents work, wait for you or are done. The
+		waiting list takes you to them, one by one.
+	</Card>
+	<Card title="A workbench for each tab" icon="laptop">
+		Open terminals, more agents and code reviews beside the agent, all in
+		the same worktree. Agents send each other messages and share out the
+		work.
+	</Card>
+	<Card title="Review before you merge" icon="magnifier">
+		Word-level diffs, the agent's notes on why, a guided walkthrough of the
+		change, and a second agent that reviews the work and sends its findings
+		back.
+	</Card>
+	<Card title="From task to merge" icon="github">
+		Commit, push, open pull requests and send review comments or failing CI
+		logs to the agent, without leaving the terminal.
+	</Card>
+	<Card title="Your agents, your scripts" icon="puzzle">
+		Claude Code, Codex, Copilot, opencode, Cursor, Gemini and Antigravity
+		out of the box, in sandboxes if you like. Add plugins agents can run.
+	</Card>
+</CardGrid>
+
+## Where to go next
+
+<CardGrid>
+	<LinkCard title="Install nerdr" href="start/install/" description="Build it and start it in the folder with your repositories." />
+	<LinkCard title="Quick start" href="start/quick-start/" description="From the first tab to a merged pull request in ten minutes." />
+	<LinkCard title="The review panel" href="panel/overview/" description="Code changes, GitHub, tasks, skills and plugins, beside the agent." />
+	<LinkCard title="Keyboard shortcuts" href="configure/keyboard/" description="Every command after ctrl+q, and what the mouse does." />
+</CardGrid>

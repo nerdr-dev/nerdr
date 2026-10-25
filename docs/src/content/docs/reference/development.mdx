@@ -1,0 +1,50 @@
+---
+title: Development
+description: Build nerdr, run its tests, and work on these docs.
+---
+
+nerdr is written in Go, a single static binary with no runtime
+dependencies.
+
+## Build
+
+```sh
+git clone https://github.com/nerdr-dev/nerdr && cd nerdr
+make build      # ./nerdr
+make install    # into $(go env GOPATH)/bin
+make all        # binaries for Linux and macOS, amd64 and arm64, in dist/
+```
+
+## Tests
+
+```sh
+make test   # unit tests, with the race detector
+make e2e    # the real binary in a pseudo-terminal with a fake agent:
+            # setup, worktrees, status lights, review panel, herdr
+            # integration, quit, resume and close
+make vet
+make fmt
+```
+
+To start the real Claude in a test tab and print its screen without
+sending it a task:
+
+```sh
+NERDR_E2E_CLAUDE=1 go test -tags e2e ./internal/e2e -run TestRealClaude -v
+```
+
+## The docs
+
+This site lives in `docs/` and is built with
+[Starlight](https://starlight.astro.build). Each page is a file in
+`docs/src/content/docs/`, and the sidebar is set in
+`docs/astro.config.mjs`.
+
+```sh
+cd docs
+npm ci
+npm run dev       # http://localhost:4321/nerdr/, reloads as you edit
+npm run build     # checks every link, writes dist/
+```
+
+A push to `main` that changes `docs/` publishes the site to GitHub Pages.

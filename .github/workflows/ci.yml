@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Not gofmt'ed:"; echo "$unformatted"; exit 1
+          fi
+      - run: make vet
+      - run: make test
+      # The real binary in a pseudo-terminal, with a fake agent.
+      - run: make e2e
+      # Every target in the release matrix, so a darwin-only break shows up here.
+      - run: make all
+
+  # The tests on a Mac too: kqueue, BSD tools and /var being /private/var
+  # differ from Linux in ways cross-compiling does not show.
+  test-macos:
+    runs-on: macos-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: make vet
+      - run: make test

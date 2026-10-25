@@ -1,0 +1,150 @@
+---
+title: Keyboard and mouse
+description: Every nerdr command after ctrl+q, the review panel's keys, and what the mouse does.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Typing goes to the agent. Press **`ctrl+q`**, then a command key, to
+control nerdr. The bottom line shows the common commands while it waits,
+and `ctrl+q ?` finds any command by name or description.
+
+<Aside>
+The prefix can be any `ctrl+<letter>`; set `prefix` in the config. `ctrl+q p`
+sends a `ctrl+q` to the agent.
+</Aside>
+
+## Main keys
+
+| After `ctrl+q` | Action |
+|---|---|
+| `c` / `x` | Create / close tab |
+| `C` | New tab on a branch on top of this tab's |
+| `→` / `←` | Next / previous tab, or repository on the group row |
+| `↓` / `↑` | Move to the tab row / group row |
+| `1`…`9`, `0` | Go to a tab in the group; `0` the last |
+| `]` / `[` | Next / previous repository |
+| `w` / `n` | Open the waiting list / go to the next waiting agent |
+| `f` / `space` | Find a tab by name across groups |
+| `h` | What happened since your last visit |
+| `r` | Rename tab |
+| `shift+←` / `shift+→` | Move tab left / right; repeat without the prefix |
+| `m` / `M` | Queue a task for one / several tabs |
+| `tab` | Next pane, then the split's other tab or the open panel |
+| `<` / `>` | Widen / narrow the panel or the right side of a split; `,` / `.` also work |
+| `o` | Open the worktree in `worktree_editor`, or VS Code |
+| `b` / `PgUp` | Scroll the agent's output; `q` ends it |
+| `?` / `:` | Find a command by name or description |
+| `s` | Settings |
+| `u` | Usage and rate limits |
+| `/` | Search the agents' conversations |
+| `g` | git and `gh` calls per tab, and what nerdr was refused, as in a sandbox |
+| `q` | Quit; tabs come back at the next start |
+| `p` | Send `ctrl+q` to the agent |
+| `esc` | Cancel; in a command group, back to the main keys |
+
+The prefix stays active while you move between tabs: `ctrl+q → → x`
+closes the tab two places right. See
+[Moving between tabs](../../use/tabs/#moving-between-tabs).
+
+## Command groups
+
+Five groups use two keys. The bottom line shows each group's commands,
+and repeating the group key runs its main command.
+
+### Agent: `a`
+
+| After `ctrl+q` | Action |
+|---|---|
+| `a a` | Give the agent the keyboard |
+| `a n` | Edit the tab's note |
+| `a s` | Switch agents in the same worktree, with a handoff |
+| `a r` | Restart and resume the conversation |
+| `a c` | Code review of the agent, as `t r` |
+| `a x` | Stop the review of the agent |
+
+### Panes: `t`
+
+| After `ctrl+q` | Action |
+|---|---|
+| `t t` | New terminal |
+| `t a` | New agent in the same worktree |
+| `t r` | New code review of the agent whose pane has the keyboard |
+| `t x` | Close the pane |
+| `t m` | Minimise the pane, or show it again |
+| `t ←` / `t →` | The pane on the left / right |
+| `t ⇧←` / `t ⇧→` | Move the pane left / right; `enter` ends |
+
+### Review panel: `e`
+
+| After `ctrl+q` | Action |
+|---|---|
+| `e 1`…`e 5` | Code changes, GitHub, tasks, skills or plugins, as `F1`…`F5` |
+| `e e` | Code changes |
+
+### Git and GitHub: `i`
+
+| After `ctrl+q` | Action |
+|---|---|
+| `i i` | The tab's branch, changes, pull request and CI, in F2 |
+| `i p` | Your open pull requests across these repositories |
+| `i o` | Issues assigned to you across these repositories |
+
+### View: `z`
+
+| After `ctrl+q` | Action |
+|---|---|
+| `z e` | Show / hide the review panel |
+| `z k` | Small panel that folds again / keep it open |
+| `z z` | Panel full width |
+| `z l` | Choose a layout |
+| `z =` | Agent left, panel right at `panel_width` |
+| `z +` | Agent with three quarters of the window |
+| `z a` | Agent only |
+| `z v` | Two tabs side by side |
+| `z s` | Swap the sides of a split |
+| `z d` | Show / hide tab details |
+| `z b` | Show / hide the group row |
+| `z t` | Tabs on top or on the left |
+| `z m` | Compact sidebar with only status lights |
+
+## In the review panel
+
+`F1`–`F5` open a screen; `?` in the panel lists all its keys. The keys of
+each screen are on its page:
+[F1](../../panel/code-changes/), [F2](../../panel/github/),
+[F3](../../panel/tasks/), [F4](../../panel/skills/),
+[F5](../../panel/plugins/).
+
+## Mouse
+
+- **Tabs:** click a group or tab to select it, middle-click a tab to
+  close it, and scroll over the bars to move. Right-click a tab for its
+  actions, or a group to create a tab in it. `+` after the tabs creates a
+  worktree in the repository; `+` after the groups opens the repository
+  picker.
+- **Menu:** `≡ menu` holds every command, grouped, with its shortcut.
+- **Hints:** hover over lights, tabs and badges for what they mean.
+- **Panes:** click a pane to give it the keyboard, scroll to see earlier
+  output, drag to select and copy. `+terminal`, `+agent` and `+review`
+  open a pane; `−` and `×` in its frame minimise or close it. Drag the
+  divider between panes, or between the agent and the panel, to resize;
+  right-click it to share evenly.
+- **Review panel:** click an F-key to open a screen. Drag over lines of a
+  diff to copy their code.
+- **Dialogs:** click entries, and the buttons along the bottom.
+
+### Copying text
+
+Dragging copies the selection when you let go, through the terminal's
+OSC 52 clipboard support, so it works over SSH and inside herdr too.
+Terminals without OSC 52, such as GNOME Terminal and Terminal.app, need a
+local clipboard tool instead: `pbcopy` on macOS, and `xclip`, `xsel` or
+`wl-clipboard` on Linux.
+
+If an agent uses the mouse itself, hold `shift` to select, or select in
+the agent: what it copies reaches your clipboard too, from the pane you
+are in and just after you typed or clicked there. A program elsewhere, or
+one copying unasked, cannot put text on your clipboard.
+
+Set `mouse = false` to leave the mouse to the terminal.

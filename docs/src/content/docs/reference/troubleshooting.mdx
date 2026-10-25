@@ -1,0 +1,85 @@
+---
+title: Troubleshooting
+description: Answers to the problems people run into most.
+---
+
+## F1–F5 do nothing on my Mac
+
+Mac laptops send brightness and volume for the F-keys unless `fn` is
+held. Use `ctrl+q e 1`…`e 5`, or `m` in the panel to cycle the screens,
+and set `function_keys = false` so menus show those shortcuts.
+
+## F-keys go to the program in my terminal pane
+
+A full-screen program in a terminal pane, such as htop, mc or vim, gets
+the function keys for itself. Use `ctrl+q e 1`…`e 5` then.
+
+## macOS will not open the binary
+
+Gatekeeper blocks unsigned binaries received through a browser or
+AirDrop. Run `xattr -d com.apple.quarantine nerdr`.
+
+## Copying text does not reach my clipboard
+
+nerdr copies through the terminal's OSC 52 support. GNOME Terminal and
+Terminal.app lack it: install `xclip`, `xsel` or `wl-clipboard` on
+Linux; macOS has `pbcopy`. If the agent uses the mouse itself, hold
+`shift` while selecting.
+
+## My agent's key combination does nothing
+
+nerdr takes its prefix, `ctrl+q`, before the agent sees it. Press
+`ctrl+q p` to send a `ctrl+q` to the agent, or choose another `prefix`.
+
+## The status light is wrong
+
+nerdr knows an agent's state best from its hooks. With `install = "off"`,
+or an agent started through a wrapper that hides them, it reads the
+agent's screen instead, which can mistake a long pause for done.
+
+- **Codex** runs hooks only once it trusts them. With `install = "home"`
+  nerdr sets that up; otherwise trust them yourself.
+- **A sandbox** must let the agent run `$NERDR_BIN` and reach nerdr's
+  socket. nerdr says so once, with the program and socket to allow, when
+  an agent ends a turn without reaching it.
+
+See [Knowing when an agent is done](../how-it-works/#knowing-when-an-agent-is-done).
+
+## An agent in a sandbox cannot use nerdr's commands
+
+The sandbox must pass the `NERDR_*` variables through, allow running
+`$NERDR_BIN`, and allow connecting to `~/.local/state/nerdr/nerdr.sock`.
+The command's error says which is missing. See
+[What a sandbox must allow](../../configure/agents/#what-a-sandbox-must-allow).
+
+## The agent does not resume its conversation
+
+nerdr resumes the conversation it knows the agent had. For codex and agy,
+it learns which one after the agent's first turn. If resuming fails at
+once, nerdr starts a new conversation. herdr's integrations report the
+exact conversation, even after `/clear`; see
+[herdr's agent integrations](../../use/remote/#herdrs-agent-integrations).
+
+## A task was not sent
+
+nerdr never types a task while the agent asks a question or a review is
+going on. If the agent did not respond within five seconds, the queue is
+paused (`✉n⏸`) until you visit the tab.
+
+## I closed a tab by mistake
+
+Stop nerdr and copy a snapshot from
+`~/.local/state/nerdr/sessions/snapshots/` over the session file. nerdr
+keeps the newest 20, at most one every 15 minutes. See
+[Saved sessions](../how-it-works/#saved-sessions).
+
+## Agents stop when I disconnect
+
+Quitting nerdr, or losing the SSH connection, stops its agents. Run it
+inside [herdr](../../use/remote/) to keep them running.
+
+## Too many calls to GitHub
+
+`ctrl+q g` counts git and `gh` calls per tab and by command. Raise
+`github_refresh` to check less often, or turn off `pr_notify` and
+`issue_notify`.

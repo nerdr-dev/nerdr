@@ -1,0 +1,75 @@
+---
+title: Commands
+description: The nerdr command line — for you, and for the agents in its tabs.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## For you
+
+| Command | What it does |
+|---|---|
+| `nerdr` | Start in the current folder, bringing back its tabs, if any |
+| `nerdr help` | The commands, and where the config file is |
+| `nerdr version` | Which nerdr this is: the commit it was built from |
+
+Everything else happens inside nerdr; `ctrl+q ?` finds any command.
+
+## For agents
+
+Agents use the rest of nerdr through these commands. You do not need to
+learn them: the [skills](../../panel/skills/) teach them to the agents, and
+you ask in plain words. They work only inside a tab, apart from
+`nerdr plugin`. Each takes `-h` for its options.
+
+### The tab's agents and terminals
+
+| Command | What it does |
+|---|---|
+| `nerdr agents` | The tab's agents as JSON: number, kind, model, state, context |
+| `nerdr send N MSG` | Send a message to agent N, typed in when it is idle |
+| `nerdr send --wait N MSG` | Send a message and wait for the answer, printed instead of sent back (`--timeout 10m`) |
+| `nerdr agent TASK` | Start another agent in the tab with a task (`--kind`, `--model`) |
+| `nerdr wait N…` | Wait until those agents are done or ask something (`--timeout 10m`) |
+| `nerdr read N` / `read terminal [K]` | What agent N or a terminal shows, as text (`--lines 80`) |
+| `nerdr terminal CMD` | Run a command in a new terminal pane, which you see and keep |
+| `nerdr terminal --restart [terminal [K]] [CMD]` | Stop what runs in a terminal and run it, or CMD, again |
+| `nerdr close N` / `close terminal [K]` | Close agent N's pane or a terminal, when you ask for it |
+
+### Every tab
+
+| Command | What it does |
+|---|---|
+| `nerdr tabs` | Every tab as JSON: branches, ahead/behind, changes, PR, CI, status, agents |
+| `nerdr status TEXT` | Set the line on where the tab's work stands, above the agent; alone, print it; `--clear` |
+| `nerdr tab new --branch B TASK` | A tab on a new branch from main, its agent given the task (`--repo`, `--kind`, `--model`) |
+| `nerdr search WORDS` / `search --show ID` | Past claude and codex conversations in these folders |
+| `nerdr usage` | The Claude and Codex plans' rate limits used, as JSON |
+| `nerdr plugin list` / `plugin run NAME …` | The plugins there are, and one run with its parameters; `plugin stop NAME` stops a watch |
+
+### Explaining, reviewing and handing over
+
+| Command | What it does |
+|---|---|
+| `nerdr why …` | Record why a change was made, shown above its lines in F1 |
+| `nerdr order …` | Record how to read a change: a summary and each file's role |
+| `nerdr walkthrough …` | Record a guided walkthrough of a change |
+| `nerdr ready` | Say the work is ready for a code review (`--agent`, `--model`) |
+| `nerdr post-review` | A reviewer's verdict, summary and findings |
+| `nerdr spinoff FILE` | Hand parts of the work to new tabs |
+| `nerdr handoff FILE` | Hand the work to the agent the tab switches to |
+
+<Aside>
+`nerdr terminal` and `nerdr tab new` do not take the keyboard. Agents
+close a terminal or another agent's pane only when you ask, and only you
+close tabs and the tab's first agent. A repository's `.nerdr.toml` setup
+is asked about as for any new tab.
+</Aside>
+
+## How the commands reach nerdr
+
+Each agent gets `NERDR_BIN`, the nerdr program, and a socket and secret
+to reach the nerdr running its tab. Skills call `"${NERDR_BIN:-nerdr}"`,
+so they work in a sandbox that can run that program and reach the socket.
+An agent in a sandbox marked `sandboxed` can do less. See
+[Agents and sandboxes](../../configure/agents/#what-a-sandbox-must-allow).

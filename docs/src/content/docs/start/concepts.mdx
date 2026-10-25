@@ -1,0 +1,44 @@
+---
+title: Concepts
+description: The words nerdr uses, and how its screen is laid out.
+---
+
+## The screen
+
+```text
+┌─────────────┬──────────────────────────────────────────┬─────────────────────┬────┐
+│ repositories│ last: fix the login redirect             │                     │ F1 │
+│ ● web       │ status: tests pass, writing the PR text  │  review panel       │ F2 │
+│   api       ├────────────────────┬─────────────────────┤  F1 code changes    │ F3 │
+│             │ 1:claude ●         │ $ terminal          │  F2 GitHub          │ F4 │
+│ tabs        │                    │                     │  F3 tasks           │ F5 │
+│ ● fix-login │  the agent         │  your shell, in     │  F4 skills          │    │
+│ ● 123-issue │                    │  the same worktree  │  F5 plugins         │    │
+│ ○ refactor  │                    │                     │                     │    │
+├─────────────┴────────────────────┴─────────────────────┴─────────────────────┴────┤
+│ ctrl+q  c new tab  x close  w waiting  t panes  ? find a command                  │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **The tab list**, on the left or along the top, shows your repositories
+  and, below them, the tabs of the one selected, each with its status
+  light.
+- **The status panel** above the agent says what the tab is about: your
+  last request, the agent's recap, where its work stands, your note.
+- **The workbench** is the tab's panes: its agent, and any terminals,
+  other agents and code reviews you open beside it.
+- **The review panel** on the right holds five screens, F1–F5. Closed, it
+  is a narrow column of F-keys; an F-key or a click opens it.
+- **The bottom line** shows the keys you can press, and nerdr's messages.
+
+## Words
+
+- **Tab.** One task. A tab has a branch, a worktree for that branch in each of its repositories, and an agent working there. See [Tabs, branches and worktrees](../../use/tabs/).
+- **Group.** Tabs are grouped by repository. A tab spanning several repositories belongs to a group whose name you choose, `multi` by default.
+- **Worktree.** A second checkout of a repository, on its own branch, in its own folder. Git lets one repository have many. nerdr puts them in `~/worktrees-nerdr`, so your main checkout stays untouched.
+- **Pane.** A part of the workbench: the tab's agent, a terminal, another agent or a code review. Panes are side by side; those used longest ago fold into a row above when there is no room.
+- **Agent number.** Each agent in a tab has a number, shown as `1:claude`, `2:codex`. Agents use it to send each other messages.
+- **Status light.** <span class="light-working">●</span> working, <span class="light-input">●</span> needs your input, <span class="light-done">●</span> done and not yet seen, ○ seen or idle, `z` asleep. See [Progress and notifications](../../use/progress/).
+- **Prefix.** `ctrl+q`. Everything you type goes to the agent, except after the prefix, when the next key is a nerdr command. The prefix can be changed.
+- **Skill.** Instructions nerdr installs for the agents, so they know how to use nerdr: explain a change, ask for a review, message another agent. See [Skills (F4)](../../panel/skills/).
+- **Plugin.** A script of your own, such as one that rebuilds your docker setup, which agents can run and which can have a screen in F5. See [Plugins](../../configure/plugins/).

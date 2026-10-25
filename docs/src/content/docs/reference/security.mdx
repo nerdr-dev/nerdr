@@ -1,0 +1,67 @@
+---
+title: Security
+description: nerdr runs as you, outside the agents' sandboxes. What it does so an agent cannot use it as a way out.
+---
+
+nerdr runs as you, outside every agent's sandbox. It reads what agents
+write, runs git and `gh` in their worktrees, and runs your plugins and
+setup commands. An agent, or text an agent read, could try to use that to
+do what its sandbox stops it from doing. This page is what nerdr does
+about it, and what is left for your sandbox to do.
+
+## The short version
+
+- **Run agents in a sandbox** if you can, and mark them
+  [`sandboxed`](../../configure/agents/#agents-in-a-sandbox-sandboxed).
+  nerdr then stops them from asking it for a terminal, an agent outside a
+  sandbox, or anything else their sandbox keeps from them.
+- **Nothing runs as you without your yes.** A repository's `.nerdr.toml`
+  setup and every plugin wait for you to read and allow them, and again
+  after any change.
+- **Read drafts before sending.** Review comments, CI logs and issues
+  contain text written by others, which may hold instructions for the
+  agent.
+- **Keep nerdr's own files out of reach.** A sandbox must not let its
+  agent write `~/.config/nerdr`, `~/.local/state/nerdr/plugins-allowed.json`,
+  or the main checkout's `.git/config` and `.git/hooks`.
+
+## What nerdr does not take from the worktree
+
+nerdr runs Git and `gh` outside the agent's sandbox after each turn.
+An agent could rewrite a worktree's `.git` file to point at a repository
+whose config executes commands through hooks, filters or `core.fsmonitor`.
+
+To avoid this, nerdr finds the Git directory through the main checkout's
+`.git/worktrees/*/gitdir`. It sets `GIT_DIR`, `GIT_COMMON_DIR` and
+`GIT_WORK_TREE` explicitly. It ignores worktrees unknown to the main
+checkout. `core.fsmonitor` is always disabled. Hooks are disabled except
+for requested actions: creating worktrees, pushing and cherry-picking
+spinoff commits.
+
+nerdr records origin's push destination when it opens a worktree, or on
+first startup for older tabs. Push and PR creation fail if that destination
+changes. PRs use the recorded repository, passed explicitly to `gh`.
+
+The sandbox must not let the agent write `~/.config/nerdr` or
+`~/.local/state/nerdr/plugins-allowed.json`: a plugin there, or one it
+allowed for itself, would run outside the sandbox. See
+[Plugins](../../configure/plugins/#safety).
+
+The sandbox must still protect the main checkout's `.git` directory.
+Committing requires some access there, but agents should not be able to
+write `.git/config` or `.git/hooks`.
+
+nerdr reads `.nerdr.toml` from the main checkout. Agents working there can
+edit it. Its `setup` runs outside the sandbox, and `copy` exposes files to
+the agent. nerdr therefore asks for approval on first use and after every
+change. Approvals are saved in `~/.local/state/nerdr/setup-allowed.json`.
+Copying does not follow symlinks outside the repository. `setup` runs
+only in worktrees on a new branch from the base, never on a branch's own
+code: see [Getting a new worktree ready](../../use/tabs/#getting-a-new-worktree-ready-nerdrtoml).
+
+nerdr writes in the data folder too (`data_dir`), where agents write
+their notes: a review's result, a walkthrough's page, a handoff. It
+writes there neither through a symlink nor out of the folder, and reads
+a worktree's files without following symlinks out of it, so a link an
+agent left cannot have nerdr write or show a file outside.
+

@@ -1,0 +1,192 @@
+---
+title: Tabs, branches and worktrees
+description: A tab per task, each with a branch and a worktree of its own. Start from main, an issue, a pull request or another tab's branch.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Each task gets a tab, and each tab gets a branch and a Git worktree: a
+checkout of its own, in a folder of its own. Agents in different tabs
+cannot overwrite each other's changes, and your main checkout stays
+separate from the work.
+
+## Making a tab
+
+Press `ctrl+q c`, click `+` after the tabs, or `+ new worktree` in the
+sidebar. Pick the repositories, name a branch and choose an agent. nerdr
+lists the agents found on your PATH and asks only when there is more than
+one. Press `tab` to reach the task field and type a first task; nerdr
+sends it once the agent has started.
+
+Before creating a branch, nerdr fetches origin's default branch: the one
+`origin/HEAD` names, such as `develop`, or else `main` or `master`. It
+fast-forwards a local copy that is behind, but leaves one with local
+commits unchanged. If fetching fails, it does not create the worktree.
+
+New worktrees go in `~/worktrees-nerdr`, or the folder set in
+`worktrees_dir`:
+
+```text
+~/worktrees-nerdr/<branch>-<repo>/          # one repository
+~/worktrees-nerdr/<branch>-<a>-<b>/<repo>/  # several repositories
+```
+
+The repository names in the path let you use the same branch name in
+different repositories.
+
+## Starting points
+
+### From a GitHub issue
+
+Type `#123` as the branch name to work on issue 123. nerdr builds a
+branch name from its title, such as `123-login-fails-…`, and gives the
+agent the issue as its first task. Or pick one from your assigned issues
+with `ctrl+q i o`, where you can read the task before the agent starts.
+
+### From a pull request
+
+With one repository picked, the branch step lists its open pull requests,
+whoever opened them. Those your review is asked for, from you or a team
+of yours, are marked `● review asked` and listed first. `↓` goes into the
+list, and typing narrows it by number, branch, title or author. `enter`
+opens the worktree the pull request is checked out in, or continues its
+branch in a new one.
+
+A pull request from a fork is fetched from origin's `refs/pull/<n>/head`
+into a branch of its own, `pr-<n>-<branch>`. nerdr does not push such a
+branch, since a push to origin would not reach the pull request.
+
+### From an existing branch or worktree
+
+An existing local branch is checked out as it is. If the branch exists on
+origin, nerdr shows its merge and pull request status, and you choose
+whether to continue it or start a fresh branch from main.
+
+Worktrees without a tab are offered too: in the repository list, and
+under the branch name for the repository picked. A tab opened on one
+carries on the agent's latest conversation in that worktree, even one
+held outside nerdr.
+
+### On top of another tab's branch
+
+To build on a tab's work before it is merged, press `ctrl+q C` in that
+tab, or right-click it and choose *New tab on …*. The new branch starts
+where the tab's branch is, unpushed commits included. Its changes in F1,
+its commit counts and its pull request are against that branch. Once that
+branch is merged and deleted, they are against main again, and GitHub
+moves the pull request to main.
+
+nerdr remembers the base as `branch.<name>.nerdrBase` in the
+repository's git config.
+
+## Several repositories in one tab
+
+A task can span several repositories, such as a backend and a frontend.
+Tick each with `space` when making the tab, and nerdr makes a worktree in
+each, on the same branch, in one folder where the agent starts. Press
+`tab` to reach the group field and name the group, or leave it empty for
+`multi`. Right-click a group and choose *Rename group…* to change it.
+
+In F1 and F2, each repository has its own row, with its own changes and
+pull request.
+
+## New and cloned repositories
+
+In the repository list, `n` creates a repository on `main` with an empty
+first commit. With `gh`, nerdr also offers to create a private GitHub
+repository as its origin. `c` clones a GitHub `owner/name`, a URL or a
+local path; GitHub clones use `gh` when available, private repositories
+included.
+
+When nerdr is started inside a repository, it uses the first `repo_dirs`
+entry for these. Without one, the keys are unavailable.
+
+## Getting a new worktree ready: `.nerdr.toml`
+
+A new worktree holds only committed files. Put a `.nerdr.toml` at the
+repository root to copy local files into it and install dependencies:
+
+```toml
+copy  = [".env", ".env.*", "certs"]   # from the main checkout; globs and folders allowed
+setup = "npm ci"                      # run in the new worktree
+```
+
+The file can be committed or kept only in the main checkout. nerdr asks
+for approval the first time it uses it and whenever it changes, since
+`setup` runs as you, outside any sandbox. If you decline, nerdr creates
+the worktree without copying files or running setup.
+
+- `setup` runs only in a worktree on a new branch from the base. An
+  existing branch, a pull request from a fork or a stacked branch holds
+  code someone else wrote, perhaps an agent; there nerdr copies the files
+  but leaves `setup` for you to run once you have read the code.
+- Copying never overwrites files already on the branch, nor follows
+  symlinks outside the repository.
+- If setup fails, nerdr says so and opens the tab anyway.
+- For a long setup, press `esc` to hide the dialog. The tab opens beside
+  the one you are in when ready, without taking the keyboard.
+
+## Moving between tabs
+
+`ctrl+q →` / `←` go to the next or previous tab, and the prefix stays
+active while you move: `ctrl+q → →` goes two tabs right. `enter` or `esc`
+stays in the tab selected, and a command acts on it: `ctrl+q → → x`
+closes the tab two places right.
+
+| After `ctrl+q` | Action |
+|---|---|
+| `→` / `←` | Next / previous tab |
+| `↓` / `↑` | Move to the tab row / group row |
+| `]` / `[` | Next / previous repository |
+| `1`…`9`, `0` | Go to a tab in the group; `0` the last |
+| `f` / `space` | Find a tab by name across groups |
+| `n` | Go to the next agent waiting for you |
+| `r` | Rename the tab |
+| `shift+←` / `shift+→` | Move the tab left / right |
+
+With the tab list in the sidebar, `↓` / `↑` move through a list and `←` /
+`→` switch between repositories and tabs. The sidebar is as wide as its
+longest name needs; drag its edge to set the width, and right-click the
+edge to go back to automatic. Click `«` or press `ctrl+q z m` to shrink it
+to status lights; `ctrl+q z t` moves the tabs to the top.
+
+## Two tabs side by side
+
+`ctrl+q z v` shows the tab and its neighbour side by side, and right-click
+*Show beside …* puts any tab of the repository beside the current one.
+`ctrl+q tab` or a click moves the keyboard between them, and `ctrl+q z s`
+swaps the sides. Opening the review panel takes the right side; hiding it
+brings the split back. Splits survive restarts.
+
+## Many tabs
+
+When tabs overflow the bar, badges at its edges count those hidden, such
+as `◂ ●2`, with the most urgent light among them. Click one to go there.
+
+`max_tabs` limits open tabs to 20 by default. At the limit, nerdr offers
+to close tabs whose pull requests are merged, and cold tabs. A tab with no
+activity for `cold_days` days (5 by default) is marked ❄. When nerdr
+starts, the agents of cold tabs sleep until you visit them; see
+[Agents asleep](../progress/#agents-asleep).
+
+## Closing a tab
+
+Press `ctrl+q x`, or middle-click the tab. nerdr stops its agents and
+asks what to keep:
+
+| Key | Result |
+|---|---|
+| `y` | Delete the worktree and the branch |
+| `w` | Delete the worktree, keep the branch |
+| `k` | Keep both |
+| `n` | Cancel |
+
+`enter` is `y` when the branch's pull request is merged, and `w` when it
+is not; the dialog says which. nerdr warns about uncommitted changes and
+unpushed commits, and asks again with `Y` before deleting them.
+
+<Aside>
+Tabs and agent conversations survive restarts. Quit with `ctrl+q q`, and
+the next start brings back every tab and carries each agent's
+conversation on.
+</Aside>

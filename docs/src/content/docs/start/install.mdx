@@ -1,0 +1,71 @@
+---
+title: Install
+description: Build nerdr from source on Linux or macOS and start it.
+---
+
+import { Steps } from '@astrojs/starlight/components';
+
+## What you need
+
+- **git**
+- **Go 1.27 or newer**, to build nerdr
+- **At least one coding agent** on your PATH: `claude`, `codex`, `copilot`,
+  `opencode`, `cursor-agent`, `gemini` or `agy`
+- **The GitHub CLI, `gh`**, signed in with `gh auth login`, for pull
+  requests, CI and issues. Everything else works without it.
+
+## Build and install
+
+<Steps>
+
+1. Clone the repository and install the binary:
+
+   ```sh
+   git clone https://github.com/nerdr-dev/nerdr && cd nerdr
+   make install          # installs to $(go env GOPATH)/bin, usually ~/go/bin
+   ```
+
+2. Make sure `$(go env GOPATH)/bin` is on your PATH, then check:
+
+   ```sh
+   nerdr version
+   ```
+
+3. Start nerdr in the folder that holds your repositories:
+
+   ```sh
+   cd ~/develop
+   nerdr
+   ```
+
+</Steps>
+
+On first start, nerdr asks where new worktrees go (`~/worktrees-nerdr` by
+default), where it may install its skills and hooks for the agents, and
+where it keeps its notes. All of this can be changed later; see
+[Configuration](../../configure/configuration/).
+
+## Binaries for other machines
+
+`make all` builds four binaries in `dist/`:
+
+| System | Binary |
+|---|---|
+| macOS, Apple silicon | `nerdr-darwin-arm64` |
+| macOS, Intel | `nerdr-darwin-amd64` |
+| Linux, x86-64 | `nerdr-linux-amd64` |
+| Linux, ARM64 | `nerdr-linux-arm64` |
+
+nerdr is a single static binary: copy it to a folder on the other
+machine's PATH and rename it `nerdr`.
+
+## On macOS
+
+- Gatekeeper may block an unsigned binary received through a browser or
+  AirDrop. Remove its quarantine flag with
+  `xattr -d com.apple.quarantine nerdr`.
+- A Mac laptop may need `fn` for F1–F5. Use `ctrl+q e 1`…`e 5` instead,
+  or `m` in the review panel to cycle its screens, and set
+  `function_keys = false` to show those shortcuts in menus.
+
+Next: [Quick start](../quick-start/).

@@ -1,0 +1,171 @@
+---
+title: How it works
+description: Inside nerdr — terminals, status detection, hooks, resuming conversations, saved sessions.
+---
+
+## Terminal and status lights
+
+Each agent runs in a pseudo-terminal with a virtual screen
+(`charmbracelet/x/vt`). `internal/input` passes keys through unchanged,
+except for the prefix key.
+
+`internal/detect` uses herdr's screen-rule engine and detection manifests.
+It prefers copies in `~/.local/state/herdr/agent-detection` when they are
+at least as recent as the bundled versions. herdr refreshes those copies
+while running. Custom manifests in `~/.config/herdr/agent-detection`
+always take precedence. Manifests are © herdr contributors, Apache-2.0.
+
+A completed tab counts as seen when active and nerdr has focus. Inside
+herdr, nerdr's pane must be focused.
+
+## Resuming conversations
+
+Claude starts with a session ID and resumes with `--resume <id>`.
+Reported session IDs from herdr integrations take precedence. Otherwise,
+opencode and Copilot use the newest session for the worktree, and Codex
+uses `resume --last` in that folder. If resuming fails immediately, nerdr
+starts a new conversation.
+
+## Integrations
+
+`internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock` using
+herdr's protocol. Agents receive `NERDR_SOCKET` and a secret `NERDR_TAB`, which
+nerdr's own commands (`nerdr ready`, `post-review`, `spinoff`,
+`handoff`, `send`, `agent`, `agents`, `wait`, `read`, `terminal`, `tabs`,
+`tab new`, `status`, `search`, `hook claude` and `hook statusline`) report with or
+ask through. `nerdr search` and `nerdr usage` read the agents' logs
+themselves; `search` asks nerdr only which folders to search. For herdr's integrations they
+also receive `HERDR_ENV=1`, `HERDR_PANE_ID` (the same secret),
+`HERDR_SOCKET_PATH` and `HERDR_BIN_PATH` pointing to nerdr.
+`nerdr pane report-agent …` handles reports in place of herdr's CLI.
+
+Only `pane.report_agent`, `pane.report_agent_session` and
+`pane.release_agent` are accepted. Each tab gets a fresh secret on startup,
+so agents can report only for their own tab. Conversation IDs that resemble
+flags are rejected, and control characters are removed from text.
+Reported state lasts until released or the agent restarts.
+
+Terminal panes receive neither the socket nor herdr's variables. Running
+`herdr` in a shell therefore connects to herdr itself.
+
+## Automatic messages
+
+nerdr pastes queued messages using the agent's paste mode, then sends
+Enter. It never inserts messages while the agent is asking a question.
+If the agent shows no response within five seconds, nerdr reports a stall
+and pauses the remaining queue (`✉n⏸`) until you visit the tab. This
+preserves message order.
+
+## Saved sessions
+
+Sessions are stored per startup folder in
+`~/.local/state/nerdr/sessions/<folder>-<hash>.json`. Before saving, nerdr
+backs up the previous version to `sessions/snapshots/`, at most once every
+15 minutes. It keeps the newest 20 snapshots.
+
+To recover closed tabs, stop nerdr and copy a snapshot over the session
+file. Unreadable session files are preserved as `….broken-<time>.json`.
+
+## herdr and the review panel
+
+nerdr reports its most urgent tab through `herdr pane report-agent` and
+switches to it when herdr focuses the pane. Tab agents report to nerdr's
+socket, so their hooks cannot overwrite that combined report.
+
+The review panel (`internal/review` and related packages) follows the
+active tab's worktrees. `nerdr why` and `nerdr order` append JSON lines
+under a lock through `internal/store`.
+
+## Knowing when an agent is done
+
+Screen detection can mistake a pause or unfamiliar screen for completion.
+nerdr combines hooks, visible state and idle timers to reduce false alerts.
+
+Claude starts with nerdr hooks passed through `--settings`; nothing is
+installed. They report turn start, tool calls, pending questions or
+permissions, and `Stop` at turn end. Hooks run `"$NERDR_BIN" hook claude`.
+If nerdr is unavailable in the sandbox, screen detection takes over.
+A subagent's own events and session starts after compaction are ignored,
+since they do not reliably indicate the main turn's state. `SubagentStart`
+and `SubagentStop` keep count of the subagents going, so an agent whose
+turn ends while one started in the background is still at it stays
+working, its still prompt notwithstanding: claude prompts it with the news
+once the subagent is done. Only the last of those stopping is news; a
+subagent starting or stopping otherwise changes nothing, since claude runs
+some of its own after a turn, for a recap.
+
+opencode reports through nerdr's plugin, `nerdr.js`, which nerdr installs
+along with the skills: in `~/.config/opencode/plugins/` with
+`install = "home"`, or in the tab's `.opencode/plugins/` (kept out of git)
+with `install = "worktree"`. It passes on the start and end of each turn
+(`session.execution.*`) and permission requests to
+`"$NERDR_BIN" hook opencode`. opencode runs plugins in its server, and
+only the one it starts with `--standalone` has the tab's environment, so
+nerdr always starts opencode that way when it supports the flag. The
+plugin reports only for the opencode nerdr started, not one that agent
+runs itself, and does nothing outside nerdr. Subagents' turns are
+ignored; their permission requests count. With `install = "off"`, or
+without the plugin, screen detection is used.
+
+Codex starts with nerdr's hooks passed with `-c`, so a codex the agent
+runs itself has none. They report the prompt, tool calls, permission
+requests, and `Stop` or `Interrupt` (Esc) at turn end, through
+`"$NERDR_BIN" hook codex`. Codex runs a hook only once it is trusted,
+and keeps that trust in `~/.codex/config.toml` (or `$CODEX_HOME`); trust
+given on the command line is ignored, and an untrusted hook makes codex
+stop at start to ask. So with `install = "home"` nerdr has codex trust its
+hooks, through codex's own app server, which writes the entries under
+`[hooks.state]`. Otherwise nerdr writes nothing and passes the hooks only
+if they are already trusted. nerdr also passes them only to a codex
+started with `--no-daemon`, since a codex on the shared server runs hooks
+with another tab's environment. Subagent events are ignored, apart from
+their permission requests.
+
+Copilot reports through nerdr's plugin, which nerdr writes along with
+the skills: `~/.copilot/nerdr-plugin/` with `install = "home"`, or the
+tab's `.copilot/nerdr-plugin/` (kept out of git) with
+`install = "worktree"`. nerdr gives it to the copilot it starts with
+`--plugin-dir`, so a copilot the agent runs itself has none, and nothing
+is added to `~/.copilot/hooks/`. Its hooks report the prompt, tool calls,
+permission prompts (`Notification`; `PermissionRequest` also comes for
+tools allowed anyway) and `Stop` through `"$NERDR_BIN" hook copilot`.
+A subagent has a `Stop` of its own, which is ignored with the rest of its
+events, apart from its permission prompts. `SubagentStart` and
+`SubagentStop` keep count of the subagents going, as for claude: copilot
+too prompts the agent with the news once the subagent is done. Esc ends
+a turn, or dismisses a permission prompt, without any hook; see below. Remove the marked
+sentence from the plugin's description in `.plugin/plugin.json` to keep
+your own edits. With `install = "off"` copilot is read from the screen.
+
+Antigravity (agy) takes hooks only from files, so nerdr puts its own
+under the key `"nerdr"` in agy's hooks file, along with the skills:
+`~/.gemini/config/hooks.json` with `install = "home"`, or the tab's
+`.agents/hooks.json` with `install = "worktree"` (kept out of git when
+nerdr made it, and not touched when the repository tracks one). The
+other hooks in the file are kept as they are; set `"enabled": false` in
+nerdr's set to turn it off. The hooks report the model's calls, tool
+results and `Stop` through `"$NERDR_BIN" hook agy`. An agy the agent runs
+reads the same file, so a hook reports only for an agy whose parent is
+the nerdr it names in `NERDR_AGY_HOOK`. An agy started through a
+wrapper, such as a sandbox, is therefore read from the screen. A subagent
+runs in the same agy, in a conversation of its own with its own `Stop`.
+The conversations that start after the agent calls `invoke_subagent`
+(the one tool nerdr hooks before it runs) are its subagents', and are
+ignored. A `Stop` while subagents are still running keeps the agent
+working. agy has no hook for permission prompts, and Esc ends a turn
+without `Stop`: both are read from the screen.
+
+Clear screen evidence can override hooks through herdr's `visible_*`
+rules. A visible dialog means the agent needs input. A question absent
+for two seconds is treated as answered or dismissed. After an interrupted
+turn without `Stop`, an idle, unchanged screen for a few seconds marks
+the agent idle. For an agent whose manifest has no idle rule (see
+below), a screen no rule matches, unchanged for six seconds, counts as
+idle in the same way.
+
+With screen detection alone, an agent is done after appearing idle and
+unchanged for 2.5 seconds, or appearing idle for 20 seconds. Unknown screens
+leave a working agent working. The exception is agents whose manifests
+lack idle rules: opencode, Copilot, Cursor, Gemini and Antigravity treat
+an unmatched screen as idle.
+

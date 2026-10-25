@@ -1,0 +1,112 @@
+---
+title: The workbench
+description: The agent's window, and the terminals, other agents and code reviews you open beside it in the same worktree.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A tab's workbench is everything in the middle of the screen: the agent,
+the status panel above it, and the panes you open beside it. Every pane
+works in the tab's worktree.
+
+## The agent window
+
+The tab's agent runs in its own pseudo-terminal, as it would on its own.
+Everything you type goes to it, so you use the agent exactly as you are
+used to, its own slash commands and shortcuts included. Only the prefix,
+`ctrl+q`, is nerdr's; `ctrl+q p` sends a `ctrl+q` to the agent.
+
+- **Scroll back** with the mouse wheel over the pane, or `ctrl+q b` and
+  the arrows and `PgUp`/`PgDn`; `q` ends it.
+- **Copy** by dragging over the text; it is copied when you let go. This
+  uses the terminal's OSC 52 clipboard support, so it works over SSH and
+  inside herdr too. If the agent uses the mouse itself, hold `shift`.
+- **Open the worktree** in your editor with `ctrl+q o`: VS Code, or what
+  `worktree_editor` names.
+
+The tab's first agent stays as long as the tab, so its conversation can
+always be carried on.
+
+## The status panel
+
+The lines above the agent tell you what the tab is about, so you can pick
+up where you left off without asking:
+
+| Label | Meaning |
+|---|---|
+| `last:` | Your latest request, up to two lines. At first, the tab's first task. |
+| `recap:` | Claude's summary after a few idle minutes. Replaces `last:` until your next message. |
+| `status:` | Where the work stands, in the agent's own words (`nerdr status`). |
+| `note:` | Your note for this tab; edit it with `ctrl+q a n`. |
+| `tasks:` | Tasks waiting in [F3](../../panel/tasks/). |
+| `rev:` | The code review: its round and what it is doing. |
+| `swap:` | Waiting for a handoff while you switch the tab's agent. |
+| `pr:` | Merged pull requests, and the shortcut to close the tab. |
+
+`ctrl+q h` shows what happened while you were away: the agent's turns
+and questions, messages sent, new commits, pull request and CI changes.
+
+## Panes beside the agent
+
+The buttons at the top of the agent's frame, `+terminal`, `+agent` and
+`+review`, open a pane beside it, in the same worktree:
+
+| Pane | Keys | What it is |
+|---|---|---|
+| **Terminal** | `ctrl+q t t` | Your shell, for tests, a dev server or `git log`. It runs until you close its pane or the shell exits. |
+| **Agent** | `ctrl+q t a` | Another agent, picked in a dialog, in a new conversation of its own. |
+| **Code review** | `ctrl+q t r` | A second agent reviews the work of the agent whose pane has the keyboard. See [Code review](../code-review/). |
+
+Each agent in the tab has a number, shown in its frame with its status
+light: `1:claude`, `2:codex`. Agents use these numbers to [talk to each
+other](../agents-together/). Agents beside the first are kept with the
+tab and resumed when nerdr starts again, each in its own conversation.
+A tab has at most eight agents beside its first.
+
+The tab's light in the tab list, and the waiting list, take in all of its
+agents. Tasks, restarts, switches and reviews are for the agent whose pane
+has the keyboard.
+
+### Moving between panes
+
+| After `ctrl+q` | Action |
+|---|---|
+| `tab` | Next pane, then the review panel |
+| `t ←` / `t →` | The pane on the left / right |
+| `t ⇧←` / `t ⇧→` | Move the pane one place left / right; more arrows move it on, `enter` ends |
+| `t m` | Minimise the pane, or show it again |
+| `t x` | Close the pane; asks first if its agent is working |
+
+Click a pane to give it the keyboard. Drag the column between two panes
+to share the room between them, and right-click it to share it evenly
+again.
+
+### When the panes do not fit
+
+Panes stay side by side while each is at least `pane_min_width` columns
+wide (60 by default). When one more does not fit, the pane used longest ago
+is minimised: it goes to a row above the others, marked `▸` with its
+light (terminals show `$`), and keeps running. The pane with the keyboard
+is always shown. Click a pane in the row, or move to it with `ctrl+q t ←`
+/ `t →`, to bring it back.
+
+`−` in a pane's frame minimises it by hand, and `×` closes it.
+Right-click an entry in the row for the same, or middle-click to close.
+
+## Commands for the agent
+
+| After `ctrl+q` | Action |
+|---|---|
+| `a a` | Give the agent the keyboard |
+| `a n` | Edit the tab's note |
+| `a s` | Switch to another agent in the same worktree, with a handoff |
+| `a r` | Restart the agent and resume its conversation; asks first if it is busy |
+| `a c` | Code review of the agent, as `t r` |
+| `a x` | Stop the review of the agent |
+| `m` | Queue a task for the agent; see [Tasks (F3)](../../panel/tasks/) |
+
+<Aside title="Switching a tab's agent">
+`ctrl+q a s` replaces the tab's agent with another in the same worktree,
+with a handoff of what has been done. See
+[Agents working together](../agents-together/#switching-a-tabs-agent).
+</Aside>

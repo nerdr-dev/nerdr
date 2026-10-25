@@ -1,0 +1,77 @@
+---
+title: Quick start
+description: From your first tab to a merged pull request.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+This page takes one task from start to finish: a tab, an agent at work,
+a review of the change, a pull request, and closing the tab once it is
+merged.
+
+<Aside title="One key to remember">
+Typing goes to the agent. Press **`ctrl+q`** first to give nerdr a
+command; the bottom line then shows the keys you can press. `ctrl+q ?`
+finds any command by name.
+</Aside>
+
+<Steps>
+
+1. **Start nerdr** in the folder that holds your repositories:
+
+   ```sh
+   cd ~/develop
+   nerdr
+   ```
+
+   On first start, choose where worktrees go and where nerdr installs its
+   skills. The defaults are fine.
+
+2. **Make a tab.** Move to a repository and press `enter`; tick several
+   with `space` for a task that spans them. Name a branch, such as `fix-login`, and pick an agent if you have more
+   than one. Press `tab` to reach the task field and type what the agent
+   should do; nerdr sends it once the agent has started.
+
+   To start from a GitHub issue instead, type `#123` as the branch name.
+   nerdr names the branch after the issue and gives the agent the issue
+   as its task.
+
+3. **Let it work.** nerdr creates `~/worktrees-nerdr/fix-login-<repo>`
+   from the latest `main` and starts the agent there. The tab's light is
+   yellow while it works, red when it asks you something, and green when
+   it is done. Meanwhile, make another tab with `ctrl+q c` and start
+   something else.
+
+4. **Answer when asked.** `ctrl+q w` opens the waiting list of agents
+   that need you, and `ctrl+q n` jumps to the next one. Answer the agent
+   in its own pane, as you would outside nerdr.
+
+5. **Look at the change.** Press `F1` for the code changes beside the
+   agent: a list of files and a word-level diff. Press `a` on a line to
+   ask the agent about it, or ask the agent to *"explain the code for
+   nerdr"* for a note on each file and on the changes that need one.
+
+6. **Have it reviewed.** Press `ctrl+q t r` in the agent's pane and pick
+   a reviewer, such as Codex for Claude's work. The reviewer reads the
+   change and sends its findings back to the agent, which fixes them; the
+   reviewer then checks again.
+
+7. **Open a pull request.** Press `F2` for GitHub. `c` commits every
+   change with the message you type, and can push and open the pull
+   request in the same go. Failing CI or review comments? `f` and `a` hand
+   them to the agent.
+
+8. **Close the tab.** Once the pull request is merged, the tab says so.
+   Press `ctrl+q x`, and `enter` deletes the worktree and the branch.
+   nerdr warns you first about anything not committed or not pushed.
+
+</Steps>
+
+## Next steps
+
+- [Concepts](../concepts/): the words nerdr uses, and how the screen is
+  laid out.
+- [The workbench](../../use/workbench/): terminals and more agents
+  beside the agent.
+- [Keyboard shortcuts](../../configure/keyboard/): everything after
+  `ctrl+q`.

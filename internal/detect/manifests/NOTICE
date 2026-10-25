@@ -1,0 +1,11 @@
+These detection manifests are copied from herdr
+(https://github.com/herdrdev/herdr, src/detect/manifests),
+Copyright herdr contributors, licensed under the Apache License 2.0.
+github-copilot.toml is saved here as copilot.toml, and antigravity.toml
+as agy.toml.
+opencode.toml has been changed here for opencode 2: work is read from the
+footer's "esc interrupt" hint and the ■/⬝ progress bar, and a permission
+dialog from its title and footer together — so quoting the hint or the
+title in a conversation is not read as working or asking.
+copilot.toml has been changed here for copilot 1.0.98: waiting for
+background agents is read whatever dot the line starts with.

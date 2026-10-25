@@ -1,0 +1,196 @@
+---
+title: Agents and sandboxes
+description: How nerdr starts each agent, wrappers and sandboxes, models, and agents nerdr does not know yet.
+---
+
+nerdr runs the agents you already use, with their own sign-ins and
+settings. An `[agents.<name>]` table in the config changes how one is
+started: extra arguments, environment variables, a model, or a wrapper
+such as a sandbox.
+
+## Commands, arguments and wrappers
+
+By default, nerdr runs each agent's command: `claude`, `opencode`,
+`copilot`, `codex`, `cursor-agent`, `gemini` or `agy`. Configure an agent
+with `[agents.<name>]`:
+
+| Setting | Effect |
+|---|---|
+| `command` | Replaces the command. Can include a wrapper and fixed arguments. The first word must be on your PATH. |
+| `args` | Added after `command` on every launch. |
+| `env` | Overrides inherited environment variables. `NERDR_*` and `HERDR_*` are reserved. Agents and terminals do not inherit variables naming the agent or terminal nerdr was started from, such as `CLAUDECODE`, `TMUX` or `KITTY_WINDOW_ID`, and get `TERM_PROGRAM=nerdr`. |
+| `config_model` | opencode only: its model as `provider/model`. opencode 2 dropped `--model`, so nerdr merges it into the `OPENCODE_CONFIG_CONTENT` variable, which only opencode's own server (`--standalone`, which nerdr always uses) reads. |
+
+Without `command`, the default command is used. For example,
+`[agents.claude]` with only `args` still runs `claude`. To choose a model,
+put the agent's own flag in `args`, such as `--model opus` for Claude.
+
+nerdr appends session arguments last. Wrappers must pass them through.
+
+| Agent | Session arguments |
+|---|---|
+| Claude | `--session-id <id>`, `--resume <id>` or `--continue` |
+| opencode | `--session <id>` or `--continue` |
+| Copilot | `--session-id <id>` when supported, or `--resume=<id>` |
+| Codex | `resume <id>` or `resume --last`; also `--no-daemon` when supported |
+| Cursor | `--resume <id>` or `--continue` |
+| Gemini | `--session-id <id>`, `--resume <id>` or `--resume latest` |
+| Antigravity | `--conversation <id>` or `--continue` |
+
+The Copilot example above starts a new tab with:
+
+```sh
+my-sandbox -- copilot --allow-all
+```
+
+Resuming adds `--resume=<id>` at the end.
+
+Codex can share a command server across sessions. That server inherits the
+first session's environment and runs outside wrappers used by later
+sessions. `--no-daemon` keeps it inside the tab's Codex process, preserving
+the wrapper and ensuring reports come from the correct tab.
+
+These settings apply to new, restored, restarted and switched agents,
+and to reviewers. Reviewers also get `[review.args]`. For opencode, nerdr
+uses `<command> session list` to find conversations and
+`<command> session export <id>` to prepare a handoff.
+
+[Questions from the review panel](../../panel/overview/#asking-the-agent-from-the-panel) go to the
+tab's agent as messages. Terminal panes and your editor run without
+agent wrappers.
+
+## Agents in a sandbox: `sandboxed`
+
+nerdr runs as you, outside every sandbox. An agent that can reach nerdr's
+socket could otherwise ask nerdr to do what its sandbox stops it from
+doing: open a terminal pane (your shell), start an agent or a tab that is
+not in a sandbox, or send such an agent a task. Set `sandboxed = true` for
+an agent whose `command` puts it in a sandbox:
+
+```toml
+[agents.copilot]
+command = ["my-sandbox", "--", "copilot"]
+sandboxed = true
+```
+
+Such an agent:
+
+- gets `NERDR_SANDBOXED=1`, and reports to the socket the others do;
+- cannot open, restart or close terminal panes (`nerdr terminal`,
+  `nerdr close`), nor close an agent outside a sandbox;
+- can start agents, tabs (`nerdr agent`, `nerdr tab new`) and spun-off
+  parts only with agents that are themselves `sandboxed`;
+- can send messages to, and read the panes of, only agents started in a
+  sandbox, and no terminals. A message it left for an agent that then
+  starts outside one waits in F3 for you instead of being typed in, and
+  what became of the parts it spun off is told to it alone;
+- sees only its own tab in `nerdr tabs`;
+- can run the plugins you allowed, which nerdr runs outside its sandbox,
+  as you: that is what they are for (see [Plugins](../plugins/#safety)).
+
+Reviews of a sandboxed agent's work also run only in sandboxed agents,
+including automatic reviews and `nerdr ready`. If the configured reviewer
+is not sandboxed, nerdr uses an available sandboxed agent instead (the
+author's kind if needed). If none can run sandboxed, no reviewer starts.
+The review picker offers only sandboxed agents for such work.
+Asking, trying and handoffs still work: they go to you, or to an agent you
+pick. The setting takes effect when the agent next starts.
+
+An agent in a sandbox cannot pass for one outside it. The secret in `NERDR_TAB` is in every agent's environment, where a
+process in a sandbox may read it, so nerdr does not go by the secret
+alone: on Linux and macOS it asks the kernel which process is connecting,
+and takes a request as from the agent the secret names only when it is
+that agent or runs under it. Anything else is taken as from an agent in a
+sandbox: confined as above, and refused when the tab it names is not in
+one. The sandbox can therefore let its agent reach nerdr's socket: it is
+no way out. On other systems nerdr cannot ask, and goes by the secret
+alone: there an agent in a sandbox that finds another's secret can pass
+for it.
+It also means an agent outside a sandbox whose commands run
+elsewhere, in a container or on another machine, cannot use nerdr's
+commands; mark it `sandboxed` if it is in one.
+
+`sandboxed` does not make a sandbox; `command` must. What it closes is
+nerdr as a way out. Check the rest from inside the sandbox: that it cannot
+reach other ways out such as
+the D-Bus session bus, a VS Code or browser socket in `/run/user/$UID`, or
+services on localhost. Anything an agent outside a sandbox reads from one
+inside, such as code to review, a handoff or a review, is still text a
+sandboxed agent wrote and can carry instructions: it is safest to run
+every agent in a sandbox, or nerdr itself in one.
+
+## Other agents
+
+Add a named section with `command` to offer another agent in the picker:
+
+```toml
+[agents.my-agent]
+command = ["my-agent"]
+resume_args = ["--continue"]  # used on resume; omitted means a new conversation
+detect = "amp"                # screen rules to use; defaults to the agent's name
+```
+
+`detect` selects herdr's screen rules. nerdr has them for amp, cline,
+devin, droid, grok, hermes, kilo, kimi, kiro, letta, maki, muse, pi,
+qodercli and qwen besides its own agents, and herdr does not need to be
+installed. Without matching rules, the status is unknown, but the tab
+still works.
+
+nerdr does not know where custom agents store conversations. An agent
+that supports herdr reports the command that resumes its conversation,
+as in herdr's [guide for agent authors](https://herdr.dev/docs/add-herdr-support/):
+`pane report-agent … -- my-agent --resume ID`. nerdr then resumes it with
+that command's arguments, after the agent's own `command` and `args`, so a
+wrapper or sandbox stays in place. The reported command must be one of the
+words of `command`. Without such a report, nerdr resumes with
+`resume_args`. Switching away relies on a handoff written by the old agent. `detect` also works for built-in agents, including wrappers
+that change their screen output.
+
+
+## What a sandbox must allow
+
+Each agent receives `NERDR_BIN` (the nerdr executable) and
+`NERDR_DATA_DIR` (the data location). Skills use
+`"${NERDR_BIN:-nerdr}" why add …`. This reads `NERDR_DATA_DIR` without
+needing access to the config file.
+
+For a sandbox restricted to the worktree, use:
+
+```toml
+install = "worktree"
+data_dir = ".nerdr"
+```
+
+Allow the sandbox to run `NERDR_BIN`, or put nerdr on its PATH. If that
+is unavailable, skills instruct the agent to append JSON lines directly
+to the files in that folder.
+
+Asking, reporting what to try, `ready`, review, spinoff and handoff need
+more: the `nerdr` program they run only passes the request to the nerdr
+running the tab, through its socket. The sandbox must:
+
+- pass the `NERDR_*` variables through, `NERDR_SOCKET` and `NERDR_TAB`
+  among them;
+- allow running `$NERDR_BIN`;
+- allow connecting to the socket at `$NERDR_SOCKET`. It is always
+  `~/.local/state/nerdr/nerdr.sock` (`$XDG_STATE_HOME/nerdr/nerdr.sock`
+  when that is set), whatever folder nerdr starts in, so the rule can
+  name that one path.
+
+One nerdr has that socket at a time. A second, started in another folder
+while the first runs, says so and listens on a socket of its own beside
+it, `nerdr-<id>.sock`, named for its folder. Everything works there but
+for an agent in a sandbox that may reach only `nerdr.sock`: let such a
+sandbox connect to the sockets in that folder to have both work.
+
+The `HERDR_*` variables are only for herdr's integrations; a sandbox
+without them in it can leave them out. When something is missing, the
+command says which of these it is, and the skills tell the agent to show
+the user that message rather than try another nerdr.
+
+nerdr notices too. The integrations of Claude, Copilot and Codex report to
+nerdr through the same program and socket as they work. When an agent in a
+sandbox ends a turn with nothing it ran come to nerdr, nerdr says so once,
+with the program and socket the sandbox must allow; a reviewer that stops
+so says in its review line that its sandbox keeps it from nerdr.
+

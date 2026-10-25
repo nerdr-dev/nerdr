@@ -1,0 +1,91 @@
+---
+title: About nerdr
+description: What nerdr is, what it is for, and which agents it runs.
+---
+
+nerdr is a terminal app for Linux and macOS that runs several coding
+agents at once, each in its own Git worktree. You give each task a tab;
+nerdr makes a branch and a worktree for it and starts the agent you pick.
+While the agents work, you see which of them need you, answer their
+questions, and review what they changed, without leaving the terminal.
+
+<video autoPlay loop muted playsInline controls aria-label="nerdr with three repositories: a new tab with Codex, switching repositories, the changes in F1, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question" style="width:100%">
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "overview.webm"} type="video/webm" />
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "overview.mp4"} type="video/mp4" />
+</video>
+
+Above, a new tab gets Codex and starts on its task, and the status lights
+show which agents work, wait or are done across three repositories. Claude's
+changes are in F1 beside it, the tests run in a terminal, and Codex reviews
+Claude's work. The waiting list then takes you to the agent with a question.
+
+## Why nerdr
+
+Coding agents are good at working alone for a while. The hard part is
+everything around them:
+
+- **They get in each other's way.** Two agents in the same checkout
+  overwrite each other's changes. nerdr gives each task its own branch and
+  worktree, so agents work side by side without clashing, and your main
+  checkout stays yours.
+- **You lose track of them.** With five agents going, which one is asking
+  a question? Which is done? Status lights, a waiting list and a short
+  summary above each agent tell you at a glance, and take you to the one
+  that needs you.
+- **Reading their work takes time.** nerdr shows the changes beside the
+  agent, word by word. Ask the agent to explain them, or to walk you
+  through them step by step. Have a second agent review the work and send
+  its findings back for fixes.
+- **Getting it merged is tedious.** Commit, push, open a pull request,
+  send review comments or a failing CI log back to the agent, and close
+  the tab when the pull request is merged, worktree and branch included.
+
+## What you get
+
+- **[Tabs, branches and worktrees](../../use/tabs/):** a tab per task, from
+  `main`, a GitHub issue, a pull request, another tab's branch, or several
+  repositories at once.
+- **[The workbench](../../use/workbench/):** the agent, with terminals,
+  more agents and code reviews beside it in the same worktree.
+- **[Agents working together](../../use/agents-together/):** agents send
+  each other messages, start more agents, hand work to another agent, and
+  split work into new tabs.
+- **[Code review](../../use/code-review/):** a second agent reviews the
+  work and sends its findings back, round after round.
+- **[Progress and notifications](../../use/progress/):** status lights, the
+  waiting list, desktop alerts, rate limits and search through past
+  conversations.
+- **[The review panel](../../panel/overview/):** code changes (F1), GitHub
+  (F2), tasks (F3), skills (F4) and plugins (F5), beside the agent.
+- **[Remote machines](../../use/remote/):** run nerdr inside
+  [herdr](https://herdr.dev) to keep agents going when you disconnect, or
+  on another machine.
+
+## Supported agents
+
+| Agent | Command |
+|---|---|
+| Claude Code | `claude` |
+| OpenAI Codex CLI | `codex` |
+| GitHub Copilot CLI | `copilot` |
+| opencode | `opencode` |
+| Cursor CLI | `cursor-agent` |
+| Gemini CLI | `gemini` |
+| Antigravity CLI | `agy` |
+
+nerdr lists the agents it finds on your PATH. Each can have its own
+arguments, environment and wrapper, such as a sandbox, and you can add
+agents it does not know. See [Agents and sandboxes](../../configure/agents/).
+
+## Inspired by herdr
+
+nerdr builds on [herdr](https://herdr.dev)'s status lights, mouse controls
+and rules for detecting an agent's state; see
+[NOTICE](https://github.com/nerdr-dev/nerdr/blob/main/NOTICE) for
+attribution. nerdr adds worktrees, task tracking and review. The two work
+well together: run nerdr inside herdr to keep agents running when you
+detach, or on another machine.
+
+## License
+
+nerdr is open source under the Apache License 2.0.

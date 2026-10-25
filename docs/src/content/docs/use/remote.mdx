@@ -1,0 +1,85 @@
+---
+title: Remote machines and herdr
+description: Keep agents running when you disconnect, and run them on another machine, with herdr.
+---
+
+import { Steps, Aside } from '@astrojs/starlight/components';
+
+Quitting nerdr stops its agents, tests and terminals. The next start
+brings back every tab and resumes every agent's conversation, the agents
+beside a tab's own included, but not processes such as a running test or
+dev server. Losing an SSH connection has the same effect.
+
+[herdr](https://herdr.dev) keeps them running. It is a terminal workspace
+for agents that runs as a server: detach, close the terminal or lose the
+connection, and everything inside keeps going.
+
+## Keep agents running
+
+```sh
+herdr                 # start the server and attach
+nerdr                 # in a pane, from your repositories folder
+```
+
+Detach with `ctrl+b q`, or just close the terminal. Run `herdr` again to
+come back. You can even reconnect from a phone over SSH.
+
+## Work on another machine
+
+Let the agents run on a build server or a desktop at home, and drive them
+from your laptop. The agents, worktrees and review panel all run on that
+machine.
+
+<Steps>
+
+1. Add the machine to herdr once:
+
+   ```sh
+   herdr machine add workbox --label "Build machine"
+   ```
+
+2. Run `herdr`, select `workbox`, open a pane and start `nerdr` there.
+   Or connect directly:
+
+   ```sh
+   herdr --remote workbox
+   ```
+
+</Steps>
+
+## What nerdr tells herdr
+
+Inside herdr, nerdr reports its most urgent tab as the pane's agent
+status, so herdr's own lights show when nerdr needs you. When herdr
+focuses nerdr's pane, nerdr jumps to the tab that needs attention
+(`herdr_focus_jump = false` turns this off).
+
+For herdr's sidebar rows, nerdr provides `$summary` (for example
+`5 tabs · 2 working · 1 needs input`), `$tabs`, `$working`, `$blocked`
+and `$done`. Notifications go through `herdr notification show` and
+herdr's delivery settings.
+
+## herdr's agent integrations
+
+herdr's integrations report conversation IDs and, for some agents such as
+opencode, whether they are working, blocked or idle. nerdr accepts these
+reports both inside and outside herdr:
+
+```sh
+herdr integration install claude
+herdr integration install opencode
+herdr integration install copilot
+herdr integration install codex
+herdr integration install cursor
+herdr integration install antigravity-cli
+```
+
+With them, nerdr resumes the actual conversation, even after `/clear`,
+rather than the newest in the worktree.
+
+<Aside>
+You do not need them for status lights. nerdr has its own hooks for
+claude, codex and Antigravity, and its own plugins for opencode and
+copilot. See
+[Knowing when an agent is done](../../reference/how-it-works/#knowing-when-an-agent-is-done).
+</Aside>

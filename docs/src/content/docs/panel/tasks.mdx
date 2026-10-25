@@ -1,0 +1,53 @@
+---
+title: Tasks (F3)
+description: Line up what the agent should do next, and have it sent when the agent is idle.
+---
+
+Had an idea while the agent is busy? Don't interrupt it. Press
+`ctrl+q m`, write the task, and it waits in F3 until you, or nerdr, give
+it to the agent.
+
+![Three tasks waiting in F3 for the agent](../../../assets/tasks.png)
+
+## Queuing a task
+
+`ctrl+q m` queues a task for the agent whose pane has the keyboard, and
+`ctrl+q M` for several tabs at once. nerdr opens F3 to show it among the
+tab's tasks. The status panel above the agent (`tasks:`) and the `✉n`
+badge on the tab show how many are waiting.
+
+## Sending tasks
+
+- **By hand:** when the agent is idle, `enter` on a task puts it in the
+  agent's prompt for you to edit or send.
+- **By itself:** tick a task with `space`, or `tab` in the task dialog,
+  and it is sent at the agent's next idle prompt. Ticked tasks are sent in
+  order.
+
+nerdr never types a task in while the agent is asking a question, nor
+while a code review is going on. If the agent shows no response within
+five seconds, nerdr pauses the rest of the queue (`✉n⏸`) until you visit
+the tab, so the order is kept.
+
+## Editing
+
+| Key | Action |
+|---|---|
+| `↓` | Select the first task; F3 opens with none selected |
+| `n` | Add a task |
+| `e` | Edit |
+| `y` | Copy |
+| `d` | Delete |
+| `J` / `K` | Move down / up |
+
+The selected task is shown in full, the others in two rows. Tasks survive
+restarts.
+
+## What else ends up here
+
+- Findings from a [code review](../../use/code-review/) you chose to keep
+  for later.
+- Requests from *My PRs* in [F2](../github/): review comments and CI
+  fixes for another tab.
+- A message from a sandboxed agent to an agent outside a sandbox, which
+  waits for you rather than being typed in.

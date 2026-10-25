@@ -1,0 +1,78 @@
+---
+title: Plugins (F5)
+description: Your own scripts, which agents can run and which can bring a screen of their own.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+A plugin is a script of your own that agents can run: one that rebuilds
+the docker setup and starts it, seeds a database or deploys a preview.
+Its description tells the agents when to run it, so *"restart the dev
+stack"* is enough. A plugin can also have a screen of its own, which you
+use in F5. To write one, see [Writing plugins](../../configure/plugins/).
+
+<video autoPlay loop muted playsInline controls aria-label="Claude starts the dev server and a log watch plugin; F5 shows the log, a panic reaches Claude, which hands the fix to a new tab with spinoff, and that tab fixes it and opens a pull request" style="width:100%">
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "plugins.webm"} type="video/webm" />
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "plugins.mp4"} type="video/mp4" />
+</video>
+
+Above, Claude starts the dev server in a terminal and `logwatch`, a plugin
+that watches its log, with its screen in F5. When the server panics, the
+plugin tells Claude, which hands the fix to a new tab with a spinoff; that
+tab's agent fixes it, runs the tests and opens the pull request. The plugin
+is the `logwatch` example in
+[A plugin that watches](../../configure/plugins/#a-plugin-that-watches),
+with a screen that shows the log.
+
+A spinoff asks you about each new tab: you confirm its branch and pick
+its agent. To have it all happen without you, for errors that come while
+you are away, tell the agent *"don't ask me about each tab"*; it then
+makes each tab with `nerdr tab new`, which does not ask.
+
+## The F5 screen
+
+F5 lists your plugins, from `~/.config/nerdr/plugins`, the same in every
+tab. Each shows its description, where it is, and how agents run it with
+its parameters.
+
+- `▣` marks a plugin with a screen of its own, green while it runs.
+- `!` marks one whose `plugin.toml` is wrong, with what is wrong.
+- A light shows a run going on, who started it and for how long; once it
+  ends, green for success, red with the exit status for failure.
+
+| Key | Action |
+|---|---|
+| `a` | Show everything in the plugin's folder, to read before allowing it |
+| `y` | Allow it, until anything in the folder changes |
+| `d` | Stop allowing it |
+| `enter` | Start its screen, below the description, and give it the keyboard |
+| `x` | Stop the screen |
+| `s` | Stop a plugin that watches |
+
+## Allowing a plugin
+
+A plugin runs as you, outside any sandbox. So no plugin runs, nor starts
+its screen, until you have read it and allowed it: until then it is
+marked "not allowed", and an agent that asks to run it is refused, which
+nerdr tells you. Any change to the plugin's folder needs a new yes. See
+[Safety](../../configure/plugins/#safety).
+
+## A plugin's screen
+
+`enter` starts the plugin's screen and gives it the keyboard. It keeps
+running when you switch screens or tabs, until its tab is closed or `x`
+stops it. While it has the keyboard, every key goes to it except F1–F5
+and the prefix: `F5` goes back to the list, and from the list to the
+screen again.
+
+## When an agent runs a plugin
+
+F5 opens beside the agent on the plugin, without taking the keyboard,
+and shows the run as the plugin asks: the values the agent gave, what it
+prints, or the plugin's own screen following along.
+
+<Aside title="Ask each time">
+For a plugin you want to decide on each time, such as a deploy, the
+plugin can say `confirm = true`, or set `confirm_plugin_runs = true` to be
+asked about every run.
+</Aside>
