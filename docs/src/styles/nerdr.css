@@ -28,3 +28,17 @@
 .hero img {
 	border: none;
 }
+
+/* The logo under the title on the home page. */
+.hero .hero-logo {
+	display: block;
+	width: 96px;
+	height: 96px;
+	margin: 0 auto 1rem;
+	border-radius: 1.25rem;
+}
+@media (min-width: 50rem) {
+	.hero .hero-logo {
+		margin-inline-start: 0;
+	}
+}
