@@ -44,7 +44,7 @@ you ask in plain words. They work only inside a tab, apart from
 | `nerdr status TEXT` | Set the line on where the tab's work stands, above the agent; alone, print it; `--clear` |
 | `nerdr tab new --branch B TASK` | A tab on a new branch from main, its agent given the task (`--repo`, `--kind`, `--model`) |
 | `nerdr search WORDS` / `search --show ID` | Past claude and codex conversations in these folders |
-| `nerdr usage` | The Claude and Codex plans' rate limits used, as JSON |
+| `nerdr usage` | The Claude and Codex plans' rate limits used, as JSON; in a sandbox, needs read access to [`claude-limits.json` and Codex's logs](../../configure/agents/#what-a-sandbox-must-allow) |
 | `nerdr plugin list` / `plugin run NAME …` | The plugins there are, and one run with its parameters; `plugin stop NAME` stops a watch |
 
 ### Explaining, reviewing and handing over

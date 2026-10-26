@@ -166,8 +166,10 @@ is unavailable, skills instruct the agent to append JSON lines directly
 to the files in that folder.
 
 Asking, reporting what to try, `ready`, review, spinoff and handoff need
-more: the `nerdr` program they run only passes the request to the nerdr
-running the tab, through its socket. The sandbox must:
+more: each call, from a skill or from an agent's hooks, starts a fresh
+`nerdr` process that passes the request to the nerdr running the tab. It
+finds that nerdr only through the `NERDR_*` variables and its socket.
+The sandbox must:
 
 - pass the `NERDR_*` variables through, `NERDR_SOCKET` and `NERDR_TAB`
   among them;
@@ -182,6 +184,21 @@ while the first runs, says so and listens on a socket of its own beside
 it, `nerdr-<id>.sock`, named for its folder. Everything works there but
 for an agent in a sandbox that may reach only `nerdr.sock`: let such a
 sandbox connect to the sockets in that folder to have both work.
+
+Agent commands never write to `~/.local/state/nerdr`: connecting to the
+socket is all the sandbox needs there. Never let a sandbox write to
+`~/.local/state/nerdr` or `~/.config/nerdr` — an agent with write access
+could create or approve plugins for itself (see
+[Plugins](../plugins/#safety) and [Security](../../reference/security/)).
+For read access:
+
+- `nerdr usage` reads `~/.local/state/nerdr/sessions/claude-limits.json`
+  for the Claude plan's limits and `~/.codex/sessions` for Codex's
+  (without them, it reports the limits as unknown). Allow only
+  `claude-limits.json`, not the rest of `sessions/`.
+- `nerdr plugin` reads `~/.config/nerdr/plugins`.
+- `nerdr search` reads conversation logs in `~/.claude/projects` and
+  `~/.codex/sessions`.
 
 The `HERDR_*` variables are only for herdr's integrations; a sandbox
 without them in it can leave them out. When something is missing, the
