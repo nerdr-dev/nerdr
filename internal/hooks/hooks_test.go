@@ -251,34 +251,34 @@ func TestReviewIsChecked(t *testing.T) {
 
 func TestReadyCarriesItsFocus(t *testing.T) {
 	s, got := listen(t)
-	if err := Send(s.Path(), Ready, map[string]any{"pane_id": "ab12", "focus": " the retry\x07 loop "}); err != nil {
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "focus": " the retry\x07 loop "}); err != nil {
 		t.Fatal(err)
 	}
-	if r := next(t, got); r.Method != Ready || r.Pane != "ab12" || r.Focus != "the retry loop" {
+	if r := next(t, got); r.Method != RequestReview || r.Pane != "ab12" || r.Focus != "the retry loop" {
 		t.Fatalf("report = %+v", r)
 	}
-	if err := Send(s.Path(), Ready, map[string]any{"pane_id": "ab12"}); err != nil {
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12"}); err != nil {
 		t.Fatalf("ready without a focus: %v", err)
 	}
-	if r := next(t, got); r.Method != Ready || r.Focus != "" {
+	if r := next(t, got); r.Method != RequestReview || r.Focus != "" {
 		t.Fatalf("report = %+v", r)
 	}
-	if err := Send(s.Path(), Ready, map[string]any{"pane_id": "ab12", "focus": strings.Repeat("x", 3000)}); err == nil {
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "focus": strings.Repeat("x", 3000)}); err == nil {
 		t.Fatal("a focus over the limit was taken")
 	}
 }
 
-// TestReadyNamesItsReviewer covers nerdr ready --agent --model: both reach
-// nerdr, and a model with no agent to be the model of is refused.
+// TestReadyNamesItsReviewer covers nerdr request-review --agent --model:
+// both reach nerdr, and a model with no agent to be the model of is refused.
 func TestReadyNamesItsReviewer(t *testing.T) {
 	s, got := listen(t)
-	if err := Send(s.Path(), Ready, map[string]any{"pane_id": "ab12", "kind": "Codex", "model": "gpt-6-astra"}); err != nil {
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "kind": "Codex", "model": "gpt-6-astra"}); err != nil {
 		t.Fatal(err)
 	}
 	if r := next(t, got); r.Kind != "codex" || r.Model != "gpt-6-astra" {
 		t.Fatalf("report = %+v", r)
 	}
-	if err := Send(s.Path(), Ready, map[string]any{"pane_id": "ab12", "model": "gpt-6-astra"}); err == nil {
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "model": "gpt-6-astra"}); err == nil {
 		t.Fatal("a model without its agent was taken")
 	}
 }
@@ -315,7 +315,7 @@ func TestEveryMethodReachesNerdr(t *testing.T) {
 			}
 		}
 	}()
-	for _, m := range []string{Spinoff, Handoff, Review, Ready, Message, NewAgent, Usage, Query, Terminal, Close, NewTab, Status,
+	for _, m := range []string{Spinoff, Handoff, Review, RequestReview, Message, NewAgent, Usage, Query, Terminal, Close, NewTab, Status,
 		ReportAgent, ReportAgentSession, ReleaseAgent, ReportMetadata} {
 		_, err := Request(s.Path(), m, map[string]any{"pane_id": "x"})
 		if err != nil && strings.Contains(err.Error(), "method_not_found") {

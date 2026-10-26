@@ -22,7 +22,7 @@ func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {
 			m.cfg.Review = config.Review{Auto: auto, Agent: "codex"}
 			tb.status = stIdle
 			focus := "text from inside the sandbox"
-			m.Update(hooks.Report{Method: hooks.Ready, Pane: tb.hookKey(), Focus: focus, Peer: hooks.Peer{Known: true}})
+			m.Update(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Focus: focus, Peer: hooks.Peer{Known: true}})
 			m.onTree(treeMsg{t: tb, why: treeAuto, changed: true, tree: "changed"})
 			if tb.review == nil || len(tb.review.seats) != 1 {
 				t.Fatal("a sandboxed reviewer should start")
@@ -413,7 +413,7 @@ func TestCutOffReviewerSaysWhy(t *testing.T) {
 	m, tb := sandboxModel(t)
 	m.cfg.Review = config.Review{Agent: "claude"}
 	tb.status = stIdle
-	m.Update(hooks.Report{Method: hooks.Ready, Pane: tb.hookKey(), Peer: hooks.Peer{Known: true}})
+	m.Update(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Peer: hooks.Peer{Known: true}})
 	m.onTree(treeMsg{t: tb, why: treeAuto, changed: true, tree: "changed"})
 	if tb.review == nil {
 		t.Fatal("no review started")

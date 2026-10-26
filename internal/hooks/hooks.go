@@ -74,7 +74,7 @@ type Report struct {
 	// Review is a reviewer's conclusion; see Review.
 	Review *codereview.Result
 	// Focus is what an agent asking for a review of its work wants looked
-	// at most; see Ready.
+	// at most; see RequestReview.
 	Focus string
 	// To and Text are a message for another agent of the tab, by its
 	// number (0 asks only which there are); see Send. Reply takes nerdr's
@@ -139,9 +139,10 @@ const (
 	// Review is nerdr's own as well: `nerdr post-review` sends a reviewer
 	// agent's conclusion.
 	Review = "nerdr.review"
-	// Ready is nerdr's own: `nerdr ready` says the agent's work is ready
-	// for a review, with what to look at most, if anything.
-	Ready = "nerdr.ready"
+	// RequestReview is nerdr's own: `nerdr request-review` says the
+	// agent's work is ready for a review, with what to look at most, if
+	// anything.
+	RequestReview = "nerdr.request_review"
 	// Message is nerdr's own: `nerdr send` sends a message to another
 	// agent in the same tab, and waits for nerdr's answer.
 	Message = "nerdr.send"
@@ -486,7 +487,7 @@ func init() {
 		Spinoff:            handleSpinoff,
 		Handoff:            handleHandoff,
 		Review:             handleReview,
-		Ready:              handleReady,
+		RequestReview:      handleRequestReview,
 		Message:            handleMessage,
 		NewAgent:           handleNewAgent,
 		Query:              handleQuery,
@@ -541,7 +542,7 @@ func handleReview(c *client, id string, p params) []byte {
 	return okResponse(id)
 }
 
-func handleReady(c *client, id string, p params) []byte {
+func handleRequestReview(c *client, id string, p params) []byte {
 	focus := strings.TrimSpace(clean.Text(p.Focus))
 	kind, model := strings.ToLower(clean.Line(p.Kind)), clean.Line(p.Model)
 	switch {
@@ -554,7 +555,7 @@ func handleReady(c *client, id string, p params) []byte {
 	case badModel(model) != "":
 		return invalid(id, badModel(model))
 	}
-	c.send(Report{Method: Ready, Pane: p.PaneID, Focus: focus, Kind: kind, Model: model})
+	c.send(Report{Method: RequestReview, Pane: p.PaneID, Focus: focus, Kind: kind, Model: model})
 	return okResponse(id)
 }
 

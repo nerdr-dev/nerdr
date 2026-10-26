@@ -30,7 +30,7 @@ starts a new conversation.
 
 `internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock` using
 herdr's protocol. Agents receive `NERDR_SOCKET` and a secret `NERDR_TAB`, which
-nerdr's own commands (`nerdr ready`, `post-review`, `spinoff`,
+nerdr's own commands (`nerdr request-review`, `post-review`, `spinoff`,
 `handoff`, `send`, `agent`, `agents`, `wait`, `read`, `terminal`, `tabs`,
 `tab new`, `status`, `search`, `hook claude` and `hook statusline`) report with or
 ask through. `nerdr search` and `nerdr usage` read the agents' logs

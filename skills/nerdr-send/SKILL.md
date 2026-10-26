@@ -80,10 +80,10 @@ new agent is told to report back to you with `nerdr send`, so its result
 comes to you as a message: wait for it rather than checking on it.
 
 A code review of your own work is not such a task: when the user asks for
-one, by any agent or model, use the nerdr-request-review skill (`nerdr ready
---agent … --model …`). nerdr's review keeps the reviewer from changing
-files, shows its findings beside the code and reviews your fixes again; a
-reviewer started here does none of that.
+one, by any agent or model, use the nerdr-request-review skill
+(`nerdr request-review --agent … --model …`). nerdr's review keeps the
+reviewer from changing files, shows its findings beside the code and
+reviews your fixes again; a reviewer started here does none of that.
 
 Only when the user asks for it: each agent spends from the user's
 account. When they ask for several, you coordinate:

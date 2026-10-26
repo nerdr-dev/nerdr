@@ -52,13 +52,13 @@ func reviewOn(t *testing.T, m *Model) *tab {
 	return tb
 }
 
-// TestReadyNamesTheReviewer covers nerdr ready --agent --model: the review
-// is by that agent, started with that model.
+// TestReadyNamesTheReviewer covers nerdr request-review --agent --model:
+// the review is by that agent, started with that model.
 func TestReadyNamesTheReviewer(t *testing.T) {
 	m := testModel(t)
 	out := argvAgent(t, m)
 	tb := reviewOn(t, m)
-	cmd := m.onReady(hooks.Report{Method: hooks.Ready, Pane: tb.hookKey(), Kind: "codex", Model: "gpt-6-astra"})
+	cmd := m.onReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Kind: "codex", Model: "gpt-6-astra"})
 	if cmd == nil {
 		t.Fatal("ready between turns looks at the worktree")
 	}
@@ -79,7 +79,7 @@ func TestReviewModelFromTheConfig(t *testing.T) {
 	out := argvAgent(t, m)
 	m.cfg.Review.Models = map[agents.Kind]string{agents.Codex: "gpt-6-sol"}
 	tb := reviewOn(t, m)
-	m.onTree(m.onReady(hooks.Report{Method: hooks.Ready, Pane: tb.hookKey(), Kind: "codex"})().(treeMsg))
+	m.onTree(m.onReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Kind: "codex"})().(treeMsg))
 	t.Cleanup(func() { m.endReview(tb, "done", false) })
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-sol\n") {
 		t.Fatalf("started with %q", argv)

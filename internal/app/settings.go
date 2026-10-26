@@ -331,7 +331,7 @@ func (m *Model) settingRows() []settingRow {
 		if agents.TakesModel(k) {
 			rows = append(rows, settingRow{table: "review.models", key: string(k), label: "review model", kind: sText,
 				desc: "The model this agent reviews with, in its own names; empty: the one it starts with otherwise. " +
-					"A model picked in the review pane (m), or given to nerdr ready, goes for that review instead.",
+					"A model picked in the review pane (m), or given to nerdr request-review, goes for that review instead.",
 				example: string(k) + ` = "` + reviewModelExample(k) + `"`})
 		}
 	}
