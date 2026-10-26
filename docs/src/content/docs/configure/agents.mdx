@@ -89,8 +89,8 @@ Such an agent:
   as you: that is what they are for (see [Plugins](../plugins/#safety)).
 
 Reviews of a sandboxed agent's work also run only in sandboxed agents,
-including automatic reviews and `nerdr ready`. If the configured reviewer
-is not sandboxed, nerdr uses an available sandboxed agent instead (the
+including automatic reviews and `nerdr request-review`. If the configured
+reviewer is not sandboxed, nerdr uses an available sandboxed agent instead (the
 author's kind if needed). If none can run sandboxed, no reviewer starts.
 The review picker offers only sandboxed agents for such work.
 Asking, trying and handoffs still work: they go to you, or to an agent you
@@ -165,10 +165,11 @@ Allow the sandbox to run `NERDR_BIN`, or put nerdr on its PATH. If that
 is unavailable, skills instruct the agent to append JSON lines directly
 to the files in that folder.
 
-Asking, reporting what to try, `ready`, review, spinoff and handoff need
-more: each call, from a skill or from an agent's hooks, starts a fresh
-`nerdr` process that passes the request to the nerdr running the tab. It
-finds that nerdr only through the `NERDR_*` variables and its socket.
+Asking, reporting what to try, `request-review`, `post-review`, spinoff
+and handoff need more: each call, from a skill or from an agent's hooks,
+starts a fresh `nerdr` process that passes the request to the nerdr
+running the tab. It finds that nerdr only through the `NERDR_*` variables
+and its socket.
 The sandbox must:
 
 - pass the `NERDR_*` variables through, `NERDR_SOCKET` and `NERDR_TAB`

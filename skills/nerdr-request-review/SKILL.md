@@ -24,7 +24,7 @@ When you have finished what you were asked to do, checked it as you
 normally would, and the review is wanted, run:
 
 ```sh
-"${NERDR_BIN:-nerdr}" ready "The retry loop in fetch.go: I am unsure the backoff resets after a success."
+"${NERDR_BIN:-nerdr}" request-review "The retry loop in fetch.go: I am unsure the backoff resets after a success."
 ```
 
 The text is optional. Use it for what you want looked at most — a part you
@@ -37,7 +37,7 @@ When the user names who should review — an agent, and perhaps its model
 `--model`, before the text:
 
 ```sh
-"${NERDR_BIN:-nerdr}" ready --agent codex --model gpt-6-astra "The retry loop in fetch.go."
+"${NERDR_BIN:-nerdr}" request-review --agent codex --model gpt-6-astra "The retry loop in fetch.go."
 ```
 
 `--agent` is the kind (`codex`, `claude`, `opencode`, …); `--model` is

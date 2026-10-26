@@ -197,8 +197,8 @@ type Review struct {
 	// the prefix + R starts one.
 	Auto bool `toml:"auto"`
 	// When is which turns end in a review with Auto: "ready", the ones in
-	// which the agent said the work is ready for one (`nerdr ready`), or
-	// "turn", every one that changed the worktree.
+	// which the agent said the work is ready for one (`nerdr
+	// request-review`), or "turn", every one that changed the worktree.
 	When string `toml:"when"`
 	// Agent is the agent that reviews: a kind ("codex"), or "other" for
 	// another kind than the tab's own where one is installed.
@@ -214,7 +214,7 @@ type Review struct {
 	Args map[agents.Kind][]string `toml:"args"`
 	// Models are the models reviewers are started with, by kind, in place
 	// of the one they start with otherwise; picked in the review pane or
-	// given to nerdr ready, another goes for that review.
+	// given to nerdr request-review, another goes for that review.
 	Models map[agents.Kind]string `toml:"models"`
 }
 

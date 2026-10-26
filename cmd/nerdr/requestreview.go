@@ -10,8 +10,8 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
-// readyUsage is written for the agent, as whyUsage is.
-const readyUsage = `usage: nerdr ready [--agent KIND [--model MODEL]] [FOCUS]    (or - to read FOCUS from stdin)
+// requestReviewUsage is written for the agent, as whyUsage is.
+const requestReviewUsage = `usage: nerdr request-review [--agent KIND [--model MODEL]] [FOCUS]    (or - to read FOCUS from stdin)
 
 Says your work in this tab is ready for a code review: a second agent
 reviews it once your turn ends, and its findings come
@@ -27,11 +27,11 @@ your turn. Unless nerdr told you code review is on in this tab, run it
 only when the user has asked for a review or said yes to one.
 `
 
-// runReady is the "ready" subcommand: it tells the nerdr it runs in that
-// the agent's work is ready for a review.
-func runReady(args []string) int {
+// runRequestReview is the "request-review" subcommand: it tells the nerdr
+// it runs in that the agent's work is ready for a review.
+func runRequestReview(args []string) int {
 	if len(args) > 0 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Fprint(os.Stderr, readyUsage)
+		fmt.Fprint(os.Stderr, requestReviewUsage)
 		return 2
 	}
 	var kind, model string
@@ -44,29 +44,29 @@ func runReady(args []string) int {
 		args = args[2:]
 	}
 	if model != "" && kind == "" {
-		fmt.Fprintln(os.Stderr, "nerdr ready: --model is the model of an agent: give --agent too")
+		fmt.Fprintln(os.Stderr, "nerdr request-review: --model is the model of an agent: give --agent too")
 		return 2
 	}
 	focus := strings.Join(args, " ")
 	if len(args) == 1 && args[0] == "-" {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "nerdr ready:", err)
+			fmt.Fprintln(os.Stderr, "nerdr request-review:", err)
 			return 1
 		}
 		focus = string(data)
 	}
 	focus = strings.TrimSpace(focus)
 	if len(focus) > codereview.MaxFocus {
-		fmt.Fprintf(os.Stderr, "nerdr ready: the focus is %d bytes; keep it under %d — the reviewer reads the change itself\n", len(focus), codereview.MaxFocus)
+		fmt.Fprintf(os.Stderr, "nerdr request-review: the focus is %d bytes; keep it under %d — the reviewer reads the change itself\n", len(focus), codereview.MaxFocus)
 		return 2
 	}
-	tab, sock, ok := tabSocket("nerdr ready", "not running in a nerdr tab, so there is no nerdr to review the work")
+	tab, sock, ok := tabSocket("nerdr request-review", "not running in a nerdr tab, so there is no nerdr to review the work")
 	if !ok {
 		return 1
 	}
-	if err := send(sock, hooks.Ready, map[string]any{"pane_id": tab, "focus": focus, "kind": kind, "model": model}); err != nil {
-		fmt.Fprintln(os.Stderr, "nerdr ready:", err)
+	if err := send(sock, hooks.RequestReview, map[string]any{"pane_id": tab, "focus": focus, "kind": kind, "model": model}); err != nil {
+		fmt.Fprintln(os.Stderr, "nerdr request-review:", err)
 		return 1
 	}
 	fmt.Println("nerdr has it. End your turn now: the review starts then, and its findings come to you as a message.")

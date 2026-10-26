@@ -27,7 +27,7 @@ func TestReviewWaitsForReady(t *testing.T) {
 		t.Fatal("a turn the agent did not call ready in started a review")
 	}
 	tb.status = stWorking
-	if m.onReady(hooks.Report{Method: hooks.Ready, Pane: tb.hookKey(), Focus: "the locking"}) != nil {
+	if m.onReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Focus: "the locking"}) != nil {
 		t.Fatal("ready mid-turn should wait for the turn to end")
 	}
 	if tb.reviewAsk == nil || tb.reviewAsk.focus != "the locking" {
@@ -70,7 +70,7 @@ func TestReadyWithAutoOff(t *testing.T) {
 	if m.afterTurn(tb) != nil {
 		t.Fatal("a turn with auto off started a review")
 	}
-	if m.onReady(hooks.Report{Method: hooks.Ready, Pane: tb.hookKey(), Focus: "the locking"}) == nil || tb.reviewAsk == nil {
+	if m.onReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Focus: "the locking"}) == nil || tb.reviewAsk == nil {
 		t.Fatal("ready with auto off should look at the worktree for a review")
 	}
 }

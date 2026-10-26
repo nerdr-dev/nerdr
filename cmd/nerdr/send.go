@@ -12,7 +12,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
-// sendUsage is written for the agent, as readyUsage is.
+// sendUsage is written for the agent, as requestReviewUsage is.
 const sendUsage = `usage: nerdr send [--wait] [--timeout 10m] N MESSAGE    (or - to read MESSAGE from stdin)
        nerdr send                 lists the agents of this tab
 

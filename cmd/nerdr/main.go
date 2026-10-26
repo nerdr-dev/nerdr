@@ -42,7 +42,7 @@ For the agents in its tabs (each takes -h):
   nerdr spinoff FILE hand parts of an agent's work to new tabs
   nerdr handoff FILE hand an agent's work to the one its tab switches to
   nerdr post-review send a reviewer's code review of the worktree
-  nerdr ready        say the work is ready for a code review
+  nerdr request-review say the work is ready for a code review
   nerdr send N MSG   send message MSG to agent N of the same tab
   nerdr agent TASK   start another agent in the same tab with TASK
   nerdr agents       list this tab's agents and their state
@@ -90,8 +90,8 @@ func main() {
 			os.Exit(runHandoff(os.Args[2:]))
 		case "post-review":
 			os.Exit(runReview(os.Args[2:]))
-		case "ready":
-			os.Exit(runReady(os.Args[2:]))
+		case "request-review":
+			os.Exit(runRequestReview(os.Args[2:]))
 		case "send":
 			os.Exit(runSend(os.Args[2:]))
 		case "agent":

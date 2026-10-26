@@ -38,9 +38,9 @@ import (
 // not change under it. A review starts by itself, when the config says so,
 // once the agent finishes a turn that left the worktree other than the
 // last review saw it: any such turn, or with when = "ready", one in which
-// the agent said with `nerdr ready` that the work is ready for a review —
-// it knows better than a changed file does whether it is halfway, and can
-// say what it wants looked at most.
+// the agent said with `nerdr request-review` that the work is ready for a
+// review — it knows better than a changed file does whether it is
+// halfway, and can say what it wants looked at most.
 
 // reviewPhase is where a review stands.
 type reviewPhase int

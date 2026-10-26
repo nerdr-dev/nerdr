@@ -510,7 +510,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return m.onHandoff(msg)
 		case hooks.Review:
 			return m.onReview(msg)
-		case hooks.Ready:
+		case hooks.RequestReview:
 			return m.onReady(msg)
 		case hooks.Message:
 			return m.onMessage(msg)
