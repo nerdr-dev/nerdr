@@ -1,15 +1,15 @@
 ---
 title: Plugins (F5)
-description: Your own scripts, which agents can run and which can bring a screen of their own.
+description: Your own scripts, which agents can run and which you can run directly in F5.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-A plugin is a script of your own that agents can run: one that rebuilds
-the docker setup and starts it, seeds a database or deploys a preview.
-Its description tells the agents when to run it, so *"restart the dev
-stack"* is enough. A plugin can also have a screen of its own, which you
-use in F5. To write one, see [Writing plugins](../../configure/plugins/).
+A plugin is a custom script or tool — such as one that rebuilds and starts
+your Docker setup, seeds a database or deploys a preview — that agents can
+run with parameters, or that you can run directly in F5. Its description
+tells the agents when to run it, so *"restart the dev stack"* is enough. To
+write one, see [Writing plugins](../../configure/plugins/).
 
 <video autoPlay loop muted playsInline controls aria-label="Claude starts the dev server and a log watch plugin; F5 shows the log, a panic reaches Claude, which hands the fix to a new tab with spinoff, and that tab fixes it and opens a pull request" style="width:100%">
 	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "plugins.webm"} type="video/webm" />

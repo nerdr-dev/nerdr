@@ -22,7 +22,6 @@ export default defineConfig({
 			customCss: ['./src/styles/nerdr.css'],
 			routeMiddleware: './src/routeData.ts',
 			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/nerdr-dev/nerdr' }],
-			editLink: { baseUrl: 'https://github.com/nerdr-dev/nerdr/edit/main/docs/' },
 			lastUpdated: true,
 			plugins: [starlightLinksValidator({ errorOnRelativeLinks: false })],
 			sidebar: [

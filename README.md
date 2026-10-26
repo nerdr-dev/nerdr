@@ -11,11 +11,12 @@
 **Run a team of coding agents, each in its own Git worktree, and review
 their work, all in one terminal.**
 
-![nerdr with three repositories: a new tab with Codex, switching repositories, the changes in F1, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question](docs/public/overview.gif)
+![nerdr with three repositories: a new tab with Codex, switching repositories, the changes in the review panel, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question](docs/public/overview.gif)
 
 *A new tab with Codex, the repositories and their status lights, Claude's
-changes in F1, the tests in a terminal, Codex reviewing Claude's work, and
-the waiting list taking you to the agent with a question.*
+changes in the review panel, the tests in a terminal, Codex reviewing
+Claude's work, and the waiting list taking you to the agent with a
+question.*
 
 - **One task, one tab.** Each tab gets a branch and a worktree from the
   latest `main`, and the agent you pick. Start from an issue, a pull
@@ -34,8 +35,9 @@ the waiting list taking you to the agent with a question.*
 - **Your agents, as they are.** Claude Code, Codex, Copilot, opencode,
   Cursor, Gemini and Antigravity, with their own settings, in a sandbox
   if you like. [Agents →](https://nerdr.app/configure/agents/)
-- **Your scripts too.** Plugins that agents run when they fit the task,
-  with a screen of their own. [Plugins →](https://nerdr.app/configure/plugins/)
+- **Your own scripts as plugins.** Custom scripts (like rebuilding Docker or
+  seeding a database) that agents can run with parameters, or that you can
+  run directly in `F5`. [Plugins →](https://nerdr.app/configure/plugins/)
 - **Keyboard and mouse.** Everything is a key after `ctrl+q`, and a click.
   [Keys →](https://nerdr.app/configure/keyboard/)
 
@@ -61,8 +63,8 @@ cd ~/develop
 nerdr
 ```
 
-Pick a repository, name a branch, choose an agent, and it starts working.
-Press `ctrl+q ?` to find any command. See the
+Pick one or more repositories, name a branch, choose an agent, and it starts
+working. Press `ctrl+q ?` to find any command. See the
 [quick start](https://nerdr.app/start/quick-start/).
 
 ## Docs

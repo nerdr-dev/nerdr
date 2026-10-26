@@ -37,7 +37,9 @@ nerdr appends session arguments last. Wrappers must pass them through.
 | Gemini | `--session-id <id>`, `--resume <id>` or `--resume latest` |
 | Antigravity | `--conversation <id>` or `--continue` |
 
-The Copilot example above starts a new tab with:
+For example, with `command = ["my-sandbox", "--", "copilot"]` and
+`args = ["--allow-all"]` under `[agents.copilot]`, nerdr starts a new
+tab with:
 
 ```sh
 my-sandbox -- copilot --allow-all
@@ -81,9 +83,10 @@ Such an agent:
 - can start agents, tabs (`nerdr agent`, `nerdr tab new`) and spun-off
   parts only with agents that are themselves `sandboxed`;
 - can send messages to, and read the panes of, only agents started in a
-  sandbox, and no terminals. A message it left for an agent that then
-  starts outside one waits in F3 for you instead of being typed in, and
-  what became of the parts it spun off is told to it alone;
+  sandbox, and no terminals. If it leaves a message for an agent that
+  later starts outside a sandbox, the message waits in F3 for your
+  approval instead of being typed in automatically. Results from work it
+  spun off are reported only to that agent;
 - sees only its own tab in `nerdr tabs`;
 - can run the plugins you allowed, which nerdr runs outside its sandbox,
   as you: that is what they are for (see [Plugins](../plugins/#safety)).
@@ -93,22 +96,25 @@ including automatic reviews and `nerdr request-review`. If the configured
 reviewer is not sandboxed, nerdr uses an available sandboxed agent instead (the
 author's kind if needed). If none can run sandboxed, no reviewer starts.
 The review picker offers only sandboxed agents for such work.
-Asking, trying and handoffs still work: they go to you, or to an agent you
-pick. The setting takes effect when the agent next starts.
+Handoffs and questions between you and the agent still work: they go to
+you, or to an agent you pick. The setting takes effect when the agent
+next starts.
 
-An agent in a sandbox cannot pass for one outside it. The secret in `NERDR_TAB` is in every agent's environment, where a
-process in a sandbox may read it, so nerdr does not go by the secret
-alone: on Linux and macOS it asks the kernel which process is connecting,
-and takes a request as from the agent the secret names only when it is
-that agent or runs under it. Anything else is taken as from an agent in a
-sandbox: confined as above, and refused when the tab it names is not in
-one. The sandbox can therefore let its agent reach nerdr's socket: it is
-no way out. On other systems nerdr cannot ask, and goes by the secret
-alone: there an agent in a sandbox that finds another's secret can pass
-for it.
-It also means an agent outside a sandbox whose commands run
-elsewhere, in a container or on another machine, cannot use nerdr's
-commands; mark it `sandboxed` if it is in one.
+A sandboxed agent cannot impersonate an unsandboxed one. Because every
+agent receives its tab's secret in `NERDR_TAB`, a process in a sandbox
+might be able to read that environment variable. On Linux and macOS,
+nerdr does not rely on `NERDR_TAB` alone: it asks the kernel which
+process is connecting to the socket, and accepts the request as coming
+from that agent only if the connecting process is the agent itself or a
+process running under it. Any other connection is treated as sandboxed —
+restricted as described above, and rejected if the tab it names is not
+sandboxed. Exposing nerdr's socket to the sandbox is therefore safe and
+does not provide a way out. On other operating systems, nerdr cannot
+verify the connecting process and relies on `NERDR_TAB` alone, so a
+sandboxed agent that reads another agent's secret could impersonate it.
+This kernel check also means an unsandboxed agent whose commands run
+elsewhere (such as inside a container or on a remote machine) cannot
+use nerdr's commands unless you mark it `sandboxed`.
 
 `sandboxed` does not make a sandbox; `command` must. What it closes is
 nerdr as a way out. Check the rest from inside the sandbox: that it cannot
@@ -165,8 +171,8 @@ Allow the sandbox to run `NERDR_BIN`, or put nerdr on its PATH. If that
 is unavailable, skills instruct the agent to append JSON lines directly
 to the files in that folder.
 
-Asking, reporting what to try, `request-review`, `post-review`, spinoff
-and handoff need more: each call, from a skill or from an agent's hooks,
+Commands such as `request-review`, `post-review`, `spinoff` and `handoff`
+need more: each call, from a skill or from an agent's hooks,
 starts a fresh `nerdr` process that passes the request to the nerdr
 running the tab. It finds that nerdr only through the `NERDR_*` variables
 and its socket.
@@ -180,11 +186,11 @@ The sandbox must:
   when that is set), whatever folder nerdr starts in, so the rule can
   name that one path.
 
-One nerdr has that socket at a time. A second, started in another folder
-while the first runs, says so and listens on a socket of its own beside
-it, `nerdr-<id>.sock`, named for its folder. Everything works there but
-for an agent in a sandbox that may reach only `nerdr.sock`: let such a
-sandbox connect to the sockets in that folder to have both work.
+One nerdr has that socket at a time. A second instance started in
+another folder notifies you and listens on its own socket in the same
+directory, `nerdr-<id>.sock`. If a sandbox only allows access to
+`nerdr.sock`, allow it to connect to all sockets in that directory so
+both instances work.
 
 Agent commands never write to `~/.local/state/nerdr`: connecting to the
 socket is all the sandbox needs there. Never let a sandbox write to
@@ -206,9 +212,10 @@ without them in it can leave them out. When something is missing, the
 command says which of these it is, and the skills tell the agent to show
 the user that message rather than try another nerdr.
 
-nerdr notices too. The integrations of Claude, Copilot and Codex report to
-nerdr through the same program and socket as they work. When an agent in a
-sandbox ends a turn with nothing it ran come to nerdr, nerdr says so once,
-with the program and socket the sandbox must allow; a reviewer that stops
-so says in its review line that its sandbox keeps it from nerdr.
+nerdr notices too. The integrations for Claude, Copilot and Codex report
+to nerdr through the same executable and socket while they work. If a
+sandboxed agent finishes a turn without any reports reaching nerdr,
+nerdr warns you once and shows the executable and socket paths the
+sandbox must allow. If a reviewer stops this way, its review status line
+reports that its sandbox blocked it from reaching nerdr.
 

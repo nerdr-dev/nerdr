@@ -22,8 +22,8 @@ about it, and what is left for your sandbox to do.
   contain text written by others, which may hold instructions for the
   agent.
 - **Keep nerdr's own files out of reach.** A sandbox must not let its
-  agent write `~/.config/nerdr`, `~/.local/state/nerdr/plugins-allowed.json`,
-  or the main checkout's `.git/config` and `.git/hooks`.
+  agent write to `~/.config/nerdr`, `~/.local/state/nerdr`, or the main
+  checkout's `.git/config` and `.git/hooks`.
 
 ## What nerdr does not take from the worktree
 
@@ -42,9 +42,10 @@ nerdr records origin's push destination when it opens a worktree, or on
 first startup for older tabs. Push and PR creation fail if that destination
 changes. PRs use the recorded repository, passed explicitly to `gh`.
 
-The sandbox must not let the agent write `~/.config/nerdr` or
-`~/.local/state/nerdr/plugins-allowed.json`: a plugin there, or one it
-allowed for itself, would run outside the sandbox. See
+The sandbox must not let the agent write to `~/.config/nerdr` or
+`~/.local/state/nerdr` (which holds `plugins-allowed.json`,
+`setup-allowed.json` and `sessions/`): a plugin or setup command written
+or approved there would run outside the sandbox. See
 [Plugins](../../configure/plugins/#safety).
 
 The sandbox must still protect the main checkout's `.git` directory.
@@ -59,9 +60,9 @@ Copying does not follow symlinks outside the repository. `setup` runs
 only in worktrees on a new branch from the base, never on a branch's own
 code: see [Getting a new worktree ready](../../use/tabs/#getting-a-new-worktree-ready-nerdrtoml).
 
-nerdr writes in the data folder too (`data_dir`), where agents write
-their notes: a review's result, a walkthrough's page, a handoff. It
-writes there neither through a symlink nor out of the folder, and reads
-a worktree's files without following symlinks out of it, so a link an
-agent left cannot have nerdr write or show a file outside.
+nerdr also writes to the data folder (`data_dir`), where agents store
+their notes, review results, walkthroughs and handoffs. When writing to
+`data_dir` or reading files from a worktree, nerdr refuses to follow
+symlinks or paths that point outside the folder, preventing an agent from
+using a symlink to make nerdr overwrite or display external files.
 

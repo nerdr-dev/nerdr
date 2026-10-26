@@ -11,7 +11,7 @@ import { Aside } from '@astrojs/starlight/components';
 |---|---|
 | `nerdr` | Start in the current folder, bringing back its tabs, if any |
 | `nerdr help` | The commands, and where the config file is |
-| `nerdr version` | Which nerdr this is: the commit it was built from |
+| `nerdr version` | Print the version (release tag) or the commit hash it was built from |
 
 Everything else happens inside nerdr; `ctrl+q ?` finds any command.
 
@@ -45,7 +45,7 @@ you ask in plain words. They work only inside a tab, apart from
 | `nerdr tab new --branch B TASK` | A tab on a new branch from main, its agent given the task (`--repo`, `--kind`, `--model`) |
 | `nerdr search WORDS` / `search --show ID` | Past claude and codex conversations in these folders |
 | `nerdr usage` | The Claude and Codex plans' rate limits used, as JSON; in a sandbox, needs read access to [`claude-limits.json` and Codex's logs](../../configure/agents/#what-a-sandbox-must-allow) |
-| `nerdr plugin list` / `plugin run NAME …` | The plugins there are, and one run with its parameters; `plugin stop NAME` stops a watch |
+| `nerdr plugin list` / `plugin run NAME …` | List available plugins, or run a plugin with parameters; `plugin stop NAME` stops a watch |
 
 ### Explaining, reviewing and handing over
 
