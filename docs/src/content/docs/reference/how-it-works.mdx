@@ -29,18 +29,21 @@ starts a new conversation.
 ## Integrations
 
 `internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock` using
-herdr's protocol. Agents receive `NERDR_SOCKET` and a secret `NERDR_TAB`, which
-nerdr's own commands (`nerdr request-review`, `post-review`, `spinoff`,
-`handoff`, `send`, `agent`, `agents`, `wait`, `read`, `terminal`, `tabs`,
-`tab new`, `status`, `search`, `hook claude` and `hook statusline`) report with or
-ask through. `nerdr search` and `nerdr usage` read the agents' logs
-themselves; `search` asks nerdr only which folders to search. For herdr's integrations they
-also receive `HERDR_ENV=1`, `HERDR_PANE_ID` (the same secret),
-`HERDR_SOCKET_PATH` and `HERDR_BIN_PATH` pointing to nerdr.
-`nerdr pane report-agent …` handles reports in place of herdr's CLI.
+herdr's JSON-line protocol. Agents receive `NERDR_SOCKET` and a per-tab
+secret in `NERDR_TAB`, which nerdr's agent commands (see
+[Commands](../agent-commands/)) and built-in hooks (`nerdr hook …`) use
+to send requests and status reports to the running nerdr instance.
+(`nerdr why`, `order` and `walkthrough` write directly to
+`NERDR_DATA_DIR`, while `nerdr search` and `nerdr usage` read the agents'
+logs directly; `search` only asks nerdr which folders to search.) For
+herdr's integrations, agents also receive `HERDR_ENV=1`, `HERDR_PANE_ID`
+(set to the same secret), `HERDR_SOCKET_PATH` and `HERDR_BIN_PATH`
+pointing to nerdr. `nerdr pane report-agent …` handles reports in place of
+herdr's CLI.
 
-Only `pane.report_agent`, `pane.report_agent_session` and
-`pane.release_agent` are accepted. Each tab gets a fresh secret on startup,
+For herdr's protocol (`nerdr pane`), only `pane.report_agent`,
+`pane.report_agent_session` and `pane.release_agent` are accepted. Each
+tab gets a fresh secret on startup,
 so agents can report only for their own tab. Conversation IDs that resemble
 flags are rejected, and control characters are removed from text.
 Reported state lasts until released or the agent restarts.
@@ -87,12 +90,13 @@ permissions, and `Stop` at turn end. Hooks run `"$NERDR_BIN" hook claude`.
 If nerdr is unavailable in the sandbox, screen detection takes over.
 A subagent's own events and session starts after compaction are ignored,
 since they do not reliably indicate the main turn's state. `SubagentStart`
-and `SubagentStop` keep count of the subagents going, so an agent whose
-turn ends while one started in the background is still at it stays
-working, its still prompt notwithstanding: claude prompts it with the news
-once the subagent is done. Only the last of those stopping is news; a
-subagent starting or stopping otherwise changes nothing, since claude runs
-some of its own after a turn, for a recap.
+and `SubagentStop` track how many subagents are running. If the main
+turn ends while a background subagent is still running, nerdr keeps the
+agent marked as working even though its prompt looks idle, because Claude
+will automatically resume the main agent once the subagent finishes. Only
+the completion of the last active background subagent updates the state;
+other subagent starts and stops are ignored, because Claude also runs
+internal subagents after a turn to generate summaries.
 
 opencode reports through nerdr's plugin, `nerdr.js`, which nerdr installs
 along with the skills: in `~/.config/opencode/plugins/` with

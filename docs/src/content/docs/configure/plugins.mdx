@@ -1,13 +1,12 @@
 ---
 title: Writing plugins
-description: Make a plugin — a script of your own that agents can run, with parameters, and a screen in F5.
+description: Make a plugin — a custom script that agents can run with parameters, or that you can run directly in F5.
 ---
 
-A plugin adds something of your own to nerdr: a script that rebuilds
-the docker setup and starts it, seeds a database or deploys a preview.
-Agents find it with `nerdr plugin list` and run it with
-`nerdr plugin run`. You find it in `F5`, where a plugin with a screen of
-its own runs that screen.
+A plugin adds a custom script or tool to nerdr: one that rebuilds and
+starts the Docker setup, seeds a database or deploys a preview. Agents
+find it with `nerdr plugin list` and run it with `nerdr plugin run`. You
+find it in `F5`, where you can also run it directly (`ui`).
 
 ## A plugin is a folder
 
@@ -49,34 +48,14 @@ description = "Build without the cache."
 
 - `description` is required. Agents decide from it when to run the
   plugin, so say what it does and when it is wanted. `F5` shows it too.
-- `run` is the command agents run, `ui` the program you use in `F5`. A
-  plugin has one of them or both. A program written `./run.sh` is in
-  the plugin's folder, and so is `bin/run.sh` when that file is there; a
-  name without a folder in it is looked up on `PATH`. A relative program
-  with a folder in it is taken from the plugin's folder, and so is one
-  written `./name`; a relative path that leads out of the folder is
-  refused, since an agent can write the folder it runs in. An absolute
-  path to a tool, `/bin/sh` say, is used as it is and is shown in the
-  question: keep it to a tool you trust, as the folder's key does not
-  cover it. A script run by a known interpreter or runner must be in the
-  plugin's folder, so that what runs is what you read; a data file may be
-  elsewhere. nerdr knows the common interpreters (`sh`, `bash`, `python`,
-  `node`, `perl`, `ruby`, `php`, `lua`, …), versioned names such as
-  `python3.12` and `node20`, `npx`/`bunx`, and `env` with its options and
-  `NAME=value` words.
-
-  This is a best-effort guard. A tool such as make, npm or docker, a
-  wrapper such as timeout or xargs, a package or module lookup such as
-  npx's or `python -m`'s, or a script name built in a command reads files
-  and targets from the folder the agent runs in; that folder is not part
-  of what you allowed. Put a script in the plugin's folder and write
-  `./name`.
-- `plugin.toml` itself must be a regular file of at most 1 MB in the
-  plugin's folder: a link, a FIFO or a device is refused, so a plugin
-  cannot change what it is after you have read it. A description is at
-  most 8 KB and a word of a command at most 4 KB: put a longer script in
-  a file. A file a command names in the folder must also be there and
-  must not be a link out of it.
+- `run` is the command agents run, and `ui` is the program you use in
+  `F5`. A plugin must define at least one of them. Relative paths such as
+  `./run.sh` or `bin/run.sh` resolve inside the plugin's folder; bare
+  command names without a path are looked up on `PATH`. Put the plugin's
+  scripts inside its folder and reference them as `./name` (see
+  [Safety](#safety) for path and interpreter restrictions).
+- `plugin.toml` must be a regular file of at most 1 MB (`description` at
+  most 8 KB, and each command argument at most 4 KB).
 - `title` is optional, a name for people.
 - `show` is optional: what `F5` shows of an agent's run, beyond that it
   runs (see [When an agent runs it](#when-an-agent-runs-it)).
@@ -117,11 +96,10 @@ or a directory beneath them; a request for somewhere else is refused.
 nerdr holds the checked directory open until startup, so replacing a
 symlink while a run waits for confirmation cannot redirect it. So a plugin
 can do for an agent in a sandbox what the sandbox keeps it from: restart
-the docker setup, read a log elsewhere. What it prints, its standard
-output and error together, goes back to the agent's command, and its
-exit status is the command's. Stopping the command stops the run, as
-does a command that stops reading it, which an agent's does when it
-gives up waiting.
+the docker setup, read a log elsewhere. Its combined standard output and
+standard error are returned to the agent's command, along with its exit
+status. The plugin run is stopped if the command is interrupted or stops
+reading output (for example, when the agent's command times out).
 
 It gets:
 
@@ -138,8 +116,8 @@ of their type, and of its `options` when it has them. A `string`, or a
 `multi` without `options`, is any text the agent likes. Use it with
 care: quote it (`"$NERDR_PARAM_NOTE"`), never run it as code (`eval`,
 `sh -c "$…"`), and never let it name a file or command to run unless
-you check it. Asking you about it, `a` says which parameters are such
-text.
+you check it. When you press `a` in `F5` to review a plugin, nerdr
+highlights which parameters accept free-form text.
 
 You run a plugin yourself, as you, in a tab's shell or outside nerdr,
 with the same command: it runs there, in the foreground.
@@ -215,15 +193,15 @@ agents cut a command off after a minute or two. With `watch = true`:
   once.
 - What it prints goes to that agent as a message, typed in when the
   agent is idle; what it prints while the agent is busy is added to the
-  message waiting. So print only what the agent is to act on, a line at
-  a time as it is found (`grep --line-buffered`, `tail -F`), and each
-  thing once: a watch that prints the same error every minute has the
-  agent see it every minute.
-- It goes on until the agent runs `nerdr plugin stop NAME`, you press
-  `s` on it in `F5`, the agent's pane closes, or nerdr quits. A stop
-  ends its program and what that started, with `SIGTERM`, then
-  `SIGKILL` after five seconds. The agent is told when it no longer
-  watches, but for its own stop.
+  message waiting. So print only what the agent should act on, one line
+  at a time as it appears (`grep --line-buffered`, `tail -F`), and
+  deduplicate repeated lines — if a watch prints the same error every
+  minute, the agent will receive that error every minute.
+- It keeps running until the agent runs `nerdr plugin stop NAME`, you
+  press `s` on it in `F5`, the agent's pane closes, or nerdr quits.
+  Stopping a watch terminates its process group with `SIGTERM`, followed
+  by `SIGKILL` after five seconds. nerdr notifies the agent when a watch
+  stops, unless the agent stopped it itself.
 - An agent watching is not put to sleep (`sleep_after`).
 
 For example, `logwatch/plugin.toml`:
@@ -274,12 +252,13 @@ plugin run NAME …`.
 
 ## Safety
 
-A plugin runs as you, outside every agent's sandbox: its screen when
-you start it, its `run` whenever an agent asks, an agent in a sandbox
-among them, with the parameters the agent gives. That is what a plugin
-is for: what you allowed, an agent may have done for it. An agent can
-write your plugins when its sandbox lets it write to `~/.config/nerdr`,
-or it has no sandbox. So no plugin starts or runs until you allow it:
+A plugin runs as you, outside every agent's sandbox: its `ui` screen
+runs when you start it, and its `run` command runs whenever an agent
+(including a sandboxed one) calls it with parameters. That is the purpose
+of plugins: letting agents trigger specific actions you have approved.
+Because an unsandboxed agent (or a sandboxed one with write access to
+`~/.config/nerdr`) could create or edit plugins, no plugin starts or runs
+until you explicitly allow it:
 
 - `F5` marks a plugin "not allowed" until you do. `a` shows what is in
   its folder, each file and its text, and `y` allows it. `enter` on a
@@ -293,17 +272,30 @@ or it has no sandbox. So no plugin starts or runs until you allow it:
   which agent wanted to run it. An agent that makes a plugin cannot have
   it run before you have read it.
 - What you allow is everything in the folder as it was shown, an empty
-  folder too. A change to any of it, while you read it or later, waits
-  for you again.
-  `plugin.toml` is read only when it is a regular file: a link or a
-  special file is refused, and a command's file that links out of the
-  folder is refused too.
-- Keep what a plugin runs inside its folder: a script it runs from
-  elsewhere is not part of what you allowed, and could change unseen.
-  nerdr refuses a relative program that leads out of the folder, and a
-  script an argument names that is not in the folder. An absolute path
-  is shown as it is and is not part of the folder's key; a data file
-  elsewhere is not read by nerdr and is not part of what you allowed.
+  folder included. Any change to the folder, while you read it or later,
+  requires approval again. `plugin.toml` is read only when it is a
+  regular file (symlinks, FIFOs and devices are refused), and any file in
+  the folder that a command references must exist and not be a symlink
+  pointing outside the folder.
+- Keep what a plugin runs inside its folder: a script outside the folder
+  is not covered by your approval and could be modified unseen (for
+  example, in the worktree where the agent runs). Relative command paths
+  are resolved from the plugin's folder, and paths leading outside it are
+  refused. An absolute path to a tool (such as `/bin/sh`) is used as-is
+  and shown in the approval prompt, but is not covered by the folder's
+  hash, so use only tools you trust. When a command invokes a known
+  interpreter or runner (`sh`, `bash`, `python`, `node`, `perl`, `ruby`,
+  `php`, `lua`, …), versioned names such as `python3.12` and `node20`,
+  `npx`/`bunx`, or `env` with its options and `NAME=value` words, the
+  script argument must also be inside the plugin's folder; a data file
+  may live elsewhere, as nerdr does not read or hash it.
+
+  This interpreter check is a best-effort guard. Build tools (`make`,
+  `npm`, `docker`), wrappers (`timeout`, `xargs`), package or module
+  lookups (`npx`, `python -m`), or dynamically constructed script names
+  read files and targets from the working directory where the agent runs.
+  Instead of invoking those directly in `plugin.toml`, put a wrapper
+  script in the plugin's folder and write `./name`.
 - nerdr hashes the folder just before it starts the program, in the
   child. A change after that, or one made while the script runs, is not
   seen. A link in the folder is approved as a link: what it points to
