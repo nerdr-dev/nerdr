@@ -43,6 +43,7 @@ func commandGroups() []commandGroup {
 			{key: "a", label: "Answer, note, switch, restart…", run: "a"},
 			{key: "m", label: "Task for agent", run: "m", desc: "what the agent should do next: sent by itself when the agent is idle, or kept in F3 until then"},
 			{key: "M", label: "Task to several tabs", run: "M", desc: "one task for the agents of the tabs you tick"},
+			{key: "l", label: "Saved prompts", run: "l", desc: "pick a prompt you keep for typing into agents again and again, such as \"commit, push and open a pull request\"; sent with enter, or put in"},
 		}},
 		{"Git and GitHub", []commandEntry{
 			{key: "i", label: "Branches, PRs, issues, review…", run: "i"},
