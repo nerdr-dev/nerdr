@@ -5,11 +5,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -475,5 +478,66 @@ func TestOSC52OnlyFromThePaneInUse(t *testing.T) {
 	m.checkCopied()
 	if len(copied) != 1 || copied[0] != "here" {
 		t.Errorf("copied %q, want only the pane in use's", copied)
+	}
+}
+
+// TestClickPRNumber: on the active tab, a click on its PR's number opens
+// the PR in the browser, with a tip saying so; the right and the middle
+// button still do what they do on the tab, and on another tab a click
+// goes to the tab.
+func TestClickPRNumber(t *testing.T) {
+	opened := filepath.Join(t.TempDir(), "opened")
+	script := filepath.Join(t.TempDir(), "browser")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\necho \"$1\" >> "+opened+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	old := browser.Setting
+	browser.Setting = script
+	t.Cleanup(func() { browser.Setting = old })
+
+	m := testModel(t)
+	m.showDetails = true
+	for i, n := range []int{7, 8} {
+		m.tabs[i].info = tabInfo{at: time.Now(), wts: []wtInfo{{hasPR: true,
+			pr: github.Status{Number: n, State: "OPEN", URL: "https://github.com/o/app/pull/" + strconv.Itoa(n)}}}}
+	}
+	m.selectTab(0)
+	m.View()
+
+	for y, line := range strings.Split(ansi.Strip(m.View()), "\n") {
+		if i := strings.Index(line, "#7"); i >= 0 {
+			m.Update(tea.MouseMsg{X: ansi.StringWidth(line[:i]), Y: y, Action: tea.MouseActionMotion})
+			break
+		}
+	}
+	if !strings.Contains(m.hover.tip, "open it in the browser") {
+		t.Fatalf("tip over the PR number %q", m.hover.tip)
+	}
+	clickOn(t, m, "#7", tea.MouseButtonRight)
+	if _, ok := m.dialog.(*menu); !ok {
+		t.Fatalf("right click on the PR number: dialog %T, want the tab's menu", m.dialog)
+	}
+	m.dialog = nil
+	clickOn(t, m, "#7", tea.MouseButtonMiddle)
+	if m.dialog == nil {
+		t.Fatal("middle click on the PR number did not ask to close the tab")
+	}
+	m.dialog = nil
+	clickOn(t, m, "#8", tea.MouseButtonLeft)
+	if m.cur().Name != "logout" {
+		t.Fatalf("a click on another tab's PR number should go to it, active %q", m.cur().Name)
+	}
+	if _, err := os.Stat(opened); err == nil {
+		t.Fatal("a click on another tab's PR number opened the browser")
+	}
+	clickOn(t, m, "#8", tea.MouseButtonLeft)
+	var got []byte
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		if got, _ = os.ReadFile(opened); len(got) > 0 {
+			break
+		}
+	}
+	if strings.TrimSpace(string(got)) != "https://github.com/o/app/pull/8" {
+		t.Fatalf("opened %q, want #8", got)
 	}
 }
