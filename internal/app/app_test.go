@@ -109,11 +109,13 @@ func TestNotesInsideHerdr(t *testing.T) {
 	m.reportHerdr() // the pane turns blocked: herdr notifies of top itself
 	m.flushNotes(before)
 
+	// Wait for the report as well as the notification: both run in the
+	// background, and one still writing the log fails TempDir's cleanup.
 	deadline := time.Now().Add(3 * time.Second)
 	for {
 		data, _ := os.ReadFile(log)
 		got := string(data)
-		if strings.Contains(got, "notification show") {
+		if strings.Contains(got, "notification show") && strings.Contains(got, "pane report-metadata") {
 			if strings.Contains(got, "notification show nerdr · top") {
 				t.Fatalf("notified of the tab herdr notifies of:\n%s", got)
 			}
