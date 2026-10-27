@@ -141,8 +141,9 @@ func (m *Model) sideToggle(small bool) string {
 }
 
 // railEntry is one entry of the small sidebar: a light, with the active
-// one's background.
-func (m *Model) railEntry(active, walking bool, s status, of string) string {
+// one's background, and after it mark, when there is one, where the space
+// would be.
+func (m *Model) railEntry(active, walking bool, s status, of string, mark func(lipgloss.Color) string) string {
 	bg := lipgloss.Color("")
 	if active {
 		bg = tabActiveBg
@@ -151,7 +152,13 @@ func (m *Model) railEntry(active, walking bool, s status, of string) string {
 		}
 	}
 	sp := lipgloss.NewStyle().Background(bg).Render(" ")
-	return sp + m.lightTip(s, bg, of) + sp
+	after := sp
+	if mark != nil {
+		if s := mark(bg); s != "" {
+			after = s
+		}
+	}
+	return sp + m.lightTip(s, bg, of) + after
 }
 
 // repoList is the list of repositories, in a w×h frame; small, their
@@ -173,7 +180,7 @@ func (m *Model) repoList(w, h int, small bool) []string {
 		tip := plural(n, "tab")
 		var s string
 		if small {
-			s = m.railEntry(g == cur, walking, m.groupStatus(g), "the tab here that most wants a look · "+g)
+			s = m.railEntry(g == cur, walking, m.groupStatus(g), "the tab here that most wants a look · "+g, nil)
 		} else {
 			// (7 2● 3●): the tabs, and how many of them ask and work, in their lights
 			moreSt := lipgloss.NewStyle().Background(entryBg(g == cur, walking)).Foreground(lipgloss.Color("244"))
@@ -245,9 +252,15 @@ func (m *Model) tabList(w, h int, small bool) []string {
 		}
 		var s string
 		if small {
-			s = m.railEntry(active, walking, t.lit(), strconv.Itoa(n+1)+":"+t.Name)
+			s = m.railEntry(active, walking, t.lit(), strconv.Itoa(n+1)+":"+t.Name,
+				func(bg lipgloss.Color) string { return m.reviewMark(t, bg) })
 		} else {
-			s = m.sideEntry(w-2, active, walking, t.lit(), "", strconv.Itoa(n+1)+":"+t.Name, more, m.sideDetails(t, active))
+			extra := m.sideDetails(t, active)
+			bg := entryBg(active, walking)
+			if mark := m.reviewMark(t, bg); mark != "" {
+				extra = lipgloss.NewStyle().Background(bg).Render(" ") + mark + extra
+			}
+			s = m.sideEntry(w-2, active, walking, t.lit(), "", strconv.Itoa(n+1)+":"+t.Name, more, extra)
 		}
 		s = m.tip(s, t.Name+" · "+string(t.Agent)+" · "+t.lit().label()+" · right-click: more · middle-click: close")
 		lines = append(lines, m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.tabMouse(t, ev) }))

@@ -296,6 +296,20 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	if m.dialog != nil {
 		t.Fatal("asked while walking")
 	}
+	if v := ansi.Strip(m.draw()); !strings.Contains(v, "Review of "+tb.Name+" done") || !strings.Contains(v, "enter: open") {
+		t.Fatalf("the walk should show the review it passes, without asking:\n%s", v)
+	}
+	if !strings.Contains(ansi.Strip(m.tabBar()), "✓") {
+		t.Fatalf("the tab's entry should be marked: %s", ansi.Strip(m.tabBar()))
+	}
+	m.sideBar = true
+	if v := ansi.Strip(m.draw()); !strings.Contains(v, "Review of "+tb.Name+" done") || !strings.Contains(strings.Join(m.tabList(30, 10, false), "\n"), "✓") {
+		t.Fatalf("with the sidebar too, the walk should show the review and mark its entry:\n%s", v)
+	}
+	if !strings.Contains(ansi.Strip(strings.Join(m.tabList(railW, 10, true), "\n")), "✓") {
+		t.Fatal("the small sidebar should mark the entry too")
+	}
+	m.sideBar = false
 	m.Update(keyMsg("enter"))
 	if _, ok := m.dialog.(*reviewDoneDialog); !ok {
 		t.Fatalf("the walk over, it should ask: %#v", m.dialog)
@@ -303,15 +317,27 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	if len(tb.Messages) != 1 || tb.Messages[0].Auto {
 		t.Fatalf("the enter that ended the walk sent the remarks: %+v", tb.Messages)
 	}
+	if strings.Contains(ansi.Strip(m.tabBar()), "✓") {
+		t.Fatal("the mark should go once the review is told of")
+	}
 
 	m.dialog = nil
 	second := &tab{Tab: state.Tab{ID: "second", Name: tb.Name, Agent: "codex"}}
 	tb.paneList = append(tb.panes(), &paneTab{kind: paneAgent, a: second})
 	second.reviewDone = &reviewDone{brief: "b", msg: state.Message{Text: "fix"}}
 	second.Messages = []state.Message{{Text: "fix"}}
+	// The first agent's review, its findings gone from F3, does not hide
+	// the second's.
+	tb.reviewDone = &reviewDone{brief: "a", msg: state.Message{Text: "gone"}}
+	if a, _ := tb.reviewToTell(); a != second || !strings.Contains(ansi.Strip(m.tabBar()), "⚑") {
+		t.Fatalf("the second agent's review should be shown and marked, not %v", a)
+	}
 	m.askReviewDone()
 	if rd, ok := m.dialog.(*reviewDoneDialog); !ok || !strings.Contains(ansi.Strip(rd.view(m, 120, 40)), "Send them to codex") {
 		t.Fatalf("the second agent's review should ask: %#v", m.dialog)
+	}
+	if tb.reviewDone != nil {
+		t.Fatal("the first agent's review, its findings gone, should be dropped")
 	}
 }
 
