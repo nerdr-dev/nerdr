@@ -1,6 +1,7 @@
 package github
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -98,6 +99,150 @@ func TestOwnPR(t *testing.T) {
 	}
 	if !ownPR(dir, "OPEN", old) {
 		t.Fatal("an open PR is always the branch's")
+	}
+}
+
+// testRepo makes a repository on main with one commit, and the git to
+// run in it, which answers with what git printed.
+func testRepo(t *testing.T) (string, func(args ...string) string) {
+	t.Helper()
+	dir := t.TempDir()
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	git("init", "-q", "-b", "main")
+	git("commit", "-q", "--allow-empty", "-m", "base")
+	return dir, git
+}
+
+// fakeGh puts a gh first on PATH whose pr view prints the JSON of a PR
+// with this state, head and base.
+func fakeGh(t *testing.T, state, head, base string) {
+	t.Helper()
+	bin := t.TempDir()
+	js := fmt.Sprintf(`{"number":16,"url":"https://github.com/o/r/pull/16","state":%q,"headRefOid":%q,"baseRefName":%q,"statusCheckRollup":[]}`,
+		state, head, base)
+	if err := os.WriteFile(filepath.Join(bin, "pr.json"), []byte(js), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	script := "#!/bin/sh\ncat '" + filepath.Join(bin, "pr.json") + "'\n"
+	if err := os.WriteFile(filepath.Join(bin, "gh"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+// A branch that went on after its PR was rebase-merged shows the PR, with
+// the commits after it; a new branch of the same name from main does not.
+func TestCommitsAfterRebaseMerge(t *testing.T) {
+	dir, git := testRepo(t)
+	git("switch", "-q", "-c", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "work")
+	head := git("rev-parse", "HEAD")
+	// GitHub's rebase merge: the same change, as a new commit on main.
+	git("switch", "-q", "main")
+	git("commit", "-q", "--allow-empty", "-m", "work (rebased)")
+	git("update-ref", "refs/remotes/origin/main", "main")
+
+	git("switch", "-q", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "more work")
+	if n := commitsAfter(dir, head, "main"); n != 1 {
+		t.Fatalf("commits after the rebase-merged PR: %d, want 1", n)
+	}
+	fakeGh(t, "MERGED", head, "main")
+	st, ok := BranchStatus(dir)
+	if !ok || st.State != "MERGED" || st.Number != 16 || st.After != 1 {
+		t.Fatalf("branch status: %+v %v", st, ok)
+	}
+	if n := commitsAfter(dir, head, "trunk"); n != 0 {
+		t.Fatalf("with a base git does not know, %d commits after", n)
+	}
+	if n := commitsAfter(dir, strings.Repeat("1", 40), "main"); n != 0 {
+		t.Fatalf("with a head git does not have, %d commits after", n)
+	}
+
+	git("switch", "-q", "main")
+	git("branch", "-q", "-D", "brew")
+	git("switch", "-q", "-c", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "new work")
+	if n := commitsAfter(dir, head, "main"); n != 0 {
+		t.Fatalf("a new branch from main has %d commits after the old PR", n)
+	}
+	if st, ok := BranchStatus(dir); ok {
+		t.Fatalf("a new branch from main took the old branch's PR: %+v", st)
+	}
+}
+
+// With a merge commit the PR's head is in main, and in every branch made
+// from it since: a new branch of the same name must not show the PR. One
+// that went on from the head itself does.
+func TestCommitsAfterMergeCommit(t *testing.T) {
+	dir, git := testRepo(t)
+	git("switch", "-q", "-c", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "work")
+	head := git("rev-parse", "HEAD")
+	git("switch", "-q", "main")
+	git("merge", "-q", "--no-ff", "-m", "merge", "brew")
+	git("update-ref", "refs/remotes/origin/main", "main")
+	fakeGh(t, "MERGED", head, "main")
+
+	git("switch", "-q", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "more work")
+	git("commit", "-q", "--allow-empty", "-m", "and more")
+	if n := commitsAfter(dir, head, "main"); n != 2 {
+		t.Fatalf("commits after the merged PR: %d, want 2", n)
+	}
+	if st, ok := BranchStatus(dir); !ok || st.After != 2 {
+		t.Fatalf("branch status: %+v %v", st, ok)
+	}
+
+	// Main moves on and is merged into the branch: the branch still went
+	// on from the PR, with the merge of main as one commit more.
+	git("switch", "-q", "main")
+	git("commit", "-q", "--allow-empty", "-m", "on main")
+	git("update-ref", "refs/remotes/origin/main", "main")
+	git("switch", "-q", "brew")
+	git("merge", "-q", "--no-ff", "-m", "merge main", "main")
+	if n := commitsAfter(dir, head, "main"); n != 3 {
+		t.Fatalf("commits after the merged PR with main merged in: %d, want 3", n)
+	}
+
+	git("switch", "-q", "main")
+	git("branch", "-q", "-D", "brew")
+	git("switch", "-q", "-c", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "new work")
+	if n := commitsAfter(dir, head, "main"); n != 0 {
+		t.Fatalf("a new branch from main has %d commits after the old PR", n)
+	}
+	if st, ok := BranchStatus(dir); ok {
+		t.Fatalf("a new branch from main took the old branch's PR: %+v", st)
+	}
+	// Only the local main has the merge: still not the branch's.
+	git("update-ref", "-d", "refs/remotes/origin/main")
+	if n := commitsAfter(dir, head, "main"); n != 0 {
+		t.Fatalf("with only the local main, %d commits after the old PR", n)
+	}
+}
+
+// An open PR, or a merged one the branch is still at, is the branch's
+// with nothing after it.
+func TestBranchStatusNothingAfter(t *testing.T) {
+	dir, git := testRepo(t)
+	git("switch", "-q", "-c", "brew")
+	git("commit", "-q", "--allow-empty", "-m", "work")
+	head := git("rev-parse", "HEAD")
+	git("update-ref", "refs/remotes/origin/main", "main")
+	for _, state := range []string{"OPEN", "MERGED"} {
+		fakeGh(t, state, head, "main")
+		if st, ok := BranchStatus(dir); !ok || st.State != state || st.After != 0 {
+			t.Fatalf("%s: %+v %v", state, st, ok)
+		}
 	}
 }
 

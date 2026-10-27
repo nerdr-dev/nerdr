@@ -72,6 +72,18 @@ func TestMergedNeedsEveryWorktree(t *testing.T) {
 	if !in.merged() {
 		t.Fatal("not merged")
 	}
+	// Commits after the merged PR are in no PR: the tab is not done.
+	in.wts[1].pr.After = 1
+	if in.merged() {
+		t.Fatal("merged with commits after the PR")
+	}
+	if got := prLabel(in); got != "#0 merged" {
+		t.Fatalf("label %q", got)
+	}
+	in.wts[0].pr.After = 2
+	if got := prLabel(in); got != "#0 merged · 2 commits after" {
+		t.Fatalf("label %q", got)
+	}
 	if (tabInfo{}).merged() {
 		t.Fatal("no worktrees counts as merged")
 	}

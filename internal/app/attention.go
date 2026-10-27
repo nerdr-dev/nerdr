@@ -159,7 +159,7 @@ func prLabel(in tabInfo) string {
 	if in.merged() {
 		return "#" + strconv.Itoa(prs[0].Number) + " merged"
 	}
-	return "#" + strconv.Itoa(prs[0].Number) + " " + strings.ToLower(prs[0].State)
+	return "#" + strconv.Itoa(prs[0].Number) + " " + prState(prs[0])
 }
 
 // summary is what happened in a tab while you were elsewhere.

@@ -29,6 +29,7 @@ type PR struct {
 	Author         string
 	Branch         string
 	Head           string // the branch's head commit
+	Base           string // the branch it is to be merged into
 	UpdatedAt      time.Time
 	Mergeable      string // MERGEABLE, CONFLICTING, UNKNOWN
 	ReviewDecision string // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
@@ -92,6 +93,10 @@ func CurrentPR(worktreePath string) (pr PR, ok bool, msg string) {
 		return PR{}, false, err.Error()
 	}
 	if !ownPR(worktreePath, pr.State, pr.Head) {
+		if n := commitsAfter(worktreePath, pr.Head, pr.Base); n > 0 {
+			return PR{}, false, "no open pull request for this branch; #" + strconv.Itoa(pr.Number) + " is " +
+				strings.ToLower(pr.State) + ", and the branch has " + commits(n) + " after it"
+		}
 		return PR{}, false, "no pull request for this branch; #" + strconv.Itoa(pr.Number) +
 			" is from an earlier branch of the same name"
 	}
@@ -165,7 +170,7 @@ func lineComments(dir, url string) []Comment {
 }
 
 const (
-	prViewFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid," +
+	prViewFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid,baseRefName," +
 		"isCrossRepository,headRepositoryOwner,mergeable,reviewDecision,latestReviews,reviews,statusCheckRollup,comments"
 
 	// Comments come with the list so a row can say whether a PR has any
@@ -175,13 +180,13 @@ const (
 	// Each reviewer's latest review and the branch's head commit come too:
 	// nerdr watches the list for checks that come to fail and reviews that
 	// come in (see the app's prwatch.go).
-	prListFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid," +
+	prListFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid,baseRefName," +
 		"isCrossRepository,headRepositoryOwner,reviewDecision,latestReviews,statusCheckRollup,comments"
 
 	// prAllFields is what the list of everyone's pull requests asks for:
 	// that of yours without the comments, which would be heavy for a
 	// repository's every open one.
-	prAllFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid," +
+	prAllFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid,baseRefName," +
 		"isCrossRepository,headRepositoryOwner,reviewDecision,latestReviews,statusCheckRollup"
 )
 
@@ -394,6 +399,7 @@ type rawPR struct {
 	UpdatedAt         time.Time    `json:"updatedAt"`
 	HeadRefName       string       `json:"headRefName"`
 	HeadRefOid        string       `json:"headRefOid"`
+	BaseRefName       string       `json:"baseRefName"`
 	IsCrossRepository bool         `json:"isCrossRepository"`
 	HeadOwner         rawAuthor    `json:"headRepositoryOwner"`
 	Mergeable         string       `json:"mergeable"`
@@ -414,6 +420,7 @@ func (r rawPR) toPR() PR {
 		Author:         r.Author.Login,
 		Branch:         r.HeadRefName,
 		Head:           r.HeadRefOid,
+		Base:           r.BaseRefName,
 		UpdatedAt:      r.UpdatedAt,
 		Fork:           forkOwner(r.IsCrossRepository, r.HeadOwner.Login),
 		Mergeable:      r.Mergeable,
