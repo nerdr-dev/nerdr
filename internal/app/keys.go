@@ -612,6 +612,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.nextWaiting()
 	case "a n":
 		return m.openNote(m.cur())
+	case "a h":
+		return m.openSent()
 	case "h":
 		return m.openSummary()
 	case "?", ":":

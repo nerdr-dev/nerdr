@@ -63,6 +63,48 @@ func LatestOfIn(k Kind, sessionID, dir string) Latest {
 	return Latest{}
 }
 
+// Prompt is one thing the user asked in a conversation, and when.
+type Prompt struct {
+	Text string
+	At   time.Time
+}
+
+// PromptsOf is what the user asked in conversation sessionID, the oldest
+// first, at most the last n; Claude's logs only, as FirstPrompt. It reads
+// the whole log, so it is for when the list is asked for.
+func PromptsOf(k Kind, sessionID string, n int) []Prompt {
+	for _, f := range claudeLogs(k, sessionID) {
+		if ps := claudePrompts(f, n); len(ps) > 0 {
+			return ps
+		}
+	}
+	return nil
+}
+
+// claudePrompts reads the last n prompts the user typed from a Claude
+// conversation log.
+func claudePrompts(path string, n int) []Prompt {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+	var out []Prompt
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadBytes('\n')
+		if p := claudePrompt(line); p != "" {
+			out = append(out, Prompt{Text: p, At: logTime(line)})
+			if len(out) > 2*n {
+				out = append(out[:0], out[len(out)-n:]...)
+			}
+		}
+		if err != nil {
+			return out[max(len(out)-n, 0):]
+		}
+	}
+}
+
 // claudeLogs are the files Claude's conversation sessionID may be logged
 // in; none for the other kinds.
 func claudeLogs(k Kind, sessionID string) []string {

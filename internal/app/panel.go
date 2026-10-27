@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -22,7 +24,8 @@ import (
 //	recap: Claude's recap of where the work stands, when it has written
 //	      one since you last sent it something; else
 //	last: the last thing you sent the agent (or else its first task), up
-//	      to lastMaxLines rows
+//	      to lastMaxLines rows; after the one before it when it is only
+//	      an answer such as "yes"
 //	note: your note for the tab, one row
 //	swap: that a switch of agent waits for the old one's handoff
 //	rev:  the code review going on, or how the last one ended
@@ -59,9 +62,62 @@ type panelRow struct {
 // goalWrap is the last message wrapped for one width, kept since the panel
 // is measured on every resize and mouse motion, and wrapping is not free.
 type goalWrap struct {
-	w    int
-	goal string
-	rows []string
+	w           int
+	goal, reply string
+	rows        []string
+}
+
+// briefWords and briefRunes are the most a prompt has of each to be a
+// brief one: an answer such as "yes" or "ok, do it", not a request.
+const (
+	briefWords = 3
+	briefRunes = 24
+)
+
+func brief(s string) bool {
+	return len(strings.Fields(s)) <= briefWords && utf8.RuneCountInString(s) <= briefRunes
+}
+
+// beforeBrief is, when t's last prompt is a brief one, the last before it
+// that was not, or else the task; "" when it is not brief or there is none.
+func (t *tab) beforeBrief() string {
+	last := strings.TrimSpace(t.Last)
+	if !brief(last) {
+		return ""
+	}
+	ps := t.Prompts
+	if n := len(ps); n > 0 && ps[n-1].Text == last {
+		ps = ps[:n-1]
+	}
+	for i := len(ps) - 1; i >= 0; i-- {
+		if p := strings.TrimSpace(ps[i].Text); !brief(p) {
+			return p
+		}
+	}
+	// The task is what the tab is for, however short.
+	if g := strings.TrimSpace(t.Goal); g != last {
+		return g
+	}
+	return ""
+}
+
+// replyArrow is put between a prompt and the brief one that answers it.
+const replyArrow = " → "
+
+// wrapWithReply is wrapRows of text with reply after it, the reply kept
+// whole at the end however much of text is cut. reply may be "".
+func wrapWithReply(text, reply string, w, n int) []string {
+	if reply == "" {
+		return wrapRows(text, w, n)
+	}
+	tail := replyArrow + ansi.Truncate(strings.Join(strings.Fields(reply), " "), w/2, "…")
+	if rows := wrapRows(text+tail, w, 1<<20); len(rows) <= n {
+		return rows
+	}
+	rows := wrapRows(text, w, n)
+	last := strings.TrimSuffix(rows[len(rows)-1], "…")
+	rows[len(rows)-1] = ansi.Truncate(last, w-ansi.StringWidth(tail)-1, "") + "…" + tail
+	return rows
 }
 
 // taskRows is the panel of tab t in a frame w×h inside.
@@ -71,16 +127,19 @@ func (m *Model) taskRows(t *tab, w, h int) []panelRow {
 		return nil
 	}
 	var rows []panelRow
-	label, g := "last:", strings.TrimSpace(t.Last)
+	label, g, reply := "last:", strings.TrimSpace(t.Last), ""
 	if g == "" {
 		g = strings.TrimSpace(t.Goal)
+	} else if p := t.beforeBrief(); p != "" {
+		// "yes" alone says nothing of the work: what it answers does.
+		g, reply = p, g
 	}
 	if r := strings.TrimSpace(t.Recap); r != "" {
-		label, g = "recap:", r
+		label, g, reply = "recap:", r, ""
 	}
 	if g != "" {
-		if c := t.goalWrap; c == nil || c.w != textW || c.goal != g {
-			t.goalWrap = &goalWrap{w: textW, goal: g, rows: wrapRows(g, textW, lastMaxLines)}
+		if c := t.goalWrap; c == nil || c.w != textW || c.goal != g || c.reply != reply {
+			t.goalWrap = &goalWrap{w: textW, goal: g, reply: reply, rows: wrapWithReply(g, reply, textW, lastMaxLines)}
 		}
 		for i, r := range t.goalWrap.rows {
 			rows = append(rows, panelRow{label: onOff(i == 0, label, ""), text: r})
@@ -158,7 +217,11 @@ func (m *Model) taskLines(t *tab, w, h int) []string {
 		if r.dim {
 			text = panelDimStyle
 		}
-		out[i] = panelStyle.Render(" ") + panelLabelStyle.Render(padTo(r.label, panelLabelW)) +
+		label := panelLabelStyle.Render(padTo(r.label, panelLabelW))
+		if r.label == "last:" {
+			label = m.onClick(label, func(m *Model) tea.Cmd { return m.openSentOf(t) })
+		}
+		out[i] = panelStyle.Render(" ") + label +
 			panelStyle.Render(" ") + text.Render(padTo(r.text, w-2-panelLabelW))
 	}
 	return out
@@ -230,25 +293,55 @@ func (m *Model) setLast(t *tab, msg string) {
 	if !m.live(t) || strings.TrimSpace(msg) == "" {
 		return
 	}
-	changed := t.Recap != ""
 	t.Recap = ""
 	t.lastAt = time.Now()
-	if m.noteLast(t, msg) || changed {
-		m.saveSession()
-		m.resizePanes() // the panel may have changed height
+	if msg = strings.TrimSpace(clean.Text(msg)); msg != "" {
+		// Sent again, "go on" is in the list twice, though Last stays.
+		t.seedPrompts()
+		t.Last = msg
+		t.addPrompt(msg, t.lastAt)
+	}
+	m.saveSession()
+	m.resizePanes() // the panel may have changed height
+}
+
+// promptsKept is how many of the prompts sent a tab keeps.
+const promptsKept = 50
+
+// seedPrompts starts t's list with Last, for a tab from before nerdr kept
+// one: what a brief answer after it answers.
+func (t *tab) seedPrompts() {
+	if len(t.Prompts) == 0 && strings.TrimSpace(t.Last) != "" {
+		t.Prompts = []state.Prompt{{Text: t.Last}}
 	}
 }
 
-// noteLast keeps msg as the last thing sent to t's agent, and reports
-// whether it was not already.
-func (m *Model) noteLast(t *tab, msg string) bool {
+// addPrompt puts msg, sent at, at the end of t's prompts.
+func (t *tab) addPrompt(msg string, at time.Time) {
+	t.Prompts = append(t.Prompts, state.Prompt{Text: msg, At: at})
+	if n := len(t.Prompts); n > promptsKept {
+		t.Prompts = slices.Clone(t.Prompts[n-promptsKept:])
+	}
+}
+
+// noteLast keeps msg, which the agent's log says was sent at at, as the
+// last thing sent to t's agent, and reports whether it was not already.
+// What nerdr took from the typing is a guess: the log's text takes its
+// place when it says the same prompt in other words.
+func (m *Model) noteLast(t *tab, msg string, at time.Time) bool {
 	// Read from the agent's log too, which the agent can write: see
 	// package clean.
 	msg = strings.TrimSpace(clean.Text(msg))
 	if msg == "" || msg == t.Last {
 		return false
 	}
+	t.seedPrompts()
 	t.Last = msg
+	if n := len(t.Prompts); n > 0 && !t.lastAt.IsZero() && t.Prompts[n-1].At.Equal(t.lastAt) && at.Before(t.lastAt.Add(lastSkew)) {
+		t.Prompts[n-1].Text = msg
+	} else {
+		t.addPrompt(msg, at)
+	}
 	return true
 }
 
@@ -269,7 +362,7 @@ func (m *Model) setLatest(t *tab, l agents.Latest) {
 	// the last, whatever the log says.
 	changed := false
 	if l.PromptAt.After(t.lastAt.Add(-lastSkew)) {
-		changed = m.noteLast(t, l.Prompt)
+		changed = m.noteLast(t, l.Prompt, l.PromptAt)
 	}
 	r := strings.TrimSpace(clean.Text(l.Recap))
 	switch {

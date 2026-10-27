@@ -57,6 +57,10 @@ type Tab struct {
 	Goal string `json:"goal,omitempty"`
 	Last string `json:"last,omitempty"`
 	Note string `json:"note,omitempty"`
+	// Prompts are the latest things the user sent the agent, the oldest
+	// first, Last among them: for the panel, when Last is only "yes", and
+	// the list of them (a h).
+	Prompts []Prompt `json:"prompts,omitempty"`
 	// Recap is Claude's last summary of where the tab's work stands, from
 	// its conversation log, and RecapAt when it wrote it; shown above the
 	// agent in Last's place while nothing has been sent since.
@@ -95,6 +99,12 @@ type Tab struct {
 	// Sandboxed is set once any agent in the tab's worktree has run in a
 	// sandbox, so git commit and push know not to run hooks on its files.
 	Sandboxed bool `json:"sandboxed,omitempty"`
+}
+
+// Prompt is one thing the user sent a tab's agent, and when.
+type Prompt struct {
+	Text string    `json:"text"`
+	At   time.Time `json:"at"`
 }
 
 // Message is one message for a tab's agent.
