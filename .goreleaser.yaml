@@ -48,8 +48,8 @@ homebrew_casks:
     # No tap token (an empty secret, as on a fork): release, but leave the
     # tap alone.
     skip_upload: '{{ if index .Env "HOMEBREW_TAP_TOKEN" }}false{{ else }}true{{ end }}'
-    dependencies:
-      - formula: git
+    # No git dependency: Homebrew itself needs git (on macOS through the
+    # Command Line Tools), and one would shadow the git already there.
     # The binary is not signed; without this Gatekeeper refuses to start it.
     hooks:
       post:
