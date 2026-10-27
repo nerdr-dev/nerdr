@@ -50,7 +50,7 @@ func Pick(w Worktree, commits []string) (int, error) {
 	if len(ordered) == 0 {
 		return 0, nil
 	}
-	if _, err := gitHooks(w.Path, append([]string{"cherry-pick"}, ordered...)...); err != nil {
+	if _, err := git(w.Path, append([]string{"cherry-pick"}, ordered...)...); err != nil {
 		_, _ = git(w.Path, "cherry-pick", "--abort")
 		return 0, fmt.Errorf("%s: %w", filepath.Base(w.Repo), err)
 	}

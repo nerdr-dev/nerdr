@@ -32,7 +32,7 @@ func TestSkillUsesInClaudesLog(t *testing.T) {
 	cfg, dir := t.TempDir(), t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	writeFile(t, filepath.Join(cfg, "skills", "nerdr-explain", "SKILL.md"), "---\nname: nerdr-explain\n---\n")
-	log := `{"type":"user","message":{"role":"user","content":"<command-name>/model</command-name>"}}
+	log := `{"type":"user","cwd":"` + dir + `","message":{"role":"user","content":"<command-name>/model</command-name>"}}
 {"type":"user","message":{"role":"user","content":"<command-name>/nerdr-explain</command-name>"}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"nerdr-request-review"}}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"nerdr-request-review"}}]}}

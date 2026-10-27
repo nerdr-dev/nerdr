@@ -42,7 +42,7 @@ func TestClaudeTranscript(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", dir)
 	writeFile(t, filepath.Join(dir, "projects", "-w-x", "s1.jsonl"), strings.Join([]string{
-		`{"type":"user","message":{"role":"user","content":"fix the parser"}}`,
+		`{"type":"user","cwd":"/w/x","message":{"role":"user","content":"fix the parser"}}`,
 		`{"type":"user","isMeta":true,"message":{"role":"user","content":"META"}}`,
 		`{"type":"assistant","message":{"content":[{"type":"thinking","thinking":"THINKING"},{"type":"text","text":"Looking."},{"type":"tool_use","name":"Bash","input":{"command":"go test ./..."}}]}}`,
 		`{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"TOOL OUTPUT"}]}}`,
@@ -60,6 +60,24 @@ func TestClaudeTranscript(t *testing.T) {
 
 	if _, err := Transcript(nil, Claude, "", "/w/x"); err == nil {
 		t.Fatal("no id, no claude conversation to read")
+	}
+
+	// Colliding claudeProject names (/a/b vs /a-b -> -a-b) with wrong or
+	// missing cwd in the log must not match /a/b.
+	writeFile(t, filepath.Join(dir, "projects", "-a-b", "collide.jsonl"),
+		`{"type":"user","cwd":"/a-b","message":{"role":"user","content":"wrong repo"}}`)
+	writeFile(t, filepath.Join(dir, "projects", "-a-b", "nocwd.jsonl"),
+		`{"type":"user","message":{"role":"user","content":"no cwd"}}`)
+	for _, id := range []string{"collide", "nocwd"} {
+		if got := FirstPromptIn(Claude, id, "/a/b"); got != "" {
+			t.Fatalf("colliding project (%s) matched /a/b: %q", id, got)
+		}
+		if _, err := Transcript(nil, Claude, id, "/a/b"); err == nil {
+			t.Fatalf("Transcript accepted colliding project (%s) for /a/b", id)
+		}
+	}
+	if got := FirstPromptIn(Claude, "collide", "/a-b"); got != "wrong repo" {
+		t.Fatalf("matching cwd /a-b should succeed: %q", got)
 	}
 }
 
@@ -90,8 +108,21 @@ func TestCodexTranscript(t *testing.T) {
 	}
 	wantInOrder(t, got, []string{"## user\n\nreview it", "→ exec: rg foo", `→ wait: {"cell":1}`, "## codex\n\nFound two bugs."},
 		[]string{"OLD", "DEVELOPER", "ENV", "TOOL OUTPUT"})
-	if got, err := Transcript(nil, Codex, "old", "/anywhere"); err != nil || !strings.Contains(got, "OLD") {
+	if got, err := Transcript(nil, Codex, "old", wt); err != nil || !strings.Contains(got, "OLD") {
 		t.Fatalf("by id: %v\n%s", err, got)
+	}
+	if _, err := Transcript(nil, Codex, "old", "/anywhere"); err == nil {
+		t.Fatal("read a codex conversation from another worktree")
+	}
+	writeFile(t, filepath.Join(day, "rollout-2026-10-02T13-00-00-nocwd.jsonl"),
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"NO CWD"}]}}`)
+	if _, err := Transcript(nil, Codex, "nocwd", wt); err == nil {
+		t.Fatal("accepted a codex rollout with missing cwd when dir is set")
+	}
+	for _, bad := range []string{"*", "../old", "--help"} {
+		if ValidSessionID(bad) {
+			t.Fatalf("ValidSessionID(%q) = true", bad)
+		}
 	}
 }
 
@@ -114,12 +145,40 @@ func TestOpenCodeExport(t *testing.T) {
 				[]string{"REASONING", "TOOL OUTPUT"})
 		})
 	}
+
+	// openCodeTurns verifies directory ownership from the exported info
+	// (even when the session is older than the 50 returned by session list)
+	// and rejects sessions from other directories.
+	wt := t.TempDir()
+	bin := filepath.Join(t.TempDir(), "opencode")
+	script := "#!/bin/sh\n" +
+		"if [ \"$1\" = \"session\" ] && [ \"$2\" = \"list\" ]; then echo '[]'; exit 0; fi\n" +
+		"if [ \"$1\" = \"session\" ] && [ \"$2\" = \"export\" ]; then\n" +
+		"  case \"$3\" in\n" +
+		"    old51) echo '{\"info\":{\"directory\":\"" + wt + "\"},\"messages\":[{\"type\":\"user\",\"text\":\"from 51st\"}]}' ;;\n" +
+		"    other) echo '{\"info\":{\"directory\":\"/elsewhere\"},\"messages\":[{\"type\":\"user\",\"text\":\"secret\"}]}' ;;\n" +
+		"    nodir) echo '{\"info\":{},\"messages\":[{\"type\":\"user\",\"text\":\"no dir\"}]}' ;;\n" +
+		"  esac\n" +
+		"fi\n"
+	writeFile(t, bin, script)
+	_ = os.Chmod(bin, 0o755)
+	specs := map[Kind]Spec{OpenCode: {Command: []string{bin}}}
+	if got, err := Transcript(specs, OpenCode, "old51", wt); err != nil || !strings.Contains(got, "from 51st") {
+		t.Fatalf("older session in same dir should succeed via export info.directory: %v\n%s", err, got)
+	}
+	if _, err := Transcript(specs, OpenCode, "other", wt); err == nil {
+		t.Fatal("accepted opencode session from another directory")
+	}
+	if _, err := Transcript(specs, OpenCode, "nodir", wt); err == nil {
+		t.Fatal("accepted opencode session with unknown directory")
+	}
 }
 
 // Copilot's events log.
 func TestCopilotTranscript(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	writeFile(t, filepath.Join(home, ".copilot", "session-state", "c1", "workspace.yaml"), "cwd: /w\n")
 	writeFile(t, filepath.Join(home, ".copilot", "session-state", "c1", "events.jsonl"), strings.Join([]string{
 		`{"type":"session.start","data":{}}`,
 		`{"type":"user.message","data":{"content":"rename it"}}`,
@@ -131,6 +190,13 @@ func TestCopilotTranscript(t *testing.T) {
 		t.Fatal(err)
 	}
 	wantInOrder(t, got, []string{"## user\n\nrename it", "## copilot\n\nRenaming.", `→ bash: {"command":"git mv a b"}`}, []string{"TOOL OUTPUT"})
+	if _, err := Transcript(nil, Copilot, "c1", "/other"); err == nil {
+		t.Fatal("accepted copilot session from another worktree")
+	}
+	_ = os.Remove(filepath.Join(home, ".copilot", "session-state", "c1", "workspace.yaml"))
+	if _, err := Transcript(nil, Copilot, "c1", "/w"); err == nil {
+		t.Fatal("accepted copilot session with missing workspace.yaml when dir is set")
+	}
 }
 
 // A long conversation keeps its first question and its end.
@@ -196,5 +262,8 @@ func TestGeminiTranscript(t *testing.T) {
 	}
 	if l := Resume(nil, Gemini, "", dir, nil); l.SessionID != "a1b2c3d4-0000-4000-8000-000000000000" {
 		t.Errorf("resume the newest here: %+v", l)
+	}
+	if _, err := Transcript(nil, Gemini, "a1b2c3d4-0000-4000-8000-000000000000", "/other"); err == nil {
+		t.Fatal("accepted gemini session from unknown worktree")
 	}
 }

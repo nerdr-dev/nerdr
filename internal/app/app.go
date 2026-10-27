@@ -215,6 +215,9 @@ type Model struct {
 	// groupNames is the group name given to each folder of worktrees in
 	// several repositories, kept when its tab is closed; see addTab.
 	groupNames map[string]string
+	// sandboxedDirs are the worktree folders where a sandboxed agent has
+	// run, kept across tab close and reopen.
+	sandboxedDirs map[string]bool
 	// sideWidth is the columns the sidebar's edge was dragged to, its
 	// frames included; 0 for as wide as its names need.
 	sideWidth int
@@ -332,9 +335,22 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	m.loadPRWatch(sess.PRs)
 	m.loadIssueWatch(sess.Issues)
 	m.groupNames = sess.GroupNames
+	m.sandboxedDirs = sess.SandboxedDirs
 	m.sideWidth = sess.SideWidth
 	if m.groupNames == nil {
 		m.groupNames = map[string]string{}
+	}
+	if m.sandboxedDirs == nil {
+		m.sandboxedDirs = map[string]bool{}
+	} else {
+		for dir := range m.sandboxedDirs {
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				delete(m.sandboxedDirs, dir)
+			}
+		}
+	}
+	for _, t := range m.tabs {
+		m.markSandboxed(t)
 	}
 	return m
 }
@@ -688,7 +704,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		if msg.handoff != "" {
 			// First, ahead of what was waiting for the agent before.
-			msg.t.Messages = append([]state.Message{{Text: msg.handoff, Auto: true}}, msg.t.Messages...)
+			msg.t.Messages = append([]state.Message{{Text: msg.handoff, Auto: true, Sandboxed: msg.sandboxed}}, msg.t.Messages...)
 			m.saveSession()
 		}
 		return m.spawn(msg.t, msg.l, msg.resume)

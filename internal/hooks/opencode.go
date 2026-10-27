@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // nerdr's own plugin in opencode, as its hooks are in claude: read off the
@@ -60,17 +60,35 @@ const OpenCodePluginExclude = "/.opencode/plugins/nerdr.js"
 // wrote it. One already there is replaced only when it is nerdr's and
 // differs.
 func InstallOpenCodePlugin(file string) (bool, error) {
-	old, err := os.ReadFile(file)
+	return installOpenCodePlugin(file, !isHomeOpenCodePlugin(file))
+}
+
+// InstallOpenCodePluginProject puts the plugin in a worktree's
+// .opencode/plugins/nerdr.js, refusing symbolic links anywhere inside the
+// worktree.
+func InstallOpenCodePluginProject(wtDir string) (bool, error) {
+	return installOpenCodePlugin(OpenCodePluginProject(wtDir), true)
+}
+
+func isHomeOpenCodePlugin(file string) bool {
+	home, err := os.UserHomeDir()
+	return err == nil && home != "" && filepath.Clean(file) == filepath.Clean(OpenCodePluginHome(home))
+}
+
+func installOpenCodePlugin(file string, worktree bool) (bool, error) {
+	root, rel, err := safefile.OpenFileRoot(file, ".opencode", worktree)
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	old, err := safefile.ReadRegular(root, rel)
 	switch {
 	case err == nil && (bytes.Equal(old, OpenCodePlugin) || !bytes.Contains(old, []byte(OpenCodeMarker))):
 		return false, nil
 	case err != nil && !os.IsNotExist(err):
 		return false, err
 	}
-	if err := denied.Err(os.MkdirAll(filepath.Dir(file), 0o755)); err != nil {
-		return false, err
-	}
-	if err := denied.Err(os.WriteFile(file, OpenCodePlugin, 0o644)); err != nil {
+	if err := safefile.WriteRegular(root, rel, OpenCodePlugin, 0o644); err != nil {
 		return false, err
 	}
 	return true, nil

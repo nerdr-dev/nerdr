@@ -244,7 +244,7 @@ func (m *Model) switchAgent(t *tab, k agents.Kind, summary string) tea.Cmd {
 	// its directory's last session without reporting an id to nerdr.
 	t.Sessions[t.Agent] = t.SessionID
 	_, visited := t.Sessions[k]
-	from, fromID := t.Agent, t.SessionID
+	from, fromID, wasSandboxed := t.Agent, t.SessionID, t.sandboxed || m.sandboxedKind(t.Agent)
 	t.Agent, t.SessionID = k, t.Sessions[k]
 	// A model, and a resume command reported, are one kind's.
 	t.Model, t.ResumeArgv = "", nil
@@ -274,16 +274,16 @@ func (m *Model) switchAgent(t *tab, k agents.Kind, summary string) tea.Cmd {
 		if k == agents.Codex && (!visited || shared && id == "") {
 			// Its --last could be the other codex's: only one known by
 			// its id is carried on.
-			return launchMsg{t: t, kind: k, l: agents.NewSessionIn(specs, k, dir), handoff: handoff.Prompt(in)}
+			return launchMsg{t: t, kind: k, l: agents.NewSessionIn(specs, k, dir), handoff: handoff.Prompt(in), sandboxed: wasSandboxed}
 		}
 		l := agents.Resume(specs, k, id, dir, skip)
 		if l.New || l.SessionID == "" && k != agents.Codex {
 			// Nothing of k's to continue here; its own "continue the
 			// latest" could pick up another worktree's conversation, or
 			// a reviewer's in this one.
-			return launchMsg{t: t, kind: k, l: agents.NewSessionIn(specs, k, dir), handoff: handoff.Prompt(in)}
+			return launchMsg{t: t, kind: k, l: agents.NewSessionIn(specs, k, dir), handoff: handoff.Prompt(in), sandboxed: wasSandboxed}
 		}
 		in.Resumed = true
-		return launchMsg{t: t, kind: k, l: l, resume: true, handoff: handoff.Prompt(in)}
+		return launchMsg{t: t, kind: k, l: l, resume: true, handoff: handoff.Prompt(in), sandboxed: wasSandboxed}
 	}
 }

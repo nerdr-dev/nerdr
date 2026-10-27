@@ -312,26 +312,33 @@ func tildePath(p, home string) string {
 // folders, which each tab's start also sees to (see installProjectSkills).
 func (m *Model) applySkills() string {
 	home, _ := os.UserHomeDir()
-	dirs := map[string]bool{}
+	homeDirs := map[string]bool{}
 	for _, k := range agents.All {
 		for _, dir := range skills.Dirs(home, "", k)[1:] {
 			if dir != "" {
-				dirs[dir] = true
+				homeDirs[dir] = true
 			}
 		}
 	}
+	wtDirs := map[string]bool{}
 	for _, t := range m.tabs {
 		for _, k := range agents.All {
-			for _, dir := range skills.Dirs(home, t.Dir, k) {
-				dirs[dir] = true
-			}
+			wtDirs[skills.ProjectDir(t.Dir, k)] = true
 		}
 	}
-	for dir := range dirs {
+	for dir := range homeDirs {
 		if m.cfg.EnabledSkills == nil {
 			continue
 		}
 		if err := skills.RemoveDisabled(dir, m.cfg.SkillEnabled); err != nil {
+			return "skills: " + err.Error()
+		}
+	}
+	for dir := range wtDirs {
+		if m.cfg.EnabledSkills == nil {
+			continue
+		}
+		if err := skills.RemoveDisabledProject(dir, m.cfg.SkillEnabled); err != nil {
 			return "skills: " + err.Error()
 		}
 	}
@@ -411,19 +418,19 @@ func (m *Model) installProjectSkills(t *tab) {
 	if m.cfg.Install != config.InstallWorktree {
 		return
 	}
-	if _, err := skills.Sync(skills.ProjectDir(t.Dir, t.Agent), m.cfg.SkillEnabled); err != nil {
+	if _, err := skills.SyncProject(skills.ProjectDir(t.Dir, t.Agent), m.cfg.SkillEnabled); err != nil {
 		m.toast("skills: " + err.Error())
 		return
 	}
 	excludes := skills.ExcludePatterns()
 	if t.Agent == agents.OpenCode {
-		if _, err := hooks.InstallOpenCodePlugin(hooks.OpenCodePluginProject(t.Dir)); err != nil {
+		if _, err := hooks.InstallOpenCodePluginProject(t.Dir); err != nil {
 			m.toast("opencode plugin: " + err.Error())
 		}
 		excludes = append(excludes, hooks.OpenCodePluginExclude)
 	}
 	if t.Agent == agents.Copilot {
-		if _, err := hooks.InstallCopilotPlugin(hooks.CopilotPluginProject(t.Dir)); err != nil {
+		if _, err := hooks.InstallCopilotPluginProject(t.Dir); err != nil {
 			m.toast("copilot plugin: " + err.Error())
 		}
 		excludes = append(excludes, hooks.CopilotPluginExclude)
@@ -433,7 +440,7 @@ func (m *Model) installProjectSkills(t *tab) {
 		// one: that is not nerdr's to change.
 		file := hooks.AgyHooksProject(t.Dir)
 		if !tracked(t.Dir, file) {
-			if _, made, err := hooks.InstallAgyHooks(file); err != nil {
+			if _, made, err := hooks.InstallAgyHooksProject(t.Dir); err != nil {
 				m.toast("agy hooks: " + err.Error())
 			} else if made {
 				excludes = append(excludes, hooks.AgyHooksExclude)

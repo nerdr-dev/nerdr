@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"bufio"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -222,16 +223,17 @@ func claudeCwd(path string) string {
 		return ""
 	}
 	defer f.Close()
-	dec := json.NewDecoder(f)
-	for range 50 {
+	r := bufio.NewReader(f)
+	for range promptScanLines {
+		line, err := r.ReadBytes('\n')
 		var e struct {
 			Cwd string `json:"cwd"`
 		}
-		if dec.Decode(&e) != nil {
-			return ""
-		}
-		if e.Cwd != "" {
+		if json.Unmarshal(line, &e) == nil && e.Cwd != "" {
 			return e.Cwd
+		}
+		if err != nil {
+			return ""
 		}
 	}
 	return ""

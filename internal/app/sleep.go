@@ -139,8 +139,10 @@ func (m *Model) canCarryOn(a *tab) bool {
 		// nerdr resumes an agent it does not know only with the command
 		// its integration reported, or the config's resume_args: a
 		// conversation id alone it has no way to pass on.
-		if _, ok := agents.ResumeReported(m.specsFor(a), a.Agent, a.ResumeArgv); ok {
-			return true
+		if !a.sandboxed && !m.sandboxedKind(a.Agent) {
+			if _, ok := agents.ResumeReported(m.specsFor(a), a.Agent, a.ResumeArgv); ok {
+				return true
+			}
 		}
 		return len(m.cfg.Agents[a.Agent].ResumeArgs) > 0 && a.partOf == nil && !m.sharesKind(a)
 	}

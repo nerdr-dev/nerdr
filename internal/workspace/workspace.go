@@ -515,7 +515,7 @@ func fastForward(repo, b, remote string) string {
 	}
 	if wt := checkedOutAt(repo, b); wt != "" {
 		gitsafe.Trust(repo, wt)
-		if _, err := gitHooks(wt, "merge", "--ff-only", "--quiet", remote); err != nil {
+		if _, err := git(wt, "merge", "--ff-only", "--quiet", remote); err != nil {
 			return "could not bring " + b + " up to date in " + wt + ": " + err.Error()
 		}
 		return ""
@@ -621,7 +621,11 @@ func (it PlanItem) add(branch string) error {
 	default:
 		args = []string{"worktree", "add", "--no-track", "-b", branch, it.Path, it.Base}
 	}
-	if _, err := gitHooks(it.Repo.Path, args...); err != nil {
+	run := git
+	if it.Mode == "new" && !it.Stacked {
+		run = gitHooks
+	}
+	if _, err := run(it.Repo.Path, args...); err != nil {
 		if it.Replaces != "" {
 			it.undo(branch)
 		}
@@ -983,8 +987,9 @@ func git(dir string, args ...string) (string, error) {
 	return gitRun(gitDefaultTimeout, false, dir, args...)
 }
 
-// gitHooks is git for what the user asked nerdr to do — make a worktree,
-// push, cherry-pick — with the repository's hooks run; see gitsafe.Hooks.
+// gitHooks is git for what the user asked nerdr to do in an unsandboxed
+// tab (commit, push) or from the base branch (make a new worktree), with
+// the repository's hooks run; see gitsafe.Hooks.
 func gitHooks(dir string, args ...string) (string, error) {
 	return gitRun(gitDefaultTimeout, true, dir, args...)
 }
@@ -1022,11 +1027,19 @@ func gitTimeout(timeout time.Duration, dir string, args ...string) (string, erro
 // garble it and wait for an answer nobody can type. Without a terminal git
 // and ssh fail instead.
 func gitRun(timeout time.Duration, hooks bool, dir string, args ...string) (string, error) {
+	var env []string
+	if hooks {
+		env = gitsafe.Hooks(dir)
+	}
+	return gitRunEnv(timeout, env, dir, args...)
+}
+
+func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	cmd := gitsafe.CommandContext(ctx, dir, args...)
-	if hooks {
-		cmd.Env = gitsafe.Hooks(dir)
+	if env != nil {
+		cmd.Env = env
 	}
 	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
 	var stderr bytes.Buffer

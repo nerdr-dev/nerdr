@@ -88,8 +88,9 @@ Such an agent:
   approval instead of being typed in automatically. Results from work it
   spun off are reported only to that agent;
 - sees only its own tab in `nerdr tabs`;
-- can run the plugins you allowed, which nerdr runs outside its sandbox,
-  as you: that is what they are for (see [Plugins](../plugins/#safety)).
+- can run the plugins you allowed once you confirm each run, which nerdr
+  runs outside its sandbox, as you: that is what they are for (see
+  [Plugins](../plugins/#safety)).
 
 Reviews of a sandboxed agent's work also run only in sandboxed agents,
 including automatic reviews and `nerdr request-review`. If the configured
@@ -148,8 +149,8 @@ as in herdr's [guide for agent authors](https://herdr.dev/docs/add-herdr-support
 `pane report-agent … -- my-agent --resume ID`. nerdr then resumes it with
 that command's arguments, after the agent's own `command` and `args`, so a
 wrapper or sandbox stays in place. The reported command must be one of the
-words of `command`. Without such a report, nerdr resumes with
-`resume_args`. Switching away relies on a handoff written by the old agent. `detect` also works for built-in agents, including wrappers
+words of `command`, and is ignored when the agent is `sandboxed`. Without
+such a report, nerdr resumes with `resume_args`. Switching away relies on a handoff written by the old agent. `detect` also works for built-in agents, including wrappers
 that change their screen output.
 
 

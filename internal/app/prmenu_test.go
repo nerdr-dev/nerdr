@@ -30,7 +30,7 @@ func TestPullRequestNeedsCommits(t *testing.T) {
 	}
 	tb := &tab{Tab: state.Tab{Name: "feat"}}
 	wts := []workspace.Worktree{{Repo: dir, Path: dir, Branch: "feat"}}
-	msg := createPRs(tb, wts, nil)
+	msg := createPRs(tb, wts, nil, true)
 	if !strings.Contains(msg.err, "no commits ahead of main") ||
 		!strings.Contains(msg.err, "1 file changed but not committed") {
 		t.Fatalf("got %+v", msg)

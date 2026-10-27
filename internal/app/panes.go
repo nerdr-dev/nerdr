@@ -713,15 +713,15 @@ func (m *Model) openNewAgent() tea.Cmd {
 // newAgent starts kind k in a new conversation in t's worktree, in a pane
 // of its own, last.
 func (m *Model) newAgent(t *tab, k agents.Kind) tea.Cmd {
-	_, cmd := m.newAgentWith(t, k, "", "", false)
+	_, cmd := m.newAgentWith(t, k, "", "", false, false)
 	return cmd
 }
 
 // newAgentWith is newAgent, the agent started with model in place of the
 // config's, if any, and given task as its first message, if any; quiet
-// leaves the keyboard where it is. It returns the agent, nil when t is
-// gone.
-func (m *Model) newAgentWith(t *tab, k agents.Kind, model, task string, quiet bool) (*tab, tea.Cmd) {
+// leaves the keyboard where it is, and sandboxed marks task as from an
+// agent in a sandbox. It returns the agent, nil when t is gone.
+func (m *Model) newAgentWith(t *tab, k agents.Kind, model, task string, quiet, sandboxed bool) (*tab, tea.Cmd) {
 	if m.tabIndex(t) < 0 {
 		return nil, nil
 	}
@@ -730,7 +730,7 @@ func (m *Model) newAgentWith(t *tab, k agents.Kind, model, task string, quiet bo
 	p := &paneTab{kind: paneAgent, a: a}
 	cmd := m.addPane(t, p, quiet)
 	if task != "" {
-		m.addMessage(a, task, true) // before the start, which may take it
+		m.addMessageFrom(a, task, true, sandboxed) // before the start, which may take it
 	}
 	start := m.start(a, false)
 	if a.pane == nil && a.err != "" {
@@ -1302,7 +1302,7 @@ func (m *Model) onNewAgent(r hooks.Report) tea.Cmd {
 		"You have none of its conversation. When you are done, or need something from it, tell it with the nerdr-send skill: "+
 		"nerdr send %d \"…\". It waits for your answer.",
 		from.Num, from.Agent, num, r.Text, from.Num)
-	a, cmd := m.newAgentWith(o, k, r.Model, task, true)
+	a, cmd := m.newAgentWith(o, k, r.Model, task, true, m.confined(r, from))
 	if a == nil {
 		reply(hooks.Answer{Err: "the tab is gone"})
 		return nil

@@ -541,6 +541,14 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 	run.brief = brief
 	says := reviewSays(run.seats)
 	t.Reviewed = run.tree
+	sandboxed := false
+	for _, s := range run.seats {
+		if s.r.sandboxed {
+			sandboxed = true
+			break
+		}
+	}
+	auto := m.cfg.Review.SendFindings == config.FindingsAuto && (!sandboxed || t.sandboxed)
 	switch {
 	case len(stay) == 0:
 		// Approval ends the review, but does not discard its remarks.
@@ -549,11 +557,11 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 		var remarks state.Message
 		if len(changes) > 0 {
 			remarks = state.Message{Text: codereview.FixPrompt(changes, run.round, run.rounds),
-				Auto: m.cfg.Review.SendFindings == config.FindingsAuto}
+				Auto: auto, Sandboxed: sandboxed}
 			t.Messages = append([]state.Message{remarks}, t.Messages...)
 		}
 		m.endReview(t, brief, true)
-		if m.cfg.Review.SendFindings != config.FindingsAuto {
+		if !auto {
 			// Asked about the remarks; with none, told of the approval,
 			// which is otherwise only a line in the panel.
 			t.reviewDone = &reviewDone{brief: brief, msg: remarks, approved: true, says: says}
@@ -561,7 +569,7 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 	case run.round >= run.rounds:
 		// The user decides what is left: the findings wait in F3. Where
 		// they are is not in the brief, which outlives them there.
-		fix := state.Message{Text: codereview.FixPrompt(changes, run.round, run.rounds)}
+		fix := state.Message{Text: codereview.FixPrompt(changes, run.round, run.rounds), Sandboxed: sandboxed}
 		t.Messages = append(t.Messages, fix)
 		brief += " after " + plural(run.round, "round")
 		m.endReview(t, brief, true)
@@ -577,8 +585,7 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 			}
 		}
 		run.seats = stay
-		auto := m.cfg.Review.SendFindings == config.FindingsAuto
-		run.fixMsg = state.Message{Text: codereview.FixPrompt(changes, run.round, run.rounds), Auto: auto}
+		run.fixMsg = state.Message{Text: codereview.FixPrompt(changes, run.round, run.rounds), Auto: auto, Sandboxed: sandboxed}
 		// Ahead of what waited for the review: the fixes are for the
 		// work as it was reviewed.
 		t.Messages = append([]state.Message{run.fixMsg}, t.Messages...)
@@ -668,6 +675,7 @@ func (m *Model) sendFindings(t *tab, msg state.Message) {
 		return
 	}
 	t.Messages[i].Auto = true
+	t.Messages[i].Sandboxed = false
 	if run := t.review; run != nil && run.fixMsg == msg {
 		run.fixMsg = t.Messages[i] // still the findings the review waits on
 	}

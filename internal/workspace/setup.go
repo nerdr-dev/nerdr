@@ -428,10 +428,21 @@ func Changes(w Worktree) ([]string, error) {
 // Commit commits all the worktree's changes, new files too, with message,
 // the repository's hooks run.
 func Commit(w Worktree, message string) error {
-	if _, err := gitRun(gitDefaultTimeout, true, w.Path, "add", "-A"); err != nil {
+	return CommitIn(w, message, true)
+}
+
+// CommitIn is Commit, with worktree-local core.hooksPath (such as .husky/_)
+// skipped when allHooks is false (a tab where a sandboxed agent ran), while
+// .git/hooks and global hooks outside the worktree still run.
+func CommitIn(w Worktree, message string, allHooks bool) error {
+	if _, err := gitRun(gitDefaultTimeout, false, w.Path, "add", "-A"); err != nil {
 		return err
 	}
-	_, err := gitRun(gitDefaultTimeout, true, w.Path, "commit", "--quiet", "-m", message)
+	env := gitsafe.Hooks
+	if !allHooks {
+		env = gitsafe.SandboxedHooks
+	}
+	_, err := gitRunEnv(gitDefaultTimeout, env(w.Path), w.Path, "commit", "--quiet", "-m", message)
 	return err
 }
 
@@ -440,13 +451,23 @@ func Commit(w Worktree, message string) error {
 // its branch is in the fork, and a push to origin would make a branch
 // there that is not the pull request's.
 func Push(w Worktree) error {
+	return PushIn(w, true)
+}
+
+// PushIn is Push, with worktree-local core.hooksPath skipped when allHooks
+// is false.
+func PushIn(w Worktree, allHooks bool) error {
 	if err := CheckOrigin(w); err != nil {
 		return err
 	}
 	if n := ForkPRNumber(w.Path, w.Branch); n > 0 {
 		return fmt.Errorf("%s is pull request #%d from a fork: nerdr does not push it to origin; push to the fork yourself if you may", w.Branch, n)
 	}
-	_, err := gitRun(fetchTimeout, true, w.Path, "push", "--quiet", "-u", "origin", "HEAD")
+	env := gitsafe.Hooks
+	if !allHooks {
+		env = gitsafe.SandboxedHooks
+	}
+	_, err := gitRunEnv(fetchTimeout, env(w.Path), w.Path, "push", "--quiet", "-u", "origin", "HEAD")
 	return err
 }
 

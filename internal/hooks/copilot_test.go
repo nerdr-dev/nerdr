@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -188,5 +189,143 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 	_ = os.WriteFile(hooksFile, []byte("{}"), 0o644)
 	if wrote, _ := InstallCopilotPlugin(dir); wrote {
 		t.Fatal("the user's own copy was replaced")
+	}
+
+	// A symbolic link, hard link or FIFO in the worktree must not have
+	// nerdr overwrite a host file or block.
+	wt := t.TempDir()
+	proj := CopilotPluginProject(wt)
+	if _, err := InstallCopilotPlugin(proj); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(t.TempDir(), "victim")
+	_ = os.WriteFile(victim, []byte("keep"), 0o644)
+	_ = os.Remove(filepath.Join(proj, "hooks", "hooks.json"))
+	if err := os.Symlink(victim, filepath.Join(proj, "hooks", "hooks.json")); err == nil {
+		if _, err := InstallCopilotPlugin(proj); err == nil {
+			t.Fatal("InstallCopilotPlugin wrote through a symbolic link")
+		}
+		if got, _ := os.ReadFile(victim); string(got) != "keep" {
+			t.Fatalf("victim overwritten: %q", got)
+		}
+	}
+
+	// Replacing a parent folder (.copilot, .opencode, .agents) with a
+	// symbolic link in a worktree is rejected too.
+	for _, tc := range []struct {
+		dot string
+		run func(string) error
+	}{
+		{".copilot", func(d string) error { _, err := InstallCopilotPlugin(CopilotPluginProject(d)); return err }},
+		{".opencode", func(d string) error { _, err := InstallOpenCodePlugin(OpenCodePluginProject(d)); return err }},
+		{".agents", func(d string) error { _, _, err := InstallAgyHooks(AgyHooksProject(d)); return err }},
+	} {
+		w := t.TempDir()
+		out := t.TempDir()
+		if err := os.Symlink(out, filepath.Join(w, tc.dot)); err == nil {
+			if err := tc.run(w); err == nil {
+				t.Fatalf("%s parent symlink in worktree was followed", tc.dot)
+			}
+		}
+	}
+
+	// A hardlinked file in the worktree is replaced by a new inode, leaving
+	// the hardlink target untouched.
+	wtHard := t.TempDir()
+	ocPath := OpenCodePluginProject(wtHard)
+	if _, err := InstallOpenCodePlugin(ocPath); err != nil {
+		t.Fatal(err)
+	}
+	hardTarget := filepath.Join(wtHard, "target.js")
+	if err := os.WriteFile(hardTarget, []byte(OpenCodeMarker+"\nold\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.Remove(ocPath)
+	if err := os.Link(hardTarget, ocPath); err == nil {
+		if _, err := InstallOpenCodePlugin(ocPath); err != nil {
+			t.Fatalf("InstallOpenCodePlugin over hardlink: %v", err)
+		}
+		if got, _ := os.ReadFile(hardTarget); string(got) != OpenCodeMarker+"\nold\n" {
+			t.Fatalf("hardlink target was modified in place: %q", got)
+		}
+	}
+
+	// A FIFO (named pipe) in the worktree is rejected without blocking.
+	wtFifo := t.TempDir()
+	ocFifo := OpenCodePluginProject(wtFifo)
+	_ = os.MkdirAll(filepath.Dir(ocFifo), 0o755)
+	if err := syscall.Mkfifo(ocFifo, 0o600); err == nil {
+		if _, err := InstallOpenCodePlugin(ocFifo); err == nil {
+			t.Fatal("InstallOpenCodePlugin accepted a FIFO")
+		}
+	}
+
+	// In the user's home folder, dotfile symlinks (stow/chezmoi) on parent
+	// folders are followed.
+	dotHome := t.TempDir()
+	dotfiles := t.TempDir()
+	t.Setenv("HOME", dotHome)
+	_ = os.MkdirAll(filepath.Join(dotfiles, "copilot"), 0o755)
+	_ = os.MkdirAll(filepath.Join(dotfiles, "opencode"), 0o755)
+	_ = os.MkdirAll(filepath.Join(dotfiles, "gemini"), 0o755)
+	_ = os.MkdirAll(filepath.Join(dotHome, ".config"), 0o755)
+	if err := os.Symlink(filepath.Join(dotfiles, "copilot"), filepath.Join(dotHome, ".copilot")); err == nil {
+		if _, err := InstallCopilotPlugin(CopilotPluginHome(dotHome)); err != nil {
+			t.Fatalf("home symlinked .copilot failed: %v", err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dotfiles, "opencode"), filepath.Join(dotHome, ".config", "opencode")); err == nil {
+		if _, err := InstallOpenCodePlugin(OpenCodePluginHome(dotHome)); err != nil {
+			t.Fatalf("home symlinked .config/opencode failed: %v", err)
+		}
+	}
+	if err := os.Symlink(filepath.Join(dotfiles, "gemini"), filepath.Join(dotHome, ".gemini")); err == nil {
+		if _, _, err := InstallAgyHooks(AgyHooksHome(dotHome)); err != nil {
+			t.Fatalf("home symlinked .gemini failed: %v", err)
+		}
+	}
+
+	// File symlink in the home folder (stow) and existing 0600 permissions
+	// are preserved.
+	dotHome2 := t.TempDir()
+	t.Setenv("HOME", dotHome2)
+	realHooks := filepath.Join(dotfiles, "my-hooks.json")
+	if err := os.WriteFile(realHooks, []byte("{}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.MkdirAll(filepath.Dir(AgyHooksHome(dotHome2)), 0o755)
+	if err := os.Symlink(realHooks, AgyHooksHome(dotHome2)); err == nil {
+		if _, _, err := InstallAgyHooks(AgyHooksHome(dotHome2)); err != nil {
+			t.Fatalf("home file symlink for AgyHooksHome failed: %v", err)
+		}
+		if st, err := os.Stat(realHooks); err != nil || st.Mode().Perm() != 0o600 {
+			t.Fatalf("mode of realHooks = %v, err = %v; want 0600", st.Mode().Perm(), err)
+		}
+	}
+
+	// A worktree located under ~/.local/share/worktrees, ~/.config, or
+	// $XDG_STATE_HOME must still be treated as an untrusted worktree and
+	// reject symlinks.
+	stateParent := filepath.Join(dotHome2, "state")
+	t.Setenv("XDG_STATE_HOME", stateParent)
+	for _, wtSub := range []string{
+		filepath.Join(dotHome2, ".local", "share", "worktrees", "w"),
+		filepath.Join(dotHome2, ".config", "nvim"),
+		filepath.Join(stateParent, "worktrees", "w"),
+	} {
+		ext := t.TempDir()
+		_ = os.MkdirAll(wtSub, 0o755)
+		_ = os.Symlink(ext, filepath.Join(wtSub, ".opencode"))
+		if _, err := InstallOpenCodePluginProject(wtSub); err == nil {
+			t.Fatalf("worktree at %s followed .opencode symlink", wtSub)
+		}
+		_ = os.Symlink(ext, filepath.Join(wtSub, ".copilot"))
+		if _, err := InstallCopilotPluginProject(wtSub); err == nil {
+			t.Fatalf("worktree at %s followed .copilot symlink", wtSub)
+		}
+		_ = os.Symlink(ext, filepath.Join(wtSub, ".agents"))
+		if _, _, err := InstallAgyHooksProject(wtSub); err == nil {
+			t.Fatalf("worktree at %s followed .agents symlink", wtSub)
+		}
 	}
 }

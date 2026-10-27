@@ -19,8 +19,9 @@
 // not exist, so git fails rather than falling back to the .git file.
 //
 // On top of that, core.fsmonitor is turned off for every call, and hooks
-// for every call but the few the user asks for (Hooks): making a worktree,
-// pushing, cherry-picking. core.askpass is pointed at /dev/null and
+// for every call but the few the user asks for (Hooks): making a worktree
+// on a new branch from the base, or committing and pushing in a tab that
+// has not run a sandboxed agent. core.askpass is pointed at /dev/null and
 // GIT_TERMINAL_PROMPT is off, so a repository's askpass program never runs
 // and git never waits on a password nobody can type: nerdr runs git off its
 // terminal, and a credential it lacks is reported (see denied), not asked
@@ -81,12 +82,91 @@ var untrustedDir = filepath.Join(os.DevNull, "nerdr-untrusted-worktree")
 // Env is the environment to run git, or gh, in dir with: hooks and
 // core.fsmonitor off, and git's directories pinned when dir is in a
 // trusted worktree or is a main checkout.
-func Env(dir string) []string { return env(dir, false) }
+func Env(dir string) []string { return env(dir, hookOff) }
 
 // Hooks is Env with the repository's hooks left on, for what the user
-// asked nerdr to do: make a worktree, push, cherry-pick. Hooks there do
-// what the user set them up for (Git LFS uploads its files before a push).
-func Hooks(dir string) []string { return env(dir, true) }
+// asked nerdr to do in an unsandboxed tab (commit, push) or from the base
+// branch (make a new worktree). Hooks there do what the user set them up
+// for (Git LFS uploads its files before a push).
+func Hooks(dir string) []string { return env(dir, hookAll) }
+
+// SandboxedHooks is Hooks for a worktree where a sandboxed agent has run:
+// .git/hooks (such as Git LFS) and global hooks outside the worktree still
+// run, while a core.hooksPath that points inside the agent-writable
+// worktree (such as .husky/_) is redirected to the repository's own
+// .git/hooks directory.
+func SandboxedHooks(dir string) []string { return env(dir, hookSandboxed) }
+
+type hookMode int
+
+const (
+	hookOff hookMode = iota
+	hookAll
+	hookSandboxed
+)
+
+// WorktreeHooks reports whether git's configured core.hooksPath for dir
+// points into the worktree itself (for example a relative path such as
+// .husky/_), rather than .git/hooks, a global folder outside the worktree,
+// or /dev/null.
+func WorktreeHooks(dir string) bool {
+	d, ok := dirs(dir)
+	if !ok || d.gitDir == untrustedDir {
+		return false
+	}
+	return worktreeHooks(dir, d)
+}
+
+func worktreeHooks(dir string, d gitDirs) bool {
+	cmd := proc.Detach(exec.Command("git", "-C", dir, "config", "--get", "core.hooksPath"))
+	cmd.Env = env(dir, hookAll)
+	out, err := cmd.Output()
+	if err != nil {
+		return false
+	}
+	hp := strings.TrimSpace(string(out))
+	if hp == "" || hp == os.DevNull {
+		return false
+	}
+	if strings.HasPrefix(hp, "~/") || hp == "~" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			hp = filepath.Join(home, strings.TrimPrefix(hp, "~"))
+		}
+	}
+	if !filepath.IsAbs(hp) {
+		return true
+	}
+	return (withinPath(clean(hp), clean(d.work)) && !withinPath(clean(hp), clean(d.common))) ||
+		(withinPath(realClean(hp), realClean(d.work)) && !withinPath(realClean(hp), realClean(d.common)))
+}
+
+func withinPath(path, root string) bool {
+	if path == "" || root == "" {
+		return false
+	}
+	rel, err := filepath.Rel(root, path)
+	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+func realClean(p string) string {
+	p = clean(p)
+	cur := p
+	var tail []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
+			for i := len(tail) - 1; i >= 0; i-- {
+				resolved = filepath.Join(resolved, tail[i])
+			}
+			return filepath.Clean(resolved)
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			return p
+		}
+		tail = append(tail, filepath.Base(cur))
+		cur = parent
+	}
+}
 
 // Command is `git -C dir args…` with Env.
 func Command(dir string, args ...string) *exec.Cmd {
@@ -102,15 +182,23 @@ func CommandContext(ctx context.Context, dir string, args ...string) *exec.Cmd {
 	return cmd
 }
 
-func env(dir string, hooks bool) []string {
+func env(dir string, mode hookMode) []string {
 	e := os.Environ()
+	d, ok := dirs(dir)
 	// core.askpass is a program git runs to ask for a credential. nerdr
 	// never wants one: it runs git off its terminal, and a credential it
 	// lacks is reported rather than prompted for. Pointing it at /dev/null
 	// makes git fail the ask rather than run whatever the repository named.
 	settings := [][2]string{{"core.fsmonitor", "false"}, {"core.askpass", os.DevNull}}
-	if !hooks {
+	switch mode {
+	case hookOff:
 		settings = append(settings, [2]string{"core.hooksPath", os.DevNull})
+	case hookSandboxed:
+		if !ok || d.gitDir == untrustedDir {
+			settings = append(settings, [2]string{"core.hooksPath", os.DevNull})
+		} else if worktreeHooks(dir, d) {
+			settings = append(settings, [2]string{"core.hooksPath", filepath.Join(d.common, "hooks")})
+		}
 	}
 	// GIT_CONFIG_COUNT rather than -c, so the settings reach the git that
 	// gh runs as well. Ones the user's environment already has are kept.
@@ -128,7 +216,7 @@ func env(dir string, hooks bool) []string {
 	// git is run in a session of its own with no terminal; a credential
 	// prompt would hang for ever. Never prompt: fail and be reported.
 	e = append(e, "GIT_TERMINAL_PROMPT=0")
-	if d, ok := dirs(dir); ok {
+	if ok {
 		e = append(e, "GIT_DIR="+d.gitDir, "GIT_COMMON_DIR="+d.common, "GIT_WORK_TREE="+d.work)
 	}
 	return e

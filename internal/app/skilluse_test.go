@@ -52,7 +52,7 @@ func TestUnchangedLogIsNotCountedAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	log := filepath.Join(logDir, "s1.jsonl")
-	use := `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"nerdr-request-review"}}]}}` + "\n"
+	use := `{"type":"assistant","cwd":` + `"` + tb.Dir + `"` + `,"message":{"content":[{"type":"tool_use","name":"Skill","input":{"skill":"nerdr-request-review"}}]}}` + "\n"
 	if err := os.WriteFile(log, []byte(use), 0o644); err != nil {
 		t.Fatal(err)
 	}

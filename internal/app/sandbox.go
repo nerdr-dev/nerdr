@@ -120,6 +120,60 @@ func (m *Model) spinoffKinds(pt spinoff.Part) []agents.Kind {
 	return slices.DeleteFunc(all, func(k agents.Kind) bool { return !m.sandboxedKind(k) })
 }
 
+// markSandboxed records on t's tab and in m.sandboxedDirs when any of its
+// agents or reviewers has run in a sandbox, or when the tab's worktree
+// previously ran one.
+func (m *Model) markSandboxed(t *tab) {
+	if t == nil {
+		return
+	}
+	o := t.owner()
+	if m.sandboxedDirs[o.Dir] {
+		o.Sandboxed = true
+	}
+	for _, w := range o.Worktrees {
+		if m.sandboxedDirs[w.Path] {
+			o.Sandboxed = true
+		}
+	}
+	for _, a := range o.agentsIn() {
+		if a.sandboxed || a.Sandboxed {
+			a.Sandboxed = true
+			o.Sandboxed = true
+		}
+	}
+	if o.Sandboxed {
+		if m.sandboxedDirs == nil {
+			m.sandboxedDirs = map[string]bool{}
+		}
+		if o.Dir != "" {
+			m.sandboxedDirs[o.Dir] = true
+		}
+		for _, w := range o.Worktrees {
+			if w.Path != "" {
+				m.sandboxedDirs[w.Path] = true
+			}
+		}
+	}
+}
+
+// hasSandboxed reports whether any agent of t's tab runs or ran in a sandbox.
+func (t *tab) hasSandboxed() bool {
+	if t == nil {
+		return false
+	}
+	o := t.owner()
+	if o.Sandboxed || o.sandboxed {
+		return true
+	}
+	for _, a := range o.agentsIn() {
+		if a.sandboxed || a.Sandboxed {
+			return true
+		}
+	}
+	return false
+}
+
 // holdSandboxed keeps the messages agents in a sandbox wrote for t from
 // being typed in by themselves, t having started outside one: they wait
 // in F3 for the user.
@@ -132,6 +186,7 @@ func (m *Model) holdSandboxed(t *tab) {
 		}
 	}
 	if held > 0 {
+		m.saveSession()
 		m.toast(fmt.Sprintf("%s: %d message(s) from an agent in a sandbox wait in F3, %s not being in one",
 			t.Name, held, t.Agent))
 	}

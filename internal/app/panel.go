@@ -213,11 +213,11 @@ func (m *Model) lookUpGoal(t *tab) tea.Cmd {
 		return nil
 	}
 	t.goalLooking = true
-	kind, id, first := t.Agent, t.SessionID, t.Goal == ""
+	kind, id, dir, first := t.Agent, t.SessionID, t.Dir, t.Goal == ""
 	return func() tea.Msg {
-		msg := goalMsg{t: t, latest: agents.LatestOf(kind, id)}
+		msg := goalMsg{t: t, latest: agents.LatestOfIn(kind, id, dir)}
 		if first {
-			msg.goal = agents.FirstPrompt(kind, id)
+			msg.goal = agents.FirstPromptIn(kind, id, dir)
 		}
 		return msg
 	}

@@ -101,7 +101,14 @@ func (m *Model) onQuery(r hooks.Report) tea.Cmd {
 		}
 		reply(jsonAnswer(tabs))
 	case hooks.QueryRoots:
-		reply(hooks.Answer{Text: strings.Join(m.searchRoots(), "\n")})
+		roots := m.searchRoots()
+		if confined {
+			roots = []string{o.Dir}
+			for _, w := range o.Worktrees {
+				roots = append(roots, w.Path)
+			}
+		}
+		reply(hooks.Answer{Text: strings.Join(roots, "\n")})
 	case hooks.QueryRead:
 		reply(m.readPane(o, from, r, confined))
 	case hooks.QueryReply:
@@ -486,6 +493,7 @@ type tabMadeMsg struct {
 	kind     agents.Kind
 	model    string
 	task     string
+	confined bool
 	plan     workspace.Plan
 	wts      []workspace.Worktree
 	warnings []string
@@ -523,7 +531,8 @@ func (m *Model) onNewTab(r hooks.Report) tea.Cmd {
 		reply(hooks.Answer{Err: fmt.Sprintf("there is no agent %q here; those there are: %s", k, m.kindList())})
 		return nil
 	}
-	if why := m.startRefusal(k); why != "" && m.confined(r, from) {
+	confined := m.confined(r, from)
+	if why := m.startRefusal(k); why != "" && confined {
 		reply(hooks.Answer{Err: why})
 		return nil
 	}
@@ -531,7 +540,7 @@ func (m *Model) onNewTab(r hooks.Report) tea.Cmd {
 		reply(hooks.Answer{Err: fmt.Sprintf("nerdr does not know how to give %s a model", k)})
 		return nil
 	}
-	repos, err := m.tabRepos(from.owner(), r.Repo)
+	repos, err := m.tabRepos(from.owner(), r.Repo, confined)
 	if err != nil {
 		reply(hooks.Answer{Err: err.Error()})
 		return nil
@@ -547,7 +556,7 @@ func (m *Model) onNewTab(r hooks.Report) tea.Cmd {
 	branch, model, wtRoot, allowed := r.Branch, r.Model, m.wtRoot, setupAllowedFile()
 	return m.askRepoSetup(paths, func(m *Model) tea.Cmd {
 		return func() tea.Msg {
-			res := tabMadeMsg{from: from, branch: branch, kind: k, model: model, task: task}
+			res := tabMadeMsg{from: from, branch: branch, kind: k, model: model, task: task, confined: confined}
 			plan, err := workspace.MakePlan(wtRoot, branch, repos)
 			if err == nil {
 				for _, it := range plan.Items {
@@ -577,7 +586,7 @@ func (m *Model) onNewTab(r hooks.Report) tea.Cmd {
 func (m *Model) tabMade(msg tabMadeMsg) tea.Cmd {
 	tell := func(text string) {
 		if m.live(msg.from) || m.live(msg.from.owner()) {
-			m.addMessage(msg.from, text, true)
+			m.addMessageFrom(msg.from, text, true, msg.confined)
 		}
 	}
 	if msg.err != nil {
@@ -585,11 +594,17 @@ func (m *Model) tabMade(msg tabMadeMsg) tea.Cmd {
 		tell("nerdr could not make the tab you asked for: " + msg.err.Error())
 		return nil
 	}
+	if msg.confined && !m.sandboxedKind(msg.kind) {
+		why := string(msg.kind) + " is no longer set sandboxed; the worktree is made at " + msg.plan.Dir + ", with no agent in it"
+		m.toast("tab " + msg.branch + ": " + why)
+		tell("nerdr could not start the tab you asked for: " + why)
+		return nil
+	}
 	group := ""
 	if m.live(msg.from.owner()) {
 		group = msg.from.owner().Group
 	}
-	t, cmd := m.addTabWith(msg.plan.Branch, msg.plan.Dir, group, msg.wts, msg.kind, msg.model, msg.task)
+	t, cmd := m.addTabWith(msg.plan.Branch, msg.plan.Dir, group, msg.wts, msg.kind, msg.model, msg.task, msg.confined)
 	m.resizePanes()
 	note := "made " + t.Name + " for " + m.agentName(msg.from)
 	if len(msg.warnings) > 0 {
@@ -602,9 +617,9 @@ func (m *Model) tabMade(msg tabMadeMsg) tea.Cmd {
 }
 
 // tabRepos are the repositories a tab an agent asks for is made in: the
-// asking tab's, or the one named, among those of t and those nerdr
-// finds.
-func (m *Model) tabRepos(t *tab, name string) ([]workspace.Repo, error) {
+// asking tab's, or the one named, among those of t and, outside a
+// sandbox, those nerdr finds.
+func (m *Model) tabRepos(t *tab, name string, confined bool) ([]workspace.Repo, error) {
 	var repos []workspace.Repo
 	for _, w := range t.Worktrees {
 		repos = append(repos, workspace.Repo{Name: filepath.Base(w.Repo), Path: w.Repo})
@@ -619,6 +634,13 @@ func (m *Model) tabRepos(t *tab, name string) ([]workspace.Repo, error) {
 		if r.Name == name {
 			return []workspace.Repo{r}, nil
 		}
+	}
+	if confined {
+		var names []string
+		for _, r := range repos {
+			names = append(names, r.Name)
+		}
+		return nil, fmt.Errorf("you run in a sandbox, and %q is not in this tab's repositories (%s)", name, strings.Join(names, ", "))
 	}
 	all, _ := workspace.ScanAll(m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs)
 	var names []string
