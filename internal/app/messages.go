@@ -30,6 +30,7 @@ func (m *Model) panelMessages() bool { return m.reviewOpen && m.review.Messages(
 // openMessages shows the messages in the review panel, with the keyboard.
 func (m *Model) openMessages() tea.Cmd {
 	m.reviewOpen = true
+	m.saved.on = false
 	cmd := m.reviewKey(tea.KeyMsg{Type: tea.KeyF3})
 	m.setFocus(focusReview)
 	return tea.Batch(cmd, m.resize())
@@ -63,6 +64,17 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 	case "esc", "q":
 		m.setFocus(focusAgent)
 		return m.resize()
+	case "right", "l":
+		m.showSaved(true)
+		return nil
+	case "left", "h":
+		m.showSaved(false)
+		return nil
+	}
+	if m.saved.on {
+		return m.savedKey(msg)
+	}
+	switch k {
 	case "n", "a":
 		return m.openMessage(false)
 	}
@@ -122,27 +134,36 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 // putIn types message i into t's agent, as a paste and without enter, and
 // gives the agent the keyboard: to change it, or send it as it is.
 func (m *Model) putIn(t *tab, i int) tea.Cmd {
-	if t.pane == nil || t.status == stExited {
-		m.toast(t.Name + ": the agent is not running")
+	if !m.typeIn(t, t.Messages[i].Text) {
 		return nil
 	}
-	if t.status == stBlocked {
-		// What is typed now answers its question.
-		m.toast(t.Name + ": the agent is asking something — answer it first")
-		return nil
-	}
-	t.noteSaid(t.Messages[i].Text)
-	b := paste(t.Messages[i].Text)
 	t.dropMessage(i)
 	m.saveSession()
-	t.pane.Input(b)
-	if t.typed != nil {
-		t.typed.feed(b) // for the panel, once it is sent
-	}
 	// The keyboard goes to the agent it was put in, whichever pane had it.
 	cmd := m.goToAgent(t)
 	m.toast("put in: enter sends it")
 	return tea.Batch(cmd, m.resize())
+}
+
+// typeIn types text into t's agent as a paste, without enter, unless it
+// is not running or is asking something, which it says.
+func (m *Model) typeIn(t *tab, text string) bool {
+	if t.pane == nil || t.status == stExited {
+		m.toast(t.Name + ": the agent is not running")
+		return false
+	}
+	if t.status == stBlocked {
+		// What is typed now answers its question.
+		m.toast(t.Name + ": the agent is asking something — answer it first")
+		return false
+	}
+	t.noteSaid(text)
+	b := paste(text)
+	t.pane.Input(b)
+	if t.typed != nil {
+		t.typed.feed(b) // for the panel, once it is sent
+	}
+	return true
 }
 
 // editMessage opens message i of t to be changed.
@@ -164,7 +185,7 @@ func (m *Model) editMessage(t *tab, i int) tea.Cmd {
 func (m *Model) messagesBody(t *tab, w, h int) []string {
 	textW := max(w-8, 10) // cursor, box and margins
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
-	var lines []string
+	lines := []string{m.f3Views(), ""}
 	if len(t.Messages) == 0 {
 		lines = append(lines, "", " "+dim("No tasks yet."), "",
 			" "+dim("Line up tasks for the agent while it works."),

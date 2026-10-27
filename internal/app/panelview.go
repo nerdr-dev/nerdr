@@ -90,6 +90,8 @@ func (m *Model) panelBody(w, h int) []string {
 	var title string
 	var body []string
 	switch {
+	case m.review.Messages() && m.saved.on:
+		title, body = "saved prompts", m.savedBody(iw, ih)
 	case m.review.Messages():
 		title, body = "tasks", []string{"", "  No tab open."}
 		if a := m.curAgent(); a != nil {

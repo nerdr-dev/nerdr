@@ -133,6 +133,8 @@ type Model struct {
 	// the last one written was. msgCursor is the message selected in F3.
 	autoMessage bool
 	msgCursor   int
+	// saved is F3's other view, the saved prompts; see prompts.go.
+	saved savedView
 	// skills is the F4 screen's; see skillspanel.go.
 	skills skillsView
 	// plugins is the F5 screen's state, and the plugins' screens started.
@@ -728,6 +730,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case sendEnterMsg:
 		m.sendEnter(msg.t)
+		return nil
+
+	case promptEnterMsg:
+		m.promptEnter(msg.t, msg.pane)
 		return nil
 
 	case prActionMsg:

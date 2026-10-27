@@ -1,6 +1,6 @@
 ---
 title: Tasks (F3)
-description: Line up what the agent should do next, and have it sent when the agent is idle.
+description: Line up what the agent should do next, have it sent when the agent is idle, and keep prompts you use again and again.
 ---
 
 Had an idea while the agent is busy? Don't interrupt it. Press
@@ -42,6 +42,40 @@ the tab, so the order is kept.
 
 The selected task is shown in full, the others in two rows. Tasks survive
 restarts.
+
+## Saved prompts
+
+Some prompts you type again and again: "commit, push and open a pull
+request", "rebase on main". Save them once, and pick one instead of
+writing it out.
+
+`ctrl+q l` lists them. Type to filter, then `enter`, or press a prompt's
+number. It is typed into the agent whose pane has the keyboard, and
+nerdr either presses enter after it to send it (`⏎`) or leaves it in the
+prompt for you to change or send (`✎`). Each prompt has its own setting;
+`tab` turns it on and off while you write one. `ctrl+n` saves a new
+prompt, `ctrl+e` changes the one selected.
+
+`→` in F3 shows the same list beside the tab's tasks, and `←` goes back:
+
+| Key | Action |
+|---|---|
+| `enter` | Use the prompt |
+| `space` | Send with enter / only put in |
+| `n` | Save a new prompt |
+| `e` | Edit |
+| `y` | Copy |
+| `d` | Delete |
+| `J` / `K` | Move down / up |
+
+The prompts are the same in every repository. They are kept in
+`~/.config/nerdr/prompts.toml`, which you can also edit by hand:
+
+```toml
+[[prompt]]
+text = "commit, push and open a pull request"
+enter = true
+```
 
 ## What else ends up here
 
