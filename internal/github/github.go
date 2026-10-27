@@ -324,9 +324,10 @@ func ghErrorMessage(err error) string {
 const NotLoggedInMessage = "gh is not logged in to GitHub: run gh auth login in a terminal"
 
 // NotLoggedIn is whether gh's message stderr says it has no login, or one
-// GitHub turned down.
+// GitHub turned down. In a GitHub Actions job gh asks for GH_TOKEN instead.
 func NotLoggedIn(stderr string) bool {
-	return strings.Contains(stderr, "gh auth login") || strings.Contains(stderr, "HTTP 401")
+	return strings.Contains(stderr, "gh auth login") || strings.Contains(stderr, "HTTP 401") ||
+		strings.Contains(stderr, "set the GH_TOKEN environment variable")
 }
 
 func firstLine(s string) string {
