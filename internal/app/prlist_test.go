@@ -189,3 +189,33 @@ func sameDir(a, b string) bool {
 	rb, errB := filepath.EvalSymlinks(b)
 	return errA == nil && errB == nil && ra == rb
 }
+
+// TestPRListPointsAtTheTabsPR covers the list opened from a tab: the
+// cursor goes to that tab's pull request, also when the list comes later,
+// and stays where it is moved to.
+func TestPRListPointsAtTheTabsPR(t *testing.T) {
+	m := tabsModel(t,
+		state.Tab{ID: "a", Name: "a", Dir: "/w/a", Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/a", Branch: "fix/login"}}},
+	)
+	repo := workspace.Repo{Name: "app", Path: "/r/app"}
+	entries := []prEntry{
+		{repo: repo, pr: github.PR{Number: 1, Branch: "other"}},
+		{repo: repo, pr: github.PR{Number: 2, Branch: "fix/login"}},
+		{repo: repo, pr: github.PR{Number: 3, Branch: "more"}},
+	}
+	d := &prList{}
+	d.pointAt(m.cur())
+	d.apply(entries, nil)
+	if d.cursor != 1 {
+		t.Fatalf("the cursor should be on the tab's PR once the list comes, is on %d", d.cursor)
+	}
+	d.key(m, keyMsg("down"))
+	d.apply(entries, nil)
+	if d.cursor != 2 {
+		t.Fatalf("a refresh should leave the cursor where it was moved, is on %d", d.cursor)
+	}
+	d.pointAt(m.cur())
+	if d.cursor != 1 {
+		t.Fatalf("coming back should point at the tab's PR again, is on %d", d.cursor)
+	}
+}

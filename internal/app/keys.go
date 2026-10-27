@@ -563,6 +563,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.showBranchPR()
 	case "i p":
 		return m.showAllPRs()
+	case "i b":
+		m.openTabPRs()
+		return nil
 	case "i o":
 		return m.showIssues()
 	case "f", " ":

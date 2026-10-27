@@ -81,6 +81,7 @@ func keyGroups() map[string]commandGroup {
 		"i": {"Git and GitHub", []commandEntry{
 			{key: "i", label: "Branches, PR, push and conflicts", run: "i i", desc: "the tab's branches: changes, ahead/behind, PR and CI; push, open a PR"},
 			{key: "p", label: "All my pull requests (F2)", run: "i p", desc: "yours across the repositories, or m: everyone's, those asking your review marked; enter goes to, or opens, the branch's tab"},
+			{key: "b", label: "Open the PR in the browser", run: "i b", desc: "the tab's pull request on GitHub, in your browser"},
 			{key: "o", label: "Open issues (F2)", run: "i o", desc: "the issues assigned to you, or all open (a); enter starts a tab for one"},
 		}},
 		"a": {"Agent", []commandEntry{

@@ -503,6 +503,15 @@ func (m *Model) details(t *tab, bg lipgloss.Color, active bool) string {
 				s += st("220").Render("…")
 				tip += " · checks running"
 			}
+			if active {
+				// The active tab's, as a link: on another tab a click
+				// goes to the tab.
+				tip += " · click to open it in the browser"
+				s = m.onClick(s, func(m *Model) tea.Cmd {
+					m.openTabPRs()
+					return nil
+				})
+			}
 			parts = append(parts, m.tip(s, tip))
 		}
 	}

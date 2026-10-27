@@ -29,6 +29,10 @@ type prList struct {
 	entries []prEntry
 	errs    []string
 	cursor  int
+	// want is the branches of the tab the list was opened from, by
+	// repository: the cursor goes to the first of their pull requests
+	// once the list has it, unless moved before.
+	want map[string]string
 	// news is what happened to the pull requests since you last looked,
 	// by prKey; see prwatch.go.
 	news map[string][]string
@@ -104,14 +108,34 @@ func (d *prList) apply(entries []prEntry, errs []string) {
 			d.cursor = i
 		}
 	}
+	for i, e := range d.entries {
+		if b, ok := d.want[filepath.Clean(e.repo.Path)]; ok && b == e.branch() {
+			d.cursor, d.want = i, nil
+			break
+		}
+	}
+}
+
+// pointAt has the cursor go to t's pull request, now or once the list
+// has it.
+func (d *prList) pointAt(t *tab) {
+	d.want = nil
+	if t == nil {
+		return
+	}
+	d.want = map[string]string{}
+	for _, w := range t.Worktrees {
+		d.want[filepath.Clean(w.Repo)] = w.Branch
+	}
+	d.apply(d.entries, d.errs)
 }
 
 func (d *prList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "up", "k":
-		d.cursor = max(d.cursor-1, 0)
+		d.cursor, d.want = max(d.cursor-1, 0), nil
 	case "down", "j":
-		d.cursor = min(d.cursor+1, max(len(d.entries)-1, 0))
+		d.cursor, d.want = min(d.cursor+1, max(len(d.entries)-1, 0)), nil
 	case "r":
 		if d.all {
 			return m.refreshAllPRs(true)
@@ -404,7 +428,7 @@ func (d *prList) table(m *Model, inner, rows int) []string {
 			padTo(rev, prColGlyph) + padTo(ci, 4) + padTo(m.prWhere(e), prColWhere) + when + title
 		row = ansi.Truncate(cursorLine(i == d.cursor, row, sel), inner, "…")
 		lines = append(lines, m.onClick(row, func(m *Model) tea.Cmd {
-			d.cursor = i
+			d.cursor, d.want = i, nil
 			if d == m.prPanel {
 				return m.openPRInPanel(e)
 			}
