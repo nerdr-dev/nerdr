@@ -36,6 +36,26 @@ different repositories. With several, the folder is named after the first
 one, and the hash of all their names keeps other sets apart without the
 name growing with each repository you add.
 
+## Adding and removing repositories
+
+Press `ctrl+q i r`, or right-click the tab and choose *Repositories…*, to
+change which repositories a tab works in. Tick a repository to add it:
+it gets a worktree on the tab's branch, in the tab's folder under its
+name, continuing the branch if it exists there already. Untick one to
+delete its worktree; its branch is kept. A tab keeps at least one
+repository.
+
+Adding to a tab with one repository moves its worktree into the tab's
+folder, under the repository's name, so the new one can go beside it.
+The tab's agents restart and continue their conversations, and its
+terminals close. With one repository left, a tab goes back to that
+repository's group, its worktree staying where it is.
+
+The folder keeps the name it was given when the tab was made, even when
+that no longer matches its repositories: the agents find their
+conversations by the folder they start in. The agent is told what
+changed.
+
 ## Starting points
 
 ### From a GitHub issue

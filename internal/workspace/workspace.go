@@ -264,50 +264,82 @@ func MakePlanOn(wtRoot, branch string, repos []Repo, on string) (Plan, error) {
 		return p, fmt.Errorf("%s already exists", p.Dir)
 	}
 	for _, r := range repos {
-		it := PlanItem{Repo: r, Path: p.Dir}
+		path := p.Dir
 		if len(repos) > 1 {
-			it.Path = filepath.Join(p.Dir, r.Name)
+			path = filepath.Join(p.Dir, r.Name)
 		}
-		if out, err := git(r.Path, "worktree", "list", "--porcelain"); err == nil &&
-			strings.Contains(out, "branch refs/heads/"+branch+"\n") {
-			return p, fmt.Errorf("%s: branch %s is already checked out in another worktree", r.Name, branch)
-		}
-		switch {
-		case refExists(r.Path, "refs/heads/"+branch):
-			it.Mode = "local"
-		case remoteBranch(r.Path, branch):
-			it.Mode = "remote"
-		default:
-			it.Mode = "new"
-		}
-		if it.Mode == "local" {
-			// Counted against the base as it is now, as for "remote".
-			fetchBase(r.Path)
-			if tip, err := git(r.Path, "rev-parse", "--verify", "refs/heads/"+branch); err == nil {
-				it.Tip = strings.TrimSpace(tip)
-			}
-		}
-		it.Base = defaultBase(r.Path)
-		if on != "" && it.Mode == "new" {
-			if !refExists(r.Path, "refs/heads/"+on) {
-				return p, fmt.Errorf("%s: there is no branch %s to start on", r.Name, on)
-			}
-			it.Base, it.Stacked = on, true
-		}
-		if it.Base == "" && it.Mode != "local" {
-			return p, fmt.Errorf("%s: found no main or master branch to start from", r.Name)
-		}
-		if it.Base != "" && it.Mode != "new" {
-			ref := "origin/" + branch
-			if it.Mode == "local" {
-				ref = "refs/heads/" + branch
-			}
-			it.Ahead = revCount(r.Path, it.Base+".."+ref)
-			it.Behind = revCount(r.Path, ref+".."+it.Base)
+		it, err := planItem(r, path, branch, on)
+		if err != nil {
+			return p, err
 		}
 		p.Items = append(p.Items, it)
 	}
 	return p, nil
+}
+
+// PlanAdd plans the worktrees on branch of repos to join a tab's in dir,
+// its folder, each in dir under its name: the layout of a tab over several
+// repositories, which a tab with one has to be moved to first (see Nest).
+// An existing branch of the name is continued, as the tab's work goes on
+// in it.
+func PlanAdd(dir, branch string, repos []Repo) (Plan, error) {
+	p := Plan{Branch: branch, Dir: dir}
+	for _, r := range repos {
+		path := filepath.Join(dir, r.Name)
+		if _, err := os.Lstat(path); err == nil {
+			return p, fmt.Errorf("%s already exists", path)
+		}
+		it, err := planItem(r, path, branch, "")
+		if err != nil {
+			return p, err
+		}
+		p.Items = append(p.Items, it)
+	}
+	return p, nil
+}
+
+// planItem decides how repository r's worktree on branch will be made at
+// path, a new branch starting on on when that is given.
+func planItem(r Repo, path, branch, on string) (PlanItem, error) {
+	it := PlanItem{Repo: r, Path: path}
+	if out, err := git(r.Path, "worktree", "list", "--porcelain"); err == nil &&
+		strings.Contains(out, "branch refs/heads/"+branch+"\n") {
+		return it, fmt.Errorf("%s: branch %s is already checked out in another worktree", r.Name, branch)
+	}
+	switch {
+	case refExists(r.Path, "refs/heads/"+branch):
+		it.Mode = "local"
+	case remoteBranch(r.Path, branch):
+		it.Mode = "remote"
+	default:
+		it.Mode = "new"
+	}
+	if it.Mode == "local" {
+		// Counted against the base as it is now, as for "remote".
+		fetchBase(r.Path)
+		if tip, err := git(r.Path, "rev-parse", "--verify", "refs/heads/"+branch); err == nil {
+			it.Tip = strings.TrimSpace(tip)
+		}
+	}
+	it.Base = defaultBase(r.Path)
+	if on != "" && it.Mode == "new" {
+		if !refExists(r.Path, "refs/heads/"+on) {
+			return it, fmt.Errorf("%s: there is no branch %s to start on", r.Name, on)
+		}
+		it.Base, it.Stacked = on, true
+	}
+	if it.Base == "" && it.Mode != "local" {
+		return it, fmt.Errorf("%s: found no main or master branch to start from", r.Name)
+	}
+	if it.Base != "" && it.Mode != "new" {
+		ref := "origin/" + branch
+		if it.Mode == "local" {
+			ref = "refs/heads/" + branch
+		}
+		it.Ahead = revCount(r.Path, it.Base+".."+ref)
+		it.Behind = revCount(r.Path, ref+".."+it.Base)
+	}
+	return it, nil
 }
 
 // remoteBranch says whether origin has branch, asking origin itself: a
@@ -989,6 +1021,38 @@ func Remove(dir string, wts []Worktree, force bool) error {
 		return errors.New(strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// Nest moves the worktree w of a tab with one repository, which is the
+// tab's folder itself, into that folder under its repository's name, so
+// other repositories' worktrees can go beside it: the layout of a tab over
+// several. The folder keeps its path, and with it the agent's
+// conversations, which its agent finds by the folder it starts in. What
+// runs in the worktree must be stopped first. If a step fails, the
+// worktree is put back where it was.
+func Nest(w Worktree) (Worktree, error) {
+	dir := filepath.Clean(w.Path)
+	name := filepath.Base(w.Repo)
+	tmp := dir + ".nerdr-nest"
+	if _, err := os.Lstat(tmp); err == nil {
+		return w, fmt.Errorf("%s is in the way", tmp)
+	}
+	if _, err := git(w.Repo, "worktree", "move", dir, tmp); err != nil {
+		return w, fmt.Errorf("could not move %s: %w", dir, err)
+	}
+	if err := denied.Err(os.Mkdir(dir, 0o755)); err != nil {
+		_, _ = git(w.Repo, "worktree", "move", tmp, dir)
+		return w, err
+	}
+	to := filepath.Join(dir, name)
+	if _, err := git(w.Repo, "worktree", "move", tmp, to); err != nil {
+		_ = os.Remove(dir)
+		_, _ = git(w.Repo, "worktree", "move", tmp, dir)
+		return w, fmt.Errorf("could not move %s into %s: %w", dir, to, err)
+	}
+	gitsafe.Trust(w.Repo, to)
+	w.Path = to
+	return w, nil
 }
 
 // gitDefaultTimeout bounds every git command: one that hangs (a remote that does

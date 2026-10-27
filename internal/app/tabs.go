@@ -190,6 +190,10 @@ type tab struct {
 	// reviewDone is a review whose findings wait in F3, to be asked about
 	// the next time the tab is the one shown; see askReviewDone.
 	reviewDone *reviewDone
+	// reposBusy is set while the tab's repositories are being changed, in
+	// the background (see repos.go): nothing else may start in, close or
+	// change its worktrees until it is done.
+	reposBusy bool
 }
 
 // hookKey is the id the tab's agent is given to report to nerdr with, as

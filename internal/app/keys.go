@@ -568,6 +568,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "i b":
 		m.openTabPRs()
 		return nil
+	case "i r":
+		return m.openRepos()
 	case "i o":
 		return m.showIssues()
 	case "f", " ":
@@ -686,6 +688,9 @@ func (m *Model) altScrollKey(p *term.Pane, msg tea.KeyMsg, w, h int) {
 
 // restart starts the tab's agent again, continuing its conversation.
 func (m *Model) restart(t *tab) tea.Cmd {
+	if m.reposHold(t) {
+		return nil
+	}
 	if t.pane != nil {
 		old := t.pane
 		go old.Close()

@@ -223,6 +223,7 @@ func (m *Model) tabItems() []menuItem {
 		menuItem{label: "Scroll back", key: "b", run: cmd("b")},
 		menuItem{label: "Tasks and tabs"},
 		menuItem{label: "Rename…", key: "r", run: cmd("r")},
+		menuItem{label: "Repositories…", key: "i r", run: cmd("i r"), off: m.commandOff("i r")},
 		menuItem{label: "Move left", key: "⇧←", run: cmd("shift+left")},
 		menuItem{label: "Move right", key: "⇧→", run: cmd("shift+right")},
 		menuItem{label: "Close tab…", key: "x", run: cmd("x")},

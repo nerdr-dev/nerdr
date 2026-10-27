@@ -439,6 +439,10 @@ func (m *Model) onTerminal(r hooks.Report) tea.Cmd {
 		reply(hooks.Answer{Err: fmt.Sprintf("the tab has %d terminals open; ask the user to close one", n)})
 		return nil
 	}
+	if o.reposBusy {
+		reply(hooks.Answer{Err: "the tab's repositories are being changed; try again in a moment"})
+		return nil
+	}
 	p, cmd := m.newShellIn(o, true)
 	if p == nil {
 		reply(hooks.Answer{Err: "the terminal did not start"})
