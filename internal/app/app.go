@@ -257,6 +257,10 @@ type Model struct {
 
 	// entered is the tab last come to; see attention.go.
 	entered *tab
+	// landed is when the active tab was come to, and looking is set until
+	// it has been looked at; see seenAfter.
+	landed  time.Time
+	looking bool
 
 	infoBusy    bool
 	overlaps    map[string][]overlap
@@ -625,7 +629,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		cmd := m.onHerdrFocus()
 		if t := m.cur(); t != nil {
 			m.focusTerms(t)
-			t.seen()
+			if m.dwelt() {
+				t.seen()
+			}
 		}
 		m.reportHerdr()
 		return cmd
@@ -902,6 +908,7 @@ func (m *Model) syncInput() {
 func (m *Model) detect() tea.Cmd {
 	now := time.Now()
 	herdrBefore := m.herdr.State()
+	m.look()
 	var cmds []tea.Cmd
 	for i, t := range m.tabs {
 		shown := i == m.active || (t == m.splitTab() && m.splitShown())
@@ -927,6 +934,9 @@ func (m *Model) detect() tea.Cmd {
 // shown, and you are looking.
 func (m *Model) agentVisible(a *tab) bool {
 	o := a.owner()
+	if o == m.cur() && !m.dwelt() {
+		return false // only passed on the way: see seenAfter
+	}
 	if o != m.cur() && (o != m.splitTab() || !m.splitShown()) {
 		return false
 	}
@@ -1194,8 +1204,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	t := m.tabs[i]
 	tracked := m.track() // before seen: a finished agent is summed up as finished
 	m.lastInGroup[t.group()] = t.ID
-	t.seen()
-	t.queuePaused = false // the user has seen what became of the last message
+	m.landed, m.looking = time.Now(), true
 	m.focusTerms(t)
 	if m.split != nil || splitEnded {
 		m.resizePanes() // the tab may have changed sides, or have the window
@@ -1207,6 +1216,29 @@ func (m *Model) selectTab(i int) tea.Cmd {
 		ask = m.openSpinoff(t)
 	}
 	return tea.Batch(tracked, m.pinReview(), ask)
+}
+
+// seenAfter is how long a tab must be the active one before it counts as
+// looked at: tabs passed on the way to another, up or down the list, keep
+// their green lights.
+const seenAfter = time.Second
+
+// look marks the active tab looked at once it has been so for seenAfter
+// with you looking: not away in another window or behind an editor.
+func (m *Model) look() {
+	t := m.cur()
+	if !m.looking || t == nil || !m.dwelt() || m.blurred || m.editor != nil {
+		return
+	}
+	m.looking = false
+	t.seen()
+	t.queuePaused = false // the user has seen what became of the last message
+}
+
+// dwelt reports whether the active tab has been so long enough to count as
+// looked at.
+func (m *Model) dwelt() bool {
+	return time.Since(m.landed) >= seenAfter
 }
 
 // toastMsg is a toast from work done out of the screen's way.
