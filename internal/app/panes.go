@@ -641,6 +641,9 @@ func (m *Model) newShell() tea.Cmd {
 // last; quiet leaves the keyboard where it is. It returns the pane, nil
 // when the terminal did not start.
 func (m *Model) newShellIn(t *tab, quiet bool) (*paneTab, tea.Cmd) {
+	if m.reposHold(t) {
+		return nil, nil
+	}
 	n := 1
 	for _, p := range t.panes() {
 		if p.kind == paneShell {
@@ -722,7 +725,7 @@ func (m *Model) newAgent(t *tab, k agents.Kind) tea.Cmd {
 // leaves the keyboard where it is, and sandboxed marks task as from an
 // agent in a sandbox. It returns the agent, nil when t is gone.
 func (m *Model) newAgentWith(t *tab, k agents.Kind, model, task string, quiet, sandboxed bool) (*tab, tea.Cmd) {
-	if m.tabIndex(t) < 0 {
+	if m.tabIndex(t) < 0 || m.reposHold(t) {
 		return nil, nil
 	}
 	a := &tab{Tab: state.Tab{ID: newTabID(), Name: t.Name, Dir: t.Dir, Agent: k, Model: model, Worktrees: t.Worktrees, Num: t.nextNum()},
@@ -1294,6 +1297,10 @@ func (m *Model) onNewAgent(r hooks.Report) tea.Cmd {
 	}
 	if r.Model != "" && !agents.TakesModel(k) {
 		reply(hooks.Answer{Err: fmt.Sprintf("nerdr does not know how to give %s a model: leave --model out, and it runs the one the config gives it", k)})
+		return nil
+	}
+	if o.reposBusy {
+		reply(hooks.Answer{Err: "the tab's repositories are being changed; try again in a moment"})
 		return nil
 	}
 	num := o.nextNum()

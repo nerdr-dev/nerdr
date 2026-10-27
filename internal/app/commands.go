@@ -83,6 +83,7 @@ func keyGroups() map[string]commandGroup {
 			{key: "i", label: "Branches, PR, push and conflicts", run: "i i", desc: "the tab's branches: changes, ahead/behind, PR and CI; push, open a PR"},
 			{key: "p", label: "All my pull requests (F2)", run: "i p", desc: "yours across the repositories, or m: everyone's, those asking your review marked; enter goes to, or opens, the branch's tab"},
 			{key: "b", label: "Open the PR in the browser", run: "i b", desc: "the tab's pull request on GitHub, in your browser"},
+			{key: "r", label: "Repositories of the tab", run: "i r", desc: "add repositories to the tab, each a worktree on its branch, or take them away; its last one stays"},
 			{key: "o", label: "Open issues (F2)", run: "i o", desc: "the issues assigned to you, or all open (a); enter starts a tab for one"},
 		}},
 		"a": {"Agent", []commandEntry{
@@ -183,6 +184,8 @@ func (m *Model) commandOff(run string) string {
 		if tabRepo(m.cur()) == "" {
 			return "a branch is stacked on a tab with one repository"
 		}
+	case "i r":
+		return m.reposOff(m.cur())
 	case "z v":
 		if m.splitTab() == nil && m.neighbour(m.cur()) == nil {
 			return "two tabs need a second tab in this repository"

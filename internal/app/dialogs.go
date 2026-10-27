@@ -159,7 +159,7 @@ func (m *Model) openClose() tea.Cmd {
 
 // openCloseFor asks about closing t.
 func (m *Model) openCloseFor(t *tab) tea.Cmd {
-	if t == nil || m.tabIndex(t) < 0 {
+	if t == nil || m.tabIndex(t) < 0 || m.reposHold(t) {
 		return nil
 	}
 	c := &closeTab{t: t}
@@ -372,7 +372,7 @@ type tabClosedMsg struct{ err, note string }
 // branches too, each only if it still points at its head there, by path.
 func (m *Model) closeTab(t *tab, remove, force bool, branchHeads map[string]string) tea.Cmd {
 	i := m.tabIndex(t)
-	if i < 0 {
+	if i < 0 || m.reposHold(t) {
 		return nil
 	}
 	group := t.group()

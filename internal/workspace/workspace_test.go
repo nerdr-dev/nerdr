@@ -1012,3 +1012,92 @@ func TestCopyReadsInTheMainCheckout(t *testing.T) {
 		t.Error("the file outside was copied")
 	}
 }
+
+// A tab with one repository is given a second, which nests the first in
+// the tab's folder, and then has it taken away again: the folder keeps its
+// path throughout, and what is uncommitted goes along.
+func TestNestAddAndRemoveRepo(t *testing.T) {
+	root := t.TempDir()
+	a, b := newRepo(t, root, "a"), newRepo(t, root, "b")
+	wtRoot := filepath.Join(root, "worktrees")
+	plan, err := MakePlan(wtRoot, "feat", []Repo{a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wts, err := plan.Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := plan.Dir
+	if err := os.WriteFile(filepath.Join(dir, "wip.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	nested, err := Nest(wts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nested.Path != filepath.Join(dir, "a") {
+		t.Fatalf("nested at %s", nested.Path)
+	}
+	if _, err := os.Stat(filepath.Join(nested.Path, "wip.txt")); err != nil {
+		t.Fatalf("the uncommitted file did not go along: %v", err)
+	}
+	if wt, ok := Inspect(nested.Path, []Repo{a, b}); !ok || wt.Branch != "feat" {
+		t.Fatalf("inspect = %+v, %v", wt, ok)
+	}
+
+	add, err := PlanAdd(dir, "feat", []Repo{b})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(add.Items) != 1 || add.Items[0].Path != filepath.Join(dir, "b") || add.Items[0].Mode != "new" {
+		t.Fatalf("plan = %+v", add.Items)
+	}
+	made, err := add.Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := PlanAdd(dir, "feat", []Repo{b}); err == nil {
+		t.Fatal("planned a repository the tab has already")
+	}
+	groups := Existing(wtRoot, []Repo{a, b}, nil)
+	if len(groups) != 1 || groups[0].Dir != dir || len(groups[0].Worktrees) != 2 {
+		t.Fatalf("existing = %+v", groups)
+	}
+
+	if err := Remove("", made, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "b")); !os.IsNotExist(err) {
+		t.Fatalf("b's worktree is still there: %v", err)
+	}
+	// Left with one, the tab keeps its layout: it is found again as it is.
+	groups = Existing(wtRoot, []Repo{a, b}, nil)
+	if len(groups) != 1 || groups[0].Dir != dir || len(groups[0].Worktrees) != 1 || groups[0].Worktrees[0].Path != nested.Path {
+		t.Fatalf("existing = %+v", groups)
+	}
+}
+
+// Nest puts the worktree back when it cannot finish.
+func TestNestPutsBackOnFailure(t *testing.T) {
+	root := t.TempDir()
+	a := newRepo(t, root, "a")
+	plan, err := MakePlan(filepath.Join(root, "worktrees"), "feat", []Repo{a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wts, err := plan.Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(plan.Dir+".nerdr-nest", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Nest(wts[0]); err == nil {
+		t.Fatal("nested with the way blocked")
+	}
+	if wt, ok := Inspect(plan.Dir, []Repo{a}); !ok || wt.Branch != "feat" {
+		t.Fatalf("the worktree moved: %+v, %v", wt, ok)
+	}
+}

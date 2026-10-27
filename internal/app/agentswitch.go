@@ -222,7 +222,7 @@ func (m *Model) onHandoff(r hooks.Report) tea.Cmd {
 // wrote, as its first message, or with none, told to read the old agent's
 // conversation.
 func (m *Model) switchAgent(t *tab, k agents.Kind, summary string) tea.Cmd {
-	if !m.live(t) || k == t.Agent {
+	if !m.live(t) || k == t.Agent || m.reposHold(t) {
 		return nil
 	}
 	if w := t.handoff; w != nil {
