@@ -505,11 +505,15 @@ func (m *Model) details(t *tab, bg lipgloss.Color, active bool) string {
 			}
 			if active {
 				// The active tab's, as a link: on another tab a click
-				// goes to the tab.
+				// goes to the tab. The other buttons do what they do on
+				// the tab.
 				tip += " · click to open it in the browser"
-				s = m.onClick(s, func(m *Model) tea.Cmd {
-					m.openTabPRs()
-					return nil
+				s = m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd {
+					if ev.Action == tea.MouseActionPress && ev.Button == tea.MouseButtonLeft {
+						m.openTabPRs()
+						return nil
+					}
+					return m.tabMouse(t, ev)
 				})
 			}
 			parts = append(parts, m.tip(s, tip))
