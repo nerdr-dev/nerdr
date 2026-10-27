@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // reviewDoneDialog tells of a review that has ended a round: how it came
@@ -116,4 +117,50 @@ func (rd *reviewDoneDialog) view(m *Model, w, h int) string {
 	body = append(body, foot...)
 	return lipgloss.NewStyle().Border(lipgloss.ThickBorder()).BorderForeground(colour).
 		Padding(1, 2).Width(inner + 4).Render(strings.Join(body, "\n"))
+}
+
+// reviewPeek is a small card of the review done in the tab walked to,
+// drawn over its agent while the prefix is on: the walk shows it without
+// asking, and the enter that ends the walk opens the dialog that does.
+// It takes no keys and no clicks. w is the columns it may have.
+func (m *Model) reviewPeek(t *tab, d *reviewDone, w int) string {
+	colour, mark := verdictColour(d.approved), "⚑"
+	if d.approved {
+		mark = "✓"
+	}
+	inner := min(w-4, 60)
+	if inner < 20 {
+		return ""
+	}
+	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(colour).
+		Render(" " + mark + " Review of " + t.Name + " done ")
+	body := []string{title}
+	for _, l := range wrapLines(d.brief, inner, 2) {
+		body = append(body, verdictStyle(d.approved).Render(l))
+	}
+	open := "enter: open"
+	if d.msg.Text != "" {
+		open = "enter: open, to send the findings or keep them in " + m.screenKey(3)
+	}
+	body = append(body, dim(ansi.Truncate(open, inner, "…")))
+	return lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(colour).
+		Padding(0, 1).Width(inner + 2).Render(strings.Join(body, "\n"))
+}
+
+// reviewMark is the ⚑ or ✓ on t's entry in the tab row and the sidebar
+// while a review done in it waits to be told of, on background bg; "" when
+// none does.
+func (m *Model) reviewMark(t *tab, bg lipgloss.Color) string {
+	_, d := t.reviewToTell()
+	if d == nil {
+		return ""
+	}
+	mark, tip := "⚑", "Review done: its findings wait for you"
+	switch {
+	case d.approved && d.msg.Text != "":
+		mark, tip = "✓", "Review done: approved, its remarks wait for you"
+	case d.approved:
+		mark, tip = "✓", "Review done: approved"
+	}
+	return m.tip(lipgloss.NewStyle().Background(bg).Foreground(verdictColour(d.approved)).Bold(true).Render(mark), tip)
 }

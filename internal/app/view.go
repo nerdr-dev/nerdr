@@ -178,6 +178,21 @@ func (m *Model) draw() string {
 	if m.sideW() > 0 {
 		body = m.peekSide(besides(m.sideLines(bodyH), "", body))
 	}
+	if t := m.cur(); m.prefix && m.nav && m.dialog == nil && t != nil {
+		if rt, d := t.reviewToTell(); d != nil {
+			// Over the agent, clear of the sidebar walked and the hint at
+			// the bottom.
+			left := m.sideW()
+			if m.sideSmall && left > 0 {
+				left = m.wideW() // peekSide's
+			}
+			w := m.width - left
+			if card := m.reviewPeek(rt, d, w); card != "" {
+				cw := lipgloss.Width(strings.SplitN(card, "\n", 2)[0])
+				body = overlayAt(body, card, m.width, left+(w-cw)/2, 2)
+			}
+		}
+	}
 	if c, ok := m.dialog.(*closeTab); ok && c.hidden() {
 		// Not drawn until it knows what it is asking; see closeWait.
 	} else if m.dialog != nil {
@@ -424,6 +439,9 @@ func (m *Model) tabBar() string {
 		if cold {
 			extra = m.tip(lipgloss.NewStyle().Background(bg).Foreground(groupAccent).Render("❄"), "Cold: not used for a while") +
 				lipgloss.NewStyle().Background(bg).Render(" ")
+		}
+		if mark := m.reviewMark(t, bg); mark != "" {
+			extra += mark + lipgloss.NewStyle().Background(bg).Render(" ")
 		}
 		if t == m.splitTab() {
 			side, where := "◨", "right"

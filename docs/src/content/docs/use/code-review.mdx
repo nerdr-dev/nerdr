@@ -56,8 +56,12 @@ the reviewer is doing.
 
 Findings appear beside the code in F1, marked `⚑`, and in F3. When a
 round ends, nerdr asks in the tab whether to send them to the agent now
-or keep them in F3; in another tab, it asks when you come back. With
-`send_findings = "auto"` they are sent without asking.
+or keep them in F3; in another tab, it asks when you come back. Until
+then, the tab's entry in the tab row and the sidebar is marked `⚑`, or
+`✓` for an approval. Walking the tabs with the prefix, a small card shows
+how the review came out as you pass the tab; enter ends the walk there and
+opens the question. With `send_findings = "auto"` they are sent without
+asking.
 
 After the agent has addressed them, the reviewer checks again, in its own
 conversation. This goes on until it approves, or the `rounds` limit is

@@ -641,30 +641,48 @@ func reviewSays(seats []*seat) []reviewSaid {
 // once when the review ends in it, or when the user comes back to it. Not
 // while the prefix is on: walking the tabs with the arrows, the tab is
 // only passed, and the enter that ends the walk would answer it unseen.
+// The walk shows it meanwhile, without asking; see reviewPeek.
 // The review may be of any of the tab's agents.
 func (m *Model) askReviewDone() {
 	cur := m.cur()
 	if cur == nil || m.prefix || m.dialog != nil || m.editor != nil {
 		return
 	}
-	var t *tab
 	for _, a := range append([]*tab{cur}, cur.extraAgents()...) {
-		if a.reviewDone != nil {
-			t = a
-			break
+		if a.reviewDone != nil && a.reviewDone.stale(a) {
+			a.reviewDone = nil
 		}
 	}
+	t, d := cur.reviewToTell()
 	if t == nil {
 		return
 	}
-	d := t.reviewDone
 	t.reviewDone = nil
-	if d.msg.Text != "" {
-		if i := t.findMessage(d.msg); i < 0 || t.Messages[i].Auto {
-			return // sent, dropped or set to go from F3 already
+	m.dialog = &reviewDoneDialog{t: t, d: d}
+}
+
+// reviewToTell is the review done in cur, or one of its agents, that is
+// still worth telling of — by askReviewDone, a peek while the tabs are
+// walked and a mark on cur's entry — and the tab it is of; nil if there
+// is none.
+// One whose findings have gone does not hide another agent's that wait.
+func (cur *tab) reviewToTell() (*tab, *reviewDone) {
+	for _, a := range append([]*tab{cur}, cur.extraAgents()...) {
+		if a.reviewDone != nil && !a.reviewDone.stale(a) {
+			return a, a.reviewDone
 		}
 	}
-	m.dialog = &reviewDoneDialog{t: t, d: d}
+	return nil, nil
+}
+
+// stale reports whether the findings d asks about are no longer t's to
+// send: sent, dropped or set to go from F3 already.
+func (d *reviewDone) stale(t *tab) bool {
+	if d.msg.Text == "" {
+		return false
+	}
+	i := t.findMessage(d.msg)
+	return i < 0 || t.Messages[i].Auto
 }
 
 // sendFindings sets the findings msg in t's messages to go to its agent by
