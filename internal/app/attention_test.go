@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -349,5 +350,131 @@ func TestLogDoesNotPutBackAnOlderPrompt(t *testing.T) {
 	m.setLatest(tb, agents.Latest{Prompt: "a later one", PromptAt: time.Now().Add(time.Minute)})
 	if tb.Last != "a later one" {
 		t.Fatalf("a later prompt: %q", tb.Last)
+	}
+	var texts []string
+	for _, p := range tb.Prompts {
+		texts = append(texts, p.Text)
+	}
+	if got := strings.Join(texts, " | "); got != "the newest prompt, as logged | a later one" {
+		t.Fatalf("the log's copy takes the typed one's place in the list, and a later one goes after: %q", got)
+	}
+}
+
+// TestPanelShowsWhatABriefAnswerAnswers: "yes" alone says nothing of the
+// work, so the panel shows the prompt before it, with the answer after.
+func TestPanelShowsWhatABriefAnswerAnswers(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	m := &Model{}
+	tb := &tab{Tab: state.Tab{Goal: "the first task"}}
+	m.tabs = []*tab{tb}
+	draw := func(w int) string {
+		lines := m.taskLines(tb, w, 30)
+		return ansi.Strip(strings.Join(lines[:len(lines)-1], "\n"))
+	}
+
+	m.setLast(tb, "yes")
+	if got := draw(60); !strings.HasPrefix(got, " last:   the first task → yes") {
+		t.Fatalf("with nothing before it, what it answers is the task: %q", got)
+	}
+	m.setLast(tb, "make the login form remember the user")
+	m.setLast(tb, "ja")
+	m.setLast(tb, "ok, do it")
+	if got := draw(60); !strings.HasPrefix(got, " last:   make the login form remember the user → ok, do it") {
+		t.Fatalf("the last request before the answers: %q", got)
+	}
+	tb.Prompts[len(tb.Prompts)-3].Text = strings.Repeat("make the login form remember the user ", 10)
+	lines := m.taskLines(tb, 40, 30)
+	if len(lines) != lastMaxLines+1 || !strings.HasSuffix(strings.TrimRight(ansi.Strip(lines[1]), " "), "… → ok, do it") {
+		t.Fatalf("a long request is cut, the answer kept: %q", draw(40))
+	}
+	for _, l := range lines {
+		if w := lipgloss.Width(l); w != 40 {
+			t.Fatalf("row is %d wide, want 40: %q", w, ansi.Strip(l))
+		}
+	}
+	m.setLast(tb, "now make it forget the user too")
+	if got := draw(60); !strings.HasPrefix(got, " last:   now make it forget the user too") || strings.Contains(got, "→") {
+		t.Fatalf("a request of its own is shown alone: %q", got)
+	}
+	m.setLast(tb, "go on")
+	m.setLast(tb, "go on")
+	if n := len(tb.Prompts); n != 7 {
+		t.Fatalf("go on sent twice is in the list twice: %d prompts", n)
+	}
+	for range promptsKept {
+		m.setLast(tb, "again")
+	}
+	if n := len(tb.Prompts); n != promptsKept {
+		t.Fatalf("the list keeps %d, has %d", promptsKept, n)
+	}
+}
+
+// TestBriefAnswerInATabFromBefore: a tab saved before nerdr kept a list
+// has only Last; an answer after it is shown after it, not the task.
+func TestBriefAnswerInATabFromBefore(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	m := &Model{}
+	tb := &tab{Tab: state.Tab{Goal: "build the login page", Last: "fix the password reset redirect"}}
+	m.tabs = []*tab{tb}
+	m.setLast(tb, "yes")
+	lines := m.taskLines(tb, 80, 30)
+	if got := ansi.Strip(lines[0]); !strings.HasPrefix(got, " last:   fix the password reset redirect → yes") {
+		t.Fatalf("drawn %q", got)
+	}
+	tb.Prompts, tb.Last = nil, "fix the password reset redirect"
+	m.setLatest(tb, agents.Latest{Prompt: "yes", PromptAt: time.Now()})
+	if len(tb.Prompts) != 2 || tb.Prompts[0].Text != "fix the password reset redirect" {
+		t.Fatalf("read from the log, the same: %+v", tb.Prompts)
+	}
+}
+
+func TestSentDialogListsTheLatestFirst(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	m := &Model{}
+	tb := &tab{Tab: state.Tab{Name: "login", Agent: agents.Codex}}
+	m.tabs = []*tab{tb}
+	m.setLast(tb, "make the login form remember the user\nand add a test")
+	m.setLast(tb, "yes")
+	m.openSentOf(tb)
+	d, ok := m.dialog.(*sentDialog)
+	if !ok {
+		t.Fatalf("no dialog: %T", m.dialog)
+	}
+	view := ansi.Strip(d.view(m, 80, 40))
+	if i, j := strings.Index(view, "❯ "), strings.Index(view, "make the login"); i < 0 || j < i || !strings.Contains(view[i:j], "yes") {
+		t.Fatalf("the latest first, picked: %s", view)
+	}
+	d.key(m, tea.KeyMsg{Type: tea.KeyDown})
+	view = ansi.Strip(d.view(m, 80, 40))
+	if !strings.Contains(view, "and add a test") {
+		t.Fatalf("the one picked in full, its own lines kept: %s", view)
+	}
+	long := ""
+	for i := range 30 {
+		long += fmt.Sprintf("line %d of a long request\n", i+1)
+	}
+	m.setLast(tb, long)
+	d.list, d.pick = tb.Prompts, 0
+	view = ansi.Strip(d.view(m, 80, 40))
+	if strings.Contains(view, "line 11 ") || !strings.Contains(view, "20 rows more") {
+		t.Fatalf("under the list, the first rows and how many more: %s", view)
+	}
+	d.key(m, tea.KeyMsg{Type: tea.KeyEnter})
+	d.key(m, tea.KeyMsg{Type: tea.KeyEnd})
+	view = ansi.Strip(d.view(m, 80, 20))
+	if !d.full || !strings.Contains(view, "line 30 ") || !strings.Contains(view, "of 30") {
+		t.Fatalf("enter shows it alone, scrolled to its end: %s", view)
+	}
+	d.key(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if d.full || m.dialog == nil {
+		t.Fatal("esc goes back to the list, not out")
+	}
+	m.onSent(sentMsg{t: tb, list: []agents.Prompt{{Text: "typed in claude itself"}}})
+	if len(d.list) != 1 || d.pick != 0 {
+		t.Fatalf("the log's list takes the place of nerdr's: %+v at %d", d.list, d.pick)
+	}
+	d.key(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.dialog != nil {
+		t.Fatal("esc closes it")
 	}
 }

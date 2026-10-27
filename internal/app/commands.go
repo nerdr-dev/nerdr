@@ -88,6 +88,7 @@ func keyGroups() map[string]commandGroup {
 		"a": {"Agent", []commandEntry{
 			{key: "a", label: "Focus agent", run: "a a", desc: "give the keyboard back to the agent"},
 			{key: "n", label: "Note for yourself", run: "a n", desc: "a note for the tab, shown in the panel above the agent"},
+			{key: "h", label: "What you sent the agent", run: "a h", desc: "what you sent the agent, the latest first, each in full when picked; a click on last: above the agent too"},
 			{key: "s", label: "Switch agent", run: "a s", desc: "carry on the work of the agent with the keyboard with another kind (claude, opencode, …)"},
 			{key: "r", label: "Restart agent", run: "a r", desc: "restart the agent, continuing its conversation"},
 			{key: "c", label: "Code review", run: "a c", desc: "another agent reviews this agent's work, in a pane beside it (as t r)"},

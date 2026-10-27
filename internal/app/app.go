@@ -608,6 +608,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.setLatest(msg.t, msg.latest)
 		return nil
 
+	case sentMsg:
+		m.onSent(msg)
+		return nil
+
 	case skillUseMsg:
 		m.onSkillUse(msg)
 		return nil
