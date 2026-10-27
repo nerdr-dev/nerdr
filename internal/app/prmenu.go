@@ -235,7 +235,7 @@ func (p *tabPanel) branchLines(m *Model, shown string) []string {
 		case shown != "" && filepath.Clean(wt.Path) == filepath.Clean(shown):
 			// F2 draws this one's PR below.
 		case wi.hasPR:
-			line := "  PR #" + strconv.Itoa(wi.pr.Number) + " " + strings.ToLower(wi.pr.State)
+			line := "  PR #" + strconv.Itoa(wi.pr.Number) + " " + prState(wi.pr)
 			if wi.pr.CI != "" {
 				line += " · CI " + wi.pr.CI
 			}
@@ -284,7 +284,7 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 					" · "+strconv.Itoa(wi.stats.Ahead)+" ahead, "+strconv.Itoa(wi.stats.Behind)+" behind") + "  "
 				switch {
 				case wi.hasPR:
-					pr := "#" + strconv.Itoa(wi.pr.Number) + " " + strings.ToLower(wi.pr.State)
+					pr := "#" + strconv.Itoa(wi.pr.Number) + " " + prState(wi.pr)
 					if wi.pr.CI != "" {
 						pr += " · CI " + wi.pr.CI
 					}

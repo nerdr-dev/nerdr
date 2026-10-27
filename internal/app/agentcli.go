@@ -335,6 +335,9 @@ type branchJSON struct {
 	PRState string `json:"pr_state,omitempty"`
 	CI      string `json:"ci,omitempty"`
 	URL     string `json:"pr_url,omitempty"`
+	// After is how many commits the branch has on top of its merged or
+	// closed PR: work that went on after it, in no PR.
+	After int `json:"commits_after_pr,omitempty"`
 }
 
 // onStatus sets, clears or tells the line an agent keeps on where its
@@ -385,7 +388,7 @@ func (m *Model) tabsJSON(yours *tab) []tabJSON {
 			b := branchJSON{Repo: filepath.Base(w.repo), Branch: w.branch, Ahead: w.stats.Ahead, Behind: w.stats.Behind,
 				Added: w.add, Deleted: w.del, Changed: len(w.stats.Changed), Pushed: w.unpushed == 0}
 			if w.hasPR {
-				b.PR, b.PRState, b.CI, b.URL = w.pr.Number, w.pr.State, w.pr.CI, w.pr.URL
+				b.PR, b.PRState, b.CI, b.URL, b.After = w.pr.Number, w.pr.State, w.pr.CI, w.pr.URL, w.pr.After
 			}
 			j.Branches = append(j.Branches, b)
 		}

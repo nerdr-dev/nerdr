@@ -162,3 +162,40 @@ func TestGitHubEveryScalesWithTheSetting(t *testing.T) {
 		t.Fatalf("at 180, the watch asks every %v, not %v", got, 2*prWatchEvery)
 	}
 }
+
+// TestLocalCommitUnmergesCachedPR: a commit on a branch whose PR is
+// merged makes the tab not merged at the next look at the branch, before
+// GitHub is asked again.
+func TestLocalCommitUnmergesCachedPR(t *testing.T) {
+	dir := t.TempDir()
+	gitIn := func(args ...string) string {
+		t.Helper()
+		args = append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)
+		out, err := exec.Command("git", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	gitIn("init", "-q", "-b", "main")
+	gitIn("commit", "-q", "--allow-empty", "-m", "init")
+	gitIn("update-ref", "refs/remotes/origin/main", "main")
+	gitIn("switch", "-q", "-c", "brew")
+	gitIn("commit", "-q", "--allow-empty", "-m", "work")
+	head := gitIn("rev-parse", "HEAD")
+	wts := []workspace.Worktree{{Repo: dir, Path: dir, Branch: "brew"}}
+	prev := lookAt(wts, tabInfo{}, false, false)
+	prev.wts[0].pr = github.Status{Number: 16, State: "MERGED", HeadOID: head, Base: "main"}
+	prev.wts[0].hasPR = true
+	if !prev.merged() {
+		t.Fatal("the branch at its merged PR's head should be merged")
+	}
+	if again := lookAt(wts, prev, false, false); !again.merged() {
+		t.Fatal("a look with nothing changed took the merged PR away")
+	}
+	gitIn("commit", "-q", "--allow-empty", "-m", "more work")
+	now := lookAt(wts, prev, false, false)
+	if now.merged() || !now.wts[0].hasPR || now.wts[0].pr.After != 1 {
+		t.Fatalf("after a commit: merged %v, PR %+v %v", now.merged(), now.wts[0].pr, now.wts[0].hasPR)
+	}
+}

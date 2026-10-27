@@ -41,7 +41,10 @@ branches (commits `ahead` and `behind` main, lines and files changed,
 `pushed`, `pr`, `pr_state`, `ci`), its `status` line, its agents with their `state`
 (starting, working, blocked, idle, done, exited) and its terminals. Use it
 to answer how the work stands across tabs, or to follow a tab you made.
-`ci` is `pass`, `fail`, `pending` or empty when there is none.
+`ci` is `pass`, `fail`, `pending` or empty when there is none. A branch
+that went on after its pull request was merged or closed has
+`commits_after_pr`, how many commits it has on top of it, in no pull
+request yet.
 
 ## A terminal the user sees: `nerdr terminal COMMAND…`
 

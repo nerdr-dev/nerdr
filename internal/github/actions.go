@@ -64,21 +64,40 @@ type Status struct {
 	State   string // OPEN, CLOSED, MERGED
 	CI      string // see CISummary
 	HeadOID string // the PR's last head, including after a squash/rebase merge
+	Base    string // the branch the PR is to be merged into
+	// After is how many commits the branch has on top of a merged or
+	// closed PR's head: work carried on after it, which the PR has not
+	// got. 0 for an open PR.
+	After int
 }
 
 // BranchStatus looks up the PR for the branch checked out in dir. ok is
 // false when there is none (or gh cannot tell).
 func BranchStatus(dir string) (st Status, ok bool) {
-	out, err := gh(dir, "pr", "view", "--json", "number,url,state,headRefOid,statusCheckRollup")
+	out, err := gh(dir, "pr", "view", "--json", "number,url,state,headRefOid,baseRefName,statusCheckRollup")
 	if err != nil {
 		return Status{}, false
 	}
 	var raw rawPR
-	if json.Unmarshal(out, &raw) != nil || !ownPR(dir, raw.State, raw.HeadRefOid) {
+	if json.Unmarshal(out, &raw) != nil {
 		return Status{}, false
 	}
 	pr := raw.toPR()
-	return Status{Number: pr.Number, URL: pr.URL, State: pr.State, CI: CISummary(pr.Checks), HeadOID: pr.Head}, true
+	return Recheck(dir, Status{Number: pr.Number, URL: pr.URL, State: pr.State, CI: CISummary(pr.Checks), HeadOID: pr.Head, Base: pr.Base})
+}
+
+// Recheck works out again, with git alone, whether st, a PR gh found for
+// the branch checked out in dir, is the branch's, and how many commits
+// the branch has after it, for a branch that moved since gh was asked.
+func Recheck(dir string, st Status) (Status, bool) {
+	st.After = 0
+	if ownPR(dir, st.State, st.HeadOID) {
+		return st, true
+	}
+	if st.After = commitsAfter(dir, st.HeadOID, st.Base); st.After == 0 {
+		return Status{}, false
+	}
+	return st, true
 }
 
 // ownPR reports whether a PR that gh found by the name of the branch
@@ -94,7 +113,64 @@ func ownPR(dir, state, head string) bool {
 	if head == "" {
 		return false
 	}
-	return proc.Run(gitsafe.Command(dir, "merge-base", "--is-ancestor", "HEAD", head)) == nil
+	return isAncestor(dir, "HEAD", head)
+}
+
+// commitsAfter is, for a finished PR that ownPR turned down, how many
+// commits the branch checked out in dir has on top of the PR's head that
+// base has not got: the branch went on after the PR was merged or closed.
+// It is 0 when the branch did not, or it cannot be told: git does not
+// know the head or base. The head has to be on HEAD's first-parent line,
+// which a branch that went on from it keeps when it merges base in. A
+// merge commit puts the head into base too, and so into every branch
+// made from base since, the new branch of the same name among them; but
+// in those it is the merge commit's second parent, off that line. Squash
+// and rebase merges leave it out of base altogether.
+func commitsAfter(dir, head, base string) int {
+	if head == "" || base == "" {
+		return 0
+	}
+	var bases []string
+	for _, ref := range []string{"refs/remotes/origin/" + base, "refs/heads/" + base} {
+		if proc.Run(gitsafe.Command(dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")) == nil {
+			bases = append(bases, "^"+ref)
+		}
+	}
+	if len(bases) == 0 {
+		return 0
+	}
+	line, err := revCount(dir, "--first-parent", "HEAD", "^"+head+"^{commit}")
+	if err != nil || line == 0 || revParse(dir, "HEAD~"+strconv.Itoa(line)) != revParse(dir, head+"^{commit}") {
+		return 0
+	}
+	n, err := revCount(dir, append([]string{"HEAD", "^" + head + "^{commit}"}, bases...)...)
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+// revCount is how many commits git rev-list lists for args.
+func revCount(dir string, args ...string) (int, error) {
+	out, err := proc.Output(gitsafe.Command(dir, append([]string{"rev-list", "--count"}, args...)...))
+	if err != nil {
+		return 0, err
+	}
+	return strconv.Atoi(strings.TrimSpace(string(out)))
+}
+
+// revParse is the commit rev names, "" when git does not know it.
+func revParse(dir, rev string) string {
+	out, err := proc.Output(gitsafe.Command(dir, "rev-parse", "--verify", "--quiet", rev))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// isAncestor says whether commit a is in b's history, a itself included.
+func isAncestor(dir, a, b string) bool {
+	return proc.Run(gitsafe.Command(dir, "merge-base", "--is-ancestor", a, b)) == nil
 }
 
 // CISummary folds a PR's checks into one word: "fail" when any failed,
@@ -279,4 +355,12 @@ func CreateRepo(dir string) (string, error) {
 		return "", err
 	}
 	return strings.TrimSpace(firstLine(string(out))), nil
+}
+
+// commits is "1 commit" or "n commits".
+func commits(n int) string {
+	if n == 1 {
+		return "1 commit"
+	}
+	return strconv.Itoa(n) + " commits"
 }

@@ -160,17 +160,30 @@ func (in tabInfo) prs() []github.Status {
 }
 
 // merged reports whether every worktree of the tab has a merged pull
-// request: its work is safely in main.
+// request: its work is safely in main. A branch that went on after its
+// pull request was merged is not: the commits after it are in no pull
+// request, and closing the tab for a merged one could delete them.
 func (in tabInfo) merged() bool {
 	if len(in.wts) == 0 {
 		return false
 	}
 	for _, w := range in.wts {
-		if !w.hasPR || w.pr.State != "MERGED" {
+		if !w.hasPR || w.pr.State != "MERGED" || w.pr.After > 0 {
 			return false
 		}
 	}
 	return true
+}
+
+// prState is a pull request's state in words, e.g. "open", and for a
+// branch that went on after it was merged or closed, how far, e.g.
+// "merged · 1 commit after".
+func prState(pr github.Status) string {
+	s := strings.ToLower(pr.State)
+	if pr.After > 0 {
+		s += " · " + plural(pr.After, "commit") + " after"
+	}
+	return s
 }
 
 type infoTickMsg struct{}
@@ -323,6 +336,12 @@ func lookAt(wts []workspace.Worktree, prev tabInfo, withPR, skip bool) tabInfo {
 			wi.pr, wi.hasPR = github.BranchStatus(w.Path)
 		case i < len(prev.wts):
 			wi.pr, wi.hasPR = prev.wts[i].pr, prev.wts[i].hasPR
+			if wi.hasPR && wi.pr.State != "OPEN" {
+				// The branch may have moved since GitHub was asked: a
+				// commit on top of a merged PR is in no PR, and the tab
+				// is no longer done.
+				wi.pr, wi.hasPR = github.Recheck(w.Path, wi.pr)
+			}
 		}
 		in.wts = append(in.wts, wi)
 	}
@@ -487,7 +506,14 @@ func (m *Model) details(t *tab, bg lipgloss.Color, active bool) string {
 		} else if prs := t.info.prs(); len(prs) > 0 {
 			s := "#" + strconv.Itoa(prs[0].Number)
 			tip := "Pull request #" + strconv.Itoa(prs[0].Number)
-			if prs[0].State == "CLOSED" {
+			switch {
+			case prs[0].After > 0:
+				// The branch went on after it: what is on top is in no
+				// pull request.
+				s += " " + strings.ToLower(prs[0].State) + "·" + strconv.Itoa(prs[0].After) + " after"
+				tip += ", " + strings.ToLower(prs[0].State) + " · " + plural(prs[0].After, "commit") +
+					" after it, in no pull request"
+			case prs[0].State == "CLOSED":
 				s += " closed"
 				tip += ", closed"
 			}
