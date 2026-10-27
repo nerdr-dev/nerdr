@@ -14,8 +14,8 @@ You ask in plain words; the agent knows the command.
 ## Messages between agents
 
 Ask agent 1 to *"send the plan to agent 2"*, and agent 2 gets it as a
-task, typed in when it is idle, marked as coming from agent 1 and saying
-how to answer. Agents do this with `nerdr send`, which the `nerdr-send`
+task. nerdr types it in when agent 2 is idle, with a line saying it is
+from agent 1 and how to answer. Agents do this with `nerdr send`, which the `nerdr-send`
 skill teaches them. `nerdr send` without a number lists the tab's agents.
 
 <video autoPlay loop muted playsInline controls aria-label="Claude and Codex play chess in one tab, sending moves with nerdr send, beside a terminal with the board" style="width:100%">
@@ -81,7 +81,7 @@ each part with a summary and a branch name you can edit:
 
 ![Approving each part of work split into three tabs](../../../assets/split.png)
 
-The original agent is told the new tabs and branch names, and reminded to
+The original agent is told about the new tabs and their branches, and reminded to
 leave the moved commits out of its own pull request. Commits that do not
 apply cleanly are left out, and the new agent is told to make those
 changes itself.

@@ -67,9 +67,9 @@ with `ctrl+q i o`, where you can read the task before the agent starts.
 
 ### From a pull request
 
-With one repository picked, the branch step lists its open pull requests,
-whoever opened them. Those your review is asked for, from you or a team
-of yours, are marked `● review asked` and listed first. `↓` goes into the
+With one repository picked, the branch step lists all its open pull
+requests. Those that ask for a review from you or one of your teams are
+marked `● review asked` and listed first. `↓` goes into the
 list, and typing narrows it by number, branch, title or author. `enter`
 opens the worktree the pull request is checked out in, or continues its
 branch in a new one.
@@ -86,8 +86,8 @@ whether to continue it or start a fresh branch from main.
 
 Worktrees without a tab are offered too: in the repository list, and
 under the branch name for the repository picked. A tab opened on one
-carries on the agent's latest conversation in that worktree, even one
-held outside nerdr.
+continues the agent's latest conversation in that worktree, even if you
+had it outside nerdr.
 
 ### On top of another tab's branch
 
@@ -209,6 +209,6 @@ unpushed commits, and asks again with `Y` before deleting them.
 
 <Aside>
 Tabs and agent conversations survive restarts. Quit with `ctrl+q q`, and
-the next start brings back every tab and carries each agent's
-conversation on.
+the next start brings back every tab, and each agent continues its
+conversation.
 </Aside>

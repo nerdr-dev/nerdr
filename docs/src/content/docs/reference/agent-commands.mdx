@@ -41,7 +41,7 @@ you ask in plain words. They work only inside a tab, apart from
 | Command | What it does |
 |---|---|
 | `nerdr tabs` | Every tab as JSON: branches, ahead/behind, changes, PR, CI, status, agents |
-| `nerdr status TEXT` | Set the line on where the tab's work stands, above the agent; alone, print it; `--clear` |
+| `nerdr status TEXT` | Set the line on where the tab's work stands, above the agent; without TEXT, print it; `--clear` clears it |
 | `nerdr tab new --branch B TASK` | A tab on a new branch from main, its agent given the task (`--repo`, `--kind`, `--model`) |
 | `nerdr search WORDS` / `search --show ID` | Past claude and codex conversations in these folders |
 | `nerdr usage` | The Claude and Codex plans' rate limits used, as JSON; in a sandbox, needs read access to [`claude-limits.json` and Codex's logs](../../configure/agents/#what-a-sandbox-must-allow) |
@@ -62,8 +62,8 @@ you ask in plain words. They work only inside a tab, apart from
 <Aside>
 `nerdr terminal` and `nerdr tab new` do not take the keyboard. Agents
 close a terminal or another agent's pane only when you ask, and only you
-close tabs and the tab's first agent. A repository's `.nerdr.toml` setup
-is asked about as for any new tab.
+close tabs and the tab's first agent. For a repository with a
+`.nerdr.toml`, nerdr asks about its setup as for any new tab.
 </Aside>
 
 ## How the commands reach nerdr

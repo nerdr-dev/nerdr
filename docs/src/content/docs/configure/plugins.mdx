@@ -59,9 +59,9 @@ description = "Build without the cache."
 - `title` is optional, a name for people.
 - `show` is optional: what `F5` shows of an agent's run, beyond that it
   runs (see [When an agent runs it](#when-an-agent-runs-it)).
-- `open` is optional, `true` unless it says `false`: whether `F5` opens
-  on the plugin when an agent runs it. Off, only its light in the list
-  says it runs.
+- `open` is optional, and `true` unless set to `false`: whether `F5`
+  opens on the plugin when an agent runs it. When it is off, only the
+  plugin's light in the list shows that it runs.
 - `confirm` is optional: `true` asks you before each agent's run (see
   [Saying yes to each run](#saying-yes-to-each-run)).
 - `watch` is optional: `true` for a run that goes on until it is
@@ -82,24 +82,29 @@ Each `[[params]]` is one thing the plugin takes:
 | `default` | Its value when it is not given |
 
 An agent gives them as `nerdr plugin run docker-dev --repos api,web
---clean`, or all at once with `--json '{"repos":["api"]}'`. A required
-parameter missing is refused, and the agent is told to ask you. A value
+--clean`, or all at once with `--json '{"repos":["api"]}'`. If a required
+parameter is missing, nerdr refuses the run and tells the agent to ask
+you. A value
 is at most 64 KB; a list at most 256 values, each at most 4 KB.
 
 ## What run gets
 
-An agent's `nerdr plugin run` asks nerdr to run the plugin, once you
-have allowed it (see [Safety](#safety)). nerdr runs it as you, outside
-any sandbox the agent is in, in the folder the agent ran the command
-in. That folder must resolve to the tab's folder or one of its worktrees,
-or a directory beneath them; a request for somewhere else is refused.
-nerdr holds the checked directory open until startup, so replacing a
-symlink while a run waits for confirmation cannot redirect it. So a plugin
-can do for an agent in a sandbox what the sandbox keeps it from: restart
-the docker setup, read a log elsewhere. Its combined standard output and
-standard error are returned to the agent's command, along with its exit
-status. The plugin run is stopped if the command is interrupted or stops
-reading output (for example, when the agent's command times out).
+When an agent runs `nerdr plugin run`, nerdr runs the plugin for it,
+once you have allowed it (see [Safety](#safety)). nerdr runs it as you,
+outside any sandbox the agent is in. So a plugin can do for an agent in
+a sandbox what the sandbox stops it from doing: restart the docker
+setup, or read a log elsewhere.
+
+The plugin runs in the folder the agent ran the command in. That folder
+must be the tab's folder, one of its worktrees, or a folder below them;
+a request for anywhere else is refused. nerdr keeps the checked folder
+open until the plugin starts, so swapping in a symbolic link while a run
+waits for your yes cannot send it elsewhere.
+
+What the plugin prints, standard output and standard error together,
+goes back to the agent's command with its exit status. If that command
+is interrupted or stops reading, for example when it times out, nerdr
+stops the run.
 
 It gets:
 
@@ -111,45 +116,46 @@ It gets:
   [A screen in F5](#a-screen-in-f5)), but not the agent's own
   environment.
 
-The parameters are the agent's: nerdr takes only those the plugin has,
-of their type, and of its `options` when it has them. A `string`, or a
+The parameters come from the agent. nerdr passes on only those the
+plugin declares, of the right type, and one of its `options` when it has
+them. A `string`, or a
 `multi` without `options`, is any text the agent likes. Use it with
 care: quote it (`"$NERDR_PARAM_NOTE"`), never run it as code (`eval`,
 `sh -c "$…"`), and never let it name a file or command to run unless
 you check it. When you press `a` in `F5` to review a plugin, nerdr
 highlights which parameters accept free-form text.
 
-You run a plugin yourself, as you, in a tab's shell or outside nerdr,
-with the same command: it runs there, in the foreground.
+You can also run a plugin yourself with the same command, in a tab's
+shell or outside nerdr. It then runs right there, in the foreground.
 
 ## When an agent runs it
 
-When an agent runs a plugin, `F5` opens beside the agent, on the
+When an agent runs a plugin, `F5` opens beside the agent on that
 plugin, without taking the keyboard, unless the plugin's `open` is
-`false`. Its light in the list is on while
-it runs, with who runs it and for how long; once it ends, the light
-says how: green for exit status 0, red with the status for anything
-else. When you have the keyboard in another of the panel's screens,
-nerdr leaves it be and tells you of the run instead; a run in another
-tab is told the same way.
+`false`. The plugin's light in the list is on while it runs, with who
+started it and for how long. When the run ends, the light shows the
+result: green for exit status 0, red with the status for anything else.
+If you are using another of the panel's screens, nerdr leaves it alone
+and tells you about the run instead, as it does for a run in another
+tab.
 
-The plugin says what more is shown, in `show`:
+`show` sets what else `F5` shows:
 
 | `show` | What `F5` shows of the run |
 |---|---|
 | `values` | The parameters the agent gave it |
 | `output` | What it prints, as it prints it: what the agent gets back |
-| `ui` | Its screen, started for the run when it does not run (the plugin needs a `ui`); this is the screen of the plugin you allowed, started without your pressing `enter` |
+| `ui` | Its screen, which nerdr starts for the run if it is not running (the plugin needs a `ui`). This starts the screen of a plugin you allowed without you pressing `enter` |
 
 A run in a terminal pane (`nerdr terminal nerdr plugin run …`), or one
 you start yourself in a shell, is not shown: you see it where it runs.
 
 ### The run, on the plugin's screen
 
-A plugin's screen, while it runs, is told of the agents' runs in the
-file `NERDR_PLUGIN_EVENTS` names, one JSON object a line, so it can
-show the run its own way: tick the boxes of the values given, show its
-button pressed, list what comes back. It reads the file as it grows,
+While a plugin's screen runs, nerdr tells it about the agents' runs in
+the file named by `NERDR_PLUGIN_EVENTS`, one JSON object per line. The
+screen can then show the run its own way: tick the boxes of the values
+given, show its button pressed, list what comes back. It reads the file as it grows,
 for example with `tail -f "$NERDR_PLUGIN_EVENTS"`:
 
 ```json
@@ -158,11 +164,10 @@ for example with `tail -f "$NERDR_PLUGIN_EVENTS"`:
 {"event":"end","run":"3f9c0a1b2c3d4e5f","exit":0}
 ```
 
-`output` is what the run printed since the last one, as the agent gets
-it, without control characters. A screen started while a run goes on
-gets its start and what it printed so far first. The screen only shows
-the run: the work is `run`'s, and what goes back to the agent is what
-`run` prints.
+`output` is what the run printed since the last `output`, as the agent
+gets it, without control characters. A screen started during a run first
+gets its `start` and what it has printed so far. The screen only shows
+the run: `run` does the work, and the agent gets what `run` prints.
 
 ### Saying yes to each run
 
@@ -174,15 +179,16 @@ To be asked every time for one plugin, such as a deploy, set
 `confirm = true` in its `plugin.toml`. To be asked for every plugin, set
 `confirm_plugin_runs = true` in nerdr's config (settings, Plugins).
 
-nerdr then asks you before the run, with which tab and agent it is and
-the parameters it gives: `y` runs it, `n` does not, and the agent is
-told not to run it again unless you ask. The agent waits about a minute
-and a half; unanswered by then, the run does not happen. While you are
-answering another question, the agent is told to try again shortly.
+nerdr then asks you before the run, and shows the tab, the agent and
+the parameters it gives. `y` runs it. `n` does not, and the agent is
+told not to try again unless you ask. The agent waits about a minute and
+a half; if you have not answered by then, the run does not happen. If
+you are answering another question, the agent is told to try again
+shortly.
 
-A plugin's `confirm` can ask for more than the config, never less:
-`confirm_plugin_runs = true` asks of every plugin, whatever it says.
-The question only checks with you: it is not a sandbox. Allow only
+A plugin's `confirm` can only add questions: with
+`confirm_plugin_runs = true`, every plugin asks, whatever its `confirm`
+says. The question is a check with you, not a sandbox. Allow only
 plugins you have read.
 
 ## A plugin that watches
@@ -191,19 +197,19 @@ Some jobs go on: watch a log for errors, a queue for failed jobs, a
 build for warnings. An agent's command cannot wait for them, since
 agents cut a command off after a minute or two. With `watch = true`:
 
-- `nerdr plugin run` has nerdr start it, as any run, and returns at
-  once.
+- `nerdr plugin run` starts it, as any run, and returns at once.
 - What it prints goes to that agent as a message, typed in when the
-  agent is idle; what it prints while the agent is busy is added to the
-  message waiting. So print only what the agent should act on, one line
-  at a time as it appears (`grep --line-buffered`, `tail -F`), and
-  deduplicate repeated lines — if a watch prints the same error every
-  minute, the agent will receive that error every minute.
+  agent is idle. What it prints while the agent is busy is added to the
+  waiting message.
+- So print only what the agent should act on, one line at a time as it
+  appears (`grep --line-buffered`, `tail -F`), and drop repeated lines:
+  a watch that prints the same error every minute sends the agent that
+  error every minute.
 - It keeps running until the agent runs `nerdr plugin stop NAME`, you
   press `s` on it in `F5`, the agent's pane closes, or nerdr quits.
-  Stopping a watch terminates its process group with `SIGTERM`, followed
-  by `SIGKILL` after five seconds. nerdr notifies the agent when a watch
-  stops, unless the agent stopped it itself.
+  Stopping a watch sends `SIGTERM` to its process group, and `SIGKILL`
+  five seconds later. nerdr tells the agent when a watch stops, unless
+  the agent stopped it.
 - An agent watching is not put to sleep (`sleep_after`).
 
 For example, `logwatch/plugin.toml`:
@@ -233,13 +239,13 @@ and goes on listening.
 
 ## A screen in F5
 
-`F5` lists the plugins, with each one's description and
-parameters, and `a` allows the one picked; `d` takes the allowance away
-again for every version of it in the folder, so future runs and screens
-wait for a new yes. A screen or watch already running goes on. For a
-plugin with `ui`, `enter` starts its program below them, in the tab's
-folder, and gives it the keyboard; it keeps running when you switch
-screens. Use any terminal UI: a shell script with `read`, `gum`, `fzf`,
+`F5` lists the plugins, each with its description and parameters. `a`
+shows what is in the selected plugin's folder and `y` allows it. `d`
+takes the allowance back for every version of it in the folder, so later
+runs and screens wait for a new yes; a screen or watch already running
+goes on. For a plugin with `ui`, `enter` starts its program below the
+list, in the tab's folder, and gives it the keyboard. It keeps running
+when you switch screens. Use any terminal UI: a shell script with `read`, `gum`, `fzf`,
 bubbletea, textual.
 
 While the screen has the keyboard, every key goes to it except
@@ -254,22 +260,22 @@ plugin run NAME …`.
 
 ## Safety
 
-A plugin runs as you, outside every agent's sandbox: its `ui` screen
-runs when you start it, and its `run` command runs whenever an agent
-(including a sandboxed one) calls it with parameters. That is the purpose
-of plugins: letting agents trigger specific actions you have approved.
-Because an unsandboxed agent (or a sandboxed one with write access to
-`~/.config/nerdr`) could create or edit plugins, no plugin starts or runs
-until you explicitly allow it:
+A plugin runs as you, outside every agent's sandbox. Its `ui` screen
+runs when you start it, and its `run` command when an agent asks for it
+with parameters; for an agent in a sandbox, only once you say yes. That
+is what plugins are for: letting agents start actions you have approved.
+But an agent outside a sandbox, or one inside with write access to
+`~/.config/nerdr`, could create or change plugins. So no plugin starts
+or runs until you allow it:
 
 - `F5` marks a plugin "not allowed" until you do. `a` shows what is in
   its folder, each file and its text, and `y` allows it. `enter` on a
   screen not allowed yet asks the same, then starts it. `d` stops
   allowing every version of it in the folder again; a screen or watch
   already running goes on until you stop it.
-- What you allow is by the folder's contents, not its name: the same
-  files in another folder are allowed with it, and a new name for them
-  is not a new thing to read. Keep what you allow inside its folder.
+- What you allow is the folder's contents, not its name: the same files
+  in another folder are allowed too, and renaming the folder does not
+  ask again. Keep what you allow inside its folder.
 - `nerdr plugin run` refuses a plugin not allowed, and nerdr tells you
   which agent wanted to run it. An agent that makes a plugin cannot have
   it run before you have read it.
@@ -279,41 +285,42 @@ until you explicitly allow it:
   regular file (symlinks, FIFOs and devices are refused), and any file in
   the folder that a command references must exist and not be a symlink
   pointing outside the folder.
-- Keep what a plugin runs inside its folder: a script outside the folder
-  is not covered by your approval and could be modified unseen (for
-  example, in the worktree where the agent runs). Relative command paths
-  are resolved from the plugin's folder, and paths leading outside it are
-  refused. An absolute path to a tool (such as `/bin/sh`) is used as-is
-  and shown in the approval prompt, but is not covered by the folder's
-  hash, so use only tools you trust. When a command invokes a known
-  interpreter or runner (`sh`, `bash`, `python`, `node`, `perl`, `ruby`,
-  `php`, `lua`, …), versioned names such as `python3.12` and `node20`,
-  `npx`/`bunx`, or `env` with its options and `NAME=value` words, the
-  script argument must also be inside the plugin's folder; a data file
-  may live elsewhere, as nerdr does not read or hash it.
+- Keep what a plugin runs inside its folder. A script outside it is not
+  covered by your approval, and could be changed without you seeing it,
+  for example in the worktree where the agent runs. Relative command
+  paths are resolved from the plugin's folder, and paths that lead
+  outside it are refused. An absolute path to a tool, such as `/bin/sh`,
+  is used as it is and shown when you approve, but it is not part of the
+  folder's hash, so use only tools you trust.
 
-  This interpreter check is a best-effort guard. Build tools (`make`,
-  `npm`, `docker`), wrappers (`timeout`, `xargs`), package or module
-  lookups (`npx`, `python -m`), or dynamically constructed script names
-  read files and targets from the working directory where the agent runs.
-  Instead of invoking those directly in `plugin.toml`, put a wrapper
-  script in the plugin's folder and write `./name`.
+  When a command runs a known interpreter or runner (`sh`, `bash`,
+  `python`, `node`, `perl`, `ruby`, `php`, `lua`, …, versioned names
+  such as `python3.12` and `node20`, `npx`/`bunx`, or `env` with its
+  options and `NAME=value` words), the script it is given must also be
+  inside the plugin's folder. A data file may be elsewhere, since nerdr
+  neither reads nor hashes it.
+
+  This check catches the common cases, not all of them. Build tools
+  (`make`, `npm`, `docker`), wrappers (`timeout`, `xargs`), module
+  lookups (`npx`, `python -m`) and script names built at run time read
+  files from the folder the agent runs in. Instead of calling those
+  directly in `plugin.toml`, put a wrapper script in the plugin's folder
+  and run it as `./name`.
 - nerdr hashes the folder just before it starts the program, in the
-  child. A change after that, or one made while the script runs, is not
+  process that then starts it. A change after that, or one made while the script runs, is not
   seen. A link in the folder is approved as a link: what it points to
   is not hashed, and a script that reads it later can read contents
   outside what you allowed. Keep what the script reads inside the
   folder.
-- An agent has at most eight plugin runs going at once, and nerdr
-  thirty-two: one that asks for more waits for one to end.
+- An agent can have at most eight plugin runs going at once, and nerdr
+  thirty-two in all. More wait until one ends.
 - A sandboxed agent must be able to read `~/.config/nerdr/plugins` for
   `nerdr plugin list` and `nerdr plugin run`: it reads the plugin's
   description, parameters and key there. The allowance itself is checked
   by nerdr through the socket.
 - Allow a plugin for what it does with any parameters an agent may
-  give: what you read is the code, not what it will be given. A
-  plugin that does something you want to decide each time says
-  `confirm = true`.
+  give: you read the code, not the values it will get. For a plugin you
+  want to decide on each time, set `confirm = true`.
 
 Approvals are kept in `~/.local/state/nerdr/plugins-allowed.json`. An
 agent in a sandbox must not be able to write it, nor

@@ -42,8 +42,9 @@ in the tab ran in a sandbox, hooks inside the worktree (a
 outside the sandbox.
 
 nerdr records origin's push destination when it opens a worktree, or on
-first startup for older tabs. Push and PR creation fail if that destination
-changes. PRs use the recorded repository, passed explicitly to `gh`.
+first start for older tabs. Pushes and new pull requests fail if that
+destination changes, and pull requests go to the recorded repository,
+which nerdr passes to `gh`.
 
 The sandbox must not let the agent write to `~/.config/nerdr` or
 `~/.local/state/nerdr` (which holds `plugins-allowed.json`,
@@ -64,8 +65,8 @@ only in worktrees on a new branch from the base, never on a branch's own
 code: see [Getting a new worktree ready](../../use/tabs/#getting-a-new-worktree-ready-nerdrtoml).
 
 nerdr also writes to the data folder (`data_dir`), where agents store
-their notes, review results, walkthroughs and handoffs. When writing to
-`data_dir` or reading files from a worktree, nerdr refuses to follow
-symlinks or paths that point outside the folder, preventing an agent from
-using a symlink to make nerdr overwrite or display external files.
+their notes, review results, walkthroughs and handoffs. When it writes to
+`data_dir` or reads files from a worktree, nerdr does not follow
+symbolic links or paths that lead outside the folder, so an agent cannot
+use a link to make nerdr overwrite or show files elsewhere.
 

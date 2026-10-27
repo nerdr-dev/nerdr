@@ -48,9 +48,9 @@ my-sandbox -- copilot --allow-all
 Resuming adds `--resume=<id>` at the end.
 
 Codex can share a command server across sessions. That server inherits the
-first session's environment and runs outside wrappers used by later
-sessions. `--no-daemon` keeps it inside the tab's Codex process, preserving
-the wrapper and ensuring reports come from the correct tab.
+first session's environment and runs outside the wrappers of later
+sessions. `--no-daemon` keeps the server inside each tab's Codex process,
+so it stays inside the wrapper and its reports come from the right tab.
 
 These settings apply to new, restored, restarted and switched agents,
 and to reviewers. Reviewers also get `[review.args]`. For opencode, nerdr
@@ -83,48 +83,49 @@ Such an agent:
 - can start agents, tabs (`nerdr agent`, `nerdr tab new`) and spun-off
   parts only with agents that are themselves `sandboxed`;
 - can send messages to, and read the panes of, only agents started in a
-  sandbox, and no terminals. If it leaves a message for an agent that
-  later starts outside a sandbox, the message waits in F3 for your
-  approval instead of being typed in automatically. Results from work it
-  spun off are reported only to that agent;
+  sandbox, and no terminals. A message it leaves for an agent that later
+  starts outside a sandbox waits in F3 for you to approve it. Results
+  from work it spun off are reported only to that agent;
 - sees only its own tab in `nerdr tabs`;
 - can run the plugins you allowed, but nerdr asks you before each run.
   Plugins run outside the sandbox, as you, since that is what they are
   for (see [Plugins](../plugins/#safety)).
 
 Reviews of a sandboxed agent's work also run only in sandboxed agents,
-including automatic reviews and `nerdr request-review`. If the configured
-reviewer is not sandboxed, nerdr uses an available sandboxed agent instead (the
-author's kind if needed). If none can run sandboxed, no reviewer starts.
-The review picker offers only sandboxed agents for such work.
-Handoffs and questions between you and the agent still work: they go to
-you, or to an agent you pick. The setting takes effect when the agent
-next starts.
+automatic reviews and `nerdr request-review` included, and the review
+picker offers only those. If the configured reviewer is not sandboxed,
+nerdr picks a sandboxed agent instead, of the author's kind if need be.
+If no agent can run sandboxed, no review starts. Handoffs and questions
+still work: they go to you, or to an agent you pick.
 
-A sandboxed agent cannot impersonate an unsandboxed one. Because every
-agent receives its tab's secret in `NERDR_TAB`, a process in a sandbox
-might be able to read that environment variable. On Linux and macOS,
-nerdr does not rely on `NERDR_TAB` alone: it asks the kernel which
-process is connecting to the socket, and accepts the request as coming
-from that agent only if the connecting process is the agent itself or a
-process running under it. Any other connection is treated as sandboxed —
-restricted as described above, and rejected if the tab it names is not
-sandboxed. Exposing nerdr's socket to the sandbox is therefore safe and
-does not provide a way out. On other operating systems, nerdr cannot
-verify the connecting process and relies on `NERDR_TAB` alone, so a
-sandboxed agent that reads another agent's secret could impersonate it.
-This kernel check also means an unsandboxed agent whose commands run
-elsewhere (such as inside a container or on a remote machine) cannot
-use nerdr's commands unless you mark it `sandboxed`.
+The setting takes effect when the agent next starts.
 
-`sandboxed` does not make a sandbox; `command` must. What it closes is
-nerdr as a way out. Check the rest from inside the sandbox: that it cannot
-reach other ways out such as
-the D-Bus session bus, a VS Code or browser socket in `/run/user/$UID`, or
-services on localhost. Anything an agent outside a sandbox reads from one
-inside, such as code to review, a handoff or a review, is still text a
-sandboxed agent wrote and can carry instructions: it is safest to run
-every agent in a sandbox, or nerdr itself in one.
+A sandboxed agent cannot pretend to be one outside a sandbox. Every agent
+gets its tab's secret in `NERDR_TAB`, and a process in a sandbox may be
+able to read it. So on Linux and macOS, nerdr also asks the kernel which
+process connects to the socket, and takes a request as the agent's only
+if it comes from the agent itself or a process started under it. Any
+other connection is treated as sandboxed: it is restricted as above, and
+refused if the tab it names is not sandboxed. The sandbox can therefore
+reach nerdr's socket without that becoming a way out. On other systems,
+nerdr cannot check the process and relies on `NERDR_TAB` alone, so a
+sandboxed agent that reads another agent's secret could pretend to be
+it.
+
+The same check means that an agent outside a sandbox whose commands run
+somewhere else, such as in a container or on a remote machine, can use
+nerdr's commands only if you mark it `sandboxed`.
+
+`sandboxed` does not create a sandbox; your `command` must do that. The
+setting only stops nerdr from being a way out. From inside the sandbox,
+check that the agent cannot reach other ways out, such as the D-Bus
+session bus, a VS Code or browser socket in `/run/user/$UID`, or
+services on localhost.
+
+Text that an agent outside a sandbox reads from one inside, such as code
+to review, a handoff or a review, was still written by the sandboxed
+agent and can contain instructions. It is safest to run every agent in a
+sandbox, or nerdr itself in one.
 
 ## Other agents
 
@@ -141,7 +142,8 @@ detect = "amp"                # screen rules to use; defaults to the agent's nam
 devin, droid, grok, hermes, kilo, kimi, kiro, letta, maki, muse, pi,
 qodercli and qwen besides its own agents, and herdr does not need to be
 installed. Without matching rules, the status is unknown, but the tab
-still works.
+still works. `detect` also works for built-in agents, such as one behind
+a wrapper that changes its screen.
 
 nerdr does not know where custom agents store conversations. An agent
 that supports herdr reports the command that resumes its conversation,
@@ -150,9 +152,9 @@ as in herdr's [guide for agent authors](https://herdr.dev/docs/add-herdr-support
 that command's arguments, after the agent's own `command` and `args`, so a
 wrapper or sandbox stays in place. The reported command must be one of the
 words of `command`, and is ignored when the agent is `sandboxed`. Without
-such a report, nerdr resumes with `resume_args`. Switching away relies on a handoff written by the old agent. `detect` also works for built-in agents, including wrappers
-that change their screen output.
-
+such a report, nerdr resumes with `resume_args`. When you switch away from
+such an agent, nerdr cannot read its conversation, so it relies on a
+handoff the agent writes.
 
 ## What a sandbox must allow
 
@@ -173,10 +175,9 @@ is unavailable, skills instruct the agent to append JSON lines directly
 to the files in that folder.
 
 Commands such as `request-review`, `post-review`, `spinoff` and `handoff`
-need more: each call, from a skill or from an agent's hooks,
-starts a fresh `nerdr` process that passes the request to the nerdr
-running the tab. It finds that nerdr only through the `NERDR_*` variables
-and its socket.
+need more. Each call, from a skill or from an agent's hooks, starts a
+new `nerdr` process that passes the request on to the nerdr running the
+tab, and finds it only through the `NERDR_*` variables and its socket.
 The sandbox must:
 
 - pass the `NERDR_*` variables through, `NERDR_SOCKET` and `NERDR_TAB`
@@ -208,8 +209,8 @@ For read access:
 - `nerdr search` reads conversation logs in `~/.claude/projects` and
   `~/.codex/sessions`.
 
-The `HERDR_*` variables are only for herdr's integrations; a sandbox
-without them in it can leave them out. When something is missing, the
+The `HERDR_*` variables are only for herdr's integrations; leave them
+out if the sandbox does not run those. When something is missing, the
 command says which of these it is, and the skills tell the agent to show
 the user that message rather than try another nerdr.
 

@@ -38,7 +38,8 @@ question.*
 - **Your own scripts as plugins.** Custom scripts (like rebuilding Docker or
   seeding a database) that agents can run with parameters, or that you can
   run directly in `F5`. [Plugins →](https://nerdr.app/configure/plugins/)
-- **Keyboard and mouse.** Everything is a key after `ctrl+q`, and a click.
+- **Keyboard and mouse.** Every command has a key after `ctrl+q`, and
+  most can be clicked.
   [Keys →](https://nerdr.app/configure/keyboard/)
 
 ## Install

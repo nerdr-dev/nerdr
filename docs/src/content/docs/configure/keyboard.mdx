@@ -146,10 +146,10 @@ Terminals without OSC 52, such as GNOME Terminal and Terminal.app, need a
 local clipboard tool instead: `pbcopy` on macOS, and `xclip`, `xsel` or
 `wl-clipboard` on Linux.
 
-If an agent uses the mouse itself, hold `shift` to select, or select text
-using the agent's own selection: nerdr forwards clipboard copies from the
-active pane only right after you type or click in it. A program in an
-inactive pane, or one copying on its own without user interaction, cannot
-write to your clipboard.
+If an agent uses the mouse itself, hold `shift` to select, or use the
+agent's own selection. nerdr passes a copy from a pane on to your
+clipboard only right after you type or click in that pane, so a program
+in another pane, or one that copies by itself, cannot write to your
+clipboard.
 
 Set `mouse = false` to leave the mouse to the terminal.
