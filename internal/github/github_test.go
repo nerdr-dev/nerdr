@@ -121,6 +121,7 @@ func TestNotLoggedIn(t *testing.T) {
 	for _, msg := range []string{
 		"To get started with GitHub CLI, please run:  gh auth login\nAlternatively, populate the GH_TOKEN environment variable with a GitHub API authentication token.",
 		"HTTP 401: Bad credentials (https://api.github.com/graphql)\nTry authenticating with:  gh auth login",
+		"gh: To use GitHub CLI in a GitHub Actions workflow, set the GH_TOKEN environment variable. Example:\n  env:\n    GH_TOKEN: ${{ github.token }}",
 	} {
 		if !NotLoggedIn(msg) {
 			t.Errorf("not taken for no login: %q", msg)

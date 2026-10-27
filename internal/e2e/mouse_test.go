@@ -28,7 +28,7 @@ func (h *harness) clickFrom(y0 int, s string, b ...int) {
 	if len(b) > 0 {
 		btn = b[0]
 	}
-	for y, line := range strings.Split(h.screen(), "\n") {
+	for y, line := range strings.Split(h.still(), "\n") {
 		if y < y0 {
 			continue
 		}
@@ -39,6 +39,32 @@ func (h *harness) clickFrom(y0 int, s string, b ...int) {
 		}
 	}
 	h.t.Fatalf("%q is not on the screen:\n%s", s, h.screen())
+}
+
+// still is the screen once it has stopped changing for a moment, or as it
+// is after a second if it does not: a click aimed at a screen still being
+// drawn can miss what it was aimed at.
+func (h *harness) still() string {
+	last := h.screen()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+		now := h.screen()
+		if now == last {
+			return now
+		}
+		last = now
+	}
+	return last
+}
+
+// clickContinue clicks the branch step's enter continue once gh has
+// answered for its list of pull requests: the answer can make the dialog
+// wider, and so move the button out from under a click already aimed.
+func (h *harness) clickContinue() {
+	h.t.Helper()
+	h.waitGone("asking gh…", 5*time.Second)
+	h.click("enter continue")
 }
 
 // TestMouse makes a tab and works it with the mouse alone, but for the
@@ -72,7 +98,7 @@ func TestMouse(t *testing.T) {
 	h.click("enter continue")
 	h.waitFor("branch:", 2*time.Second)
 	h.keys("feat-m")
-	h.click("enter continue")
+	h.clickContinue()
 	h.waitFor("Agent:", 2*time.Second)
 	h.click("1  claude")
 	h.waitFor("? for shortcuts", 10*time.Second)
@@ -82,7 +108,7 @@ func TestMouse(t *testing.T) {
 	h.clickFrom(0, "+") // one repository: the tab row is the top one
 	h.waitFor("New worktree for repoB", 2*time.Second)
 	h.keys("feat-n")
-	h.click("enter continue")
+	h.clickContinue()
 	h.click("1  claude")
 	h.waitTabBar("2:feat-n", 10*time.Second)
 
@@ -134,7 +160,7 @@ func TestMouseNewTabFromGroupMenu(t *testing.T) {
 	h.click("repoA")
 	h.click("enter continue")
 	h.keys("one")
-	h.click("enter continue")
+	h.clickContinue()
 	h.click("1  claude")
 	h.waitTabBar("1:one", 10*time.Second)
 
@@ -146,7 +172,7 @@ func TestMouseNewTabFromGroupMenu(t *testing.T) {
 	h.click("repoB")
 	h.click("enter continue")
 	h.keys("two")
-	h.click("enter continue")
+	h.clickContinue()
 	h.click("1  claude")
 	h.waitTabBar("repoB (1)", 10*time.Second)
 
@@ -155,7 +181,7 @@ func TestMouseNewTabFromGroupMenu(t *testing.T) {
 	h.click("New tab in repoA…")
 	h.waitFor("New worktree for repoA", 2*time.Second)
 	h.keys("three")
-	h.click("enter continue")
+	h.clickContinue()
 	h.click("1  claude")
 	h.waitTabBar("repoA (2)", 10*time.Second)
 	if _, err := os.Stat(filepath.Join(root, "worktrees", "three-repoA", "README.md")); err != nil {
