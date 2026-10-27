@@ -8,6 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
+
+	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 func TestWalkingTabsKeepsThePrefix(t *testing.T) {
@@ -192,5 +194,39 @@ func TestRepoListCountsTheLights(t *testing.T) {
 	}
 	if !strings.Contains(out, "lib (1)") {
 		t.Fatalf("an idle group has only its count:\n%s", out)
+	}
+}
+
+func TestPassingATabLeavesItDone(t *testing.T) {
+	m := testModel(t) // login, logout in app; parse in lib
+	m.tabs[1].status = stDone
+	m.selectTab(1)
+	m.selectTab(2)
+	m.look()
+	if m.tabs[1].status != stDone {
+		t.Fatal("a tab only passed on the way to another is not seen")
+	}
+	if m.dwelt() {
+		t.Fatal("the tab come to is not looked at before seenAfter")
+	}
+
+	m.selectTab(1)
+	m.tabs[1].queuePaused = true
+	m.landed = m.landed.Add(-seenAfter)
+	m.blurred = true
+	m.look()
+	if m.tabs[1].status != stDone {
+		t.Fatal("a tab is not seen while you are in another window")
+	}
+	m.blurred = false
+	m.editor = &term.Pane{}
+	m.look()
+	if m.tabs[1].status != stDone {
+		t.Fatal("a tab is not seen behind an editor")
+	}
+	m.editor = nil
+	m.look()
+	if m.tabs[1].status != stIdle || m.tabs[1].queuePaused {
+		t.Fatalf("a tab stayed on is seen, its queue let go: %s, paused %v", m.tabs[1].status.label(), m.tabs[1].queuePaused)
 	}
 }
