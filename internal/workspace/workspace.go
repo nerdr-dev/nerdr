@@ -10,6 +10,7 @@ package workspace
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
 	"os"
@@ -406,17 +407,31 @@ func (p Plan) FromBase() Plan {
 }
 
 // dirName is the directory a plan's worktrees go in: the branch with the
-// repositories' names after it, so the same branch name in other
+// first repository's name after it, so the same branch name in other
 // repositories (fix-sonar in several apps at once) gets a directory of its
-// own. A branch already ending in the name is not given it twice.
+// own. A branch already ending in the name is not given it twice. With
+// more repositories, not all their names, which made a directory name too
+// long with many, but how many more and a hash of the names, which keeps
+// apart other sets that start with the same one; each has its own
+// directory inside, under its name.
 func dirName(branch string, repos []Repo) string {
 	name := strings.ReplaceAll(branch, "/", "-")
-	for _, r := range repos {
-		if !strings.HasSuffix(name, "-"+r.Name) {
-			name += "-" + r.Name
-		}
+	if len(repos) == 0 {
+		return name
 	}
-	return name
+	if !strings.HasSuffix(name, "-"+repos[0].Name) {
+		name += "-" + repos[0].Name
+	}
+	if len(repos) == 1 {
+		return name
+	}
+	names := make([]string, len(repos))
+	for i, r := range repos {
+		names[i] = r.Name
+	}
+	sort.Strings(names)
+	sum := sha256.Sum256([]byte(strings.Join(names, "\n")))
+	return fmt.Sprintf("%s-and-%d-more-%x", name, len(repos)-1, sum[:3])
 }
 
 // Describe says, per repository, what Execute will do.

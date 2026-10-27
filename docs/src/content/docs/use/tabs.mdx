@@ -27,12 +27,14 @@ New worktrees go in `~/worktrees-nerdr`, or the folder set in
 `worktrees_dir`:
 
 ```text
-~/worktrees-nerdr/<branch>-<repo>/          # one repository
-~/worktrees-nerdr/<branch>-<a>-<b>/<repo>/  # several repositories
+~/worktrees-nerdr/<branch>-<repo>/                              # one repository
+~/worktrees-nerdr/<branch>-<first>-and-<n>-more-<hash>/<repo>/  # several repositories
 ```
 
-The repository names in the path let you use the same branch name in
-different repositories.
+The repository name in the path lets you use the same branch name in
+different repositories. With several, the folder is named after the first
+one, and the hash of all their names keeps other sets apart without the
+name growing with each repository you add.
 
 ## Starting points
 

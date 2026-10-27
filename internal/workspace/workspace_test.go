@@ -2,10 +2,12 @@ package workspace
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -58,7 +60,7 @@ func TestPlanExecuteAndRemove(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if plan.Dir != filepath.Join(wtRoot, "feat-x-a-b") {
+	if !strings.HasPrefix(filepath.Base(plan.Dir), "feat-x-a-and-1-more-") {
 		t.Fatalf("dir = %s", plan.Dir)
 	}
 	for _, it := range plan.Items {
@@ -144,6 +146,40 @@ func TestPlanDirHasRepoNames(t *testing.T) {
 		if plan.Dir != filepath.Join(wtRoot, want) {
 			t.Fatalf("%s: dir = %s, want %s", br, plan.Dir, want)
 		}
+	}
+	// More repositories give the first one's name, how many more and a
+	// hash, not every name: the same for the same set, other for another.
+	b, c := newRepo(t, root, "b"), newRepo(t, root, "c")
+	dir := func(repos ...Repo) string {
+		t.Helper()
+		plan, err := MakePlan(wtRoot, "fix/sonar", repos)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return filepath.Base(plan.Dir)
+	}
+	abc := dir(a, b, c)
+	if !regexp.MustCompile(`^fix-sonar-a-and-2-more-[0-9a-f]{6}$`).MatchString(abc) {
+		t.Fatalf("dir = %s", abc)
+	}
+	if again := dir(a, c, b); again != abc {
+		t.Fatalf("same set, other order: %s, want %s", again, abc)
+	}
+	ab := dir(a, b)
+	if !strings.HasPrefix(ab, "fix-sonar-a-and-1-more-") {
+		t.Fatalf("a and b: dir = %s", ab)
+	}
+	// Only the hash tells a and b from a and c.
+	if ac := dir(a, c); ac == ab {
+		t.Fatalf("a and c: dir = %s, the same as a and b's", ac)
+	}
+	// However many there are, and however long their names.
+	many := []Repo{a}
+	for i := range 20 {
+		many = append(many, newRepo(t, root, fmt.Sprintf("a-repository-with-a-long-name-%d", i)))
+	}
+	if d := dir(many...); len(d) > len("fix-sonar-a-and-20-more-")+6 {
+		t.Fatalf("20 more: dir = %s", d)
 	}
 }
 
