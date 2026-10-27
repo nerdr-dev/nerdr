@@ -299,6 +299,10 @@ func withUserEnv(env, user []string) []string {
 func (m *Model) start(t *tab, resume bool) tea.Cmd {
 	t.status = stStarting
 	t.err = ""
+	if t.sandboxed || m.sandboxedKind(t.Agent) {
+		t.ResumeArgv = nil
+	}
+	m.markSandboxed(t)
 	beside := t.partOf != nil
 	known := t.SessionID != "" || len(t.ResumeArgv) > 0
 	if beside && !known || !known && m.sharesKind(t) {
@@ -405,8 +409,9 @@ type launchMsg struct {
 	l      agents.Launch
 	resume bool
 	// handoff is the first message for an agent switched to: what the
-	// one before it did.
-	handoff string
+	// one before it did; sandboxed is whether that agent was in a sandbox.
+	handoff   string
+	sandboxed bool
 }
 
 // firstAsArgs takes t's first message off its list and returns it, and
@@ -459,7 +464,11 @@ func (m *Model) spawn(t *tab, l agents.Launch, resume bool) tea.Cmd {
 	m.installProjectSkills(t)
 	// Before the first message can go on the command line.
 	t.sandboxed = m.sandboxedKind(t.Agent)
-	if !t.sandboxed {
+	if t.sandboxed {
+		t.Sandboxed = true
+		t.owner().Sandboxed = true
+		m.markSandboxed(t)
+	} else {
 		m.holdSandboxed(t)
 	}
 	reports := false
@@ -815,6 +824,7 @@ func (m *Model) saveSession() {
 	s.PRs = m.savedPRWatch()
 	s.Issues = m.savedIssueWatch()
 	s.GroupNames = m.groupNames
+	s.SandboxedDirs = m.sandboxedDirs
 	s.SideWidth = m.sideWidth
 	if err := state.Save(s); err != nil {
 		m.toast("could not save session: " + err.Error())

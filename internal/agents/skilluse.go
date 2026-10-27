@@ -148,7 +148,7 @@ func conversationLog(k Kind, sessionID, dir string) string {
 			sessionID = latestCopilotSession(dir, nil)
 		}
 		home, err := os.UserHomeDir()
-		if sessionID == "" || err != nil || strings.ContainsAny(sessionID, `/\`) {
+		if !ValidSessionID(sessionID) || err != nil || (dir != "" && !copilotInDir(home, sessionID, dir)) {
 			return ""
 		}
 		return filepath.Join(home, ".copilot", "session-state", sessionID, "events.jsonl")
@@ -156,7 +156,7 @@ func conversationLog(k Kind, sessionID, dir string) string {
 		if sessionID == "" {
 			sessionID = latestCursorChat(dir, nil)
 		}
-		if sessionID == "" || strings.ContainsAny(sessionID, `/\`) {
+		if !ValidSessionID(sessionID) {
 			return ""
 		}
 		return cursorTranscript(sessionID, dir)

@@ -29,6 +29,7 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 //go:embed */SKILL.md
@@ -72,13 +73,44 @@ func Install(dir string) ([]string, error) {
 
 // Sync removes only nerdr-owned entrypoints for disabled skills; personal copies survive.
 func Sync(dir string, enabled func(string) bool) ([]string, error) {
+	return syncSkills(dir, !isHomeSkillsDir(dir), enabled)
+}
+
+// SyncProject syncs skills into a worktree's skills folder, refusing
+// symbolic links anywhere inside the worktree.
+func SyncProject(dir string, enabled func(string) bool) ([]string, error) {
+	return syncSkills(dir, true, enabled)
+}
+
+func isHomeSkillsDir(dir string) bool {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return false
+	}
+	dir = filepath.Clean(dir)
+	for _, k := range agents.All {
+		for _, d := range Dirs(home, "", k)[1:] {
+			if d != "" && filepath.Clean(d) == dir {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func syncSkills(dir string, worktree bool, enabled func(string) bool) ([]string, error) {
+	root, base, err := safefile.OpenSkillsRoot(dir, worktree, true)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	var wrote []string
 	for _, s := range All() {
-		file := filepath.Join(dir, s.Name, "SKILL.md")
-		old, err := os.ReadFile(file)
+		file := filepath.Join(base, s.Name, "SKILL.md")
+		old, err := safefile.ReadRegular(root, file)
 		if !enabled(s.Name) {
 			if err == nil && bytes.Contains(old, []byte(Marker)) {
-				if err := os.Remove(file); err != nil {
+				if err := root.Remove(file); err != nil {
 					return wrote, err
 				}
 			} else if err != nil && !os.IsNotExist(err) {
@@ -92,10 +124,7 @@ func Sync(dir string, enabled func(string) bool) ([]string, error) {
 		case err != nil && !os.IsNotExist(err):
 			return wrote, err
 		}
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-			return wrote, err
-		}
-		if err := os.WriteFile(file, s.Text, 0o644); err != nil {
+		if err := safefile.WriteRegular(root, file, s.Text, 0o644); err != nil {
 			return wrote, err
 		}
 		wrote = append(wrote, s.Name)
@@ -106,12 +135,30 @@ func Sync(dir string, enabled func(string) bool) ([]string, error) {
 // RemoveDisabled also clears old managed copies in other discovery directories.
 // It never installs skills there or removes a personal entrypoint.
 func RemoveDisabled(dir string, enabled func(string) bool) error {
+	return removeDisabled(dir, !isHomeSkillsDir(dir), enabled)
+}
+
+// RemoveDisabledProject clears disabled nerdr skills in a worktree folder,
+// refusing symbolic links anywhere inside the worktree.
+func RemoveDisabledProject(dir string, enabled func(string) bool) error {
+	return removeDisabled(dir, true, enabled)
+}
+
+func removeDisabled(dir string, worktree bool, enabled func(string) bool) error {
+	root, base, err := safefile.OpenSkillsRoot(dir, worktree, false)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer root.Close()
 	for _, s := range All() {
 		if enabled(s.Name) {
 			continue
 		}
-		file := filepath.Join(dir, s.Name, "SKILL.md")
-		old, err := os.ReadFile(file)
+		file := filepath.Join(base, s.Name, "SKILL.md")
+		old, err := safefile.ReadRegular(root, file)
 		if os.IsNotExist(err) {
 			continue
 		}
@@ -119,7 +166,7 @@ func RemoveDisabled(dir string, enabled func(string) bool) error {
 			return err
 		}
 		if bytes.Contains(old, []byte(Marker)) {
-			if err := os.Remove(file); err != nil {
+			if err := root.Remove(file); err != nil {
 				return err
 			}
 		}

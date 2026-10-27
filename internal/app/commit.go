@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -24,6 +25,9 @@ type commitDialog struct {
 	// files are each worktree's changes, by its path, as git status lists
 	// them; nil until they have been looked up.
 	files map[string][]string
+	// worktreeHooks is whether any of the tab's worktrees has a
+	// core.hooksPath pointing inside the worktree.
+	worktreeHooks bool
 	// then is what follows the commit: one of commitThen.
 	then int
 	err  string
@@ -41,9 +45,10 @@ var commitThen = []struct{ label, key string }{
 
 // commitFilesMsg carries the changes the dialog d commits.
 type commitFilesMsg struct {
-	d     *commitDialog
-	files map[string][]string
-	err   string
+	d             *commitDialog
+	files         map[string][]string
+	worktreeHooks bool
+	err           string
 }
 
 // commitFilesShown is how many of a worktree's files the dialog lists.
@@ -52,6 +57,7 @@ const commitFilesShown = 12
 // openCommit opens the dialog for committing t's changes, and looks them
 // up.
 func (m *Model) openCommit(t *tab) tea.Cmd {
+	m.markSandboxed(t)
 	in := newTextArea("what the change does", min(max(m.width-16, 30), 80))
 	in.SetHeight(4)
 	d := &commitDialog{t: t, wts: append([]workspace.Worktree(nil), t.Worktrees...), input: in}
@@ -59,7 +65,11 @@ func (m *Model) openCommit(t *tab) tea.Cmd {
 	return func() tea.Msg {
 		files := map[string][]string{}
 		var errs []string
+		wtHooks := false
 		for _, w := range d.wts {
+			if gitsafe.WorktreeHooks(w.Path) {
+				wtHooks = true
+			}
 			fs, err := workspace.Changes(w)
 			if err != nil {
 				errs = append(errs, filepath.Base(w.Repo)+": "+err.Error())
@@ -67,7 +77,7 @@ func (m *Model) openCommit(t *tab) tea.Cmd {
 			}
 			files[w.Path] = fs
 		}
-		return commitFilesMsg{d: d, files: files, err: strings.Join(errs, "; ")}
+		return commitFilesMsg{d: d, files: files, worktreeHooks: wtHooks, err: strings.Join(errs, "; ")}
 	}
 }
 
@@ -76,7 +86,7 @@ func (m *Model) onCommitFiles(msg commitFilesMsg) {
 	if m.dialog != msg.d {
 		return
 	}
-	msg.d.files, msg.d.err = msg.files, msg.err
+	msg.d.files, msg.d.worktreeHooks, msg.d.err = msg.files, msg.worktreeHooks, msg.err
 }
 
 // changed is how many files the commit takes.
@@ -119,6 +129,8 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 		}
 		t := d.t
+		m.markSandboxed(t)
+		hooks := !t.hasSandboxed()
 		p := m.curBranchPanel()
 		if p == nil || p.t != t {
 			p = &tabPanel{t: t}
@@ -131,7 +143,7 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			p.busy = "committing, then " + busy
 		}
 		return func() tea.Msg {
-			msg := commitAll(t, wts, message)
+			msg := commitAll(t, wts, message, hooks)
 			if msg.err != "" || then == nil {
 				return msg
 			}
@@ -148,11 +160,15 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
-func commitAll(t *tab, wts []workspace.Worktree, message string) prActionMsg {
+func commitAll(t *tab, wts []workspace.Worktree, message string, hooks bool) prActionMsg {
 	var errs, done []string
+	skipped := false
 	for _, w := range wts {
 		name := filepath.Base(w.Repo)
-		if err := workspace.Commit(w, message); err != nil {
+		if !hooks && gitsafe.WorktreeHooks(w.Path) {
+			skipped = true
+		}
+		if err := workspace.CommitIn(w, message, hooks); err != nil {
 			errs = append(errs, name+": "+err.Error())
 			continue
 		}
@@ -164,6 +180,9 @@ func commitAll(t *tab, wts []workspace.Worktree, message string) prActionMsg {
 	note := "committed " + t.Name
 	if len(wts) > 1 {
 		note += " (" + strings.Join(done, ", ") + ")"
+	}
+	if skipped {
+		note += " (worktree git hooks skipped for sandboxed tab)"
 	}
 	return prActionMsg{t: t, note: note}
 }
@@ -177,6 +196,9 @@ func (d *commitDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "There is nothing to commit.")
 	default:
 		lines = append(lines, "Commits every change, new files too:")
+		if d.t.hasSandboxed() && d.worktreeHooks {
+			lines = append(lines, dim("Worktree git hooks (core.hooksPath) will not run: an agent in this tab ran in a sandbox."))
+		}
 		for _, wt := range d.wts {
 			fs := d.files[wt.Path]
 			if len(fs) == 0 {

@@ -249,14 +249,14 @@ func TestClaudePassesOverReviewersConversations(t *testing.T) {
 	cfg, dir := t.TempDir(), t.TempDir()
 	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
 	review := map[string]bool{"review": true}
-	writeFile(t, filepath.Join(claudeProject(dir), "review.jsonl"), `{"type":"user","message":{"content":"nerdr: you (claude) are reviewing"}}`)
+	writeFile(t, filepath.Join(claudeProject(dir), "review.jsonl"), `{"type":"user","cwd":"`+dir+`","message":{"content":"nerdr: you (claude) are reviewing"}}`)
 	if HasConversation(nil, Claude, dir, review) {
 		t.Error("only a reviewer's conversation, but one to carry on")
 	}
 	if l := Resume(nil, Claude, "", dir, review); !l.New || slices.Contains(l.Argv, "--continue") || slices.Contains(l.Argv, "review") {
 		t.Errorf("a reviewer's conversation is all there is: %+v", l)
 	}
-	writeFile(t, filepath.Join(claudeProject(dir), "own.jsonl"), `{"type":"user","message":{"content":"hi"}}`)
+	writeFile(t, filepath.Join(claudeProject(dir), "own.jsonl"), `{"type":"user","cwd":"`+dir+`","message":{"content":"hi"}}`)
 	past := time.Now().Add(-time.Hour)
 	if err := os.Chtimes(filepath.Join(claudeProject(dir), "own.jsonl"), past, past); err != nil {
 		t.Fatal(err)

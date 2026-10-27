@@ -265,7 +265,7 @@ func (m *Model) onRunPlugin(r hooks.Report, from *tab) tea.Cmd {
 		reply(hooks.Answer{Text: "started " + run.id})
 		return m.showPluginRun(o, p, run)
 	}
-	if m.cfg.ConfirmPluginRuns || p.Confirm {
+	if m.cfg.ConfirmPluginRuns || p.Confirm || confined {
 		where := r.Dir
 		if where == "" {
 			where = o.Dir

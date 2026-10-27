@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -12,6 +13,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/detect"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -136,7 +138,18 @@ func (m *Model) copilotPlugin(t *tab) string {
 		}
 		dir = hooks.CopilotPluginHome(home)
 	case config.InstallWorktree:
-		dir = hooks.CopilotPluginProject(t.Dir)
+		if t.sandboxed {
+			dir = hooks.CopilotPluginProject(t.Dir)
+		} else {
+			// A copilot outside a sandbox must not be given --plugin-dir
+			// in an agent-writable worktree, where a sandboxed agent can
+			// add files or replace hooks.json after a check; use nerdr's
+			// own copy in its state folder instead.
+			dir = filepath.Join(filepath.Dir(state.Dir()), "copilot-plugin")
+			if _, err := hooks.InstallCopilotPlugin(dir); err != nil {
+				return ""
+			}
+		}
 	default:
 		return ""
 	}
@@ -226,7 +239,7 @@ func (m *Model) hookSession(r hooks.Report) *tab {
 	if nestedSession(r, t) {
 		return t
 	}
-	if r.SessionID != "" && r.SessionID != t.SessionID {
+	if r.SessionID != "" && r.SessionID != t.SessionID && agents.ValidSessionID(r.SessionID) {
 		// The conversation the agent is really in — after /clear too — so
 		// a restart resumes this one, not a guess. A command reported for
 		// the one before reopens that one: it goes, unless this report
@@ -234,7 +247,7 @@ func (m *Model) hookSession(r hooks.Report) *tab {
 		t.ResumeArgv = nil
 		m.setSession(t, r.SessionID)
 	}
-	if len(r.ResumeArgv) > 0 && !slices.Equal(r.ResumeArgv, t.ResumeArgv) {
+	if len(r.ResumeArgv) > 0 && !m.confined(r, t) && !slices.Equal(r.ResumeArgv, t.ResumeArgv) {
 		t.ResumeArgv = r.ResumeArgv
 		m.saveSession()
 	}

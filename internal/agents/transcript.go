@@ -193,7 +193,7 @@ func claudeTurns(sessionID, dir string) ([]turn, error) {
 	if sessionID == "" {
 		return nil, errors.New("the tab does not know claude's conversation id")
 	}
-	files := claudeLogs(Claude, sessionID)
+	files := claudeLogsIn(Claude, sessionID, dir)
 	if len(files) == 0 {
 		return nil, fmt.Errorf("found no log of claude's conversation %s", sessionID)
 	}
@@ -266,11 +266,14 @@ func codexHome() string {
 func codexLog(sessionID, dir string) (string, error) {
 	files, _ := filepath.Glob(filepath.Join(codexHome(), "sessions", "*", "*", "*", "rollout-*.jsonl"))
 	if sessionID != "" {
-		if strings.ContainsAny(sessionID, `/\`) {
+		if !ValidSessionID(sessionID) {
 			return "", fmt.Errorf("found no log of codex's conversation %s", sessionID)
 		}
 		for _, f := range files {
 			if strings.HasSuffix(f, "-"+sessionID+".jsonl") {
+				if dir != "" && !samePath(codexCwd(f), dir) {
+					return "", fmt.Errorf("found no log of codex's conversation %s", sessionID)
+				}
 				return f, nil
 			}
 		}
@@ -279,22 +282,26 @@ func codexLog(sessionID, dir string) (string, error) {
 	// Their names start with when they began, so the newest sort last.
 	sort.Strings(files)
 	for i := len(files) - 1; i >= 0 && i >= len(files)-300; i-- {
-		var cwd string
-		_ = eachFirstLine(files[i], func(b []byte) {
-			var e struct {
-				Payload struct {
-					Cwd string `json:"cwd"`
-				} `json:"payload"`
-			}
-			if json.Unmarshal(b, &e) == nil {
-				cwd = e.Payload.Cwd
-			}
-		})
-		if samePath(cwd, dir) {
+		if samePath(codexCwd(files[i]), dir) {
 			return files[i], nil
 		}
 	}
 	return "", errors.New("found no codex conversation started in this worktree")
+}
+
+func codexCwd(path string) string {
+	var cwd string
+	_ = eachFirstLine(path, func(b []byte) {
+		var e struct {
+			Payload struct {
+				Cwd string `json:"cwd"`
+			} `json:"payload"`
+		}
+		if json.Unmarshal(b, &e) == nil {
+			cwd = e.Payload.Cwd
+		}
+	})
+	return cwd
 }
 
 func eachFirstLine(path string, line func([]byte)) error {
@@ -367,7 +374,7 @@ func openCodeTurns(s Spec, sessionID, dir string) ([]turn, error) {
 	if sessionID == "" {
 		sessionID = latestOpenCodeSession(s, dir, nil)
 	}
-	if sessionID == "" {
+	if !ValidSessionID(sessionID) {
 		return nil, errors.New("found no opencode conversation started in this worktree")
 	}
 	if len(s.Command) == 0 {
@@ -379,7 +386,20 @@ func openCodeTurns(s Spec, sessionID, dir string) ([]turn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("opencode session export %s: %v", sessionID, err)
 	}
-	return parseOpenCodeExport(out)
+	turns, exportDir, err := parseOpenCodeExportWithDir(out)
+	if err != nil {
+		return nil, err
+	}
+	if dir != "" {
+		if exportDir != "" {
+			if !samePath(exportDir, dir) {
+				return nil, fmt.Errorf("found no log of opencode's conversation %s", sessionID)
+			}
+		} else if !slices.ContainsFunc(openCodeSessions(s, dir), func(ses openCodeSession) bool { return ses.ID == sessionID }) {
+			return nil, fmt.Errorf("found no log of opencode's conversation %s", sessionID)
+		}
+	}
+	return turns, nil
 }
 
 // runFor runs cmd for at most d, and returns what it wrote.
@@ -406,7 +426,18 @@ func runFor(cmd *exec.Cmd, d time.Duration) ([]byte, error) {
 // has had over versions: messages with a type (or info.role) and their
 // content (or parts) of text, reasoning and tool calls.
 func parseOpenCodeExport(data []byte) ([]turn, error) {
+	turns, _, err := parseOpenCodeExportWithDir(data)
+	return turns, err
+}
+
+func parseOpenCodeExportWithDir(data []byte) ([]turn, string, error) {
 	var ex struct {
+		Info struct {
+			Directory string `json:"directory"`
+			Path      struct {
+				Cwd string `json:"cwd"`
+			} `json:"path"`
+		} `json:"info"`
 		Messages []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -418,7 +449,11 @@ func parseOpenCodeExport(data []byte) ([]turn, error) {
 		} `json:"messages"`
 	}
 	if err := json.Unmarshal(data, &ex); err != nil {
-		return nil, fmt.Errorf("opencode's export is not what nerdr knows: %v", err)
+		return nil, "", fmt.Errorf("opencode's export is not what nerdr knows: %v", err)
+	}
+	dir := ex.Info.Directory
+	if dir == "" {
+		dir = ex.Info.Path.Cwd
 	}
 	var turns []turn
 	for _, m := range ex.Messages {
@@ -450,7 +485,7 @@ func parseOpenCodeExport(data []byte) ([]turn, error) {
 			}
 		}
 	}
-	return turns, nil
+	return turns, dir, nil
 }
 
 type openCodePart struct {
@@ -469,12 +504,15 @@ func copilotTurns(sessionID, dir string) ([]turn, error) {
 	if sessionID == "" {
 		sessionID = latestCopilotSession(dir, nil)
 	}
-	if sessionID == "" || strings.ContainsAny(sessionID, `/\`) {
+	if !ValidSessionID(sessionID) {
 		return nil, errors.New("found no copilot conversation started in this worktree")
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return nil, err
+	}
+	if dir != "" && !copilotInDir(home, sessionID, dir) {
+		return nil, fmt.Errorf("found no log of copilot's conversation %s", sessionID)
 	}
 	path := filepath.Join(home, ".copilot", "session-state", sessionID, "events.jsonl")
 	if _, err := os.Stat(path); err != nil {
@@ -510,6 +548,20 @@ func copilotTurns(sessionID, dir string) ([]turn, error) {
 		}
 	})
 	return turns, err
+}
+
+func copilotInDir(home, sessionID, dir string) bool {
+	ws := filepath.Join(home, ".copilot", "session-state", sessionID, "workspace.yaml")
+	data, err := os.ReadFile(ws)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "cwd:"); ok {
+			return samePath(strings.Trim(strings.TrimSpace(v), `"'`), dir)
+		}
+	}
+	return false
 }
 
 // cursorTranscript is the transcript cursor-agent writes of chat id, under
@@ -620,8 +672,21 @@ func geminiLog(sessionID, dir string) (string, error) {
 		}
 		return path, nil
 	}
-	if strings.ContainsAny(sessionID, `/\`) || len(sessionID) < 8 {
+	if !ValidSessionID(sessionID) || len(sessionID) < 8 {
 		return "", fmt.Errorf("%q is no gemini conversation id", sessionID)
+	}
+	if dir != "" {
+		chats := geminiChats(dir)
+		if chats == "" {
+			return "", fmt.Errorf("found no log of gemini's conversation %s", sessionID)
+		}
+		files, _ := filepath.Glob(filepath.Join(chats, "session-*-"+sessionID[:8]+".json*"))
+		for _, f := range files {
+			if geminiSessionID(f) == sessionID {
+				return f, nil
+			}
+		}
+		return "", fmt.Errorf("found no log of gemini's conversation %s", sessionID)
 	}
 	// The file is named after the start of the id; the id itself is in
 	// the file, under the folder's project, which this one may not know.

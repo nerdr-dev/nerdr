@@ -404,8 +404,8 @@ func (m *Model) spinoffMade(msg spinoffMsg) tea.Cmd {
 		return m.spinoffNext(t, msg.outcome, shown)
 	}
 	if m.tabIndex(t) >= 0 {
-		nt, cmd := m.addTabBeside(msg.plan.Branch, msg.plan.Dir, t.Group, msg.wts, msg.kind,
-			spinoff.Prompt(msg.outcome.Part, parent, msg.outcome))
+		nt, cmd := m.addTabWith(msg.plan.Branch, msg.plan.Dir, t.Group, msg.wts, msg.kind, "",
+			spinoff.Prompt(msg.outcome.Part, parent, msg.outcome), msg.outcome.Part.Sandboxed)
 		nt.Goal = msg.outcome.Part.Summary
 		msg.outcome.Tab = nt.ID
 		m.resizePanes()
@@ -561,12 +561,13 @@ func (m *Model) reportSpinoff(t *tab, done []spinoff.Outcome, branch string) {
 // user is: there may be more parts to ask about. task, if any, is its
 // agent's first message.
 func (m *Model) addTabBeside(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, task string) (*tab, tea.Cmd) {
-	return m.addTabWith(name, dir, group, wts, kind, "", task)
+	return m.addTabWith(name, dir, group, wts, kind, "", task, false)
 }
 
 // addTabWith is addTabBeside, its agent started with model in place of
-// the config's, if any.
-func (m *Model) addTabWith(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, model, task string) (*tab, tea.Cmd) {
+// the config's, if any, and task marked as from a sandboxed agent when
+// sandboxed is set.
+func (m *Model) addTabWith(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, model, task string, sandboxed bool) (*tab, tea.Cmd) {
 	group = m.rememberGroup(dir, group, wts)
 	t := &tab{Tab: state.Tab{
 		ID:        newTabID(),
@@ -579,7 +580,7 @@ func (m *Model) addTabWith(name, dir, group string, wts []workspace.Worktree, ki
 	}}
 	trustWorktrees(t)
 	m.tabs = append(m.tabs, t)
-	m.addMessage(t, task, true) // before the start, which may take it
+	m.addMessageFrom(t, task, true, sandboxed) // before the start, which may take it
 	cmd := m.start(t, false)
 	m.saveSession()
 	return t, tea.Batch(cmd, m.resize())

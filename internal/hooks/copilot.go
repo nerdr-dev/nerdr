@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // nerdr's own hooks in copilot, as in claude: read off the screen, copilot
@@ -75,9 +75,43 @@ func copilotPlugin() map[string][]byte {
 // wrote it. One already there is replaced only when it is nerdr's and
 // differs.
 func InstallCopilotPlugin(dir string) (bool, error) {
+	return installCopilotPlugin(dir, !isHomeCopilotPlugin(dir))
+}
+
+// InstallCopilotPluginProject puts the plugin in a worktree's
+// .copilot/nerdr-plugin, refusing symbolic links anywhere inside the
+// worktree.
+func InstallCopilotPluginProject(wtDir string) (bool, error) {
+	return installCopilotPlugin(CopilotPluginProject(wtDir), true)
+}
+
+func isHomeCopilotPlugin(dir string) bool {
+	dir = filepath.Clean(dir)
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if dir == filepath.Clean(CopilotPluginHome(home)) {
+			return true
+		}
+		if dir == filepath.Clean(filepath.Join(home, ".local", "state", "nerdr", "copilot-plugin")) {
+			return true
+		}
+	}
+	if stateHome := os.Getenv("XDG_STATE_HOME"); stateHome != "" {
+		if dir == filepath.Clean(filepath.Join(stateHome, "nerdr", "copilot-plugin")) {
+			return true
+		}
+	}
+	return false
+}
+
+func installCopilotPlugin(dir string, worktree bool) (bool, error) {
 	files := copilotPlugin()
-	manifest := filepath.Join(".plugin", "plugin.json")
-	old, err := os.ReadFile(filepath.Join(dir, manifest))
+	root, base, err := safefile.OpenDir(dir, ".copilot", worktree, true)
+	if err != nil {
+		return false, err
+	}
+	defer root.Close()
+	manifest := filepath.Join(base, ".plugin", "plugin.json")
+	old, err := safefile.ReadRegular(root, manifest)
 	switch {
 	case err == nil && !bytes.Contains(old, []byte(CopilotMarker)):
 		return false, nil // the user's own
@@ -86,14 +120,15 @@ func InstallCopilotPlugin(dir string) (bool, error) {
 	}
 	wrote := false
 	for name, b := range files {
-		file := filepath.Join(dir, name)
-		if old, err := os.ReadFile(file); err == nil && bytes.Equal(old, b) {
+		file := filepath.Join(base, name)
+		old, err := safefile.ReadRegular(root, file)
+		if err == nil && bytes.Equal(old, b) {
 			continue
 		}
-		if err := denied.Err(os.MkdirAll(filepath.Dir(file), 0o755)); err != nil {
+		if err != nil && !os.IsNotExist(err) {
 			return false, err
 		}
-		if err := denied.Err(os.WriteFile(file, b, 0o644)); err != nil {
+		if err := safefile.WriteRegular(root, file, b, 0o644); err != nil {
 			return false, err
 		}
 		wrote = true

@@ -35,8 +35,9 @@ To avoid this, nerdr finds the Git directory through the main checkout's
 `.git/worktrees/*/gitdir`. It sets `GIT_DIR`, `GIT_COMMON_DIR` and
 `GIT_WORK_TREE` explicitly. It ignores worktrees unknown to the main
 checkout. `core.fsmonitor` is always disabled. Hooks are disabled except
-for requested actions: creating worktrees, pushing and cherry-picking
-spinoff commits.
+when creating a new worktree from the base branch, or committing and
+pushing (where a `core.hooksPath` pointing into the worktree is redirected
+to `.git/hooks` if an agent in the tab ran in a sandbox).
 
 nerdr records origin's push destination when it opens a worktree, or on
 first startup for older tabs. Push and PR creation fail if that destination

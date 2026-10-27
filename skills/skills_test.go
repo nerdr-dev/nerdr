@@ -188,4 +188,44 @@ func TestCodexReadsAgentsSkills(t *testing.T) {
 	if got, st := s.Find(Dirs(home, dir, agents.Codex)); st != Current || got != filepath.Join(dir, ".agents", "skills", s.Name, "SKILL.md") {
 		t.Fatalf("codex reads .agents/skills: %s %v", got, st)
 	}
+
+	victim := filepath.Join(t.TempDir(), "victim.md")
+	_ = os.WriteFile(victim, []byte("keep\n"+Marker+"\n"), 0o644)
+	link := filepath.Join(dir, ".agents", "skills", s.Name, "SKILL.md")
+	_ = os.Remove(link)
+	if err := os.Symlink(victim, link); err == nil {
+		if _, err := Install(ProjectDir(dir, agents.Codex)); err == nil {
+			t.Fatal("Install wrote through a symbolic link")
+		}
+		if got, _ := os.ReadFile(victim); !strings.HasPrefix(string(got), "keep\n") {
+			t.Fatalf("victim overwritten: %q", got)
+		}
+	}
+
+	// A parent symlink (.claude or .claude/skills) in a worktree is rejected,
+	// while a dotfile symlink in the user's home folder (~/.claude -> dotfiles)
+	// is followed.
+	wtLink := t.TempDir()
+	if err := os.Symlink(t.TempDir(), filepath.Join(wtLink, ".claude")); err == nil {
+		if _, err := Install(ProjectDir(wtLink, agents.Claude)); err == nil {
+			t.Fatal("Install followed a symlinked .claude in a worktree")
+		}
+	}
+	dotHome := t.TempDir()
+	dotfiles := t.TempDir()
+	t.Setenv("HOME", dotHome)
+	_ = os.MkdirAll(filepath.Join(dotfiles, "claude"), 0o755)
+	if err := os.Symlink(filepath.Join(dotfiles, "claude"), filepath.Join(dotHome, ".claude")); err == nil {
+		if _, err := Install(filepath.Join(dotHome, ".claude", "skills")); err != nil {
+			t.Fatalf("home symlinked ~/.claude failed: %v", err)
+		}
+	}
+	// A worktree inside ~/.local/share/worktrees must still reject symlinks.
+	wtInHome := filepath.Join(dotHome, ".local", "share", "worktrees", "proj")
+	_ = os.MkdirAll(wtInHome, 0o755)
+	if err := os.Symlink(t.TempDir(), filepath.Join(wtInHome, ".claude")); err == nil {
+		if _, err := SyncProject(ProjectDir(wtInHome, agents.Claude), func(string) bool { return true }); err == nil {
+			t.Fatal("worktree under ~/.local followed .claude symlink")
+		}
+	}
 }

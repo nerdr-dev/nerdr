@@ -129,6 +129,70 @@ func TestHooksOnlyWhenAsked(t *testing.T) {
 	if _, err := os.Stat(marker); err != nil {
 		t.Fatal("the hook did not run with Hooks")
 	}
+
+	// Hooks preserves the user's configured core.hooksPath (including
+	// .husky/_ or /dev/null), while Env disables hooks even when a relative
+	// core.hooksPath is set.
+	_, repo2, wt2 := repoWithWorktree(t)
+	Trust(repo2, wt2)
+	run(t, repo2, "config", "core.hooksPath", ".husky/_")
+	huskyMarker := filepath.Join(root, "HUSKY")
+	huskyDir := filepath.Join(wt2, ".husky", "_")
+	if err := os.MkdirAll(huskyDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(huskyDir, "pre-commit"), []byte("#!/bin/sh\ntouch "+huskyMarker+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if out, err := Command(wt2, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c1").CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, err := os.Stat(huskyMarker); err == nil {
+		t.Fatal("a hook in core.hooksPath ran without Hooks")
+	}
+	cmd = Command(wt2, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c2")
+	cmd.Env = Hooks(wt2)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, err := os.Stat(huskyMarker); err != nil {
+		t.Fatal("the user's core.hooksPath did not run with Hooks")
+	}
+
+	// SandboxedHooks redirects a worktree-local core.hooksPath (.husky/_)
+	// to .git/hooks, so worktree hooks do not run while .git/hooks still do.
+	os.Remove(huskyMarker)
+	gitHookMarker := filepath.Join(root, "GIT_HOOK")
+	if err := os.WriteFile(filepath.Join(repo2, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\ntouch "+gitHookMarker+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if !WorktreeHooks(wt2) {
+		t.Fatal("WorktreeHooks missed relative core.hooksPath")
+	}
+	cmd = Command(wt2, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c3")
+	cmd.Env = SandboxedHooks(wt2)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, err := os.Stat(huskyMarker); err == nil {
+		t.Fatal("SandboxedHooks ran worktree core.hooksPath")
+	}
+	if _, err := os.Stat(gitHookMarker); err != nil {
+		t.Fatal("SandboxedHooks did not run .git/hooks when redirecting worktree core.hooksPath")
+	}
+
+	// If the user disabled hooks via core.hooksPath=/dev/null, Hooks does
+	// not re-enable .git/hooks.
+	os.Remove(marker)
+	run(t, repo, "config", "core.hooksPath", os.DevNull)
+	cmd = Command(repo, "worktree", "add", "-q", "-b", "c", filepath.Join(root, "c"))
+	cmd.Env = Hooks(repo)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, err := os.Stat(marker); err == nil {
+		t.Fatal("Hooks ran .git/hooks despite core.hooksPath=/dev/null")
+	}
 }
 
 func TestKeepsTheUsersConfigEnv(t *testing.T) {

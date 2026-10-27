@@ -530,8 +530,9 @@ func TestPluginWatchSkipsBlankLines(t *testing.T) {
 	pumped(t, m, run)
 }
 
-// Asked for by an agent in a sandbox, the question says that the plugin
-// runs outside it.
+// Asked for by an agent in a sandbox, a plugin run always asks the user,
+// even when neither confirm_plugin_runs nor the plugin's own confirm is
+// set, and the question says that the plugin runs outside the sandbox.
 func TestPluginRunQuestionSaysTheSandbox(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
@@ -540,7 +541,7 @@ func TestPluginRunQuestionSaysTheSandbox(t *testing.T) {
 	tb.Dir = t.TempDir()
 	tb.sandboxed = true
 	defer m.Shutdown()
-	allowedPlugin(t, cfg, "careful", "description = \"Careful.\"\nrun = [\"true\"]\nconfirm = true\n")
+	allowedPlugin(t, cfg, "careful", "description = \"Careful.\"\nrun = [\"true\"]\n")
 	askRun(m, tb, "careful", nil)
 	d, ok := m.dialog.(*confirm)
 	if !ok {

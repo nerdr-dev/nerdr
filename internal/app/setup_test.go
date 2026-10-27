@@ -393,9 +393,14 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 		Worktrees: []workspace.Worktree{{Repo: repo, Path: repo, Branch: "main"}}})
 	m.cfg.Install = config.InstallWorktree
 	tb = m.cur()
+	tb.sandboxed = true
 	m.installProjectSkills(tb)
 	if got := m.copilotPlugin(tb); got != hooks.CopilotPluginProject(repo) {
-		t.Fatalf("plugin for the tab: %q", got)
+		t.Fatalf("plugin for the sandboxed tab: %q", got)
+	}
+	tb.sandboxed = false
+	if got := m.copilotPlugin(tb); got == hooks.CopilotPluginProject(repo) || got == "" {
+		t.Fatalf("unsandboxed copilot should use state-dir plugin, not worktree: %q", got)
 	}
 	if out, err := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=all").Output(); err != nil || strings.Contains(string(out), "nerdr-plugin") {
 		t.Errorf("the plugin is not kept out of git: %q %v", out, err)

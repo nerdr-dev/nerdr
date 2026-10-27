@@ -3,16 +3,20 @@ package app
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {
@@ -428,5 +432,207 @@ func TestCutOffReviewerSaysWhy(t *testing.T) {
 	r.heard = true
 	if line := m.reviewLine(tb); !strings.Contains(line, "stopped without sending a review") {
 		t.Fatalf("heard from, it only stopped: %q", line)
+	}
+}
+
+// TestConfinedQueryRootsAndNewTabRepo covers QueryRoots and tab new --repo
+// scoping for a confined agent.
+func TestConfinedQueryRootsAndNewTabRepo(t *testing.T) {
+	m, tb := sandboxModel(t)
+	otherDir := t.TempDir()
+	m.tabs = append(m.tabs, &tab{Tab: state.Tab{ID: "other", Name: "other", Dir: otherDir}})
+
+	a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Query, What: hooks.QueryRoots})
+	if strings.Contains(a.Text, otherDir) || !strings.Contains(a.Text, tb.Dir) {
+		t.Fatalf("QueryRoots leaked other tab's dir: %q", a.Text)
+	}
+
+	a, _ = askNerdr(m, tb, hooks.Report{Method: hooks.NewTab, Kind: "claude", Branch: "feat", Repo: "elsewhere", Text: "go"})
+	if !strings.Contains(a.Err, "sandbox") {
+		t.Fatalf("NewTab across repo allowed: %+v", a)
+	}
+}
+
+// TestConfinedResumeArgvAndSessionID covers ignoring ResumeArgv and
+// malformed SessionIDs from confined agents, and clearing stale ResumeArgv
+// when starting a sandboxed agent.
+func TestConfinedResumeArgvAndSessionID(t *testing.T) {
+	m, tb := sandboxModel(t)
+	tb.ResumeArgv = []string{"claude", "--stale"}
+	m.start(tb, true)
+	if len(tb.ResumeArgv) != 0 {
+		t.Fatalf("start of sandboxed agent kept stale ResumeArgv: %v", tb.ResumeArgv)
+	}
+	m.start(tb, false)
+	m.Update(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.hookKey(), SessionID: "s1", ResumeArgv: []string{"claude", "--evil"}})
+	if len(tb.ResumeArgv) != 0 || tb.SessionID != "s1" {
+		t.Fatalf("confined report: SessionID=%q ResumeArgv=%v", tb.SessionID, tb.ResumeArgv)
+	}
+	m.Update(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.hookKey(), SessionID: "../bad*"})
+	if tb.SessionID != "s1" {
+		t.Fatalf("malformed SessionID accepted: %q", tb.SessionID)
+	}
+}
+
+// TestTabMadeRefusesWhenKindLosesSandbox covers the async window in tab new
+// where the target agent kind is un-sandboxed in config while the worktree
+// is being created.
+func TestTabMadeRefusesWhenKindLosesSandbox(t *testing.T) {
+	m, tb := sandboxModel(t)
+	s := m.cfg.Agents[agents.Claude]
+	s.Sandboxed = false
+	m.cfg.Agents[agents.Claude] = s
+
+	before := len(m.tabs)
+	wtDir := t.TempDir()
+	m.tabMade(tabMadeMsg{
+		from:     tb,
+		branch:   "escaped",
+		kind:     agents.Claude,
+		task:     "run host command",
+		confined: true,
+		plan:     workspace.Plan{Branch: "escaped", Dir: wtDir},
+	})
+	if len(m.tabs) != before {
+		t.Fatalf("tabMade opened unsandboxed tab for confined caller: %d tabs", len(m.tabs))
+	}
+	if !strings.Contains(m.toastText, "no longer set sandboxed") || !strings.Contains(m.toastText, wtDir) {
+		t.Fatalf("toast = %q", m.toastText)
+	}
+}
+
+// TestSandboxedReviewAndHandoffWaitUntilUserApproves covers findings from a
+// sandboxed reviewer and a handoff from a sandboxed agent to an unsandboxed
+// author: held in F3 initially, and not re-held once the user approves
+// sending via sendFindings or Space in F3.
+func TestSandboxedReviewAndHandoffWaitUntilUserApproves(t *testing.T) {
+	m, tb := sandboxModel(t)
+	// Switch author tb to unsandboxed codex, with sandboxed claude as reviewer.
+	tb.Agent = agents.Codex
+	tb.sandboxed = false
+	m.cfg.Review = config.Review{Agent: "claude", SendFindings: config.FindingsAuto}
+	tb.review = &reviewRun{
+		base: "main", tree: "t1", round: 1, rounds: 2, phase: reviewing,
+		seats: []*seat{{
+			r:   &tab{Tab: state.Tab{Agent: agents.Claude}, sandboxed: true, reviewOf: tb},
+			res: &codereview.Result{Verdict: codereview.Changes, Summary: "needs fix", Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "bug"}}},
+		}},
+	}
+	m.endRound(tb)
+	if len(tb.Messages) != 1 || tb.Messages[0].Auto || !tb.Messages[0].Sandboxed || tb.reviewDone == nil {
+		t.Fatalf("sandboxed reviewer findings were not held for unsandboxed author: %+v reviewDone=%v", tb.Messages, tb.reviewDone)
+	}
+	// User explicitly approves sending the findings.
+	m.sendFindings(tb, tb.reviewDone.msg)
+	if !tb.Messages[0].Auto || tb.Messages[0].Sandboxed {
+		t.Fatalf("sendFindings did not authorize message: %+v", tb.Messages[0])
+	}
+	// deliverQueue must not undo the user's approval.
+	tb.status = stStarting
+	m.deliverQueue(tb, tb.LastActive)
+	if !tb.Messages[0].Auto {
+		t.Fatalf("deliverQueue undid user's sendFindings approval: %+v", tb.Messages[0])
+	}
+
+	// A handoff from a sandboxed agent to an unsandboxed agent is marked
+	// Sandboxed and held until the user ticks it in F3 with Space.
+	tb.Messages = nil
+	m.Update(launchMsg{t: tb, kind: agents.Codex, l: agents.NewSession(m.cfg.Agents, agents.Codex), handoff: "carry on", sandboxed: true})
+	if len(tb.Messages) != 1 || tb.Messages[0].Auto || !tb.Messages[0].Sandboxed {
+		t.Fatalf("sandboxed handoff was not held on unsandboxed tab: %+v", tb.Messages)
+	}
+	m.msgCursor = 0
+	m.messagesKey(keyMsg(" "))
+	if !tb.Messages[0].Auto || tb.Messages[0].Sandboxed {
+		t.Fatalf("Space in F3 did not authorize handoff: %+v", tb.Messages[0])
+	}
+	m.deliverQueue(tb, tb.LastActive)
+	if !tb.Messages[0].Auto {
+		t.Fatalf("deliverQueue undid user's F3 Space approval: %+v", tb.Messages[0])
+	}
+}
+
+// TestHasSandboxedSkipsHooksInCommit covers hasSandboxed when a sandboxed
+// reviewer or side-agent ran in the tab (even after the reviewer closes),
+// and verifies commitAll skips worktree-local core.hooksPath while allowing
+// .git/hooks.
+func TestHasSandboxedSkipsHooksInCommit(t *testing.T) {
+	repo := testRepo(t)
+	gitRun(t, repo, "config", "commit.gpgsign", "false")
+	gitRun(t, repo, "config", "core.hooksPath", ".husky/_")
+	gitsafe.Trust(repo, repo)
+	huskyMarker := filepath.Join(t.TempDir(), "HUSKY_PRE_COMMIT_RAN")
+	gitHookMarker := filepath.Join(t.TempDir(), "GIT_HOOK_PRE_COMMIT_RAN")
+	huskyDir := filepath.Join(repo, ".husky", "_")
+	_ = os.MkdirAll(huskyDir, 0o755)
+	if err := os.WriteFile(filepath.Join(huskyDir, "pre-commit"), []byte("#!/bin/sh\ntouch "+huskyMarker+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	hookDir := filepath.Join(repo, ".git", "hooks")
+	_ = os.MkdirAll(hookDir, 0o755)
+	if err := os.WriteFile(filepath.Join(hookDir, "pre-commit"), []byte("#!/bin/sh\ntouch "+gitHookMarker+"\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "file.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := tabsModel(t, state.Tab{
+		ID: "1", Name: "feat", Dir: repo, Agent: agents.Codex,
+		Worktrees: []workspace.Worktree{{Repo: repo, Path: repo, Branch: "main"}},
+	})
+	tb := m.cur()
+	tb.sandboxed = false
+	// A sandboxed reviewer is running on the unsandboxed tab.
+	tb.review = &reviewRun{
+		seats: []*seat{{r: &tab{Tab: state.Tab{Agent: agents.Claude}, sandboxed: true, reviewOf: tb}}},
+	}
+	if !tb.hasSandboxed() {
+		t.Fatal("hasSandboxed missed sandboxed reviewer")
+	}
+	m.markSandboxed(tb)
+	tb.review = nil // reviewer closes after review ends
+	if !tb.hasSandboxed() {
+		t.Fatal("hasSandboxed forgot that a sandboxed reviewer ran in the tab")
+	}
+	res := commitAll(tb, tb.Worktrees, "test commit", !tb.hasSandboxed())
+	if res.err != "" || !strings.Contains(res.note, "worktree git hooks skipped") {
+		t.Fatalf("commitAll: %+v", res)
+	}
+	if _, err := os.Stat(huskyMarker); err == nil {
+		t.Fatal("worktree core.hooksPath hook ran in a tab where a sandboxed agent ran")
+	}
+	if _, err := os.Stat(gitHookMarker); err != nil {
+		t.Fatal(".git/hooks pre-commit did not run when redirecting worktree core.hooksPath")
+	}
+
+	// Reopening the same worktree in a fresh state.Tab remembers via
+	// m.sandboxedDirs that a sandboxed agent ran in that worktree.
+	reopened := &tab{Tab: state.Tab{ID: "2", Name: "reopened", Dir: repo, Agent: agents.Codex, Worktrees: tb.Worktrees}}
+	m.markSandboxed(reopened)
+	if !reopened.hasSandboxed() {
+		t.Fatal("reopened worktree lost sandboxed taint")
+	}
+}
+
+// TestUnsandboxedCopilotNeverUsesWorktreePlugin covers Copilot in
+// InstallWorktree mode: an unsandboxed Copilot never loads --plugin-dir
+// from the agent-writable worktree.
+func TestUnsandboxedCopilotNeverUsesWorktreePlugin(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	m, tb := sandboxModel(t)
+	m.cfg.Install = config.InstallWorktree
+	_, _ = hooks.InstallCopilotPlugin(hooks.CopilotPluginProject(tb.Dir))
+	// Even if the worktree plugin has unchanged manifest/hooks plus an extra
+	// .mcp.json added by a sandboxed agent, an unsandboxed Copilot never
+	// receives the worktree plugin path.
+	_ = os.WriteFile(filepath.Join(hooks.CopilotPluginProject(tb.Dir), ".mcp.json"), []byte(`{}`), 0o644)
+	m.newAgent(tb, agents.Codex)
+	codex := tb.extraAgents()[0]
+	codex.Agent = agents.Copilot
+	codex.sandboxed = false
+	got := m.copilotPlugin(codex)
+	if got == "" || got == hooks.CopilotPluginProject(tb.Dir) || strings.HasPrefix(got, tb.Dir) {
+		t.Fatalf("unsandboxed copilot got worktree or empty plugin path: %q", got)
 	}
 }

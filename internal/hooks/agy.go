@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // nerdr's own hooks in Antigravity (agy), as in claude: read off the
@@ -88,7 +88,27 @@ func agyHooks() map[string]any {
 // made it. A set of nerdr's the user turned off ("enabled": false) stays
 // off.
 func InstallAgyHooks(file string) (wrote, made bool, err error) {
-	old, err := os.ReadFile(file)
+	return installAgyHooks(file, !isHomeAgyHooks(file))
+}
+
+// InstallAgyHooksProject puts nerdr's hooks in a worktree's
+// .agents/hooks.json, refusing symbolic links anywhere inside the worktree.
+func InstallAgyHooksProject(wtDir string) (wrote, made bool, err error) {
+	return installAgyHooks(AgyHooksProject(wtDir), true)
+}
+
+func isHomeAgyHooks(file string) bool {
+	home, err := os.UserHomeDir()
+	return err == nil && home != "" && filepath.Clean(file) == filepath.Clean(AgyHooksHome(home))
+}
+
+func installAgyHooks(file string, worktree bool) (wrote, made bool, err error) {
+	root, rel, err := safefile.OpenFileRoot(file, ".agents", worktree)
+	if err != nil {
+		return false, false, err
+	}
+	defer root.Close()
+	old, err := safefile.ReadRegular(root, rel)
 	if err != nil && !os.IsNotExist(err) {
 		return false, false, err
 	}
@@ -116,10 +136,7 @@ func InstallAgyHooks(file string) (wrote, made bool, err error) {
 	if bytes.Equal(old, b) {
 		return false, false, nil
 	}
-	if err := denied.Err(os.MkdirAll(filepath.Dir(file), 0o755)); err != nil {
-		return false, false, err
-	}
-	if err := denied.Err(os.WriteFile(file, b, 0o644)); err != nil {
+	if err := safefile.WriteRegular(root, rel, b, 0o644); err != nil {
 		return false, false, err
 	}
 	return true, made, nil

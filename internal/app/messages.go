@@ -91,7 +91,14 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case " ", "x":
 		if has {
+			old := t.Messages[i]
 			t.Messages[i].Auto = !t.Messages[i].Auto
+			if t.Messages[i].Auto && !t.sandboxed {
+				t.Messages[i].Sandboxed = false
+			}
+			if run := t.review; run != nil && run.fixMsg == old {
+				run.fixMsg = t.Messages[i]
+			}
 			m.saveSession()
 		}
 	case "enter":

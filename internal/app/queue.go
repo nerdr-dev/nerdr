@@ -84,6 +84,9 @@ func (t *tab) dropMessage(i int) {
 // deliverQueue types the tab's next auto message in if the agent is ready
 // for it.
 func (m *Model) deliverQueue(t *tab, now time.Time) tea.Cmd {
+	if t.pane != nil && !t.sandboxed {
+		m.holdSandboxed(t)
+	}
 	if t.nextAuto() < 0 || t.pane == nil {
 		return nil
 	}

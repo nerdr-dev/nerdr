@@ -18,7 +18,12 @@ const promptScanLines = 400
 // the agent logged it, or "" when that cannot be found. Only Claude's
 // logs are read; for the other kinds nerdr has what was typed instead.
 func FirstPrompt(k Kind, sessionID string) string {
-	for _, f := range claudeLogs(k, sessionID) {
+	return FirstPromptIn(k, sessionID, "")
+}
+
+// FirstPromptIn is FirstPrompt for a conversation in dir.
+func FirstPromptIn(k Kind, sessionID, dir string) string {
+	for _, f := range claudeLogsIn(k, sessionID, dir) {
 		if p := firstClaudePrompt(f); p != "" {
 			return p
 		}
@@ -45,7 +50,12 @@ type Latest struct {
 
 // LatestOf reads the end of conversation sessionID; see Latest.
 func LatestOf(k Kind, sessionID string) Latest {
-	for _, f := range claudeLogs(k, sessionID) {
+	return LatestOfIn(k, sessionID, "")
+}
+
+// LatestOfIn is LatestOf for a conversation in dir.
+func LatestOfIn(k Kind, sessionID, dir string) Latest {
+	for _, f := range claudeLogsIn(k, sessionID, dir) {
 		if l := latestClaude(f); l.Prompt != "" || l.Recap != "" {
 			return l
 		}
@@ -56,7 +66,11 @@ func LatestOf(k Kind, sessionID string) Latest {
 // claudeLogs are the files Claude's conversation sessionID may be logged
 // in; none for the other kinds.
 func claudeLogs(k Kind, sessionID string) []string {
-	if k != Claude || sessionID == "" || strings.ContainsAny(sessionID, `/\`) {
+	return claudeLogsIn(k, sessionID, "")
+}
+
+func claudeLogsIn(k Kind, sessionID, workdir string) []string {
+	if k != Claude || !ValidSessionID(sessionID) {
 		return nil
 	}
 	dir := claudeHome()
@@ -66,7 +80,16 @@ func claudeLogs(k Kind, sessionID string) []string {
 	// The log is under a folder named after the working directory, spelt
 	// the way Claude spells it; the session id alone is enough to find it.
 	files, _ := filepath.Glob(filepath.Join(dir, "projects", "*", sessionID+".jsonl"))
-	return files
+	if workdir == "" {
+		return files
+	}
+	var out []string
+	for _, f := range files {
+		if samePath(claudeCwd(f), workdir) {
+			out = append(out, f)
+		}
+	}
+	return out
 }
 
 // latestClaude reads the last prompt the user typed, and the last recap,

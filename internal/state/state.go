@@ -92,6 +92,9 @@ type Tab struct {
 	// Num is the agent's number among the tab's agents, which names it in
 	// the row of panes and to the others: `nerdr send 2` reaches number 2.
 	Num int `json:"num,omitempty"`
+	// Sandboxed is set once any agent in the tab's worktree has run in a
+	// sandbox, so git commit and push know not to run hooks on its files.
+	Sandboxed bool `json:"sandboxed,omitempty"`
 }
 
 // Message is one message for a tab's agent.
@@ -136,6 +139,10 @@ type Session struct {
 	// several repositories, by folder: a tab opened on it again goes in
 	// the same group.
 	GroupNames map[string]string `json:"group_names,omitempty"`
+	// SandboxedDirs are the worktree folders where an agent has run in a
+	// sandbox, kept when a tab is closed so reopening the worktree still
+	// skips git hooks on its files.
+	SandboxedDirs map[string]bool `json:"sandboxed_dirs,omitempty"`
 	// SideWidth is the columns the sidebar was dragged to, its frames
 	// included; 0 leaves it as wide as its names need.
 	SideWidth int `json:"side_width,omitempty"`

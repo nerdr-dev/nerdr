@@ -7,6 +7,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -62,9 +63,10 @@ func (p *tabPanel) act(k string) (tea.Cmd, bool) {
 func (p *tabPanel) job(k string) (func() prActionMsg, string) {
 	t := p.t
 	wts := append([]workspace.Worktree(nil), t.Worktrees...)
+	hooks := !t.hasSandboxed()
 	switch k {
 	case "p":
-		return func() prActionMsg { return pushAll(t, wts) }, "pushing…"
+		return func() prActionMsg { return pushAll(t, wts, hooks) }, "pushing…"
 	case "P":
 		have := map[string]bool{}
 		for _, w := range t.info.wts {
@@ -72,7 +74,7 @@ func (p *tabPanel) job(k string) (func() prActionMsg, string) {
 				have[w.repo] = true
 			}
 		}
-		return func() prActionMsg { return createPRs(t, wts, have) }, "pushing and opening the pull request…"
+		return func() prActionMsg { return createPRs(t, wts, have, hooks) }, "pushing and opening the pull request…"
 	}
 	return nil, ""
 }
@@ -99,21 +101,30 @@ func (m *Model) prDone(msg prActionMsg) tea.Cmd {
 	return tea.Batch(m.refreshInfo(), pr)
 }
 
-func pushAll(t *tab, wts []workspace.Worktree) prActionMsg {
+func pushAll(t *tab, wts []workspace.Worktree, hooks bool) prActionMsg {
 	var errs []string
+	skipped := false
 	for _, w := range wts {
-		if err := workspace.Push(w); err != nil {
+		if !hooks && gitsafe.WorktreeHooks(w.Path) {
+			skipped = true
+		}
+		if err := workspace.PushIn(w, hooks); err != nil {
 			errs = append(errs, filepath.Base(w.Repo)+": "+err.Error())
 		}
 	}
 	if len(errs) > 0 {
 		return prActionMsg{t: t, err: "push failed: " + strings.Join(errs, "; ")}
 	}
-	return prActionMsg{t: t, note: "pushed " + t.Name}
+	note := "pushed " + t.Name
+	if skipped {
+		note += " (worktree git hooks skipped for sandboxed tab)"
+	}
+	return prActionMsg{t: t, note: note}
 }
 
-func createPRs(t *tab, wts []workspace.Worktree, have map[string]bool) prActionMsg {
+func createPRs(t *tab, wts []workspace.Worktree, have map[string]bool, hooks bool) prActionMsg {
 	var urls, errs []string
+	skipped := false
 	for _, w := range wts {
 		if have[w.Repo] {
 			continue
@@ -129,7 +140,10 @@ func createPRs(t *tab, wts []workspace.Worktree, have map[string]bool) prActionM
 			errs = append(errs, why)
 			continue
 		}
-		if err := workspace.Push(w); err != nil {
+		if !hooks && gitsafe.WorktreeHooks(w.Path) {
+			skipped = true
+		}
+		if err := workspace.PushIn(w, hooks); err != nil {
 			errs = append(errs, name+": push: "+err.Error())
 			continue
 		}
@@ -146,7 +160,11 @@ func createPRs(t *tab, wts []workspace.Worktree, have map[string]bool) prActionM
 	case len(urls) == 0:
 		return prActionMsg{t: t, note: t.Name + " already has its pull request"}
 	}
-	return prActionMsg{t: t, note: "opened " + strings.Join(urls, ", ")}
+	note := "opened " + strings.Join(urls, ", ")
+	if skipped {
+		note += " (worktree git hooks skipped for sandboxed tab)"
+	}
+	return prActionMsg{t: t, note: note}
 }
 
 // openURL opens url in the browser, without waiting for it; see
