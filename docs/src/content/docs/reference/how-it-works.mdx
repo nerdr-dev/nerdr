@@ -15,8 +15,10 @@ at least as recent as the bundled versions. herdr refreshes those copies
 while running. Custom manifests in `~/.config/herdr/agent-detection`
 always take precedence. Manifests are © herdr contributors, Apache-2.0.
 
-A completed tab counts as seen when active and nerdr has focus. Inside
-herdr, nerdr's pane must be focused.
+A completed tab counts as seen once it has been active for a second,
+with nerdr focused and no editor over it. Until then its agent is not
+taken as visible either, so walking past a tab does not clear its
+light. Inside herdr, nerdr's pane must be focused.
 
 ## Resuming conversations
 
