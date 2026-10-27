@@ -86,31 +86,31 @@ context window is. nerdr reads what the agents say themselves and never
 asks their services or reads their sign-ins.
 
 Codex writes its limits into its logs. Claude gives them only to its
-status line, so nerdr starts claude with a status line of its own, which
-reports the limits and then shows the status line you set in claude's
-settings, or a short one of nerdr's. Set `claude_status_line = false` to
+status line, so nerdr starts claude with a status line of its own. It
+passes the limits to nerdr, then shows the status line from your
+claude settings, or a short one if you have none. Set `claude_status_line = false` to
 leave claude's status line alone.
 
 ## Searching past conversations
 
 `ctrl+q /` searches what you and the agents said in the claude and codex
-conversations held in your repositories and worktrees. Type words; the
-conversations with all of them are listed, the latest first. `enter` goes
-to the agent carrying the conversation on, or carries it on in a new pane
-of the tab working in its worktree.
+conversations in your repositories and worktrees. Type some words, and
+the conversations that have all of them are listed, the latest first.
+`enter` goes to the agent that has the conversation, or continues it in
+a new pane in the tab for its worktree.
 
 ## Agents asleep
 
 When nerdr starts, it starts the agents of the tab on screen first, and
 the others a moment apart. Agents of cold tabs are not started: they are
-asleep, shown with a blue `z`, until you visit the tab, and then carry
-their conversations on.
+asleep, shown with a blue `z`, until you visit the tab, and then continue
+their conversations.
 
 Set `sleep_after` to a number of minutes to put agents to sleep while
 nerdr runs, too: once a tab's agents are done, seen and out of sight for
 that long, nerdr stops them. A tab stays awake while it has a task
-waiting, a question, a code review, or an agent that could not carry its
-conversation on. Terminals keep running, and a task queued for a sleeping
+waiting, a question, a code review, or an agent whose conversation could
+not be resumed. Terminals keep running, and a task queued for a sleeping
 tab wakes it.
 
 ## Keeping the machine awake

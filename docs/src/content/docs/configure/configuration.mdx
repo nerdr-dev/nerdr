@@ -25,8 +25,8 @@ ones are defaults.
 | `←` / `→` | Change a number or a choice |
 | `d` | Restore the default |
 
-Enter lists as space-separated words, quoting values with spaces, and
-variables as `NAME=value`. Changes are saved at once without rewriting the
+Type a list as words separated by spaces, with quotes around a value
+that has spaces, and a variable as `NAME=value`. Changes are saved at once without rewriting the
 rest of the file. Settings read only at start, such as `prefix`, `mouse`,
 `fps`, `worktrees_dir`, `install`, `data_dir` and `layout`, say "from
 nerdr's next start". New agent arguments apply to the next agent started;
@@ -97,7 +97,7 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 |---|---|---|
 | `max_tabs` | `20` | The most tabs open at once; `0` for no limit. |
 | `cold_days` | `5` | Mark tabs cold after this many idle days; `0` never. |
-| `sleep_after` | `0` | Minutes before agents done, seen and out of sight are stopped, to carry on when visited; `0` never. See [Agents asleep](../../use/progress/#agents-asleep). |
+| `sleep_after` | `0` | Minutes before agents that are done, seen and out of sight are stopped; they continue when you visit the tab. `0` never. See [Agents asleep](../../use/progress/#agents-asleep). |
 | `close_merged` | `true` | Say in a tab's status panel when its pull requests are merged. |
 
 ## Notifications and GitHub
@@ -105,8 +105,8 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 | Setting | Default | |
 |---|---|---|
 | `notify` | `"all"` | When to notify: `all`, `blocked` (needs input), `done` or `off`. |
-| `pr_notify` | `true` | Tell of failed checks and new reviews on your pull requests. Off, GitHub is not asked. |
-| `issue_notify` | `true` | Tell of issues newly assigned to you. Off, GitHub is not asked. |
+| `pr_notify` | `true` | Tell you about failed checks and new reviews on your pull requests. Off, GitHub is not asked. |
+| `issue_notify` | `true` | Tell you about issues newly assigned to you. Off, GitHub is not asked. |
 | `github_refresh` | `90` | Seconds between GitHub checks of the tab on screen, 15–3600; other checks scale with it. |
 | `herdr_focus_jump` | `true` | Inside herdr, go to the tab that needs you when herdr focuses nerdr. |
 | `claude_status_line` | `true` | Start claude with nerdr's status line, which reports the rate limits and then shows yours. See [Usage](../../use/progress/#usage-and-rate-limits). |
@@ -124,7 +124,7 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 
 | Setting | Default | |
 |---|---|---|
-| `confirm_plugin_runs` | `false` | Ask before every agent's run of any plugin. See [Writing plugins](../plugins/#saying-yes-to-each-run). |
+| `confirm_plugin_runs` | `false` | Ask before an agent runs any plugin. See [Writing plugins](../plugins/#saying-yes-to-each-run). |
 
 ## Keeping the machine awake
 
@@ -162,12 +162,12 @@ claude = "opus"
 ```
 
 `agent = "other"` picks Codex to review Claude, and Claude to review the
-others; if that one is not installed, another installed agent.
+others. If that agent is not installed, nerdr picks another that is.
 
 With `auto` and `when = "ready"`, the review starts when the agent says
-its work is ready with `nerdr request-review`, which the
-`nerdr-request-review` skill has it do by itself when review is on. This
-skips reviews of work halfway done. Agents without that skill are
+its work is ready with `nerdr request-review`. The
+`nerdr-request-review` skill tells it to do so when review is on. This
+way, work that is only half done is not reviewed. Agents without that skill are
 reviewed after every turn.
 
 ## Agents

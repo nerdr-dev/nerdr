@@ -31,22 +31,25 @@ starts a new conversation.
 ## Integrations
 
 `internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock` using
-herdr's JSON-line protocol. Agents receive `NERDR_SOCKET` and a per-tab
-secret in `NERDR_TAB`, which nerdr's agent commands (see
-[Commands](../agent-commands/)) and built-in hooks (`nerdr hook …`) use
-to send requests and status reports to the running nerdr instance.
-(`nerdr why`, `order` and `walkthrough` write directly to
-`NERDR_DATA_DIR`, while `nerdr search` and `nerdr usage` read the agents'
-logs directly; `search` only asks nerdr which folders to search.) For
-herdr's integrations, agents also receive `HERDR_ENV=1`, `HERDR_PANE_ID`
-(set to the same secret), `HERDR_SOCKET_PATH` and `HERDR_BIN_PATH`
-pointing to nerdr. `nerdr pane report-agent …` handles reports in place of
-herdr's CLI.
+herdr's JSON-line protocol. Agents get `NERDR_SOCKET` and a secret for
+their tab in `NERDR_TAB`. nerdr's [agent commands](../agent-commands/)
+and built-in hooks (`nerdr hook …`) use them to send requests and status
+reports to the running nerdr.
+
+Some commands do not go through the socket: `nerdr why`, `order` and
+`walkthrough` write straight to `NERDR_DATA_DIR`, and `nerdr search` and
+`nerdr usage` read the agents' logs themselves (`search` only asks nerdr
+which folders to search).
+
+For herdr's integrations, agents also get `HERDR_ENV=1`,
+`HERDR_PANE_ID` (the same secret), `HERDR_SOCKET_PATH`, and
+`HERDR_BIN_PATH` pointing to nerdr. `nerdr pane report-agent …` takes
+the reports in place of herdr's CLI.
 
 For herdr's protocol (`nerdr pane`), only `pane.report_agent`,
 `pane.report_agent_session` and `pane.release_agent` are accepted. Each
-tab gets a fresh secret on startup,
-so agents can report only for their own tab. Conversation IDs that resemble
+tab gets a new secret at every start, so agents can report only for
+their own tab. Conversation IDs that resemble
 flags are rejected, and control characters are removed from text.
 Reported state lasts until released or the agent restarts.
 
@@ -58,8 +61,8 @@ Terminal panes receive neither the socket nor herdr's variables. Running
 nerdr pastes queued messages using the agent's paste mode, then sends
 Enter. It never inserts messages while the agent is asking a question.
 If the agent shows no response within five seconds, nerdr reports a stall
-and pauses the remaining queue (`✉n⏸`) until you visit the tab. This
-preserves message order.
+and pauses the rest of the queue (`✉n⏸`) until you visit the tab, so the
+messages stay in order.
 
 ## Saved sessions
 
@@ -90,15 +93,15 @@ Claude starts with nerdr hooks passed through `--settings`; nothing is
 installed. They report turn start, tool calls, pending questions or
 permissions, and `Stop` at turn end. Hooks run `"$NERDR_BIN" hook claude`.
 If nerdr is unavailable in the sandbox, screen detection takes over.
-A subagent's own events and session starts after compaction are ignored,
-since they do not reliably indicate the main turn's state. `SubagentStart`
-and `SubagentStop` track how many subagents are running. If the main
-turn ends while a background subagent is still running, nerdr keeps the
-agent marked as working even though its prompt looks idle, because Claude
-will automatically resume the main agent once the subagent finishes. Only
-the completion of the last active background subagent updates the state;
-other subagent starts and stops are ignored, because Claude also runs
-internal subagents after a turn to generate summaries.
+A subagent's own events, and session starts after compaction, are
+ignored, since they say nothing reliable about the main turn.
+`SubagentStart` and `SubagentStop` count the subagents running. If the
+main turn ends while a background subagent still runs, the agent stays
+marked as working although its prompt looks idle, since Claude resumes
+the main agent once the subagent is done. Only the end of the last
+background subagent changes the state. Other subagent starts and stops
+are ignored, since Claude also runs subagents of its own after a turn to
+write summaries.
 
 opencode reports through nerdr's plugin, `nerdr.js`, which nerdr installs
 along with the skills: in `~/.config/opencode/plugins/` with
@@ -139,9 +142,9 @@ A subagent has a `Stop` of its own, which is ignored with the rest of its
 events, apart from its permission prompts. `SubagentStart` and
 `SubagentStop` keep count of the subagents going, as for claude: copilot
 too prompts the agent with the news once the subagent is done. Esc ends
-a turn, or dismisses a permission prompt, without any hook; see below. Remove the marked
-sentence from the plugin's description in `.plugin/plugin.json` to keep
-your own edits. With `install = "off"` copilot is read from the screen.
+a turn, or dismisses a permission prompt, without any hook; see below.
+To keep your own edits to the plugin, remove the marked sentence from
+its description in `.plugin/plugin.json`. With `install = "off"` copilot is read from the screen.
 
 Antigravity (agy) takes hooks only from files, so nerdr puts its own
 under the key `"nerdr"` in agy's hooks file, along with the skills:
@@ -149,14 +152,14 @@ under the key `"nerdr"` in agy's hooks file, along with the skills:
 `.agents/hooks.json` with `install = "worktree"` (kept out of git when
 nerdr made it, and not touched when the repository tracks one). The
 other hooks in the file are kept as they are; set `"enabled": false` in
-nerdr's set to turn it off. The hooks report the model's calls, tool
+nerdr's entry to turn its hooks off. The hooks report the model's calls, tool
 results and `Stop` through `"$NERDR_BIN" hook agy`. An agy the agent runs
 reads the same file, so a hook reports only for an agy whose parent is
 the nerdr it names in `NERDR_AGY_HOOK`. An agy started through a
 wrapper, such as a sandbox, is therefore read from the screen. A subagent
 runs in the same agy, in a conversation of its own with its own `Stop`.
-The conversations that start after the agent calls `invoke_subagent`
-(the one tool nerdr hooks before it runs) are its subagents', and are
+Conversations that start after the agent calls `invoke_subagent` (the
+one tool call nerdr hooks before it runs) belong to subagents and are
 ignored. A `Stop` while subagents are still running keeps the agent
 working. agy has no hook for permission prompts, and Esc ends a turn
 without `Stop`: both are read from the screen.

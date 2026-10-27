@@ -51,10 +51,10 @@ its parameters.
 
 ## Allowing a plugin
 
-A plugin runs as you, outside any sandbox. So no plugin runs, nor starts
-its screen, until you have read it and allowed it: until then it is
-marked "not allowed", and an agent that asks to run it is refused, which
-nerdr tells you. Any change to the plugin's folder needs a new yes. See
+A plugin runs as you, outside any sandbox. So a plugin cannot run or
+start its screen until you have read it and allowed it. Until then it is
+marked "not allowed", and if an agent asks to run it, nerdr refuses and
+tells you. Any change to the plugin's folder needs a new yes. See
 [Safety](../../configure/plugins/#safety).
 
 ## A plugin's screen
@@ -72,7 +72,8 @@ and shows the run as the plugin asks: the values the agent gave, what it
 prints, or the plugin's own screen following along.
 
 <Aside title="Ask each time">
-For a plugin you want to decide on each time, such as a deploy, the
-plugin can say `confirm = true`, or set `confirm_plugin_runs = true` to be
-asked about every run.
+To be asked before each run of a plugin, such as a deploy, set
+`confirm = true` in its `plugin.toml`. To be asked before every run of
+every plugin, set `confirm_plugin_runs = true`. Runs asked for by an
+agent in a sandbox are always confirmed.
 </Aside>
