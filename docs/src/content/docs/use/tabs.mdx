@@ -32,29 +32,29 @@ New worktrees go in `~/worktrees-nerdr`, or the folder set in
 ```
 
 The repository name in the path lets you use the same branch name in
-different repositories. With several, the folder is named after the first
-one, and the hash of all their names keeps other sets apart without the
-name growing with each repository you add.
+different repositories. With several, the folder is named after the
+first repository and how many more there are, so the name stays short.
+A hash of all their names keeps different sets in different folders.
 
 ## Adding and removing repositories
 
 Press `ctrl+q i r`, or right-click the tab and choose *Repositories…*, to
-change which repositories a tab works in. Tick a repository to add it:
-it gets a worktree on the tab's branch, in the tab's folder under its
-name, continuing the branch if it exists there already. Untick one to
-delete its worktree; its branch is kept. A tab keeps at least one
+change which repositories a tab works in. Tick a repository to add it.
+It gets a worktree on the tab's branch, in a subfolder of the tab's
+folder named after the repository. If the branch already exists in that
+repository, the worktree continues it. Untick a repository to delete its
+worktree; the branch is kept. A tab always keeps at least one
 repository.
 
-Adding to a tab with one repository moves its worktree into the tab's
-folder, under the repository's name, so the new one can go beside it.
-The tab's agents restart and continue their conversations, and its
-terminals close. With one repository left, a tab goes back to that
-repository's group, its worktree staying where it is.
+A tab with one repository has no subfolders yet, so adding a second
+moves the first worktree into a subfolder of its own. The tab's agents
+restart and continue their conversations, and its terminals close. When
+you remove all but one repository, the tab moves back to that
+repository's group, and its worktree stays where it is.
 
-The folder keeps the name it was given when the tab was made, even when
-that no longer matches its repositories: the agents find their
-conversations by the folder they start in. The agent is told what
-changed.
+The tab's folder keeps its name, even when the name no longer matches
+the repositories, since agents find their conversations by the folder
+they start in. nerdr tells the tab's agents what changed.
 
 ## Starting points
 

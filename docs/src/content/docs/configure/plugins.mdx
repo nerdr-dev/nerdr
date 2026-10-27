@@ -166,14 +166,13 @@ the run: the work is `run`'s, and what goes back to the agent is what
 
 ### Saying yes to each run
 
-Allowing a plugin lets agents outside a sandbox run it whenever its
-description fits what they do. When an agent in a sandbox asks to run a
-plugin, nerdr always asks you before the run, since the plugin runs
-outside the sandbox. For a plugin that does something you want to decide
-on each time for unsandboxed agents too, such as a deploy, say
-`confirm = true` in its `plugin.toml`; or set
-`confirm_plugin_runs = true` in nerdr's config (settings, Plugins) to be
-asked about every plugin.
+Once you allow a plugin, agents can run it whenever its description fits
+what they are doing. Agents in a sandbox are the exception: nerdr always
+asks you first, since the plugin runs outside the sandbox.
+
+To be asked every time for one plugin, such as a deploy, set
+`confirm = true` in its `plugin.toml`. To be asked for every plugin, set
+`confirm_plugin_runs = true` in nerdr's config (settings, Plugins).
 
 nerdr then asks you before the run, with which tab and agent it is and
 the parameters it gives: `y` runs it, `n` does not, and the agent is
