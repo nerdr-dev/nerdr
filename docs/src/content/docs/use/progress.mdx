@@ -21,8 +21,9 @@ Every tab, and every agent in a tab, has a light:
 | `z` blue | Asleep |
 
 Set `status_lights = "symbols"` to tell them apart by shape as well:
-◐ working, × needs input, ✓ done. A done tab counts as seen once you
-have visited it while nerdr has focus.
+◐ working, × needs input, ✓ done. A done tab counts as seen once it
+has been the active tab for a second while nerdr has focus, so passing
+it on the way to another tab leaves it green.
 
 nerdr knows an agent's state from the agent's own hooks where it has
 them, and from its screen otherwise; see
