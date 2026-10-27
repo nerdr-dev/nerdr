@@ -188,7 +188,7 @@ func TestEndToEnd(t *testing.T) {
 	h.keys("\r")
 	h.waitFor("? for shortcuts", 10*time.Second)
 	for _, r := range []string{"repoA", "repoB"} {
-		if _, err := os.Stat(filepath.Join(root, "worktrees", "feat-x-repoA-repoB", r, "README.md")); err != nil {
+		if _, err := os.Stat(filepath.Join(root, "worktrees", "feat-x-repoA-and-1-more-fca4db", r, "README.md")); err != nil {
 			t.Fatalf("worktree for %s not made: %v", r, err)
 		}
 	}
@@ -301,7 +301,7 @@ func TestEndToEnd(t *testing.T) {
 	h.waitGone("multi", time.Second)
 	deadline := time.Now().Add(5 * time.Second)
 	for {
-		if _, err := os.Stat(filepath.Join(root, "worktrees", "feat-x-repoA-repoB")); os.IsNotExist(err) {
+		if _, err := os.Stat(filepath.Join(root, "worktrees", "feat-x-repoA-and-1-more-fca4db")); os.IsNotExist(err) {
 			break
 		}
 		if time.Now().After(deadline) {
