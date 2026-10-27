@@ -196,6 +196,7 @@ func (m *Model) syncAllPRs() tea.Cmd {
 	d := m.prPanel
 	if entered {
 		d.news = nil
+		d.pointAt(m.cur())
 	}
 	if len(m.prWatch.news) > 0 {
 		if d.news == nil {

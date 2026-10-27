@@ -178,6 +178,23 @@ func (m *Model) openURL(url string) {
 	}
 }
 
+// openTabPRs opens the active tab's pull requests in the browser, one for
+// each branch that has one.
+func (m *Model) openTabPRs() {
+	t := m.cur()
+	if t == nil {
+		return
+	}
+	prs := t.info.prs()
+	if len(prs) == 0 {
+		m.toast(t.Name + " has no pull request")
+		return
+	}
+	for _, pr := range prs {
+		m.openURL(pr.URL)
+	}
+}
+
 // outcome is how the last push or pull request went, after a blank line;
 // none before the first.
 func (p *tabPanel) outcome() []string {
