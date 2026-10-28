@@ -9,13 +9,28 @@ import (
 )
 
 func TestTextSelKeepsWhatTheWrapTookOut(t *testing.T) {
-	var s textSel
-	text := "error: the agent did not start\n\nclaude: command not found in PATH abcdefghijklmnopqrstuvwxyz"
-	s.setText(text, 20)
-	s.on, s.from = true, selPoint{0, 0}
-	s.to = selPoint{len(s.rows) - 1, 1 << 20}
-	if got := s.selected(); got != text {
-		t.Fatalf("all of it selected, copied:\n%q\nnot\n%q (rows %q)", got, text, s.rows)
+	for _, text := range []string{
+		"error: the agent did not start\n\nclaude: command not found in PATH abcdefghijklmnopqrstuvwxyz",
+		"hello\u2003world abcdefghijklmnopqrstuvwxyz",
+		"hello\tworld abcdefghijklmnopqrstuvwxyz",
+		"  indented, then a word too long: abcdefghijklmnopqrstuvwxyz  \nend",
+	} {
+		var s textSel
+		s.setText(text, 10)
+		s.on, s.from = true, selPoint{0, 0}
+		s.to = selPoint{len(s.rows) - 1, 1 << 20}
+		if got := s.selected(); got != text {
+			var rows []string
+			for _, r := range s.rows {
+				rows = append(rows, r.drawn)
+			}
+			t.Errorf("all of it selected, copied:\n%q\nnot\n%q (rows %q)", got, text, rows)
+		}
+		for _, r := range s.rows {
+			if w := ansi.StringWidth(r.drawn); w > 10 || w != r.width() {
+				t.Errorf("row %q of %d cells, %d noted", r.drawn, w, r.width())
+			}
+		}
 	}
 }
 
@@ -70,8 +85,25 @@ func TestSelectTextInTheSentDialog(t *testing.T) {
 		t.Fatalf("a click alone copies nothing, not %q", copied)
 	}
 
+	// A tab is drawn as spaces; what is under the pointer is copied.
+	m.dialog = nil
+	m.setLast(tb, "prefix\talpha beta")
+	m.openSentOf(tb)
+	x, y = screenAt(t, m, "alpha beta")
+	m.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.Update(tea.MouseMsg{X: x + 4, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if copied != "alpha" {
+		t.Fatalf("over a tab, copied %q", copied)
+	}
+	x, _ = screenAt(t, m, "prefix")
+	m.Update(tea.MouseMsg{X: x + 3, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.Update(tea.MouseMsg{X: x + 11, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if copied != "fix\tal" {
+		t.Fatalf("the tab itself, copied %q", copied)
+	}
+
 	m.Update(keyMsg("c"))
-	if copied != "codex failed to start:\nerror: unknown flag --sandbox-mode" || m.dialog == nil {
+	if copied != "prefix\talpha beta" || m.dialog == nil {
 		t.Fatalf("c copies the prompt picked, and leaves the dialog open: %q", copied)
 	}
 }
