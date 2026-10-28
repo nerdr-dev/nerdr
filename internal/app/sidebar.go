@@ -182,12 +182,13 @@ func (m *Model) repoList(w, h int, small bool) []string {
 		if small {
 			s = m.railEntry(g == cur, walking, m.groupStatus(g), "the tab here that most wants a look · "+g, nil)
 		} else {
-			// (7 2● 3●): the tabs, and how many of them ask and work, in their lights
+			// (7 2 3): the tabs, and how many of them ask and work, each count
+			// in the colour of their light
 			moreSt := lipgloss.NewStyle().Background(entryBg(g == cur, walking)).Foreground(lipgloss.Color("244"))
 			count := moreSt.Render(" (" + strconv.Itoa(n))
 			for _, st := range []status{stBlocked, stWorking} {
 				if k := m.groupCount(g, st); k > 0 {
-					count += moreSt.Render(" "+strconv.Itoa(k)) + lightOn(st, entryBg(g == cur, walking))
+					count += moreSt.Render(" ") + moreSt.Foreground(lightColours[st]).Render(strconv.Itoa(k))
 					tip += ", " + strconv.Itoa(k) + " " + st.label()
 				}
 			}

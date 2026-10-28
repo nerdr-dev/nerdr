@@ -189,7 +189,7 @@ func TestRepoListCountsTheLights(t *testing.T) {
 	m.tabs[0].status, m.tabs[1].status = stDone, stWorking
 	m.tabs[2].status = stIdle
 	out := ansi.Strip(strings.Join(m.repoList(40, 8, false), "\n"))
-	if !strings.Contains(out, "app (2 1"+lightGlyph(stWorking)+")") {
+	if !strings.Contains(out, "app (2 1)") {
 		t.Fatalf("a done tab's light hides one working, so the count shows it:\n%s", out)
 	}
 	if !strings.Contains(out, "lib (1)") {
