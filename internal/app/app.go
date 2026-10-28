@@ -184,6 +184,8 @@ type Model struct {
 	dragDiv int
 	sel     term.Selection
 	selPane *term.Pane
+	// textSel is the text in a dialog being selected; see textsel.go.
+	textSel *textSel
 	// lastWheelStep is when the wheel last stepped to another tab or
 	// group, lastWheel when it last turned at all, and wheelHeld says the
 	// wheel is not heard until it has been still; see wheelStep and
