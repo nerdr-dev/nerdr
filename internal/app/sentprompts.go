@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"slices"
 	"strings"
 	"time"
 
@@ -17,7 +16,8 @@ import (
 // sentDialog is the prefix and a h, or a click on last: in the panel:
 // what you sent the agent, the latest first, one row
 // each, and the one picked with ↑ ↓ under them; enter shows it alone, in
-// full, to scroll through. It lists what
+// full, to scroll through. c copies it, and its text can be selected
+// with the mouse. It lists what
 // nerdr kept of the tab's prompts, and Claude's own log of them once that
 // is read. Any other key closes it.
 type sentDialog struct {
@@ -29,6 +29,8 @@ type sentDialog struct {
 	// full is set while the prompt picked is shown alone, from row off.
 	full bool
 	off  int
+	// sel is the text of the prompt picked, as drawn.
+	sel textSel
 }
 
 // sentMsg is the list of t's prompts read from its agent's log.
@@ -99,6 +101,8 @@ func (d *sentDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			d.off = 1 << 20
 		case "enter", "esc", "q":
 			d.full = false
+		case "c", "y":
+			m.copyText(d.at(d.pick).Text)
 		}
 		d.off = max(d.off, 0) // and at most the end, as drawn
 		return nil
@@ -120,6 +124,10 @@ func (d *sentDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		d.pick = 0
 	case "end", "G":
 		d.move(len(d.list))
+	case "c", "y":
+		if len(d.list) > 0 {
+			m.copyText(d.at(d.pick).Text)
+		}
 	default:
 		m.dialog = nil
 	}
@@ -158,33 +166,37 @@ func (d *sentDialog) view(m *Model, w, h int) string {
 	}
 	if len(d.list) > 0 {
 		lines = append(lines, "", dim(strings.Repeat("─", min(inner, 60))))
-		text := wrapLines(d.at(d.pick).Text, inner, 1<<20)
-		lines = append(lines, text[:min(len(text), sentShownFull)]...)
-		if len(text) > sentShownFull {
-			lines = append(lines, dim(fmt.Sprintf("… %d rows more: enter shows it all", len(text)-sentShownFull)))
+		d.sel.setText(d.at(d.pick).Text, inner)
+		d.sel.scroll = nil
+		lines = append(lines, m.selRows(&d.sel, 0, sentShownFull)...)
+		if n := len(d.sel.rows); n > sentShownFull {
+			lines = append(lines, dim(fmt.Sprintf("… %d rows more: enter shows it all", n-sentShownFull)))
 		}
 	}
 	lines = append(lines, "")
 	if d.reading {
 		lines = append(lines, dim("Reading Claude's log for the rest…"), "")
 	}
-	lines = append(lines, m.button("↑↓", "pick")+"  "+m.button("enter", "in full")+"  "+m.button("esc", "close"))
+	lines = append(lines, m.button("↑↓", "pick")+"  "+m.button("enter", "in full")+"  "+
+		m.button("c", "copy")+"  "+m.button("esc", "close"))
 	return box("Sent to "+m.agentName(d.t), lines, w)
 }
 
 // fullView is the prompt picked alone, as many of its rows as fit from off.
 func (d *sentDialog) fullView(m *Model, inner, w, h int) string {
 	p := d.at(d.pick)
-	text := wrapLines(p.Text, inner, 1<<20)
+	d.sel.setText(p.Text, inner)
+	n := len(d.sel.rows)
 	rows := max(h-8, 3)
-	d.off = min(d.off, max(len(text)-rows, 0))
-	lines := slices.Clone(text[d.off:min(d.off+rows, len(text))])
+	d.off = min(d.off, max(n-rows, 0))
+	d.sel.scroll = func(by int) { d.off = max(min(d.off+by, n-rows), 0) }
+	lines := m.selRows(&d.sel, d.off, d.off+rows)
 	where := "all of it"
-	if len(text) > rows {
-		where = fmt.Sprintf("rows %d–%d of %d", d.off+1, d.off+len(lines), len(text))
+	if n > rows {
+		where = fmt.Sprintf("rows %d–%d of %d", d.off+1, d.off+len(lines), n)
 	}
 	lines = append(lines, "", dim(sentTime(p.At)+" · "+where), "",
-		m.button("↑↓", "scroll")+"  "+m.button("enter", "back to the list"))
+		m.button("↑↓", "scroll")+"  "+m.button("c", "copy")+"  "+m.button("enter", "back to the list"))
 	return box("Sent to "+m.agentName(d.t), lines, w)
 }
 

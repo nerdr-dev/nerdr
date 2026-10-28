@@ -38,6 +38,7 @@ const (
 	dragReview          // a press in the review panel: a scrollbar may be dragged
 	dragSide            // the sidebar's edge, setting its width
 	dragPanes           // the divider between two panes side by side
+	dragText            // selecting text in a dialog
 )
 
 // mouseMode is which mouse reports the terminal is asked for.
@@ -357,6 +358,10 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 		rm, cmd := m.review.Update(ev)
 		m.review = rm.(review.Model)
 		return cmd
+
+	case dragText:
+		m.dragText(ev)
+		return nil
 
 	case dragSelect:
 		t := m.cur()
