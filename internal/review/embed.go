@@ -138,7 +138,7 @@ func (m *Model) loadPinned() tea.Cmd {
 		msg.base = git.DetectBase(path)
 		msg.notes = loadNotes(path)
 		msg.order = order.Load(path, msg.listed.Branch)
-		_, msg.walk = walkthrough.Load(path, msg.listed.Branch)
+		msg.walk, msg.hasWalk = walkthrough.Load(path, msg.listed.Branch)
 		c := git.Comparison{Worktree: path}
 		if showBase && msg.base != "" {
 			c.Base = msg.base
@@ -159,7 +159,8 @@ type pinnedMsg struct {
 	listed   git.Worktree // as git lists it: its branch and head
 	notes    why.Index
 	order    order.Index
-	walk     bool
+	walk     walkthrough.Walkthrough
+	hasWalk  bool
 	files    []git.FileStatus
 	stats    map[string]git.LineCount
 	err      error
@@ -178,14 +179,16 @@ func (m *Model) onPinned(msg pinnedMsg) tea.Cmd {
 		return nil
 	}
 	m.worktrees[0].Branch, m.worktrees[0].Head = msg.listed.Branch, msg.listed.Head
-	m.baseRef, m.whyIndex, m.orderIndex, m.walk = msg.base, msg.notes, msg.order, msg.walk
+	m.baseRef, m.whyIndex, m.orderIndex = msg.base, msg.notes, msg.order
 	if msg.err != nil {
+		m.setWalk(msg.walk, msg.hasWalk)
 		m.err = msg.err
 		return nil
 	}
 	m.err = nil
 	m.fileStats = msg.stats
 	m.setFiles(msg.files, true)
+	m.setWalk(msg.walk, msg.hasWalk) // after the files, which it is older than or not
 	return tea.Batch(m.loadDiffLater(), m.walkArrived())
 }
 

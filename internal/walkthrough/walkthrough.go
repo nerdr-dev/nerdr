@@ -134,6 +134,24 @@ func load(path, branch string, created time.Time) (Walkthrough, bool) {
 	return out, found
 }
 
+// Older reports whether one of files, relative to the worktree root, was
+// changed after w was written: the change has moved on from what the
+// walkthrough tells. Time is to the minute, so a file is newer only once
+// it is from a later minute; a walkthrough without a time is never older.
+func Older(root string, w Walkthrough, files []string) bool {
+	t, err := time.ParseInLocation(timeLayout, w.Time, time.Local)
+	if err != nil {
+		return false
+	}
+	for _, f := range files {
+		fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(f)))
+		if err == nil && fi.ModTime().Truncate(time.Minute).After(t) {
+			return true
+		}
+	}
+	return false
+}
+
 // tidy makes what an agent wrote safe to show (see package clean), as the
 // record is read: the file is written by hand too.
 func tidy(w Walkthrough) Walkthrough {

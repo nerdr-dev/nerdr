@@ -30,7 +30,7 @@ func (m *Model) ensureWorktreeContext() bool {
 		m.baseRef = git.DetectBase(wt)
 		m.whyIndex = loadNotes(wt)
 		m.orderIndex = order.Load(wt, m.worktrees[m.wtIdx].Branch)
-		_, m.walk = walkthrough.Load(wt, m.worktrees[m.wtIdx].Branch)
+		m.setWalk(walkthrough.Load(wt, m.worktrees[m.wtIdx].Branch))
 	}
 	return true
 }
@@ -67,7 +67,8 @@ func (m *Model) switchWorktree() bool {
 		m.baseRef = ""
 		m.pr, m.prOK, m.prMsg = github.PR{}, false, ""
 		m.whyIndex, m.whyDetail = why.Index{}, ""
-		m.orderIndex, m.walk = order.Index{}, false
+		m.orderIndex = order.Index{}
+		m.setWalk(walkthrough.Walkthrough{}, false)
 		return true
 	}
 	// The project walk and the PR lookup (a network round trip) run in
@@ -78,7 +79,8 @@ func (m *Model) switchWorktree() bool {
 	m.ctxLoad = wt
 	m.baseRef = ""
 	m.whyIndex, m.whyDetail = why.Index{}, ""
-	m.orderIndex, m.walk = order.Index{}, false
+	m.orderIndex = order.Index{}
+	m.setWalk(walkthrough.Walkthrough{}, false)
 	return true
 }
 

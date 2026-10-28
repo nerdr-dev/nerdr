@@ -1,9 +1,11 @@
 package review
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -11,6 +13,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 )
 
 func orderModel(t *testing.T) Model {
@@ -295,11 +298,81 @@ func TestWalkthroughButton(t *testing.T) {
 	if m.walkArrived() != nil {
 		t.Fatal("opens a walkthrough that is not there")
 	}
-	m.walk = true
+	m.walk, m.walkKey = true, "written"
 	if m.walkArrived() == nil {
 		t.Fatal("the walkthrough asked for does not open when it is written")
 	}
 	if m.walkWanted != "" || m.walkArrived() != nil {
 		t.Fatal("the walkthrough opens more than once")
+	}
+}
+
+// The walkthrough g asked for opens when it is written even while F1 is
+// off screen, where the file list is not refreshed: you watch the agent
+// write it.
+func TestWalkthroughOpensWhileHidden(t *testing.T) {
+	m := orderModel(t)
+	m.worktrees = []git.Worktree{{Path: t.TempDir(), Branch: "work"}}
+	m.curWT = m.worktrees[0].Path
+	m.walkWanted, m.hidden = m.curWT, true
+	cmd := m.lookForWalk()
+	if cmd == nil {
+		t.Fatal("does not look for the walkthrough while F1 is hidden")
+	}
+	if msg, ok := cmd().(walkMsg); !ok || msg.ok {
+		t.Fatalf("finds a walkthrough that is not there: %#v", msg)
+	}
+	if m.onWalk(walkMsg{wt: m.curWT, walk: walkthrough.Walkthrough{Title: "t"}, ok: true}) == nil || m.walkWanted != "" {
+		t.Fatal("the walkthrough does not open once it is written")
+	}
+	m.walkWanted, m.walk, m.hidden = m.curWT, false, false
+	if m.lookForWalk() != nil {
+		t.Fatal("looks on its own while F1 is shown, where the refresh does it")
+	}
+}
+
+// G asks for a new walkthrough beside one there is, and only the new one
+// opens when it comes; g on one older than the change says so.
+func TestNewWalkthrough(t *testing.T) {
+	m := orderModel(t)
+	m.rebuildTree("")
+	root := t.TempDir()
+	m.worktrees = []git.Worktree{{Path: root, Branch: "work"}}
+	m.curWT, m.embedded, m.explainOn = root, true, true
+	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.files = []git.FileStatus{{Path: "a.go", Code: "??"}}
+
+	old := walkthrough.Walkthrough{Title: "old", Time: time.Now().Add(-time.Hour).Format("2006-01-02 15:04")}
+	m.setWalk(old, true)
+	if !m.walkOld {
+		t.Fatal("a walkthrough written before the file changed is not old")
+	}
+	h := m.filesHint()
+	if !strings.Contains(h, "g guide (old)") || !strings.Contains(h, "G new guide") {
+		t.Fatalf("expected an old guide and G: %q", h)
+	}
+	if n := m.oldNote(); !strings.Contains(n, "G asks for a new one") {
+		t.Fatalf("g on an old walkthrough does not offer a new one: %q", n)
+	}
+
+	cmd := m.askWalk()
+	if msg, ok := cmd().(AgentMsg); !ok || msg.Text != walkthroughRequest {
+		t.Fatalf("G does not ask the agent: %#v", cmd())
+	}
+	if h := m.filesHint(); !strings.Contains(h, "g guide…") {
+		t.Fatalf("expected g to show the agent is writing it: %q", h)
+	}
+	m.setWalk(old, true)
+	if m.walkArrived() != nil {
+		t.Fatal("the old walkthrough opens as the new one")
+	}
+	m.setWalk(walkthrough.Walkthrough{Title: "new", Time: time.Now().Add(time.Hour).Format("2006-01-02 15:04")}, true)
+	if m.walkOld {
+		t.Fatal("a walkthrough written after the change is old")
+	}
+	if m.walkArrived() == nil || m.walkWanted != "" {
+		t.Fatal("the new walkthrough does not open when it comes")
 	}
 }

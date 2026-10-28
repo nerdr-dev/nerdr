@@ -127,10 +127,10 @@ func (m *Model) onFiles(msg filesMsg) tea.Cmd {
 	orderBefore := m.orderIndex.Read()
 	m.orderIndex = order.Load(m.worktrees[m.wtIdx].Path, m.worktrees[m.wtIdx].Branch)
 	orderChanged := m.orderIndex.Read() != orderBefore
-	_, m.walk = walkthrough.Load(m.worktrees[m.wtIdx].Path, m.worktrees[m.wtIdx].Branch)
 
 	m.fileStats = msg.stats
 	reloadDiff := m.setFiles(msg.files, false)
+	m.setWalk(walkthrough.Load(m.worktrees[m.wtIdx].Path, m.worktrees[m.wtIdx].Branch))
 	cmds := []tea.Cmd{m.walkArrived()}
 	// The project is read again in the background, and the tree and diff
 	// rebuilt when it arrives changed; one read at a time, as a busy agent
