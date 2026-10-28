@@ -176,8 +176,14 @@ type Model struct {
 	// for one in, for nerdr to open it when it is written: g once, not
 	// once to ask and again to look. walkNudged is g pressed again while
 	// the agent writes it: once more asks anew, for an agent that never
-	// will.
+	// will. walkKey tells one walkthrough from the next, and walkBefore
+	// is the one there was when G asked for a new one, which does not
+	// open as the new one. walkOld is the change moved on since it was
+	// written.
 	walk       bool
+	walkKey    string
+	walkBefore string
+	walkOld    bool
 	walkWanted string
 	walkNudged bool
 	// folderTree lists the files in their folders, as GitHub does,
@@ -420,7 +426,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // a watch that has been replaced
 		}
 		m.watchN++
-		return m, tea.Batch(m.refreshIfShown(), waitForChange(m.watcher, msg.wt))
+		return m, tea.Batch(m.refreshIfShown(), m.lookForWalk(), waitForChange(m.watcher, msg.wt))
+
+	case walkMsg:
+		return m, m.onWalk(msg)
 
 	case filesMsg:
 		return m, m.onFiles(msg)
@@ -656,6 +665,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "g":
 			return m, m.openWalkthrough()
+
+		case "G":
+			return m, m.askWalk()
 
 		case "i":
 			prev, _ := m.currentFile()

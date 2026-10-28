@@ -659,19 +659,25 @@ const (
 // filesHints are the file list's keys, each a button on its hint row. g
 // comes early, so a narrow pane does not cut it off: it opens the
 // walkthrough, or asks for one when there is none — "make guide", and
-// "guide…" while the agent writes it. e is there only while
+// "guide…" while the agent writes it; "guide (old)" once the change has
+// moved on since it was written. G, beside one, asks for a new one. e is there only while
 // the file under the cursor has an explanation to show; E, which asks the
 // agent beside the list to explain the change, only beside an agent with
 // the nerdr-explain skill.
 func (m *Model) filesHints() []string {
 	hints := strings.Split(hintFiles, hintSep)
 	switch {
-	case m.walk:
-		hints = append(hints, "g guide")
 	case m.embedded && m.explainOn && m.walkWanted != "" && m.walkWanted == m.curWT:
 		hints = append(hints, "g guide…")
+	case m.walk && m.walkOld:
+		hints = append(hints, "g guide (old)")
+	case m.walk:
+		hints = append(hints, "g guide")
 	case m.embedded && m.explainOn:
 		hints = append(hints, "g make guide")
+	}
+	if m.walk && m.embedded && m.explainOn {
+		hints = append(hints, "G new guide")
 	}
 	if m.embedded {
 		where := "beside"
