@@ -264,13 +264,13 @@ func (m Model) globalHints() string {
 	}
 	switch m.mode {
 	case modePRs:
-		return "m or F1, F2 menu · M mouse · q quit"
+		return "m or F1-F2 menu · M mouse · q quit"
 	}
 	return "↑↓ move · ←→ pane · enter in · m menu · M mouse · q quit"
 }
 
 func (m Model) statusBar(width int) string {
-	hints := dimStyle.Render(m.globalHints())
+	hints := styleHints(m.globalHints())
 	rw := lipgloss.Width(hints)
 
 	// A toast is feedback on something just attempted and disappears in
@@ -323,7 +323,7 @@ func (m Model) prView(W, H int) string {
 		}
 		// As nerdr draws all your pull requests: the title in the border,
 		// and the two views on the line below it, where they stay.
-		views := strings.Join(PRViews(ViewBranch, m.prNews, m.issueNews), "") + dimStyle.Render("  tab: next")
+		views := strings.Join(PRViews(ViewBranch, m.prNews, m.issueNews), "") + "  " + styleHints("tab next")
 		return renderTitledList(items, cursor, m.prConvViewTop, W, h, !m.unfocused, title, views, hint)
 	}
 	return renderScrollList(items, cursor, m.prConvViewTop, W, h, true, title, "", hint)
@@ -644,7 +644,7 @@ func elideLeft(s string, max int) string {
 // Each pane advertises the keys that act on it; the status bar carries
 // only what works anywhere.
 const (
-	hintRepos     = "w: all worktrees"
+	hintRepos     = "w all worktrees"
 	hintWorktrees = "[ ] switch · b base"
 	hintFiles     = "/ filter · t order/tree"
 	// n/p change the selected file without leaving the diff, which is
@@ -705,7 +705,42 @@ func hintRow(hint string, width int, active bool) string {
 	if !active || hint == "" {
 		return strings.Repeat(" ", max(0, width))
 	}
-	return fit(dimStyle.Render(hint), width)
+	return fit(styleHints(hint), width)
+}
+
+// styleHints draws a row of keys — "k what · k what" — the way nerdr draws
+// its own: each key bright, what it does dim. A key of more than one word
+// is one of keyWords, or the rest after "m or", but for the last word.
+func styleHints(hints string) string {
+	parts := strings.Split(hints, hintSep)
+	for i, p := range parts {
+		parts[i] = styleHint(p)
+	}
+	return strings.Join(parts, hintTextStyle.Render(hintSep))
+}
+
+// keyWords are the keys with a space in them.
+var keyWords = []string{"[ ]", "← →", "− +"}
+
+func styleHint(p string) string {
+	text := strings.TrimLeft(p, " ")
+	pad := p[:len(p)-len(text)]
+	key, rest, _ := strings.Cut(text, " ")
+	for _, k := range keyWords {
+		if strings.HasPrefix(text, k+" ") || text == k {
+			key, rest = k, strings.TrimPrefix(strings.TrimPrefix(text, k), " ")
+		}
+	}
+	if more, ok := strings.CutPrefix(rest, "or "); ok {
+		if i := strings.LastIndex(more, " "); i > 0 {
+			return pad + hintKeyStyle.Render(key) + hintTextStyle.Render(" or ") +
+				hintKeyStyle.Render(more[:i]) + hintTextStyle.Render(more[i:])
+		}
+	}
+	if rest == "" {
+		return pad + hintKeyStyle.Render(key)
+	}
+	return pad + hintKeyStyle.Render(key) + hintTextStyle.Render(" "+rest)
 }
 
 // headingRow draws a pane title as a bar spanning the pane's width. The

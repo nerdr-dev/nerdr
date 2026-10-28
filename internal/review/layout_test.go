@@ -98,7 +98,7 @@ func TestStatusBarKeepsToastVisible(t *testing.T) {
 	// With no toast the path is unchanged: cwd on the left, hints right.
 	m.toast = ""
 	got = m.statusBar(120)
-	if !strings.Contains(got, "q quit") {
+	if !strings.Contains(ansiRe.ReplaceAllString(got, ""), "q quit") {
 		t.Fatalf("the hint line must fit a 120-column terminal without losing its tail:\n%q", got)
 	}
 	if w := lipgloss.Width(got); w > 120 {

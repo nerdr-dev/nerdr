@@ -425,7 +425,7 @@ func (m *Model) disallowPlugin(p plugin.Plugin) tea.Cmd {
 		lines: []string{
 			"Agents will not run it, nor will its screen start, until you allow it again.",
 			"This is every version of it in this folder. A screen or a watch already running goes on; stop it in F5.",
-			"", dim("y stops allowing it · n keeps it allowed"),
+			"", keyHint("y") + dim(" stops allowing it · ") + keyHint("n") + dim(" keeps it allowed"),
 		},
 		yes: func(m *Model) tea.Cmd {
 			if _, err := plugin.DisallowDir(file, p.Dir); err != nil {
@@ -479,7 +479,7 @@ func (m *Model) askAllowPlugin(p plugin.Plugin, key string, again, then func(m *
 		title:  "Allow " + clean.Line(p.Name) + "?",
 		lines:  lines,
 		scroll: pluginPreview(p.Dir, maxPreviewLines, max(boxInner(m.width)-2, 20)),
-		after:  []string{"", dim("y allows it until something in its folder changes · n does not")},
+		after:  []string{"", keyHint("y") + dim(" allows it until something in its folder changes · ") + keyHint("n") + dim(" does not")},
 		yes: func(m *Model) tea.Cmd {
 			if now, err := p.Key(); err != nil || now != key {
 				m.toast(clean.Line(p.Name) + " changed while you read it: look again")

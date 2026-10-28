@@ -60,7 +60,7 @@ func (m *Model) askRepoSetup(repos []string, then func(m *Model) tea.Cmd) tea.Cm
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, dim("y allows it until it changes · n makes the worktree without it"))
+	lines = append(lines, keyHint("y")+dim(" allows it until it changes · ")+keyHint("n")+dim(" makes the worktree without it"))
 	back := m.dialog
 	m.dialog = &confirm{
 		title: "Allow " + workspace.RepoConfigFile + "?",
