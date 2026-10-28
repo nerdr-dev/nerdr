@@ -307,7 +307,7 @@ func (m *Model) prViewsLine(shown review.PRView) string {
 		}
 		out += m.onClick(l, func(m *Model) tea.Cmd { return m.review.SetPRView(v) })
 	}
-	return out + dim("  tab: next")
+	return out + "  " + keyHint("tab") + dim(" next")
 }
 
 // panelKeys is a view's keys, each one a button doing what do does with

@@ -60,6 +60,11 @@ var (
 
 	dimStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
+	// Key hints, as nerdr draws them in its own panels: the key, and
+	// what it does.
+	hintKeyStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Bold(true)
+	hintTextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
+
 	// One style per kind, keyed the same way statusMark classifies.
 	markStyle = map[string]lipgloss.Style{
 		"m": lipgloss.NewStyle().Foreground(lipgloss.Color("221")),

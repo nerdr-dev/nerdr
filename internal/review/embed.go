@@ -555,7 +555,7 @@ func (m Model) repoBarView(w int) string {
 		hint = "  ← → switch · ↓ files"
 	}
 	if at+lipgloss.Width(hint) <= w {
-		b.WriteString(dimStyle.Render(hint))
+		b.WriteString(styleHints(hint))
 	}
 	return fit(b.String(), w)
 }
