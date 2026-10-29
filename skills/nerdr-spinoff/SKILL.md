@@ -83,11 +83,17 @@ The plan is JSON with one entry per part:
 - **commits** — optional: the commits on your branch that hold this
   part's work, oldest or newest first. Leave it out for a part with no
   code yet.
-- **repos** — optional, only when your tab has several repositories (a
-  folder each in your working folder): the folder names of those this
-  part changes, such as `["api"]` for a change to the api alone. The new
-  tab gets a branch in those alone; the user can pick others. Left out,
-  it has those your commits are in, or all of them.
+- **repos** — optional: the repositories this part changes. In a tab
+  with several repositories (a folder each in your working folder), the
+  folder names of those it changes, such as `["api"]` for a change to the
+  api alone. Left out, the new tab has those your commits are in, or all
+  of your tab's: leave it out when the part is in your repositories. Only
+  when the user asks for the part to be made in a repository your tab
+  does not have, give that repository's name, such as `["docs"]`. Your
+  commits cannot go to another repository, so describe in the prompt
+  what was done and where to find it. The user can pick other
+  repositories in the end. If you run in a sandbox, nerdr offers your
+  tab's repositories alone; the user can tick another themselves.
 
 ## 3. Send it
 

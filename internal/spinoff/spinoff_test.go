@@ -50,6 +50,7 @@ func TestPromptSaysWhatIsOnTheBranch(t *testing.T) {
 		{Outcome{Reused: true}, "already on this one"},
 		{Outcome{}, "written anew"},
 		{Outcome{Reused: true, PickFailed: "conflict"}, "did not apply cleanly (conflict)"},
+		{Outcome{Elsewhere: true}, "cannot be brought into this repository"},
 	} {
 		got := Prompt(pt, from, tc.o)
 		if !strings.HasPrefix(got, "Do A.") || !strings.Contains(got, tc.want) || !strings.Contains(got, "/w/big") {
@@ -58,6 +59,28 @@ func TestPromptSaysWhatIsOnTheBranch(t *testing.T) {
 	}
 	if got := Prompt(Part{Prompt: "Do B."}, from, Outcome{}); strings.Contains(got, "work was started there") {
 		t.Errorf("no commits, but:\n%s", got)
+	}
+}
+
+// A part made in another repository is told so, and its commits stay
+// with the agent that sent it.
+func TestElsewhereSaysAnotherRepository(t *testing.T) {
+	pt := Part{Branch: "a", Prompt: "Do A.", Commits: []string{"c1"}}
+	got := Prompt(pt, Parent{Name: "big", Dir: "/w/big"}, Outcome{Elsewhere: true})
+	if strings.Contains(got, "shares the repository") || !strings.Contains(got, "another repository") {
+		t.Errorf("prompt:\n%s", got)
+	}
+	rep := Report([]Outcome{{Part: pt, Branch: "a", Dir: "/w/a", Elsewhere: true}}, "big")
+	if !strings.Contains(rep, "another repository than yours") || !strings.Contains(rep, "still yours") || strings.Contains(rep, "keep them out") {
+		t.Errorf("report:\n%s", rep)
+	}
+	// Beside a part made here, only that part's commits are to be kept out.
+	rep = Report([]Outcome{
+		{Part: pt, Branch: "a", Dir: "/w/a", Elsewhere: true},
+		{Part: Part{Branch: "b", Commits: []string{"c2"}}, Branch: "b", Dir: "/w/b", Reused: true},
+	}, "big")
+	if !strings.Contains(rep, "Commits c2 are still on this branch (big)") {
+		t.Errorf("report with both:\n%s", rep)
 	}
 }
 

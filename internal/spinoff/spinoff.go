@@ -161,6 +161,9 @@ type Outcome struct {
 	// PickFailed when that was tried and did not apply cleanly.
 	Reused     bool   `json:"reused,omitempty"`
 	PickFailed string `json:"pick_failed,omitempty"`
+	// Elsewhere is set when the tab was made in other repositories than
+	// those of the tab the part came from, none of them shared.
+	Elsewhere bool `json:"elsewhere,omitempty"`
 	// Err is why the tab could not be made.
 	Err string `json:"err,omitempty"`
 	// Tab is the id of the tab made, and Start what became of its agent
@@ -205,10 +208,16 @@ func Prompt(pt Part, from Parent, o Outcome) string {
 	if from.Branch != "" {
 		fmt.Fprintf(&b, ", on branch %s", from.Branch)
 	}
-	fmt.Fprintf(&b, ", in %s. Its worktree shares the repository with this one, so its commits can be looked at here with git show.", from.Dir)
+	if o.Elsewhere {
+		fmt.Fprintf(&b, ", in %s. That is another repository than this one: look at its commits there, with git -C and the folder.", from.Dir)
+	} else {
+		fmt.Fprintf(&b, ", in %s. Its worktree shares the repository with this one, so its commits can be looked at here with git show.", from.Dir)
+	}
 	if len(pt.Commits) > 0 {
 		list := strings.Join(pt.Commits, " ")
 		switch {
+		case o.Elsewhere:
+			fmt.Fprintf(&b, "\n\nThe work was started there, in commits %s, which cannot be brought into this repository: write what this repository needs, with them as a guide.", list)
 		case o.PickFailed != "":
 			fmt.Fprintf(&b, "\n\nThe work was started there, in commits %s. nerdr tried to bring them onto this branch, but they did not apply cleanly (%s), so this branch starts from the base without them. Bring them in yourself (git cherry-pick, resolving the conflicts), or write the change again with them as a guide.", list, o.PickFailed)
 		case o.Reused:
@@ -226,7 +235,9 @@ func Prompt(pt Part, from Parent, o Outcome) string {
 func Report(done []Outcome, branch string) string {
 	var b strings.Builder
 	b.WriteString("nerdr: the user has gone through the parts you split off.\n")
-	moved := false
+	// moved are the commits handed to new branches in this repository:
+	// those of a part made elsewhere stay the agent's.
+	var moved []string
 	for _, o := range done {
 		name := o.Part.Branch
 		switch {
@@ -243,8 +254,13 @@ func Report(done []Outcome, branch string) string {
 			if o.Branch != name {
 				b.WriteString(" The user renamed the branch.")
 			}
-			if len(o.Part.Commits) > 0 {
-				moved = true
+			if o.Elsewhere {
+				b.WriteString(" It is in another repository than yours.")
+			}
+			if len(o.Part.Commits) > 0 && o.Elsewhere {
+				fmt.Fprintf(&b, " Commits %s could not go there; its agent has them as a guide, and they are still yours.", strings.Join(o.Part.Commits, " "))
+			} else if len(o.Part.Commits) > 0 {
+				moved = append(moved, o.Part.Commits...)
 				list := strings.Join(o.Part.Commits, " ")
 				switch {
 				case o.PickFailed != "":
@@ -271,12 +287,12 @@ func Report(done []Outcome, branch string) string {
 			}
 		}
 	}
-	if moved {
+	if len(moved) > 0 {
 		on := "this branch"
 		if branch != "" {
 			on = "this branch (" + branch + ")"
 		}
-		fmt.Fprintf(&b, "\n\nThe commits listed above are still on %s. They belong to the new branches now: keep them out of any pull request from here, but do not remove them unless the user asks.", on)
+		fmt.Fprintf(&b, "\n\nCommits %s are still on %s. They belong to the new branches now: keep them out of any pull request from here, but do not remove them unless the user asks.", strings.Join(moved, " "), on)
 	}
 	return b.String()
 }

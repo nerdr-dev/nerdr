@@ -82,16 +82,30 @@ type spinoffDialog struct {
 	// promptTop its first line.
 	showPrompt bool
 	promptTop  int
-	// repoOn says, in a tab with several repositories, which of its
-	// worktrees the new tab gets one beside; repoAt is the one space
-	// turns on or off while onRepos, when ↑↓ go through them rather than
-	// the agents below them, and repoNote says what of the agent's choice
-	// could not be followed.
+	// repos are the repositories the new tab can be made in: the tab's,
+	// those of others the agent named, and, while others is set, every
+	// one nerdr has. repoOn says which the new tab gets a worktree in;
+	// repoAt is the one space turns on or off while onRepos, when ↑↓ go
+	// through them rather than the agents below them, and repoNote says
+	// what of the agent's choice could not be followed.
+	repos    []spinoffRepo
 	repoOn   []bool
 	repoAt   int
 	onRepos  bool
+	others   bool
 	repoNote string
 	err      string
+}
+
+// spinoffRepo is a repository a part can be made in.
+type spinoffRepo struct {
+	workspace.Repo
+	// label is what the dialog calls it: its folder in the tab for one of
+	// the tab's, else its name.
+	label string
+	// own is set for one of the tab's: the part's commits can be brought
+	// into it, and the new worktree shares the repository with the tab's.
+	own bool
 }
 
 // openSpinoff opens the dialog for t's next part, if it has one.
@@ -143,12 +157,107 @@ func (d *spinoffDialog) reset(m *Model) bool {
 	d.branch.SetValue(pt.Branch)
 	d.branch.CursorEnd()
 	d.rewrite, d.showPrompt, d.promptTop, d.err = false, false, 0, ""
-	d.repoOn, d.repoNote = spinoffRepos(d.t.Worktrees, pt), ""
-	d.repoAt, d.onRepos = max(slices.Index(d.repoOn, true), 0), d.pickRepos()
-	if unknown := unknownRepos(d.t.Worktrees, pt.Repos); len(unknown) > 0 {
-		d.repoNote = "the agent named " + strings.Join(unknown, ", ") + ", which this tab does not have"
+	d.repos, d.others, d.repoNote = nil, false, ""
+	for _, w := range d.t.Worktrees {
+		d.repos = append(d.repos, spinoffRepo{Repo: workspace.Repo{Name: filepath.Base(w.Repo), Path: filepath.Clean(w.Repo)},
+			label: repoName(w), own: true})
 	}
+	d.repoOn = spinoffRepos(d.t.Worktrees, pt)
+	// Those the agent named that the tab does not have are looked for
+	// among the rest; an agent in a sandbox gets the tab's alone, as with
+	// nerdr tab new, and the user can still tick another.
+	var unknown, confined []string
+	if names := unknownRepos(d.t.Worktrees, pt.Repos); len(names) > 0 {
+		// Named none of the tab's, and found another: not the tab's as
+		// well.
+		noneOwn := len(names) == len(pt.Repos)
+		all := m.otherRepos(d.repos)
+		for _, n := range names {
+			i := slices.IndexFunc(all, func(r workspace.Repo) bool { return r.Name == n })
+			switch {
+			case i < 0:
+				unknown = append(unknown, n)
+			case pt.Sandboxed:
+				confined = append(confined, n)
+			default:
+				if noneOwn {
+					clear(d.repoOn)
+					noneOwn = false
+				}
+				d.repos = append(d.repos, spinoffRepo{Repo: all[i], label: all[i].Name})
+				d.repoOn = append(d.repoOn, true)
+			}
+		}
+	}
+	switch {
+	case len(unknown) > 0:
+		d.repoNote = "the agent named " + strings.Join(unknown, ", ") + ", which nerdr does not have"
+	case len(confined) > 0:
+		d.repoNote = "the agent, in a sandbox, named " + strings.Join(confined, ", ") + ": ctrl+r to tick it yourself"
+	}
+	d.repoAt, d.onRepos = max(slices.Index(d.repoOn, true), 0), d.pickRepos()
 	return true
+}
+
+// otherRepos are the repositories nerdr has that are none of have.
+func (m *Model) otherRepos(have []spinoffRepo) []workspace.Repo {
+	all, _ := workspace.ScanAll(m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs)
+	var out []workspace.Repo
+	for _, r := range all {
+		r.Path = filepath.Clean(r.Path)
+		if !slices.ContainsFunc(have, func(h spinoffRepo) bool { return h.Path == r.Path }) {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// showOthers puts every repository nerdr has in the list, unticked, or
+// takes those not ticked out of it again.
+func (d *spinoffDialog) showOthers(m *Model) {
+	d.err = ""
+	if d.others {
+		d.others = false
+		for i := len(d.repos) - 1; i >= 0; i-- {
+			if !d.repos[i].own && !d.repoOn[i] {
+				d.repos, d.repoOn = slices.Delete(d.repos, i, i+1), slices.Delete(d.repoOn, i, i+1)
+			}
+		}
+		d.repoAt = min(d.repoAt, len(d.repos)-1)
+		d.onRepos = d.onRepos && d.pickRepos()
+		return
+	}
+	more := m.otherRepos(d.repos)
+	if len(more) == 0 {
+		d.err = "nerdr has no other repository: repo_dirs says where it looks"
+		return
+	}
+	d.others, d.onRepos, d.repoAt = true, true, len(d.repos)
+	for _, r := range more {
+		d.repos = append(d.repos, spinoffRepo{Repo: r, label: r.Name})
+		d.repoOn = append(d.repoOn, false)
+	}
+}
+
+// ownTicked reports whether one of the tab's own repositories is ticked:
+// the part's commits can be brought in only there.
+func (d *spinoffDialog) ownTicked() bool {
+	for i, r := range d.repos {
+		if r.own && d.repoOn[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// othersTicked reports whether a repository not the tab's is ticked.
+func (d *spinoffDialog) othersTicked() bool {
+	for i, r := range d.repos {
+		if !r.own && d.repoOn[i] {
+			return true
+		}
+	}
+	return false
 }
 
 // repoName is what worktree w is called among a tab's: its folder in the
@@ -200,8 +309,8 @@ func unknownRepos(wts []workspace.Worktree, names []string) []string {
 }
 
 // pickRepos reports whether the dialog asks which repositories: when
-// the tab has several.
-func (d *spinoffDialog) pickRepos() bool { return len(d.repoOn) > 1 }
+// there are several to pick from.
+func (d *spinoffDialog) pickRepos() bool { return len(d.repos) > 1 }
 
 func (d *spinoffDialog) part() spinoff.Part { return d.t.Spinoff.Next[0] }
 
@@ -252,6 +361,9 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+o":
 		d.showPrompt, d.promptTop = !d.showPrompt, 0
 		return nil
+	case "ctrl+r":
+		d.showOthers(m)
+		return nil
 	case "pgup":
 		d.promptTop = max(d.promptTop-10, 0)
 		return nil
@@ -278,6 +390,7 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 type spinoffMsg struct {
 	t        *tab        // the tab that sent the plan
 	kind     agents.Kind // the agent to run in the new tab
+	group    string      // the group of the new tab, if it has several repositories
 	outcome  spinoff.Outcome
 	plan     workspace.Plan
 	wts      []workspace.Worktree
@@ -304,13 +417,20 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 		return nil
 	}
 	name := strings.TrimSpace(d.branch.Value())
-	reuse := len(pt.Commits) > 0 && !d.rewrite
+	reuse := len(pt.Commits) > 0 && !d.rewrite && d.ownTicked()
 	var repos []workspace.Repo
-	for i, w := range t.Worktrees {
-		if i < len(d.repoOn) && !d.repoOn[i] {
-			continue
+	own := map[string]bool{}
+	for i, r := range d.repos {
+		if d.repoOn[i] {
+			repos = append(repos, r.Repo)
+			own[r.Path] = r.own
 		}
-		repos = append(repos, workspace.Repo{Name: filepath.Base(w.Repo), Path: w.Repo})
+	}
+	// In the tab's own repositories alone, it goes in the tab's group;
+	// with others, in the one nerdr gives it.
+	group, elsewhere := t.Group, !d.ownTicked()
+	if d.othersTicked() {
+		group = ""
 	}
 	switch {
 	case len(t.Worktrees) == 0:
@@ -325,16 +445,22 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 	for _, r := range repos {
 		paths = append(paths, r.Path)
 	}
-	return m.askRepoSetup(paths, func(m *Model) tea.Cmd { return m.spinoffCreate(t, pt, kind, name, reuse, repos) })
+	return m.askRepoSetup(paths, func(m *Model) tea.Cmd {
+		return m.spinoffCreate(t, pt, kind, name, reuse, elsewhere, group, repos, own)
+	})
 }
 
 // spinoffCreate makes part pt's worktrees and tab, in the background.
-func (m *Model) spinoffCreate(t *tab, pt spinoff.Part, kind agents.Kind, name string, reuse bool, repos []workspace.Repo) tea.Cmd {
+// elsewhere is set when none of repos is the tab's own, and own says, by
+// repository path, which are: the part's commits are brought into those
+// alone, though a fork elsewhere may have them too.
+func (m *Model) spinoffCreate(t *tab, pt spinoff.Part, kind agents.Kind, name string, reuse, elsewhere bool, group string, repos []workspace.Repo, own map[string]bool) tea.Cmd {
 	t.spinoffBusy = "making " + name + "…"
 	wtRoot := m.wtRoot
 	allowed := setupAllowedFile()
 	return func() tea.Msg {
-		res := spinoffMsg{t: t, kind: kind, outcome: spinoff.Outcome{Part: pt, Branch: name, Agent: string(kind), Reused: reuse}}
+		res := spinoffMsg{t: t, kind: kind, group: group,
+			outcome: spinoff.Outcome{Part: pt, Branch: name, Agent: string(kind), Reused: reuse, Elsewhere: elsewhere}}
 		if err := workspace.ValidBranch(name); err != nil {
 			res.err = err
 			return res
@@ -368,6 +494,9 @@ func (m *Model) spinoffCreate(t *tab, pt spinoff.Part, kind agents.Kind, name st
 		res.warnings = append(res.warnings, workspace.Prepare(res.wts, plan.SetupIn(), allowed, func(string) {})...)
 		if reuse {
 			for _, w := range res.wts {
+				if !own[filepath.Clean(w.Repo)] {
+					continue
+				}
 				if _, err := workspace.Pick(w, pt.Commits); err != nil {
 					res.outcome.PickFailed = err.Error()
 				}
@@ -404,7 +533,7 @@ func (m *Model) spinoffMade(msg spinoffMsg) tea.Cmd {
 		return m.spinoffNext(t, msg.outcome, shown)
 	}
 	if m.tabIndex(t) >= 0 {
-		nt, cmd := m.addTabWith(msg.plan.Branch, msg.plan.Dir, t.Group, msg.wts, msg.kind, "",
+		nt, cmd := m.addTabWith(msg.plan.Branch, msg.plan.Dir, msg.group, msg.wts, msg.kind, "",
 			spinoff.Prompt(msg.outcome.Part, parent, msg.outcome), msg.outcome.Part.Sandboxed)
 		nt.Goal = msg.outcome.Part.Summary
 		msg.outcome.Tab = nt.ID
@@ -616,32 +745,49 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		for _, c := range pt.Commits {
 			short = append(short, c[:min(len(c), 7)])
 		}
-		lines = append(lines, "Code already written in "+parentBranch+" "+dim("("+strings.Join(short, " ")+")")+":",
-			m.onClick(cursorLine(!d.rewrite, "Start the branch with its "+plural(len(pt.Commits), "commit"), sel), func(m *Model) tea.Cmd {
-				d.rewrite = false
-				return nil
-			}),
-			m.onClick(cursorLine(d.rewrite, "Write it anew from the prompt", sel), func(m *Model) tea.Cmd {
-				d.rewrite = true
-				return nil
-			}), "")
+		code := "Code already written in " + parentBranch + " " + dim("("+strings.Join(short, " ")+")") + ":"
+		if !d.ownTicked() {
+			lines = append(lines, code, dim("  in this tab's repositories, none of them ticked: the new agent writes it anew"), "")
+		} else {
+			lines = append(lines, code,
+				m.onClick(cursorLine(!d.rewrite, "Start the branch with its "+plural(len(pt.Commits), "commit"), sel), func(m *Model) tea.Cmd {
+					d.rewrite = false
+					return nil
+				}),
+				m.onClick(cursorLine(d.rewrite, "Write it anew from the prompt", sel), func(m *Model) tea.Cmd {
+					d.rewrite = true
+					return nil
+				}), "")
+		}
 	}
 	if d.pickRepos() {
 		lines = append(lines, "Repositories:")
-		for i, w := range t.Worktrees {
-			box := "[ ] "
+		var rows []string
+		for i, r := range d.repos {
+			label := "[ ] " + r.label
 			if d.repoOn[i] {
-				box = "[x] "
+				label = "[x] " + r.label
 			}
-			lines = append(lines, m.onClick(cursorLine(d.onRepos && i == d.repoAt, box+repoName(w), sel), func(m *Model) tea.Cmd {
+			if !r.own {
+				label += dim("  not in this tab")
+			}
+			rows = append(rows, m.onClick(cursorLine(d.onRepos && i == d.repoAt, label, sel), func(m *Model) tea.Cmd {
 				d.onRepos, d.repoAt, d.repoOn[i] = true, i, !d.repoOn[i]
 				return nil
 			}))
 		}
+		if d.others {
+			rows = scrollRows(rows, d.repoAt, min(len(rows)+2, max(height-26, 6)))
+		}
+		lines = append(lines, rows...)
 		if d.repoNote != "" {
 			lines = append(lines, warn("  "+d.repoNote))
 		}
 		lines = append(lines, "")
+	} else if d.repoNote != "" {
+		// With no list, what the agent asked for and did not get is to be
+		// seen all the same.
+		lines = append(lines, warn("Repository: "+d.repoNote), "")
 	}
 	if len(d.agents) == 0 {
 		lines = append(lines, warn("Found no agent on PATH: claude, opencode, copilot, codex, cursor-agent, gemini or agy."), "")
@@ -656,7 +802,10 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		lines = append(lines, "")
 	}
 	where := "in the same repositories"
-	if d.pickRepos() {
+	switch {
+	case d.othersTicked() && !d.ownTicked():
+		where = "in the repositories ticked, not this tab's"
+	case d.pickRepos():
 		where = "in the repositories ticked"
 	}
 	lines = append(lines, dim(fmt.Sprintf("A new branch from origin's main %s; the agent is given a prompt of %s.", where, plural(len(pt.Prompt), "character"))))
@@ -664,7 +813,7 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		lines = append(lines, "", warn(t.spinoffBusy), dim("esc hides this; the tab opens when it is ready"))
 	} else {
 		pairs := []string{"enter", "make tab"}
-		if len(pt.Commits) > 0 {
+		if len(pt.Commits) > 0 && d.ownTicked() {
 			pairs = append(pairs, "tab", "code")
 		}
 		switch {
@@ -677,7 +826,11 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		if d.showPrompt {
 			prompt = "show summary"
 		}
-		pairs = append(pairs, "ctrl+o", prompt)
+		others := "other repositories"
+		if d.others {
+			others = "fewer repositories"
+		}
+		pairs = append(pairs, "ctrl+o", prompt, "ctrl+r", others)
 		if n-i > 0 {
 			pairs = append(pairs, "ctrl+x", "skip", "esc", "skip all")
 		} else {
