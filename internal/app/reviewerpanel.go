@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"slices"
 	"strconv"
 	"strings"
@@ -38,7 +39,11 @@ func (m *Model) newReviewPane() tea.Cmd {
 	}
 	of := t.focused().agent()
 	m.reviewerCursor = 0
-	return m.addPane(t, &paneTab{kind: paneReview, of: of}, false)
+	cmds := []tea.Cmd{m.addPane(t, &paneTab{kind: paneReview, of: of}, false)}
+	for _, k := range m.reviewKinds(of) {
+		cmds = append(cmds, m.askModels(k))
+	}
+	return tea.Batch(cmds...)
 }
 
 // startReviewWith starts by reviewing of's work, or adds it to the
@@ -161,9 +166,6 @@ func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
 		if k == of.Agent {
 			notes = append(notes, "the same kind as the author")
 		}
-		if model := m.cfg.Review.Models[k]; model != "" && agents.TakesModel(k) {
-			notes = append(notes, model)
-		}
 		label := strconv.Itoa(i+1) + "  " + string(k)
 		cursor := "   "
 		if i == m.reviewerCursor && keys {
@@ -174,10 +176,17 @@ func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
 		if len(notes) > 0 {
 			label += dim(" · " + strings.Join(notes, " · "))
 		}
-		lines = append(lines, m.onClick(cursor+label, func(m *Model) tea.Cmd {
+		row := m.onClick(cursor+label, func(m *Model) tea.Cmd {
 			m.reviewerCursor = i
 			return tea.Batch(m.goToPane(t, p), m.startReviewWith(of, reviewer{kind: k}))
-		}))
+		})
+		if agents.TakesModel(k) {
+			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.reviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
+				m.reviewerCursor = i
+				return tea.Batch(m.goToPane(t, p), m.openModelPick(k))
+			})
+		}
+		lines = append(lines, row)
 	}
 	rounds := max(m.cfg.Review.Rounds, 1)
 	if of.review != nil {

@@ -804,6 +804,10 @@ func (m *Model) detectSeat(t *tab, s *seat, now time.Time) tea.Cmd {
 		if _, err, _ := r.pane.Exited(); err != nil {
 			why = " (" + err.Error() + ")"
 		}
+		if r.Model != "" {
+			// A model it does not have stops it as it starts.
+			why += ", started with model " + r.Model + ": if " + string(r.Agent) + " has none of that name, pick another with its model button in a review pane"
+		}
 		return m.dropReviewer(t, r, string(r.Agent)+" stopped before it sent a review"+why, true)
 	}
 	if was == stWorking && (r.status == stIdle || r.status == stDone) && t.review.phase == reviewing && s.res == nil && r.idleUnasked() {
