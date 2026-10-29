@@ -548,9 +548,15 @@ func (m *Model) details(t *tab, bg lipgloss.Color, active bool) string {
 	if len(m.overlaps[t.ID]) > 0 {
 		parts = append(parts, m.tip(st("214").Render("⚠"), "Other tabs change some of the same files"))
 	}
-	if n := len(t.Messages); n > 0 {
+	if n := len(t.taskRefs()); n > 0 {
 		s := "✉" + strconv.Itoa(n)
 		tip := plural(n, "task") + " waiting to be sent to the agent"
+		if len(t.extraAgents()) > 0 {
+			tip = plural(n, "task") + " waiting to be sent to the tab's agents"
+		}
+		if gone := len(t.Inactive); gone > 0 {
+			tip += " · " + strconv.Itoa(gone) + " for a closed agent"
+		}
 		if t.queuePaused {
 			s += "⏸"
 			tip += " · paused: the agent did not take the last one up"

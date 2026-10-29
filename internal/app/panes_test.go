@@ -729,3 +729,81 @@ func TestDragTheDividerBetweenPanes(t *testing.T) {
 		t.Fatalf("a right-click should share the room evenly: %d, want %d", again[0].w, cols[0].w)
 	}
 }
+
+// TestTasksForTheTabsAgents: with one agent the task dialog asks nothing;
+// with more, a task is for the agent picked, or all of them. The tasks of
+// an agent whose pane closes stay in F3, inactive, even when another agent
+// takes its number, until one is given to another agent.
+func TestTasksForTheTabsAgents(t *testing.T) {
+	m := paneModel(t)
+	fakeAgent(m, agents.Codex)
+	tb := m.cur()
+	tb.status = stIdle
+
+	m.openMessage(false)
+	if strings.Contains(ansi.Strip(m.dialog.view(m, 120, 40)), "to whom") {
+		t.Fatal("with one agent there is no one to pick")
+	}
+	m.dialog = nil
+
+	m.newAgent(tb, agents.Codex)
+	two := tb.extraAgents()[0]
+	m.openMessage(false)
+	d := m.dialog.(*messageDialog)
+	if d.agent != two || !strings.Contains(ansi.Strip(d.view(m, 120, 40)), "to whom") {
+		t.Fatal("the agent with the keyboard is picked to start with, and the others offered")
+	}
+	d.input.SetValue("rebase on main")
+	d.key(m, keyMsg("ctrl+t"))
+	d.key(m, keyMsg("enter"))
+	if len(tb.Messages) != 1 || len(two.Messages) != 1 {
+		t.Fatalf("ctrl+t past the last agent is all of them: %+v %+v", tb.Messages, two.Messages)
+	}
+
+	m.openMessage(false)
+	d = m.dialog.(*messageDialog)
+	d.input.SetValue("only for two")
+	d.key(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1"), Alt: true})
+	d.key(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("2"), Alt: true})
+	d.key(m, keyMsg("enter"))
+	if len(two.Messages) != 2 || len(tb.Messages) != 1 {
+		t.Fatalf("alt+2 picks agent 2: %+v", two.Messages)
+	}
+
+	m.closePane(tb, two.paneOf())
+	if len(tb.Inactive) != 2 || tb.Inactive[1].Gone != 2 || tb.Inactive[1].Text != "only for two" {
+		t.Fatalf("its tasks should stay, for agent 2: %+v", tb.Inactive)
+	}
+	m.newAgent(tb, agents.Codex)
+	again := tb.extraAgents()[0]
+	if again.Num != 2 || len(again.Messages) != 0 {
+		t.Fatalf("a new agent 2 is not the one they were for: %d %+v", again.Num, again.Messages)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyF3})
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "inactive") || !strings.Contains(v, "only for two") {
+		t.Fatal("F3 shows the inactive tasks")
+	}
+	m.msgCursor = 2 // tb's one, then the two inactive: "only for two"
+	m.Update(keyMsg("enter"))
+	if len(tb.Inactive) != 2 {
+		t.Fatal("an inactive task is not put in")
+	}
+	m.Update(keyMsg("e"))
+	d = m.dialog.(*messageDialog)
+	d.key(m, keyMsg("enter"))
+	if len(tb.Inactive) != 1 || len(again.Messages) != 1 || again.Messages[0].Text != "only for two" || again.Messages[0].Gone != 0 {
+		t.Fatalf("e gives it to the agent picked: %+v %+v", tb.Inactive, again.Messages)
+	}
+
+	m.saveSession()
+	sess, err := state.Load(m.root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, st := range sess.Tabs {
+		if st.ID == tb.ID && (len(st.Inactive) != 1 || st.Inactive[0].Gone != 2) {
+			t.Fatalf("inactive tasks are kept: %+v", st.Inactive)
+		}
+	}
+}

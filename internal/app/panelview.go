@@ -95,10 +95,7 @@ func (m *Model) panelBody(w, h int) []string {
 	case m.review.Messages():
 		title, body = "tasks", []string{"", "  No tab open."}
 		if a := m.curAgent(); a != nil {
-			if o := a.owner(); len(o.extraAgents()) > 0 {
-				title = "tasks for " + m.agentLabel(o, a)
-			}
-			body = m.messagesBody(a, iw, ih)
+			body = m.messagesBody(a.owner(), iw, ih)
 		}
 	case m.review.Skills():
 		title, body = "nerdr's skills", m.skillsBody(m.cur(), iw, ih)

@@ -16,6 +16,23 @@ it to the agent.
 tab's tasks. The status panel above the agent (`tasks:`) and the `✉n`
 badge on the tab show how many are waiting.
 
+## Tabs with several agents
+
+With more than one agent in the tab, the task dialog asks who the task is
+for. The agent whose pane has the keyboard is picked to start with;
+`ctrl+t` steps through the agents and then *all*, and `alt+1`, `alt+2` …
+pick an agent by its number, `alt+a` all of them. A task for all goes to
+each agent the tab has now, and each gets it when it is idle. With one
+agent the dialog asks nothing.
+
+F3 lists the tasks of every agent in the tab, under the agent each is for.
+`e` changes who a task is for as well as its text.
+
+When an agent's pane is closed, its tasks stay in F3, greyed out under
+*inactive* and marked with the agent's number (`→2`). They are never sent,
+not even to a new agent that gets the same number: `e` gives one to
+another agent, `d` deletes it.
+
 ## Sending tasks
 
 - **By hand:** when the agent is idle, `enter` on a task puts it in the
@@ -35,10 +52,10 @@ the tab, so the order is kept.
 |---|---|
 | `↓` | Select the first task; F3 opens with none selected |
 | `n` | Add a task |
-| `e` | Edit |
+| `e` | Edit, and change who it is for |
 | `y` | Copy |
 | `d` | Delete |
-| `J` / `K` | Move down / up |
+| `J` / `K` | Move down / up, among the same agent's tasks |
 
 The selected task is shown in full, the others in two rows. Tasks survive
 restarts.
