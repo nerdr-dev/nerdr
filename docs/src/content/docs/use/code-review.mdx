@@ -20,8 +20,11 @@ press `ctrl+q t r` (or `ctrl+q a c`). A review pane opens beside it,
 listing the agents to review with; the configured reviewer is first.
 Press `enter`, its number, or click to start.
 
-- `m` picks the model the highlighted agent reviews with, from the models
-  the agent itself lists; type to narrow, or type one it does not list.
+- The button beside an agent shows the model it reviews with; click it,
+  or press `m`, to pick another from the models the agent itself lists and
+  those it has been started with before. Type to narrow, or type one it
+  does not list. The model picked is kept in `[review.models]` for the
+  reviews to come; `its own` goes back to the agent's default.
 - `-` / `+` change the number of rounds.
 - `esc` closes the pane.
 

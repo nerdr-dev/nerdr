@@ -8,8 +8,10 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -137,5 +139,71 @@ func TestModelMatchesWordByWord(t *testing.T) {
 		if modelMatches(am, typed) {
 			t.Errorf("%q should not find %s", typed, am.ID)
 		}
+	}
+}
+
+// TestReviewPaneModelButton covers the model button on an agent's line in
+// the review pane: it shows the model the agent reviews with, a click on
+// it picks another, and the one picked is kept in the config.
+func TestReviewPaneModelButton(t *testing.T) {
+	m := testModel(t)
+	argvAgent(t, m)
+	tb := reviewOn(t, m)
+	m.runCommand("t r")
+	m.onModels(modelsMsg{kind: agents.Codex, own: "gpt-6-luna", models: []agents.AgentModel{{ID: "gpt-6-luna"}, {ID: "gpt-6-astra"}}})
+	clickOn(t, m, "gpt-6-luna ▾", tea.MouseButtonLeft)
+	if m.reviewPick == nil || m.reviewPick.kind != agents.Codex {
+		t.Fatal("the button picks codex's model")
+	}
+	clickOn(t, m, "gpt-6-astra", tea.MouseButtonLeft)
+	if m.reviewPick != nil || m.cfg.Review.Models[agents.Codex] != "gpt-6-astra" {
+		t.Fatalf("picked %q", m.cfg.Review.Models[agents.Codex])
+	}
+	t.Cleanup(func() {
+		if tb.review != nil {
+			m.endReview(tb, "done", false)
+		}
+	})
+	cfg, err := config.Load()
+	if err != nil || cfg.Review.Models[agents.Codex] != "gpt-6-astra" {
+		t.Fatalf("saved %v, %v", cfg.Review.Models, err)
+	}
+}
+
+// TestPickOffersModelsUsedBefore: a model the agent does not list, but
+// one of its kind was started with, is offered, and the one picked before
+// is where the pick starts.
+func TestPickOffersModelsUsedBefore(t *testing.T) {
+	m := testModel(t)
+	m.cfg.Review.Models = map[agents.Kind]string{agents.Gemini: "gemini-picked"}
+	m.cur().Agent, m.cur().Model = agents.Gemini, "gemini-ran"
+	m.onModels(modelsMsg{kind: agents.Gemini, again: true})
+	m.openModelPick(agents.Gemini)
+	cs := m.choices(m.reviewPick)
+	var got []string
+	for _, c := range cs {
+		got = append(got, c.model)
+	}
+	if strings.Join(got, ",") != ",gemini-picked,gemini-ran" {
+		t.Fatalf("choices %q", got)
+	}
+	if m.reviewPick.cursor != 1 {
+		t.Fatalf("starts on %d, not the one picked before", m.reviewPick.cursor)
+	}
+}
+
+// TestModelsAskedAgainWhenNone: an agent that lists no models is asked
+// once more a little later, not left with none until the pick is opened
+// again.
+func TestModelsAskedAgainWhenNone(t *testing.T) {
+	m := testModel(t)
+	if m.onModels(modelsMsg{kind: agents.OpenCode}) == nil || !m.agentModels[agents.OpenCode].asking {
+		t.Fatal("none listed: asked again")
+	}
+	if m.onModels(modelsMsg{kind: agents.OpenCode, again: true}) != nil {
+		t.Fatal("none listed the second time: left until next time")
+	}
+	if m.onModels(modelsMsg{kind: agents.OpenCode, models: []agents.AgentModel{{ID: "a/b"}}}) != nil {
+		t.Fatal("listed: kept")
 	}
 }

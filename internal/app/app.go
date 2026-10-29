@@ -724,8 +724,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return m.spawn(msg.t, msg.l, msg.resume)
 
 	case modelsMsg:
-		m.onModels(msg)
-		return nil
+		return m.onModels(msg)
 
 	case commitFilesMsg:
 		m.onCommitFiles(msg)

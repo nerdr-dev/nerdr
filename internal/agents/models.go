@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/proc"
+
+	"github.com/BurntSushi/toml"
 )
 
 // The models an agent can be started with, as the agent itself lists
@@ -72,6 +74,93 @@ func Models(specs map[Kind]Spec, k Kind) ([]AgentModel, error) {
 		return claudeAliases(out), err
 	}
 	return nil, nil
+}
+
+// OwnModel is the model k starts with when nerdr names none, as far as
+// can be told without starting it: the model flag on its command line in
+// the config, opencode's config_model, or the model the agent's own
+// settings give it. "" when none of them names one.
+func OwnModel(specs map[Kind]Spec, k Kind) string {
+	s := specFor(specs, k)
+	flags := modelFlags[k]
+	argv := append(append([]string{}, s.Command...), s.Args...)
+	for i, a := range argv {
+		for _, f := range flags {
+			if a == f && i+1 < len(argv) {
+				return argv[i+1]
+			}
+			if v, ok := strings.CutPrefix(a, f+"="); ok {
+				return v
+			}
+		}
+	}
+	if k == OpenCode && s.ConfigModel != "" {
+		return s.ConfigModel
+	}
+	home, _ := os.UserHomeDir()
+	switch k {
+	case Claude:
+		return jsonModel(filepath.Join(claudeHome(), "settings.json"))
+	case Codex:
+		var c struct {
+			Model string `toml:"model"`
+		}
+		if _, err := toml.DecodeFile(filepath.Join(codexHome(), "config.toml"), &c); err == nil {
+			return c.Model
+		}
+	case Gemini:
+		return jsonModel(filepath.Join(geminiHome(), "settings.json"))
+	case Copilot:
+		if home != "" {
+			return jsonModel(filepath.Join(home, ".copilot", "config.json"))
+		}
+	case OpenCode:
+		dir := os.Getenv("XDG_CONFIG_HOME")
+		if dir == "" && home != "" {
+			dir = filepath.Join(home, ".config")
+		}
+		for _, name := range []string{"opencode.json", "opencode.jsonc", "config.json"} {
+			if dir != "" {
+				if m := jsonModel(filepath.Join(dir, "opencode", name)); m != "" {
+					return m
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// jsonModel is the model named at the top of the JSON settings file at
+// path: "model": "id", or "model": {"name": "id"} as gemini has it. The
+// comments and trailing commas of JSONC are taken out first.
+func jsonModel(path string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	var top struct {
+		Model json.RawMessage `json:"model"`
+	}
+	if json.Unmarshal(data, &top) != nil {
+		data = trailingComma.ReplaceAll(lineComment.ReplaceAll(data, []byte("$1")), []byte("$1"))
+		if json.Unmarshal(data, &top) != nil {
+			return ""
+		}
+	}
+	var id string
+	if json.Unmarshal(top.Model, &id) != nil {
+		var named struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal(top.Model, &named) != nil {
+			return ""
+		}
+		id = named.Name
+	}
+	if !modelID.MatchString(id) {
+		return ""
+	}
+	return id
 }
 
 // runListing runs k, as the config runs it, with args, for what it
@@ -223,4 +312,8 @@ var (
 	quoted  = regexp.MustCompile(`'([^'\s]+)'`)
 	// doubleQuoted is a word in double quotes.
 	doubleQuoted = regexp.MustCompile(`"([^"\s]+)"`)
+	// lineComment is a // comment to the end of a line, after what is
+	// kept ($1), outside a string; trailingComma a comma before } or ].
+	lineComment   = regexp.MustCompile(`(?m)^((?:[^"/\n]|"(?:[^"\\\n]|\\.)*")*)//.*$`)
+	trailingComma = regexp.MustCompile(`,(\s*[}\]])`)
 )

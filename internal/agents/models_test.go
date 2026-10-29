@@ -74,3 +74,46 @@ func TestListingsAreRead(t *testing.T) {
 		"  --name <name>   Name the 'session'\n"),
 		"fable", "opus", "sonnet")
 }
+
+// TestOwnModel covers the model an agent starts with when nerdr names
+// none: on its command line in the config, opencode's config_model, or
+// in the agent's own settings, JSONC as opencode has them.
+func TestOwnModel(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CODEX_HOME", filepath.Join(home, ".codex"))
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	write := func(path, text string) {
+		t.Helper()
+		path = filepath.Join(home, path)
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(text), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := OwnModel(nil, Gemini); got != "" {
+		t.Fatalf("gemini with no settings: %q", got)
+	}
+	write(".codex/config.toml", "model = \"gpt-a\"\nmodel_reasoning_effort = \"medium\"\n")
+	write(".gemini/settings.json", `{"model": {"name": "gemini-x"}}`)
+	write(".claude/settings.json", `{"model": "opus"}`)
+	write(".config/opencode/opencode.jsonc", "{\n  // the default\n  \"$schema\": \"https://opencode.ai/config.json\",\n  \"model\": \"anthropic/claude-y\",\n}\n")
+	for k, want := range map[Kind]string{Codex: "gpt-a", Gemini: "gemini-x", Claude: "opus", OpenCode: "anthropic/claude-y", Cursor: ""} {
+		if got := OwnModel(nil, k); got != want {
+			t.Errorf("%s: %q, want %q", k, got, want)
+		}
+	}
+	specs := map[Kind]Spec{
+		Codex:    {Args: []string{"--yolo", "-m", "gpt-b"}},
+		Claude:   {Args: []string{"--model=sonnet"}},
+		OpenCode: {ConfigModel: "openai/z"},
+	}
+	for k, want := range map[Kind]string{Codex: "gpt-b", Claude: "sonnet", OpenCode: "openai/z"} {
+		if got := OwnModel(specs, k); got != want {
+			t.Errorf("%s from the config: %q, want %q", k, got, want)
+		}
+	}
+}
