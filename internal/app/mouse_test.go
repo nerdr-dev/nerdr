@@ -58,10 +58,18 @@ func TestScanZones(t *testing.T) {
 	}
 }
 
+// usersConfig is where the config is read from outside the tests.
+var usersConfig = os.Getenv("XDG_CONFIG_HOME")
+
 // testModel is a model with two tabs in repo "app" and one in "lib",
 // drawn at 120×30, with nothing running.
 func testModel(t *testing.T) *Model {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	// What is picked in a review pane is saved in the config: not the
+	// user's, unless the test gave one of its own.
+	if os.Getenv("XDG_CONFIG_HOME") == usersConfig {
+		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	}
 	yes, no := true, false
 	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
 	mk := func(id, name, repo string) state.Tab {
