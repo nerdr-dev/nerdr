@@ -57,6 +57,8 @@ type tab struct {
 	// idle debounce; idleSince is when it last turned idle.
 	raw       detect.State
 	idleSince time.Time
+	// why is what the last check went by, for the debug log.
+	why string
 	// changed is when status last changed, to pick the most recent of
 	// several tabs that need attention.
 	changed time.Time
@@ -651,6 +653,11 @@ const interruptQuiet = 6 * time.Second
 // been drawn, so one not shown has been answered or dismissed.
 const staleBlocked = 2 * time.Second
 
+// staleIdle is how long after its hooks said the turn is over the screen
+// is believed if it shows work: the title's spinner can outlast the Stop
+// that ends the turn by a moment.
+const staleIdle = 2 * time.Second
+
 // classify reads the tab's screen and updates its light. visible is whether
 // the user is looking at the tab right now.
 func (t *tab) classify(visible bool, now time.Time) {
@@ -675,6 +682,9 @@ func (t *tab) classify(visible bool, now time.Time) {
 	hooked := t.hook.source != ""
 	if hooked {
 		res.State = t.hookState(now)
+		r := t.reading.res
+		t.why = fmt.Sprintf("hook %v %s ago, screen %v by %s, quiet %s", t.hook.state,
+			now.Sub(t.hook.at).Round(time.Second), r.State, r.Rule, t.pane.Quiet().Round(100*time.Millisecond))
 		if res.State == detect.Idle && t.raw != detect.Idle {
 			t.idleSince = now.Add(-idleAnyway)
 		}
@@ -684,6 +694,7 @@ func (t *tab) classify(visible bool, now time.Time) {
 		if res.Skip {
 			return
 		}
+		t.why = fmt.Sprintf("screen %v by %s, quiet %s", res.State, res.Rule, t.pane.Quiet().Round(100*time.Millisecond))
 		if res.Rule == detect.FallbackRule && t.raw == detect.Working && man.KnowsIdle() {
 			// A screen no rule knows says nothing: an agent that was
 			// working is not taken to be done because of it. Unless the
@@ -739,7 +750,10 @@ func (t *tab) classify(visible bool, now time.Time) {
 //     which ends the turn with no Stop;
 //   - work reported, but the screen still and at the prompt: interrupted —
 //     unless the turn is over and the agent waits on subagents in the
-//     background, as the screen does not show.
+//     background, as the screen does not show;
+//   - the turn reported over, but the screen at work: the agent has taken
+//     up work no prompt started, and so no hook reports — claude's, once
+//     a command it put in the background is done.
 //
 // An agent with no idle rule (copilot, cursor, agy, …) has no screen that
 // clearly shows it idle: there a screen no rule knows, still for as long
@@ -761,6 +775,9 @@ func (t *tab) hookState(now time.Time) detect.State {
 	case state == detect.Working && s.State == detect.Idle && t.pane.Quiet() >= interruptQuiet && !t.hook.background:
 		t.hook.state = detect.Idle
 		return detect.Idle
+	case state == detect.Idle && s.State == detect.Working && now.Sub(t.hook.at) >= staleIdle:
+		t.hook.state = detect.Working
+		return detect.Working
 	}
 	return state
 }

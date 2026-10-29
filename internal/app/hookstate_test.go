@@ -71,6 +71,23 @@ func TestHookBlockedGivesWayToWork(t *testing.T) {
 	}
 }
 
+// Work no prompt started has no hook: claude takes its turn up again once
+// a command it put in the background is done. The spinner on the screen
+// is work, once the Stop it may briefly outlast is a moment old.
+func TestHookIdleGivesWayToWork(t *testing.T) {
+	tb := claudeTab(t, claudeWorkingScreen, "Running")
+	reported(tb, detect.Idle, 0)
+	if got := tb.hookState(time.Now()); got != detect.Idle {
+		t.Fatalf("just reported: %v, want idle (the title may not be redrawn yet)", got)
+	}
+	reported(tb, detect.Idle, 3*time.Second)
+	tb.status, tb.raw = stDone, detect.Idle
+	tb.classify(false, time.Now())
+	if tb.status != stWorking || tb.hook.state != detect.Working {
+		t.Fatalf("stale: %v (hook %v), want working", tb.status.label(), tb.hook.state)
+	}
+}
+
 // A dialog no hook reports is a question all the same, for as long as it
 // is on the screen; the report stands for when it is gone.
 func TestDialogOnScreenOverrulesTheHook(t *testing.T) {

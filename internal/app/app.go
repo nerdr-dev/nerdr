@@ -994,7 +994,7 @@ func (m *Model) detectAgent(t *tab, shown bool, now time.Time) tea.Cmd {
 		}
 	}
 	if t.status != was {
-		debugf("agent %s: %s -> %s (visible %v, blurred %v)", m.agentName(t), was.label(), t.status.label(), visible, m.blurred)
+		debugf("agent %s: %s -> %s (visible %v, blurred %v; %s)", m.agentName(t), was.label(), t.status.label(), visible, m.blurred, t.why)
 		m.notifyChange(t, visible, now)
 		if was == stWorking {
 			// Whatever the agent did is worth a look in the tab bar.
