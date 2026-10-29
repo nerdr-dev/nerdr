@@ -48,6 +48,11 @@ type Tab struct {
 	// auto one is typed in the next time the agent is idle; the others
 	// wait until the user puts them in.
 	Messages []Message `json:"messages,omitempty"`
+	// Inactive are messages for an agent of the tab whose pane has since
+	// been closed, each marked with its number (Message.Gone). They are
+	// never typed in: they wait for the user to give them to another
+	// agent, or delete them.
+	Inactive []Message `json:"inactive,omitempty"`
 	// Queue is how sessions from before Messages kept them, all auto. It
 	// is only read: TakeQueue moves it into Messages.
 	Queue []string `json:"queue,omitempty"`
@@ -120,6 +125,9 @@ type Message struct {
 	// Sandboxed is set on a message an agent in a sandbox wrote. An agent
 	// started outside one does not have it typed in: it waits for the user.
 	Sandboxed bool `json:"sandboxed,omitempty"`
+	// Gone is the number of the agent it was for, on one of a tab's
+	// Inactive: that agent's pane was closed before it was sent.
+	Gone int `json:"gone,omitempty"`
 }
 
 // TakeQueue moves a queue kept the old way into Messages, as auto ones

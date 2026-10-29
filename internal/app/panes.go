@@ -593,9 +593,15 @@ func (m *Model) closePane(t *tab, p *paneTab) tea.Cmd {
 		if a.pane != nil {
 			go a.pane.Close()
 		}
+		name := m.paneName(t, p)
+		kept := t.keepTasks(a)
 		m.dropPane(t, p)
 		m.saveSession()
-		m.toast(t.Name + ": stopped " + m.paneName(t, p) + "; its conversation is kept by " + string(a.Agent))
+		note := t.Name + ": stopped " + name + "; its conversation is kept by " + string(a.Agent)
+		if kept > 0 {
+			note += " · " + plural(kept, "task") + " for it wait in " + m.screenKey(3) + ", inactive"
+		}
+		m.toast(note)
 		return m.resize()
 	}
 	m.dropPane(t, p)

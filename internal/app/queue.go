@@ -2,6 +2,8 @@ package app
 
 import (
 	"runtime"
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -220,9 +222,15 @@ type messageDialog struct {
 	// it always is. editing is the message being changed, if one is.
 	auto    bool
 	editing *state.Message
+	// from is the agent whose message editing is, nil for one of the
+	// tab's inactive ones.
+	from *tab
 	// agent is who a message not for several tabs is for: the tab's own
-	// agent, or another in one of its panes.
+	// agent, or another in one of its panes; all is set when it is for
+	// each of them. tab is the active tab.
 	agent *tab
+	all   bool
+	tab   *tab
 }
 
 // newLineHint is the hint for a new line in a newTextArea. macOS's
@@ -263,6 +271,7 @@ func (m *Model) openMessage(broadcast bool) tea.Cmd {
 		picked:    map[string]bool{},
 		auto:      m.autoMessage,
 		agent:     m.curAgent(),
+		tab:       t,
 	}
 	if broadcast {
 		// The active group to start with: a message for all of them is
@@ -277,7 +286,52 @@ func (m *Model) openMessage(broadcast bool) tea.Cmd {
 	return nil
 }
 
+// choices are the agents a message not for several tabs can be for; the
+// dialog asks only when there are more than one.
+func (d *messageDialog) choices() []*tab {
+	if d.broadcast {
+		return nil
+	}
+	return d.tab.taskAgents()
+}
+
+// pickNext moves who the message is for on by one: through the agents in
+// turn, then all of them.
+func (d *messageDialog) pickNext() {
+	cs := d.choices()
+	at := len(cs)
+	if !d.all {
+		at = slices.Index(cs, d.agent)
+	}
+	if at++; at == len(cs) {
+		d.all = true
+		return
+	}
+	d.all, d.agent = false, cs[at%len(cs)]
+}
+
+// pickNum makes the message for the agent numbered n, saying whether
+// there is one.
+func (d *messageDialog) pickNum(n int) bool {
+	for _, a := range d.choices() {
+		if a.Num == n {
+			d.all, d.agent = false, a
+			return true
+		}
+	}
+	return false
+}
+
 func (d *messageDialog) targets(m *Model) []*tab {
+	if !d.broadcast && d.all {
+		var out []*tab
+		for _, a := range d.choices() {
+			if m.live(a) {
+				out = append(out, a)
+			}
+		}
+		return out
+	}
 	if !d.broadcast && d.agent != nil {
 		if !m.live(d.agent) {
 			return nil
@@ -312,6 +366,20 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 			return d.input.Focus()
 		}
+	case "ctrl+t":
+		if len(d.choices()) > 1 {
+			d.pickNext()
+			return nil
+		}
+	case "alt+a":
+		if len(d.choices()) > 1 {
+			d.all = true
+			return nil
+		}
+	case "alt+1", "alt+2", "alt+3", "alt+4", "alt+5", "alt+6", "alt+7", "alt+8", "alt+9":
+		if n, _ := strconv.Atoi(k[len("alt+"):]); len(d.choices()) > 1 && d.pickNum(n) {
+			return nil
+		}
 	case "enter":
 		if d.inList {
 			break
@@ -334,20 +402,33 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 			return nil
 		}
-		t := ts[0]
 		m.autoMessage = d.auto
 		if d.editing != nil {
-			if i := t.findMessage(*d.editing); i >= 0 {
-				t.Messages[i] = state.Message{Text: strings.TrimSpace(d.input.Value()), Auto: d.auto}
-				m.saveSession()
-				return m.openMessages()
+			from := &d.tab.Inactive
+			if d.from != nil {
+				from = &d.from.Messages
+			}
+			if i := indexOf(*from, *d.editing); i >= 0 {
+				if len(ts) == 1 && ts[0] == d.from {
+					(*from)[i] = state.Message{Text: strings.TrimSpace(d.input.Value()), Auto: d.auto}
+					m.saveSession()
+					return m.openMessages()
+				}
+				// For another agent now: it goes to the end of its list.
+				*from = dropFrom(*from, i)
 			} // sent while it was being changed: kept as a new one
 		}
-		m.addMessage(t, d.input.Value(), d.auto)
+		for _, t := range ts {
+			m.addMessage(t, d.input.Value(), d.auto)
+		}
+		who := m.agentName(ts[0])
+		if d.all && len(ts) > 1 {
+			who = "all " + strconv.Itoa(len(ts)) + " agents of " + d.tab.Name
+		}
 		if d.auto {
-			m.toast("queued for " + m.agentName(t) + ": sent when it is idle")
+			m.toast("queued for " + who + ": sent when it is idle")
 		} else {
-			m.toast("kept for " + m.agentName(t) + " in " + m.screenKey(3) + ": put it in when you want")
+			m.toast("kept for " + who + " in " + m.screenKey(3) + ": put it in when you want")
 		}
 		// F3 shows it among the tab's tasks, so what became of it is seen.
 		return m.openMessages()
@@ -398,8 +479,15 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 			title = "Task from the review panel"
 			lines = append(lines, d.note, "")
 		}
-		lines = append(lines, "For "+t.owner().Name+" ("+m.agentLabel(t.owner(), t)+").")
-		if n := len(t.Messages); n > 0 && d.editing == nil {
+		if cs := d.choices(); len(cs) > 1 {
+			lines = append(lines, "For "+t.owner().Name+", to: "+d.pickRow(m, cs))
+		} else {
+			lines = append(lines, "For "+t.owner().Name+" ("+m.agentLabel(t.owner(), t)+").")
+		}
+		if d.editing != nil && d.from == nil {
+			lines = append(lines, dim("It was for agent "+strconv.Itoa(d.editing.Gone)+", whose pane was closed."))
+		}
+		if n := len(d.tab.taskRefs()); n > 0 && d.editing == nil {
 			lines = append(lines, dim("Already in "+m.screenKey(3)+": "+plural(n, "task")))
 		}
 		lines = append(lines, "")
@@ -437,7 +525,11 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 	if d.broadcast {
 		lines = append(lines, m.keys("enter", "queue", "", newLineHint, "tab", "text ⇄ tabs", " ", "pick", "a", "all", "esc", "cancel"))
 	} else {
-		lines = append(lines, m.keys("enter", onOff(d.editing != nil, "save", "add"), "", newLineHint, "tab", "by itself on/off", "esc", "cancel"))
+		keys := []string{"enter", onOff(d.editing != nil, "save", "add"), "", newLineHint, "tab", "by itself on/off"}
+		if len(d.choices()) > 1 {
+			keys = append(keys, "ctrl+t", "to whom")
+		}
+		lines = append(lines, m.keys(append(keys, "esc", "cancel")...))
 	}
 	if d.err != "" {
 		lines = append(lines, "", warn(d.err))
@@ -445,15 +537,35 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 	return box(title, lines, w)
 }
 
+// pickRow is the agents the message can be for, and all of them, the one
+// it is for marked; a click picks one.
+func (d *messageDialog) pickRow(m *Model, cs []*tab) string {
+	on := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
+	item := func(label string, picked bool, pick func()) string {
+		s := dim(" " + label + " ")
+		if picked {
+			s = on.Render("[" + label + "]")
+		}
+		return m.onClick(s, func(*Model) tea.Cmd {
+			pick()
+			return nil
+		})
+	}
+	var parts []string
+	for _, a := range cs {
+		parts = append(parts, item(m.agentLabel(d.tab, a), !d.all && a == d.agent, func() { d.all, d.agent = false, a }))
+	}
+	parts = append(parts, item("all", d.all, func() { d.all = true }))
+	return strings.Join(parts, " ")
+}
+
 // findMessage is the index of the first of t's messages equal to msg, or
 // -1 when it has gone.
-func (t *tab) findMessage(msg state.Message) int {
-	for i, x := range t.Messages {
-		if x == msg {
-			return i
-		}
-	}
-	return -1
+func (t *tab) findMessage(msg state.Message) int { return indexOf(t.Messages, msg) }
+
+// indexOf is the index of the first message in list equal to msg, or -1.
+func indexOf(list []state.Message, msg state.Message) int {
+	return slices.Index(list, msg)
 }
 
 // checkbox is a box, ticked or not.

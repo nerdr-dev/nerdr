@@ -1,19 +1,26 @@
 package app
 
 import (
+	"strconv"
 	"strings"
+
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The review panel's F3 screen: the tab's messages for its agent (see
+// The review panel's F3 screen: the tab's messages for its agents (see
 // queue.go). What comes to mind while the agent works is written down
 // here, without being sent: once it has finished, and you have answered
 // what it said, you put a message in with enter, to change it or send it
 // as it is. A message ticked to go by itself is typed in the next time the
 // agent is idle, in order, as the queue always was.
+//
+// Each agent of the tab keeps its own messages, and F3 lists them all,
+// agent by agent. Those of an agent whose pane was closed stay, inactive,
+// until they are given to another agent (e) or deleted.
 
 // messageRows is the most rows one message takes in the list, but for the
 // one under the cursor: that is shown whole, as far as the panel has room.
@@ -40,9 +47,6 @@ func (m *Model) openMessages() tea.Cmd {
 // none.
 func (m *Model) messagesLine(t *tab) string {
 	n, auto := len(t.Messages), t.autoCount()
-	if n == 0 {
-		return ""
-	}
 	var parts []string
 	if kept := n - auto; kept > 0 {
 		parts = append(parts, plural(kept, "task")+" waiting for you to put in")
@@ -50,7 +54,64 @@ func (m *Model) messagesLine(t *tab) string {
 	if auto > 0 {
 		parts = append(parts, plural(auto, "task")+" sent by itself when the agent is idle")
 	}
+	if gone := len(t.Inactive); gone > 0 {
+		parts = append(parts, plural(gone, "task")+" for a closed agent")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
 	return strings.Join(parts, " · ") + " · " + m.screenKey(3)
+}
+
+// taskRef is one of the tasks F3 lists: message i of agent a, or with a
+// nil, the tab's inactive message i.
+type taskRef struct {
+	a *tab
+	i int
+}
+
+// taskAgents are the agents tab t's tasks can be for: its own, then the
+// others in its panes; not its reviewers.
+func (t *tab) taskAgents() []*tab { return append([]*tab{t}, t.extraAgents()...) }
+
+// taskRefs are tab t's tasks as F3 lists them: each agent's in turn, then
+// the inactive ones.
+func (t *tab) taskRefs() []taskRef {
+	var out []taskRef
+	for _, a := range t.taskAgents() {
+		for i := range a.Messages {
+			out = append(out, taskRef{a: a, i: i})
+		}
+	}
+	for i := range t.Inactive {
+		out = append(out, taskRef{i: i})
+	}
+	return out
+}
+
+// list is the list of tab o that r is in.
+func (r taskRef) list(o *tab) *[]state.Message {
+	if r.a == nil {
+		return &o.Inactive
+	}
+	return &r.a.Messages
+}
+
+// keepTasks moves the messages of agent a, whose pane is closing, to tab
+// t's inactive ones, and says how many there were.
+func (t *tab) keepTasks(a *tab) int {
+	n := len(a.Messages)
+	for _, msg := range a.Messages {
+		msg.Gone = a.Num
+		t.Inactive = append(t.Inactive, msg)
+	}
+	a.Messages = nil
+	return n
+}
+
+// dropFrom is list without message i.
+func dropFrom(list []state.Message, i int) []state.Message {
+	return append(list[:i:i], list[i+1:]...)
 }
 
 // messagesKey handles a key while the messages have the keyboard.
@@ -81,61 +142,83 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 	if t == nil {
 		return nil
 	}
-	m.msgCursor = min(max(m.msgCursor, noMessage), len(t.Messages)-1)
+	o := t.owner()
+	refs := o.taskRefs()
+	m.msgCursor = min(max(m.msgCursor, noMessage), len(refs)-1)
 	i := m.msgCursor
-	has := i >= 0 && i < len(t.Messages)
+	has := i >= 0 && i < len(refs)
+	var r taskRef
+	var list *[]state.Message
+	if has {
+		r = refs[i]
+		list = r.list(o)
+	}
 	switch k {
 	case "up", "k":
 		m.msgCursor = max(i-1, noMessage)
 	case "down", "j":
-		m.msgCursor = min(i+1, len(t.Messages)-1)
+		m.msgCursor = min(i+1, len(refs)-1)
 	case "K", "shift+up":
-		if has && i > 0 {
-			t.Messages[i-1], t.Messages[i] = t.Messages[i], t.Messages[i-1]
+		// Within the agent's own list: which agent it is for is e's.
+		if has && i > 0 && refs[i-1].a == r.a {
+			l := *list
+			l[r.i-1], l[r.i] = l[r.i], l[r.i-1]
 			m.msgCursor--
 			m.saveSession()
 		}
 	case "J", "shift+down":
-		if has && i+1 < len(t.Messages) {
-			t.Messages[i+1], t.Messages[i] = t.Messages[i], t.Messages[i+1]
+		if has && i+1 < len(refs) && refs[i+1].a == r.a {
+			l := *list
+			l[r.i+1], l[r.i] = l[r.i], l[r.i+1]
 			m.msgCursor++
 			m.saveSession()
 		}
 	case " ", "x":
-		if has {
-			old := t.Messages[i]
-			t.Messages[i].Auto = !t.Messages[i].Auto
-			if t.Messages[i].Auto && !t.sandboxed {
-				t.Messages[i].Sandboxed = false
+		switch {
+		case has && r.a == nil:
+			m.inactiveToast(o.Inactive[r.i])
+		case has:
+			a := r.a
+			old := a.Messages[r.i]
+			a.Messages[r.i].Auto = !a.Messages[r.i].Auto
+			if a.Messages[r.i].Auto && !a.sandboxed {
+				a.Messages[r.i].Sandboxed = false
 			}
-			if run := t.review; run != nil && run.fixMsg == old {
-				run.fixMsg = t.Messages[i]
+			if run := a.review; run != nil && run.fixMsg == old {
+				run.fixMsg = a.Messages[r.i]
 			}
 			m.saveSession()
 		}
 	case "enter":
-		if has {
-			return m.putIn(t, i)
-		}
-		if len(t.Messages) > 0 {
+		switch {
+		case has && r.a == nil:
+			m.inactiveToast(o.Inactive[r.i])
+		case has:
+			return m.putIn(r.a, r.i)
+		case len(refs) > 0:
 			m.toast("no task picked: ↓ picks one, esc goes to the agent")
 		}
 	case "e":
 		if has {
-			return m.editMessage(t, i)
+			return m.editMessage(o, r)
 		}
 	case "y", "c":
 		if has {
-			m.copyText(t.Messages[i].Text)
+			m.copyText((*list)[r.i].Text)
 		}
 	case "d", "delete", "backspace":
 		if has {
-			t.dropMessage(i)
-			m.msgCursor = min(i, len(t.Messages)-1)
+			*list = dropFrom(*list, r.i)
+			m.msgCursor = min(i, len(refs)-2)
 			m.saveSession()
 		}
 	}
 	return nil
+}
+
+// inactiveToast says why an inactive message is not put in or sent.
+func (m *Model) inactiveToast(msg state.Message) {
+	m.toast("for agent " + strconv.Itoa(msg.Gone) + ", whose pane was closed: e gives it to another agent")
 }
 
 // putIn types message i into t's agent, as a paste and without enter, and
@@ -173,33 +256,39 @@ func (m *Model) typeIn(t *tab, text string) bool {
 	return true
 }
 
-// editMessage opens message i of t to be changed.
-func (m *Model) editMessage(t *tab, i int) tea.Cmd {
+// editMessage opens task r of tab o to be changed, and given to another
+// agent if need be.
+func (m *Model) editMessage(o *tab, r taskRef) tea.Cmd {
 	cmd := m.openMessage(false)
 	d, ok := m.dialog.(*messageDialog)
 	if !ok {
 		return cmd
 	}
-	msg := t.Messages[i]
-	d.editing = &msg
+	msg := (*r.list(o))[r.i]
+	d.editing, d.from = &msg, r.a
+	if r.a != nil {
+		d.agent = r.a
+	} // an inactive one goes to the agent with the keyboard, unless changed
 	d.auto = msg.Auto
 	d.input.SetValue(msg.Text)
 	d.fit(m)
 	return cmd
 }
 
-// messagesBody draws t's messages, w×h, for the panel's frame.
-func (m *Model) messagesBody(t *tab, w, h int) []string {
+// messagesBody draws the tasks of tab o, w×h, for the panel's frame: under
+// the label of the agent each is for when the tab has several.
+func (m *Model) messagesBody(o *tab, w, h int) []string {
 	textW := max(w-8, 10) // cursor, box and margins
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	lines := []string{m.f3Views(), ""}
-	if len(t.Messages) == 0 {
+	refs := o.taskRefs()
+	if len(refs) == 0 {
 		lines = append(lines, "", " "+dim("No tasks yet."), "",
 			" "+dim("Line up tasks for the agent while it works."),
 			" "+dim("Send them yourself, or let nerdr send them when the agent is idle."))
 	}
-	m.msgCursor = min(max(m.msgCursor, noMessage), len(t.Messages)-1)
-	if len(t.Messages) > 0 {
+	m.msgCursor = min(max(m.msgCursor, noMessage), len(refs)-1)
+	if len(refs) > 0 {
 		mark := "  "
 		if m.msgCursor == noMessage && m.focus == focusReview {
 			mark = sel.Render("❯ ")
@@ -215,29 +304,52 @@ func (m *Model) messagesBody(t *tab, w, h int) []string {
 		" " + m.msgKeys("enter", "put in", " ", "by itself", "n", "new", "e", "edit", "y", "copy", "d", "delete", "J/K", "move", "esc", "agent"),
 	}
 	room := max(h-len(foot), 1)
+	headed := len(o.extraAgents()) > 0 || len(o.Inactive) > 0
 	cursorAt, cursorRows := 0, 0
-	for i, msg := range t.Messages {
+	for n, r := range refs {
+		var msg state.Message
+		if r.a == nil {
+			msg = o.Inactive[r.i]
+		} else {
+			msg = r.a.Messages[r.i]
+		}
+		if headed && (n == 0 || refs[n-1].a != r.a) {
+			if n > 0 {
+				lines = append(lines, "")
+			}
+			if r.a == nil {
+				lines = append(lines, " "+warn("inactive")+dim(" · their agent's pane was closed · e gives one to another"))
+			} else {
+				lines = append(lines, " "+light(r.a.status)+" "+lipgloss.NewStyle().Bold(true).Render(m.agentLabel(o, r.a)))
+			}
+		}
 		rows := wrapRows(msg.Text, textW, messageRows)
-		if i == m.msgCursor {
+		if n == m.msgCursor {
 			cursorAt = len(lines)
 			rows = wrapLines(msg.Text, textW, room)
 			cursorRows = len(rows)
 		}
-		on := i == m.msgCursor && m.focus == focusReview
+		on := n == m.msgCursor && m.focus == focusReview
 		mark := "  "
 		if on {
 			mark = sel.Render("❯ ")
 		}
 		box := m.onClick(checkbox(msg.Auto), func(m *Model) tea.Cmd {
-			m.msgCursor = i
+			m.msgCursor = n
 			return m.messagesKey(keyMsg(" "))
 		})
-		for j, r := range rows {
-			if on {
-				r = sel.Render(r)
+		if r.a == nil {
+			box = dim("→" + strconv.Itoa(msg.Gone) + " ")
+		}
+		for j, row := range rows {
+			switch {
+			case on:
+				row = sel.Render(row)
+			case r.a == nil:
+				row = dim(row)
 			}
-			text := m.onClick(r, func(m *Model) tea.Cmd {
-				m.msgCursor = i
+			text := m.onClick(row, func(m *Model) tea.Cmd {
+				m.msgCursor = n
 				m.setFocus(focusReview)
 				return nil
 			})
