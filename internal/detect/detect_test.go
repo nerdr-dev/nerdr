@@ -25,6 +25,26 @@ func TestClaudePromptBoxIsIdle(t *testing.T) {
 	}
 }
 
+// TestClaudeWithABackgroundShell: claude 2.1.312, a command left running
+// with run_in_background. Its turn is over, as copilot's is with a shell
+// left running: a dev server runs for ever. When the shell ends, claude
+// takes its turn up again by itself, and the title's spinner says so.
+func TestClaudeWithABackgroundShell(t *testing.T) {
+	m := For("claude")
+	screen := "● started\n\n" +
+		"✻ Cooked for 5s · done 9:08 PM · 1 shell still running\n\n" +
+		"────────────────────────────────────────\n" +
+		"❯ \n" +
+		"────────────────────────────────────────\n" +
+		"  ⏵⏵ auto mode on · 1 shell · ← 1 agent\n"
+	if r := m.Classify(Input{Title: "✳ Background sleep command", Screen: screen}); r.State != Idle {
+		t.Errorf("waiting on the shell: got %v (%s), want idle", r.State, r.Rule)
+	}
+	if r := m.Classify(Input{Title: "◐ Background sleep command", Screen: screen}); r.State != Working || !r.Visible {
+		t.Errorf("woken by the shell's end: got %v (%s, visible %v), want working", r.State, r.Rule, r.Visible)
+	}
+}
+
 func TestClaudePermissionPromptIsBlocked(t *testing.T) {
 	screen := "Bash command\n  rm -rf build\n\nDo you want to proceed?\n❯ 1. Yes\n  2. No\n\nEsc to cancel · Tab to amend\n"
 	r := For("claude").Classify(Input{Screen: screen})
