@@ -49,10 +49,10 @@ func TestSpinoff(t *testing.T) {
 	h.waitFor("? for shortcuts", 15*time.Second)
 
 	h.keys("spinoff\r")
-	h.waitFor("sent 3 parts to nerdr", 5*time.Second)
 
-	// Part 1 of 3: renamed, starting with its commit.
-	h.waitFor("New tab 1 of 3", 5*time.Second)
+	// Part 1 of 3: renamed, starting with its commit. The dialog covers
+	// the agent's "sent 3 parts to nerdr", so it alone shows they arrived.
+	h.waitFor("New tab 1 of 3", 10*time.Second)
 	h.waitFor("Summary of part A", time.Second)
 	h.waitFor("Start the branch with its 1 commit", time.Second)
 	h.waitFor("Agent:", time.Second)
