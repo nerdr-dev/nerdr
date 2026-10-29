@@ -869,7 +869,11 @@ func (m *Model) reviewLine(t *tab) string {
 	}
 	line := strings.Join(append(run.approved, each...), " · ")
 	if !waits {
-		line += " · " + round + " · your messages wait"
+		line += " · " + round
+		// Said only when there are some: they go once the review is done.
+		if len(t.Messages) > 0 {
+			line += " · messages in " + m.screenKey(3) + " wait for the review"
+		}
 	}
 	return line
 }

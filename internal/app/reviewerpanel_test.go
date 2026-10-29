@@ -125,6 +125,16 @@ func TestReviewersSideBySide(t *testing.T) {
 	if line := m.reviewLine(tb); !strings.Contains(line, "codex: 1 finding") || !strings.Contains(line, "gemini") {
 		t.Fatalf("the line should say how each stands: %s", line)
 	}
+	queued := tb.Messages
+	tb.Messages = nil
+	if line := m.reviewLine(tb); strings.Contains(line, "wait for the review") {
+		t.Fatalf("with no messages, none wait: %s", line)
+	}
+	tb.Messages = []state.Message{{Text: "later"}}
+	if line := m.reviewLine(tb); !strings.Contains(line, "messages in "+m.screenKey(3)+" wait for the review") {
+		t.Fatalf("the line should say the messages wait for the review: %s", line)
+	}
+	tb.Messages = queued
 
 	m.onReview(hooks.Report{Pane: gemini.hookID, Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
 	run := tb.review
