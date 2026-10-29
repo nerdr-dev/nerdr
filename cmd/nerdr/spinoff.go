@@ -31,10 +31,12 @@ Only when the user asks for it. The plan is JSON:
   prompt   given to the new agent, which knows nothing of your conversation
   commits  optional: commits in your branch with this part's work; the user
            chooses whether the new branch starts with them or writes it anew
-  repos    optional, in a tab with several repositories (a folder each in
-           yours): the folders of those this part changes; the user picks
-           in the end. Left out, the new tab has those the commits are in,
-           or all of them
+  repos    optional: the repositories this part changes. In a tab with
+           several (a folder each in yours), the folders of those it
+           changes; or, when the user asks for another repository, its
+           name, which your commits cannot go to. The user picks in the
+           end. Left out, the new tab has those the commits are in, or
+           all of the tab's
 
 nerdr asks the user about each part in turn and then tells you, as a new
 message, which tabs were made and which parts were skipped.

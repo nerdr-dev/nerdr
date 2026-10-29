@@ -197,6 +197,109 @@ func TestSpinoffPicksTheRepositories(t *testing.T) {
 	}
 }
 
+// The dialog for a tab in one repository offers no list of them, until
+// ctrl+r shows the others nerdr has; one the agent named is ticked, from
+// an agent outside a sandbox only.
+func TestSpinoffInAnotherRepository(t *testing.T) {
+	root := t.TempDir()
+	for _, name := range []string{"api", "docs", "web"} {
+		dir := filepath.Join(root, name)
+		if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v\n%s", err, out)
+		}
+	}
+	m := testModel(t)
+	m.root = root
+	fakeAgent(m, agents.Claude)
+	tb := m.cur()
+	tb.Worktrees = []workspace.Worktree{{Repo: filepath.Join(root, "api"), Path: "/w/fix", Branch: "fix"}}
+	open := func(pt spinoff.Part) *spinoffDialog {
+		tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{pt}}
+		m.dialog = nil
+		m.openSpinoff(tb)
+		return m.dialog.(*spinoffDialog)
+	}
+	part := spinoff.Part{Branch: "fix-a", Summary: "A.", Prompt: "Do A.", Commits: []string{"c1"}}
+	d := open(part)
+	if v := ansi.Strip(d.view(m, 120, 50)); strings.Contains(v, "Repositories:") || !strings.Contains(v, "ctrl+r") ||
+		!strings.Contains(v, "Start the branch with its 1 commit") {
+		t.Fatalf("in the tab's one repository, no list, and ctrl+r for more:\n%s", v)
+	}
+
+	d.key(m, keyMsg("ctrl+r"))
+	if v := ansi.Strip(d.view(m, 120, 50)); !strings.Contains(v, "[x] fix") || !strings.Contains(v, "[ ] docs") || !strings.Contains(v, "[ ] web") {
+		t.Fatalf("ctrl+r lists the others, unticked:\n%s", v)
+	}
+	d.key(m, keyMsg(" ")) // docs, where the cursor went
+	d.key(m, keyMsg("ctrl+r"))
+	if len(d.repos) != 2 || d.repos[1].Name != "docs" || !d.repoOn[1] {
+		t.Fatalf("ctrl+r again keeps those ticked: %+v %v", d.repos, d.repoOn)
+	}
+
+	part.Repos = []string{"docs"}
+	d = open(part)
+	if !slices.Equal(d.repoOn, []bool{false, true}) || d.ownTicked() {
+		t.Fatalf("the other repository the agent named, alone: %v", d.repoOn)
+	}
+	if v := ansi.Strip(d.view(m, 120, 50)); !strings.Contains(v, "writes it anew") || !strings.Contains(v, "not in this tab") {
+		t.Fatalf("its commits cannot go there:\n%s", v)
+	}
+
+	part.Sandboxed = true
+	m.cfg.Agents[agents.Claude] = agents.Spec{Command: []string{"cat"}, Sandboxed: true}
+	d = open(part)
+	if v := ansi.Strip(d.view(m, 120, 50)); len(d.repos) != 1 || !strings.Contains(v, "named docs: ctrl+r to tick it yourself") {
+		t.Fatalf("from a sandbox, the tab's alone, and a word on it with no list:\n%s", v)
+	}
+	part.Sandboxed, part.Repos = false, []string{"db"}
+	d = open(part)
+	if v := ansi.Strip(d.view(m, 120, 50)); !strings.Contains(v, "named db, which nerdr does not have") {
+		t.Fatalf("one nerdr does not have:\n%s", v)
+	}
+}
+
+// The part's commits are brought into the tab's own repositories alone,
+// not into another that has them too, as a fork does.
+func TestSpinoffPicksInTheTabsRepositoriesAlone(t *testing.T) {
+	root := t.TempDir()
+	git := func(dir string, args ...string) string {
+		out, err := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	api, fork := filepath.Join(root, "api"), filepath.Join(root, "fork")
+	git(root, "init", "-q", "-b", "main", api)
+	git(api, "commit", "-q", "--allow-empty", "-m", "init")
+	git(api, "switch", "-q", "-c", "work")
+	if err := os.WriteFile(filepath.Join(api, "a.txt"), []byte("a\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(api, "add", "a.txt")
+	git(api, "commit", "-q", "-m", "a")
+	c := git(api, "rev-parse", "HEAD")
+	git(api, "switch", "-q", "main")
+	git(root, "clone", "-q", api, fork) // has c too
+	git(fork, "switch", "-q", "main")
+
+	m := testModel(t)
+	m.wtRoot = filepath.Join(root, "worktrees")
+	tb := m.cur()
+	pt := spinoff.Part{Branch: "split", Summary: "A.", Prompt: "Do A.", Commits: []string{c}}
+	repos := []workspace.Repo{{Name: "api", Path: api}, {Name: "fork", Path: fork}}
+	res := m.spinoffCreate(tb, pt, agents.Claude, "split", true, false, "", repos, map[string]bool{api: true})().(spinoffMsg)
+	if res.err != nil || len(res.wts) != 2 || res.outcome.PickFailed != "" {
+		t.Fatalf("made: %+v", res)
+	}
+	for _, w := range res.wts {
+		_, err := os.Stat(filepath.Join(w.Path, "a.txt"))
+		if mine := w.Repo == api; mine != (err == nil) {
+			t.Errorf("%s: picked %v, want %v", w.Repo, err == nil, mine)
+		}
+	}
+}
+
 // Plans sent one after another wait together, no more than one plan's
 // parts: the rest are left out, and the agent is told.
 func TestSpinoffPartsWaitingAreBounded(t *testing.T) {
