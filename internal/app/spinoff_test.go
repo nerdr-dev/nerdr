@@ -261,6 +261,11 @@ func TestSpinoffInAnotherRepository(t *testing.T) {
 // The part's commits are brought into the tab's own repositories alone,
 // not into another that has them too, as a fork does.
 func TestSpinoffPicksInTheTabsRepositoriesAlone(t *testing.T) {
+	// nerdr's own cherry-pick needs a name to commit under, which CI lacks.
+	t.Setenv("GIT_AUTHOR_NAME", "t")
+	t.Setenv("GIT_AUTHOR_EMAIL", "t@t")
+	t.Setenv("GIT_COMMITTER_NAME", "t")
+	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	root := t.TempDir()
 	git := func(dir string, args ...string) string {
 		out, err := exec.Command("git", append([]string{"-C", dir, "-c", "user.name=t", "-c", "user.email=t@t"}, args...)...).CombinedOutput()
