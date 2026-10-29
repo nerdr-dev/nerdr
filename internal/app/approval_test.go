@@ -10,6 +10,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -72,6 +73,11 @@ func TestApprovalWithoutRemarksDoesNotQueueMessage(t *testing.T) {
 	}
 	if v := ansi.Strip(rd.view(m, 120, 40)); !strings.Contains(v, "claude approved") || !strings.Contains(v, "fine") {
 		t.Fatalf("the dialog should show the reviewer's summary:\n%s", v)
+	}
+	m.View()
+	m.Update(tea.MouseMsg{X: 0, Y: 29, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.dialog != rd {
+		t.Fatal("a click outside closed the dialog, which is not shown again")
 	}
 	rd.key(m, keyMsg("enter"))
 	if m.dialog != nil {

@@ -289,6 +289,8 @@ func (m *Model) dialogMouse(ev tea.MouseMsg) tea.Cmd {
 		switch m.dialog.(type) {
 		case *wizard, *messageDialog, *renamer, *noteDialog, *commitDialog:
 			// Holds something typed; esc it is.
+		case *reviewDoneDialog:
+			// Told of once: a stray click would lose it unread.
 		default:
 			m.dialog = nil
 		}
