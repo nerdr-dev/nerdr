@@ -233,7 +233,11 @@ done
 	if err := os.WriteFile(file, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	work := t.TempDir()
+	// Resolved, as $PWD is: macOS keeps its temp folders behind a link.
+	work, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	for _, c := range []struct{ answer, want string }{
 		{`{"id":2,"result":{"config":{"developer_instructions":"Be \"brief\".\nAlways."}}}`, "Be \"brief\".\nAlways."},
 		{`{"id":2,"result":{"config":{"developer_instructions":null}}}`, ""},
