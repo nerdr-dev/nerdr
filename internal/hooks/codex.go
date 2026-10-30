@@ -58,40 +58,12 @@ func CodexArgs() []string {
 // the user's config.toml, and wrote says so. A hook the user turned off
 // stays off.
 func TrustCodexHooks(argv, env []string, write bool) (trusted, wrote bool, err error) {
-	if len(argv) == 0 {
-		return false, false, errors.New("no codex command")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	cmd := exec.CommandContext(ctx, argv[0], append(append(append([]string{}, argv[1:]...), "app-server"), CodexArgs()...)...)
-	cmd.Env = env
-	if home, err := os.UserHomeDir(); err == nil {
-		cmd.Dir = home // no project's own hooks
-	}
-	in, err := cmd.StdinPipe()
+	dir, _ := os.UserHomeDir() // no project's own hooks
+	rpc, stop, err := startCodexAppServer(argv, env, dir, CodexArgs())
 	if err != nil {
 		return false, false, err
 	}
-	out, err := cmd.StdoutPipe()
-	if err != nil {
-		return false, false, err
-	}
-	if err := cmd.Start(); err != nil {
-		return false, false, err
-	}
-	defer func() {
-		_ = in.Close()
-		_ = cmd.Process.Kill()
-		_ = cmd.Wait()
-	}()
-	rpc := codexRPC{in: in, out: bufio.NewScanner(out)}
-	rpc.out.Buffer(nil, 16<<20)
-	if _, err := rpc.call(1, "initialize", map[string]any{"clientInfo": map[string]any{"name": "nerdr", "version": "1"}}); err != nil {
-		return false, false, err
-	}
-	if err := rpc.send(map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
-		return false, false, err
-	}
+	defer stop()
 	res, err := rpc.call(2, "hooks/list", map[string]any{})
 	if err != nil {
 		return false, false, err
@@ -135,6 +107,85 @@ func TrustCodexHooks(argv, env []string, write bool) (trusted, wrote bool, err e
 		return false, false, err
 	}
 	return true, true, nil
+}
+
+// CodexDeveloperInstructions is the developer instructions a codex run as
+// argv with env starts with in dir, as its app server reads them: the
+// user's config.toml, a trusted project's own, and config, codex's -c
+// options, over them. "" for none.
+func CodexDeveloperInstructions(argv, env, config []string, dir string) (string, error) {
+	var args []string
+	for _, c := range config {
+		args = append(args, "-c", c)
+	}
+	rpc, stop, err := startCodexAppServer(argv, env, dir, args)
+	if err != nil {
+		return "", err
+	}
+	defer stop()
+	res, err := rpc.call(2, "config/read", map[string]any{"cwd": dir})
+	if err != nil {
+		return "", err
+	}
+	var read struct {
+		Config *struct {
+			DeveloperInstructions *string `json:"developer_instructions"`
+		} `json:"config"`
+	}
+	if err := json.Unmarshal(res, &read); err != nil {
+		return "", err
+	}
+	if read.Config == nil {
+		return "", errors.New("codex config/read: no config")
+	}
+	if read.Config.DeveloperInstructions == nil {
+		return "", nil
+	}
+	return *read.Config.DeveloperInstructions, nil
+}
+
+// startCodexAppServer runs codex's app server, as argv with env in dir and
+// args after it, and has it ready for requests; stop ends it. It is given
+// ten seconds.
+func startCodexAppServer(argv, env []string, dir string, args []string) (rpc codexRPC, stop func(), err error) {
+	if len(argv) == 0 {
+		return rpc, nil, errors.New("no codex command")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	cmd := exec.CommandContext(ctx, argv[0], append(append(append([]string{}, argv[1:]...), "app-server"), args...)...)
+	cmd.Env = env
+	cmd.Dir = dir
+	in, err := cmd.StdinPipe()
+	if err != nil {
+		cancel()
+		return rpc, nil, err
+	}
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		cancel()
+		return rpc, nil, err
+	}
+	if err := cmd.Start(); err != nil {
+		cancel()
+		return rpc, nil, err
+	}
+	stop = func() {
+		_ = in.Close()
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		cancel()
+	}
+	rpc = codexRPC{in: in, out: bufio.NewScanner(out)}
+	rpc.out.Buffer(nil, 16<<20)
+	if _, err := rpc.call(1, "initialize", map[string]any{"clientInfo": map[string]any{"name": "nerdr", "version": "1"}}); err != nil {
+		stop()
+		return rpc, nil, err
+	}
+	if err := rpc.send(map[string]any{"jsonrpc": "2.0", "method": "initialized"}); err != nil {
+		stop()
+		return rpc, nil, err
+	}
+	return rpc, stop, nil
 }
 
 // codexHook is a hook as codex's app server lists it.

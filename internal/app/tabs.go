@@ -238,7 +238,7 @@ func (t *tab) pins() []review.Pin {
 // Inherited from a nerdr this one runs in, they are left out: an agent is
 // to report to this one, and one in a sandbox never to a socket it was
 // not given. The user's own, such as NERDR_DEBUG_LOG, are passed on.
-var tabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_AGY_HOOK",
+var tabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK",
 	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_BIN", "NERDR_DATA_DIR"}
 
 // hostVars are left out of what an agent or terminal of a tab inherits,
@@ -500,8 +500,18 @@ func (m *Model) spawn(t *tab, l agents.Launch, resume bool) tea.Cmd {
 			reports = true
 		}
 	}
-	if t.Agent == agents.Claude {
+	switch t.Agent {
+	case agents.Claude:
 		l.Argv = append(l.Argv, m.claudeNote(t)...)
+	case agents.Codex:
+		if args := m.codexNote(t, l.Argv, withUserEnv(m.agentEnv(t), l.Env)); args != nil {
+			command, _ := agents.Command(m.specsFor(t), t.Agent)
+			l.Argv = beforePrompt(l.Argv, args, len(command))
+		}
+	case agents.Copilot:
+		l.Env = m.copilotNote(t, l.Env)
+	case agents.Antigravity:
+		l.Argv = append(l.Argv, m.agyNote(t)...)
 	}
 	var first []state.Message
 	if !resume {
@@ -534,41 +544,6 @@ func (m *Model) spawn(t *tab, l agents.Launch, resume bool) tea.Cmd {
 		p.Focus(true)
 	}
 	return nil
-}
-
-// worktreeNote is told to claude in every tab, in its system prompt, where
-// it holds whatever the conversation is about. A skill is only read when
-// its description matches what is asked, and "do it in two branches" did
-// not: the agent made them itself, switching the tab's own worktree to
-// another branch, which the tab then follows.
-const worktreeNote = "You run in a nerdr tab, and this worktree is the tab's: never create or switch branches in it. " +
-	"When the user asks for work on new or separate branches, worktrees or tabs, use the nerdr-spinoff skill, which has nerdr make a tab for each once the user confirms its branch and agent; " +
-	"nerdr tab new makes tabs without asking, and is only for when the user says not to be asked."
-
-// readyNote is told to claude beside worktreeNote when its turns are
-// reviewed once it says the work is ready: for the same reason, as "I am
-// done" matches no skill's description well enough to be counted on.
-const readyNote = "Code review is on in this tab: when you have finished what you were asked to do and it changed code, " +
-	"use the nerdr-request-review skill before you end your turn, so a second agent reviews the work."
-
-// claudeNote is the arguments that give t's claude worktreeNote and
-// readyNote: none of either when it cannot use the skill it points to, or
-// nerdr is not set up yet, and no readyNote for a reviewer.
-func (m *Model) claudeNote(t *tab) []string {
-	if m.cfg.Install == "" {
-		return nil
-	}
-	var notes []string
-	if m.skillOn(t, "nerdr-spinoff") {
-		notes = append(notes, worktreeNote)
-	}
-	if m.cfg.Review.Auto && m.waitsForReady(t) && t.reviewOf == nil {
-		notes = append(notes, readyNote)
-	}
-	if len(notes) == 0 {
-		return nil
-	}
-	return []string{"--append-system-prompt", strings.Join(notes, "\n\n")}
 }
 
 // agentID is the agent t's screen is read as and its integration reports
