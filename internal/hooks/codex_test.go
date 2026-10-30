@@ -213,3 +213,49 @@ func TestTrustCodexHooks(t *testing.T) {
 		t.Fatalf("no codex: %v %v", trusted, err)
 	}
 }
+
+// CodexDeveloperInstructions asks codex's app server, in the folder codex
+// starts in and with its -c options, for the instructions it would have.
+func TestCodexDeveloperInstructions(t *testing.T) {
+	dir := t.TempDir()
+	argsLog, reqLog := filepath.Join(dir, "args"), filepath.Join(dir, "req")
+	answer := filepath.Join(dir, "answer")
+	script := `#!/bin/sh
+printf '%s\n' "$PWD" "$CODEX_HOME" "$@" > '` + argsLog + `'
+while IFS= read -r line; do
+  case "$line" in
+  *'"method":"initialize"'*) echo '{"id":1,"result":{}}' ;;
+  *'"method":"config/read"'*) printf '%s\n' "$line" > '` + reqLog + `'; echo '{"method":"note","params":{}}'; cat '` + answer + `' ;;
+  esac
+done
+`
+	file := filepath.Join(dir, "codex")
+	if err := os.WriteFile(file, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	work := t.TempDir()
+	for _, c := range []struct{ answer, want string }{
+		{`{"id":2,"result":{"config":{"developer_instructions":"Be \"brief\".\nAlways."}}}`, "Be \"brief\".\nAlways."},
+		{`{"id":2,"result":{"config":{"developer_instructions":null}}}`, ""},
+	} {
+		if err := os.WriteFile(answer, []byte(c.answer+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := CodexDeveloperInstructions([]string{file}, []string{"CODEX_HOME=/codex"}, []string{`model="o3"`}, work)
+		if err != nil || got != c.want {
+			t.Fatalf("%q, %v; want %q", got, err, c.want)
+		}
+	}
+	if b, _ := os.ReadFile(argsLog); string(b) != work+"\n/codex\napp-server\n-c\nmodel=\"o3\"\n" {
+		t.Fatalf("started as %q", b)
+	}
+	if b, _ := os.ReadFile(reqLog); !strings.Contains(string(b), `"cwd":"`+work+`"`) {
+		t.Fatalf("asked %q", b)
+	}
+	if err := os.WriteFile(answer, []byte(`{"id":2,"error":{"message":"bad config"}}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := CodexDeveloperInstructions([]string{file}, nil, nil, work); err == nil {
+		t.Fatal("an error should say so")
+	}
+}

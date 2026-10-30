@@ -2,7 +2,8 @@
 //
 // nerdr's plugin in opencode: says when the agent in a nerdr tab is
 // working, waits for a permission, or is done, by passing opencode's
-// events to `nerdr hook opencode`. Outside nerdr it does nothing.
+// events to `nerdr hook opencode`, and adds nerdr's note on the tab to its
+// system prompt. Outside nerdr it does nothing.
 import { spawn } from "node:child_process"
 
 // What nerdr hears of. Each is subscribed to alone and checked, since
@@ -20,6 +21,28 @@ const types = [
 export default {
   id: "nerdr",
   setup: async (ctx) => {
+    // nerdr's note, added to the system prompt of each request; kept and
+    // taken out of the environment as the claim below is, so that an
+    // opencode the agent runs is not told it. Should an older setup's hook
+    // outlive a reload, as its streams may, only the newest adds it: the
+    // newest whose hook was taken, so that one refused leaves the note to
+    // the hook before it.
+    if (process.env.NERDR_OPENCODE_NOTE !== undefined) {
+      globalThis.__nerdrOpencodeNote = process.env.NERDR_OPENCODE_NOTE
+      delete process.env.NERDR_OPENCODE_NOTE
+    }
+    const note = globalThis.__nerdrOpencodeNote
+    if (note && ctx.session?.hook) {
+      const noteGen = (globalThis.__nerdrOpencodeNoteSetups ?? 0) + 1
+      globalThis.__nerdrOpencodeNoteSetups = noteGen
+      try {
+        await ctx.session.hook("context", (event) => {
+          if (globalThis.__nerdrOpencodeNoteGen === noteGen) event.system.push({ type: "text", text: note })
+        })
+        globalThis.__nerdrOpencodeNoteGen = noteGen
+      } catch {}
+    }
+
     // Only nerdr's agent itself reports: an opencode it runs inherits the
     // tab's environment, but not this. opencode loads a location's plugins
     // again in the same process after it has evicted the idle location,

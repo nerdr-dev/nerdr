@@ -72,6 +72,12 @@ func (m *Model) agentEnv(t *tab) []string {
 	if t.sandboxed {
 		env = append(env, "NERDR_SANDBOXED=1")
 	}
+	if t.Agent == agents.OpenCode {
+		// For nerdr's plugin, which adds it to opencode's system prompt.
+		if note := m.agentNote(t); note != "" {
+			env = append(env, "NERDR_OPENCODE_NOTE="+note)
+		}
+	}
 	if sock == "" {
 		if sockErr != "" {
 			env = append(env, "NERDR_NO_SOCKET="+sockErr)

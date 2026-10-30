@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -228,6 +229,66 @@ console.log(JSON.stringify({ first, second, reports }))
 	}
 	if got.Reports != len(openCodeEvents) {
 		t.Errorf("the two setups reported %d events together, want %d: the old streams must stop", got.Reports, len(openCodeEvents))
+	}
+}
+
+// TestOpenCodePluginAddsTheNote covers nerdr's note on the tab: added to
+// the system prompt of each request, after what opencode put there, and
+// kept across a reload as the claim is, by the hook taken last, but taken
+// out of the environment so that a nested opencode is not told it; none
+// without one, nor with an opencode whose plugins have no session hooks.
+func TestOpenCodePluginAddsTheNote(t *testing.T) {
+	const src = `const plugin = (await import(process.argv[2])).default
+const setups = Number(process.argv[3])
+const hooks = []
+const ctx = {
+  event: { subscribe: () => (async function* () {})() },
+  session: { hook: async (name, fn) => { hooks.push({ name, fn }) } },
+}
+const refused = {
+  event: ctx.event,
+  session: { hook: async () => { throw new Error("refused") } },
+}
+for (let i = 0; i < setups; i++) {
+  const mode = process.argv[4]
+  await plugin.setup(mode === "old" ? { event: ctx.event } : mode === "refused" && i > 0 ? refused : ctx)
+}
+const event = { system: [{ type: "text", text: "opencode's own" }] }
+for (const h of hooks) if (h.name === "context") h.fn(event)
+console.log(JSON.stringify({
+  hooks: hooks.map((h) => h.name),
+  system: event.system.map((p) => p.text),
+  env: process.env.NERDR_OPENCODE_NOTE ?? "",
+}))
+`
+	for _, c := range []struct {
+		name   string
+		env    []string
+		args   []string
+		hooks  int
+		system []string
+	}{
+		{"told", []string{"NERDR_OPENCODE_NOTE=the note"}, []string{"1", ""}, 1, []string{"opencode's own", "the note"}},
+		{"reloaded", []string{"NERDR_OPENCODE_NOTE=the note"}, []string{"2", ""}, 2, []string{"opencode's own", "the note"}},
+		{"a reload's hook refused", []string{"NERDR_OPENCODE_NOTE=the note"}, []string{"2", "refused"}, 1, []string{"opencode's own", "the note"}},
+		{"no note", nil, []string{"1", ""}, 0, []string{"opencode's own"}},
+		{"no session hooks", []string{"NERDR_OPENCODE_NOTE=the note"}, []string{"1", "old"}, 0, []string{"opencode's own"}},
+	} {
+		var got struct {
+			Hooks  []string
+			System []string
+			Env    string
+		}
+		out := runOpenCodePlugin(t, src, c.args, c.env...)
+		if err := json.Unmarshal([]byte(out), &got); err != nil {
+			t.Fatalf("%s: node said %q", c.name, out)
+		}
+		if len(got.Hooks) != c.hooks || !slices.Equal(got.System, c.system) {
+			t.Errorf("%s: hooks %q, system %q; want %d hooks, %q", c.name, got.Hooks, got.System, c.hooks, c.system)
+		}
+		if got.Env != "" {
+			t.Errorf("%s: NERDR_OPENCODE_NOTE survived the setup: %q", c.name, got.Env)
+		}
 	}
 }
 
