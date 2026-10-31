@@ -136,7 +136,13 @@ func TestCodexStartsWithTheNotes(t *testing.T) {
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
 	cmd := filepath.Join(dir, "codex")
-	script := "#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + started + "'\nexec cat\n"
+	// Capability probes run this command before the real agent starts.
+	// They must not publish launch arguments, and the real launch publishes
+	// them atomically so the polling reader cannot see a partial write.
+	script := "#!/bin/sh\n" +
+		"for arg do\n  case \"$arg\" in --help) exit 0 ;; esac\ndone\n" +
+		"printf '%s\\n' \"$@\" > '" + started + ".tmp'\n" +
+		"mv '" + started + ".tmp' '" + started + "'\nexec cat\n"
 	if err := os.WriteFile(cmd, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
