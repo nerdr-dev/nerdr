@@ -768,9 +768,9 @@ func (c Config) PrefixKey() string {
 }
 
 // SkillEnabled is whether the skill called name is turned on: put in
-// place by nerdr, and the parts of nerdr that use it offered. With install
-// "off" nerdr puts none in place, and what uses one is offered only where
-// the agent finds it (see Model.skillOn).
+// place by nerdr. Features that rely on skill discovery check Model.skillOn;
+// explicit UI requests can instead carry their own instructions. With install
+// "off" nerdr puts none in place.
 // Without a selection, every skill is on.
 func (c Config) SkillEnabled(name string) bool {
 	if c.EnabledSkills == nil {

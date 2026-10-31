@@ -37,15 +37,21 @@ F4 shows each skill and whether the tab's agent has it: `✓` installed,
 
 F4 also counts how often each agent has used each skill and when it
 last did, and lists the other skills the agents used. nerdr counts from
-each agent's conversation log when a turn ends.
+each agent's conversation log when a turn ends. These are use counts,
+not measured token costs. The selected skill shows **Without this skill**
+first: CLI examples, what the skill adds, and what turning it off changes.
 
 ## Turning skills off
 
 ![F4 with nerdr-handoff turned off, and how often each skill was used](../../../assets/skills.png)
 
-All skills start on. Each adds instructions and tool calls to the
-agents' conversations, so turn off those you do not use, in F4 or with
-`enabled_skills`:
+All skills start on. Their descriptions can take context before use;
+reading their instructions, calling tools and doing the work also cost
+tokens. Manual CLI use can avoid agent calls, but asking an agent to
+read CLI help and do the same work still costs tokens. Reviews and new
+agents still use tokens when started through the CLI.
+
+Turn off skills you do not use in F4 or with `enabled_skills`:
 
 ```toml
 enabled_skills = ["nerdr-explain", "nerdr-spinoff"]
@@ -53,7 +59,39 @@ enabled_skills = ["nerdr-explain", "nerdr-spinoff"]
 
 An empty list turns all of them off. Restart running agents to reload
 their instructions; turning a skill off cannot remove text already in a
-conversation. A feature whose skill is off is not offered.
+conversation. Your own copies of skills remain discoverable until you
+remove them yourself.
+
+**F1 explanations and walkthroughs, and handoffs requested when switching
+agents, work with their skills off.** nerdr includes the necessary
+instructions in those requests, only when you use the action. Keep
+`nerdr-explain` and `nerdr-handoff` on if you want the agent to discover
+those workflows from ordinary conversation too.
+
+Turning off `nerdr-request-review` also changes automatic review: with
+`when = "ready"`, nerdr falls back to reviewing each turn instead of
+waiting for the agent to say it is ready. Turn automatic review off
+separately if you want to avoid those reviews.
+
+## CLI alternatives
+
+Use `nerdr COMMAND -h` for options and input formats. Replace uppercase
+placeholders with your values. Commands controlling tabs need the agent's
+nerdr environment, including its connection to the running tab. Terminal
+panes do not have that connection either: ask the agent to run the exact
+command without loading a skill. Local note commands (`order`, `why`,
+`walkthrough`) and plugin commands can also run from a shell. Agents should use
+`"${NERDR_BIN:-nerdr}"` instead of `nerdr`. See [Commands](../../reference/agent-commands/).
+
+| Skill | Commands without the skill | What you supply or lose |
+|---|---|---|
+| `nerdr-tools` | `nerdr status "Working"`, `nerdr tabs`, `nerdr terminal npm run dev`, `nerdr terminal --restart terminal`, `nerdr read terminal`, `nerdr close terminal`, `nerdr tab new --branch fix/example "Task"`, `nerdr search WORDS`, `nerdr search --show ID`, `nerdr usage` | Individual actions still work. The agent loses guidance on status updates, visible long runs and finding past decisions. Sandbox restrictions still apply. |
+| `nerdr-send` | `nerdr agents`, `nerdr send 2 "Message"`, `nerdr agent --kind codex "Task"`, `nerdr wait --timeout 1m 2`, `nerdr read 2`, `nerdr close 2` | Supply complete tasks and coordinate replies yourself. Starting and messaging agents may still cost tokens; closing a pane stops its work. |
+| `nerdr-plugins` | `nerdr plugin list`, `nerdr plugin run NAME --PARAM VALUE`, `nerdr plugin stop NAME` | Choose the plugin and parameters yourself. Permissions and confirmations remain; plugins for the user only open in F5. The skill also teaches watch handling and plugin creation. |
+| `nerdr-request-review` | `nerdr request-review "Review focus"`, optionally `--agent codex` before the text | Request at the right time; the review starts after the agent's turn. The skill teaches when to request and what to highlight. Automatic review fallback is described above. |
+| `nerdr-spinoff` | `nerdr spinoff plan.json` | Prepare the split, commits and full task descriptions as JSON. The command opens the confirmation dialog; it does not work out the plan. The agent also loses the reminder to use spinoff for new branches. `nerdr tab new` creates a tab directly, without that dialog or splitting existing changes. |
+| `nerdr-handoff` | `nerdr handoff handoff.md` | Write the summary yourself. The command sends it; it cannot recover decisions from the conversation. The agent-switch dialog supplies writing instructions when needed. |
+| `nerdr-explain` | `nerdr order add --short "Summary"`, `nerdr order add --file FILE --role core --short "Role"`, `nerdr why add --file FILE --anchor "Line" --short "Reason"`, `nerdr walkthrough add walkthrough.json` | Write the explanations and walkthrough structure yourself. These commands record content rather than generate it. E and g / G in F1 supply writing instructions when needed. |
 
 ## Where skills are installed
 
@@ -83,8 +121,8 @@ through `.git/info/exclude`. Use this for sandboxes that cannot reach your
 home folder.
 
 With **`install = "off"`**, nerdr installs nothing. Copy the folders from
-`skills/` yourself; features are offered only when the agent finds the
-skill.
+`skills/` yourself for discovery through conversation. F1 explanations,
+walkthroughs and agent-switch handoffs still carry their own instructions.
 
 nerdr updates its skills at every start. To keep your own edits to one,
 remove the `<!-- nerdr: installed and kept up to date by nerdr … -->`

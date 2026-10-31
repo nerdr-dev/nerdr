@@ -29,13 +29,13 @@ const MaxSummary = 64 << 10
 // the agent to. It holds all the agent needs to know, so it works whether
 // or not the nerdr-handoff skill is installed.
 func Request(from, to agents.Kind) string {
-	return fmt.Sprintf(`nerdr: the user is switching this tab's agent from you (%s) to %s, which has none of your conversation. Write a handoff for it, as the nerdr-handoff skill says: everything it needs to carry on the work in this worktree — the goal and why the user wants it; what has been decided and why, including options rejected; what you found out (files, causes, constraints, pitfalls); what is done and what is left, and how to check it; anything the user asked you to keep in mind. Write it in the language the user works with you in. Send it with
+	return fmt.Sprintf(`nerdr: the user is switching this tab's agent from you (%s) to %s, which has none of your conversation. Write a handoff for it using these complete instructions (no installed skill is needed): everything it needs to carry on the work in this worktree — the goal and why the user wants it; what has been decided and why, including options rejected; what you found out (files, causes, constraints, pitfalls); what is done and what is left, and how to check it; anything the user asked you to keep in mind. Write it in the language the user works with you in, including their written variety. Usually a page or two is enough; keep it under 64 KB. Point to files instead of copying their contents. Send it with
 
 "${NERDR_BIN:-nerdr}" handoff - <<'EOF'
 …the handoff…
 EOF
 
-Do not commit, push or change anything for it, and do nothing more once it is sent: nerdr then stops you and starts %s.`, from, to, to)
+If the command fails, report its error and stop; do not find or build another nerdr or bypass the connection. Do not commit, push or change anything for it, and do nothing more once it is sent: nerdr then stops you and starts %s.`, from, to, to)
 }
 
 // Info is what the new agent is told about.

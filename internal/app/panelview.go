@@ -60,8 +60,7 @@ func (m *Model) reviewSet(r review.Model, w int) review.Model {
 	if r.BranchPR() {
 		r = r.SetBranch(m.branchRows(w - 3)) // the border, and a column off it
 	}
-	// F4 can turn the skill off, and the config be read anew, at any time.
-	return r.SetExplain(m.skillOn(m.cur(), "nerdr-explain"))
+	return r
 }
 
 // panelBody is what the review panel shows, w×h: the screen chosen, below

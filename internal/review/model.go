@@ -264,9 +264,6 @@ type Model struct {
 	// prOnRepos is set while the cursor is on the list of repositories
 	// above the PR in F2, in a tab on several: ↑ ↓ pick one there.
 	prOnRepos bool
-	// explainOn is whether the agents have the nerdr-explain skill, which
-	// a asks for: off in F4, there is no a.
-	explainOn bool
 }
 
 // EnableMouse starts with mouse reporting on, for the --mouse flag. The

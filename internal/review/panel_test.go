@@ -128,22 +128,24 @@ func TestFileMarks(t *testing.T) {
 }
 
 // E in the file list asks the worktree's agent to explain its change, in
-// the words its nerdr-explain skill is used on.
+// a self-contained request, without needing a skill installed.
 func TestExplainAsksTheAgent(t *testing.T) {
 	m := NewEmbedded()
 	m.worktrees = []git.Worktree{{Path: "/a"}}
 	m.wtIdx, m.focus = 0, focusFiles
 	E := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")}
-	if _, cmd := m.Update(E); cmd != nil {
-		t.Fatal("with the skill off, E asks for nothing")
-	}
-	m = m.SetExplain(true)
 	_, cmd := m.Update(E)
 	if cmd == nil {
 		t.Fatal("E sends nothing")
 	}
-	if msg, ok := cmd().(AgentMsg); !ok || msg.Dir != "/a" || !strings.Contains(strings.ToLower(msg.Text), "explain the code for nerdr") {
+	msg, ok := cmd().(AgentMsg)
+	if !ok || msg.Dir != "/a" {
 		t.Fatalf("E: %#v", cmd())
+	}
+	for _, want := range []string{"Explain the code for nerdr", "order add", "why add", "--anchor", "conversation language", "no installed skill is needed"} {
+		if !strings.Contains(msg.Text, want) {
+			t.Errorf("request lacks %q", want)
+		}
 	}
 }
 
