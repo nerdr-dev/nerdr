@@ -102,6 +102,15 @@ the main agent once the subagent is done. Only the end of the last
 background subagent changes the state. Other subagent starts and stops
 are ignored, since Claude also runs subagents of its own after a turn to
 write summaries.
+Commands and monitors run in the background work the same way, read
+from the `background_tasks` list on Claude's `Stop`: while a Bash
+command started with `run_in_background`, or a monitor, still runs, the
+agent stays marked as working, since Claude resumes it when the command
+ends or the monitor reports. The first `Stop` that lists none marks it
+done. A command that never ends on its own, such as a dev server, keeps
+the agent marked as working for as long as it runs; run those in a
+nerdr terminal instead. Scheduled wakeups (`/loop`, `ScheduleWakeup`)
+don't count.
 
 opencode reports through nerdr's plugin, `nerdr.js`, which nerdr installs
 along with the skills: in `~/.config/opencode/plugins/` with

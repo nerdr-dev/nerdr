@@ -94,6 +94,49 @@ func TestClaudeWaitsForBackgroundSubagents(t *testing.T) {
 	}
 }
 
+// TestClaudeWaitsForBackgroundCommands covers a Bash command or a monitor
+// run in the background: no hook says it starts or ends, but the Stop of
+// each turn lists it while it goes on, as claude 2.1.316 gives
+// background_tasks. Its news starts a turn whose Stop no longer lists it.
+func TestClaudeWaitsForBackgroundCommands(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "subagents.json")
+	report := func(ev ClaudeEvent) (string, bool) {
+		_, p := claudeReport(ev, "tab1", seeSubagents(file, ev.Event, ev.AgentID, false))
+		state, _ := p["state"].(string)
+		return state, p["background"] == true
+	}
+	shell := ClaudeTask{ID: "b1", Type: "shell"}
+	monitor := ClaudeTask{ID: "m1", Type: "monitor"}
+	for i, c := range []struct {
+		ev         ClaudeEvent
+		want       string
+		background bool
+	}{
+		{ClaudeEvent{Event: "UserPromptSubmit"}, "working", false},
+		{ClaudeEvent{Event: "PreToolUse", Tool: "Bash"}, "working", false},
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{shell}}, "working", true},
+		// The command's news, in a turn of its own; a monitor goes on.
+		{ClaudeEvent{Event: "UserPromptSubmit"}, "working", false},
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{monitor}}, "working", true},
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{}}, "idle", false},
+		// A subagent listed is left to the count of SubagentStart and
+		// SubagentStop, which has none going.
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{{ID: "a9", Type: "subagent"}}}, "idle", false},
+		// A subagent counted and a command listed: either keeps it at work.
+		{ClaudeEvent{Event: "SubagentStart", AgentID: "a1"}, "", false},
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{shell, {ID: "a1", Type: "subagent"}}}, "working", true},
+		{ClaudeEvent{Event: "SubagentStop", AgentID: "a1"}, "working", false},
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{shell}}, "working", true},
+		{ClaudeEvent{Event: "Stop"}, "idle", false},
+		// A subagent's own Stop says nothing of the agent's wait.
+		{ClaudeEvent{Event: "Stop", AgentID: "a2", BackgroundTasks: []ClaudeTask{shell}}, "", false},
+	} {
+		if got, bg := report(c.ev); got != c.want || bg != c.background {
+			t.Errorf("%d %+v: %q background %v, want %q background %v", i, c.ev, got, bg, c.want, c.background)
+		}
+	}
+}
+
 // TestClaudeCompactionReportsOnlyTheSession covers a session start that
 // says nothing about the state: it still tells nerdr the conversation.
 func TestClaudeCompactionReportsOnlyTheSession(t *testing.T) {
@@ -146,6 +189,25 @@ func TestClaudeCommandReportsTheWaitInTheBackground(t *testing.T) {
 		if code := ClaudeCommand(strings.NewReader(in), &stderr); code != 0 {
 			t.Fatalf("exit %d: %s", code, stderr.String())
 		}
+	}
+	if r := next(t, got); r.State != "working" || !r.Background {
+		t.Fatalf("stop: %+v", r)
+	}
+}
+
+// TestClaudeCommandReportsABackgroundCommand covers `nerdr hook claude`
+// reading a Stop as claude gives it with a command in the background.
+func TestClaudeCommandReportsABackgroundCommand(t *testing.T) {
+	s, got := listen(t)
+	t.Setenv("NERDR_SOCKET", s.Path())
+	t.Setenv("NERDR_TAB", "tab1")
+	t.Setenv("TMPDIR", t.TempDir()) // after the socket: its path must stay short
+	var stderr bytes.Buffer
+	in := `{"hook_event_name":"Stop","session_id":"s1","stop_hook_active":false,` +
+		`"background_tasks":[{"id":"b1","type":"shell","status":"running","description":"measure","command":"./measure.sh"}],` +
+		`"session_crons":[]}`
+	if code := ClaudeCommand(strings.NewReader(in), &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
 	}
 	if r := next(t, got); r.State != "working" || !r.Background {
 		t.Fatalf("stop: %+v", r)
