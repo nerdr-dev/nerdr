@@ -64,7 +64,8 @@ type Report struct {
 	ResumeArgv []string
 	Seq        int64
 	// Background says a working agent's turn is over, but it waits on
-	// subagents it started in the background; see subagents.go.
+	// work it started in the background: subagents (see subagents.go), or
+	// for claude commands and monitors (see waitsInBackground).
 	Background bool
 	// Spinoff is the parts an agent hands to new tabs; see Spinoff.
 	Spinoff []spinoff.Part

@@ -67,6 +67,46 @@ type ClaudeEvent struct {
 	// AgentID is set when the event comes from a subagent, not the agent
 	// in the tab.
 	AgentID string `json:"agent_id"`
+	// BackgroundTasks is, on a Stop, the work the agent started in the
+	// background that is still going; see waitsInBackground.
+	BackgroundTasks []ClaudeTask `json:"background_tasks"`
+}
+
+// ClaudeTask is a task in a Stop's background_tasks, as far as nerdr reads
+// it. Type is shell (Bash with run_in_background), monitor, subagent,
+// workflow, teammate, cloud session, MCP task, ….
+type ClaudeTask struct {
+	ID   string `json:"id"`
+	Type string `json:"type"`
+}
+
+// A Bash command or a monitor run in the background goes on after the
+// turn that started it, like a subagent: claude ends the turn with a Stop,
+// and once the command is done, or the monitor has news, prompts the
+// agent with it in a turn of its own. Unlike for a subagent no hook says
+// when one starts or stops, but each Stop lists what is still going, in
+// background_tasks (as claude 2.1.316 does), and the turn the news starts
+// has tool calls and a Stop of its own. So the Stop is enough: work in
+// the background while one goes on, until a Stop with none says done.
+// A command that does not end by itself, a dev server, keeps the agent
+// at work for as long as it runs: claude still waits on it. (A dev server
+// the user should see belongs in a nerdr terminal; see nerdr-tools.)
+
+// waitsInBackground says whether the agent's own Stop ev, with w its
+// subagents, ends a turn the agent has work going on after. Subagents
+// listed in background_tasks are left to w, which also knows when the
+// last of them is done; a session's crons (ScheduleWakeup, /loop) are not
+// work going on.
+func waitsInBackground(ev ClaudeEvent, w SubagentWait) bool {
+	if w.Going > 0 {
+		return true
+	}
+	for _, t := range ev.BackgroundTasks {
+		if t.Type != "subagent" {
+			return true
+		}
+	}
+	return false
 }
 
 // ClaudeState is the state a claude hook event means, or "" for one that
@@ -90,7 +130,10 @@ func ClaudeState(ev ClaudeEvent, w SubagentWait) string {
 		}
 		return "idle"
 	case "Stop":
-		return stopState(w)
+		if waitsInBackground(ev, w) {
+			return "working"
+		}
+		return "idle"
 	case "UserPromptSubmit", "PostToolUse":
 		return "working"
 	case "PreToolUse":
@@ -133,7 +176,7 @@ func claudeReport(ev ClaudeEvent, pane string, w SubagentWait) (string, map[stri
 	switch {
 	case state != "":
 		p["state"] = state
-		if ev.Event == "Stop" && ev.AgentID == "" && w.Going > 0 {
+		if ev.Event == "Stop" && ev.AgentID == "" && waitsInBackground(ev, w) {
 			p["background"] = true
 		}
 		return ReportAgent, p

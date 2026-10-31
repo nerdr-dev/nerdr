@@ -176,9 +176,9 @@ type hookAuthority struct {
 	at     time.Time // when state was reported
 	msg    string
 	seq    map[string]int64 // the last sequence number taken, per source
-	// background says the agent's turn is over, but it waits on subagents
-	// it started in the background: its screen is still and at the prompt
-	// meanwhile, and says nothing of it.
+	// background says the agent's turn is over, but it waits on work it
+	// started in the background, subagents or commands: its screen is
+	// still and at the prompt meanwhile, and says nothing of it.
 	background bool
 }
 
