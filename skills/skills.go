@@ -8,8 +8,9 @@
 // nerdr (nerdr-tools), and how to find and run the user's plugins
 // (nerdr-plugins) — and puts them where each agent looks for skills.
 //
-// The skills are the SKILL.md files in this folder, built into nerdr. They
-// can go in two places:
+// The skills are the folders in this folder, built into nerdr: each a
+// SKILL.md, and any other files it points the agent at for what it needs
+// only sometimes. They can go in two places:
 //
 //   - the agents' own skills folders in the home folder (Home), for agents
 //     that can see it;
@@ -32,7 +33,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
-//go:embed */SKILL.md
+//go:embed */*.md
 var files embed.FS
 
 // Marker is in every skill nerdr installs. A file with it is nerdr's, and is
@@ -40,10 +41,25 @@ var files embed.FS
 // took the line out to keep their own edits — is left alone.
 const Marker = "<!-- nerdr: installed and kept up to date by nerdr."
 
-// Skill is one skill: its name (also its folder) and its SKILL.md.
+// Skill is one skill: its name (also its folder), its SKILL.md and the
+// other files beside it.
 type Skill struct {
+	Name  string
+	Text  []byte
+	Files []File
+}
+
+// File is one of a skill's files other than SKILL.md, which SKILL.md points
+// the agent at by its name. It has Marker too, and is kept up to date, or
+// left alone, on its own.
+type File struct {
 	Name string
 	Text []byte
+}
+
+// all is every file of the skill, SKILL.md first.
+func (s Skill) all() []File {
+	return append([]File{{"SKILL.md", s.Text}}, s.Files...)
 }
 
 // All is every skill nerdr ships, by name.
@@ -58,15 +74,26 @@ func All() []Skill {
 		if err != nil {
 			continue
 		}
-		out = append(out, Skill{Name: e.Name(), Text: text})
+		s := Skill{Name: e.Name(), Text: text}
+		more, _ := fs.ReadDir(files, e.Name())
+		for _, f := range more {
+			if f.Name() == "SKILL.md" {
+				continue
+			}
+			if b, err := files.ReadFile(path.Join(e.Name(), f.Name())); err == nil {
+				s.Files = append(s.Files, File{f.Name(), b})
+			}
+		}
+		out = append(out, s)
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out
 }
 
-// Install puts every skill in dir (a skills folder: dir/<name>/SKILL.md),
-// and returns the names it wrote. A skill already there is replaced only
-// when it is nerdr's (it has Marker) and differs.
+// Install puts every skill in dir (a skills folder: dir/<name>/SKILL.md and
+// the skill's other files), and returns the names of the skills it wrote to.
+// A file already there is replaced only when it is nerdr's (it has Marker)
+// and differs.
 func Install(dir string) ([]string, error) {
 	return Sync(dir, func(string) bool { return true })
 }
@@ -106,30 +133,53 @@ func syncSkills(dir string, worktree bool, enabled func(string) bool) ([]string,
 	defer root.Close()
 	var wrote []string
 	for _, s := range All() {
-		file := filepath.Join(base, s.Name, "SKILL.md")
-		old, err := safefile.ReadRegular(root, file)
 		if !enabled(s.Name) {
-			if err == nil && bytes.Contains(old, []byte(Marker)) {
-				if err := root.Remove(file); err != nil {
-					return wrote, err
-				}
-			} else if err != nil && !os.IsNotExist(err) {
+			if err := removeOwned(root, base, s); err != nil {
 				return wrote, err
 			}
 			continue
 		}
-		switch {
-		case err == nil && (bytes.Equal(old, s.Text) || !bytes.Contains(old, []byte(Marker))):
-			continue
-		case err != nil && !os.IsNotExist(err):
-			return wrote, err
+		changed := false
+		for _, f := range s.all() {
+			file := filepath.Join(base, s.Name, f.Name)
+			old, err := safefile.ReadRegular(root, file)
+			switch {
+			case err == nil && (bytes.Equal(old, f.Text) || !bytes.Contains(old, []byte(Marker))):
+				continue
+			case err != nil && !os.IsNotExist(err):
+				return wrote, err
+			}
+			if err := safefile.WriteRegular(root, file, f.Text, 0o644); err != nil {
+				return wrote, err
+			}
+			changed = true
 		}
-		if err := safefile.WriteRegular(root, file, s.Text, 0o644); err != nil {
-			return wrote, err
+		if changed {
+			wrote = append(wrote, s.Name)
 		}
-		wrote = append(wrote, s.Name)
 	}
 	return wrote, nil
+}
+
+// removeOwned removes the files of skill s in the skills folder base of
+// root that are nerdr's, and leaves those without Marker.
+func removeOwned(root *os.Root, base string, s Skill) error {
+	for _, f := range s.all() {
+		file := filepath.Join(base, s.Name, f.Name)
+		old, err := safefile.ReadRegular(root, file)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if bytes.Contains(old, []byte(Marker)) {
+			if err := root.Remove(file); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 // RemoveDisabled also clears old managed copies in other discovery directories.
@@ -157,18 +207,8 @@ func removeDisabled(dir string, worktree bool, enabled func(string) bool) error 
 		if enabled(s.Name) {
 			continue
 		}
-		file := filepath.Join(base, s.Name, "SKILL.md")
-		old, err := safefile.ReadRegular(root, file)
-		if os.IsNotExist(err) {
-			continue
-		}
-		if err != nil {
+		if err := removeOwned(root, base, s); err != nil {
 			return err
-		}
-		if bytes.Contains(old, []byte(Marker)) {
-			if err := root.Remove(file); err != nil {
-				return err
-			}
 		}
 	}
 	return nil
@@ -281,10 +321,13 @@ func (s Skill) Description() string {
 	return ""
 }
 
-// Body is the skill's instructions, after its front matter, without the
-// line that marks it as nerdr's.
+// Body is the skill's instructions, after its front matter, followed by its
+// other files, without the lines that mark them as nerdr's.
 func (s Skill) Body() string {
 	_, body := s.split()
+	for _, f := range s.Files {
+		body += "\n\n" + string(f.Text)
+	}
 	var out []string
 	for _, l := range strings.Split(body, "\n") {
 		if !strings.HasPrefix(l, Marker) {
@@ -347,8 +390,9 @@ const (
 	Own
 )
 
-// Find is where the skill is in dirs, the first that has it, and in what
-// state; "" and Missing when none has it.
+// Find is where the skill's SKILL.md is in dirs, the first that has it, and
+// in what state; "" and Missing when none has it. nerdr's SKILL.md beside
+// another file of the skill that is not as this nerdr ships it is Outdated.
 func (s Skill) Find(dirs []string) (string, State) {
 	for _, d := range dirs {
 		file := filepath.Join(d, s.Name, "SKILL.md")
@@ -356,12 +400,18 @@ func (s Skill) Find(dirs []string) (string, State) {
 		switch {
 		case err != nil:
 			continue
-		case bytes.Equal(text, s.Text):
-			return file, Current
-		case bytes.Contains(text, []byte(Marker)):
+		case !bytes.Contains(text, []byte(Marker)):
+			return file, Own
+		case !bytes.Equal(text, s.Text):
 			return file, Outdated
 		}
-		return file, Own
+		for _, f := range s.Files {
+			text, err := os.ReadFile(filepath.Join(d, s.Name, f.Name))
+			if err != nil || !bytes.Equal(text, f.Text) && bytes.Contains(text, []byte(Marker)) {
+				return file, Outdated
+			}
+		}
+		return file, Current
 	}
 	return "", Missing
 }

@@ -17,11 +17,14 @@ call them yourself; you ask in plain words, and the agent picks the skill.
 | `nerdr-send` | Message the other agents in the tab, start more, and follow them | [Agents working together](../../use/agents-together/) |
 | `nerdr-spinoff` | Split work into new tabs | [Splitting work](../../use/agents-together/#splitting-work-into-new-tabs) |
 | `nerdr-handoff` | Write down its work for the agent taking over | [Switching agents](../../use/agents-together/#switching-a-tabs-agent) |
-| `nerdr-tools` | See every tab, run commands in a terminal you see, make tabs, search past conversations, check rate limits | [Commands for agents](../../reference/agent-commands/) |
+| `nerdr-tools` | Keep a line on where its work stands, see every tab, run commands in a terminal you see, make tabs, search past conversations, check rate limits | [Commands for agents](../../reference/agent-commands/) |
 | `nerdr-plugins` | Find and run your plugins | [Plugins](../../configure/plugins/) |
 
 Their sources are in
-[`skills/`](https://github.com/nerdr-dev/nerdr/tree/main/skills).
+[`skills/`](https://github.com/nerdr-dev/nerdr/tree/main/skills). A skill
+is a folder: its `SKILL.md`, and sometimes files beside it that the agent
+reads only when it needs them, such as the walkthrough part of
+`nerdr-explain`.
 
 ## The F4 screen
 
@@ -88,5 +91,5 @@ skill.
 
 nerdr updates its skills at every start. To keep your own edits to one,
 remove the `<!-- nerdr: installed and kept up to date by nerdr … -->`
-marker; files without it are left alone. Turning a skill off removes
+marker from the file; files without it are left alone. Turning a skill off removes
 nerdr's copies, but keeps your own.

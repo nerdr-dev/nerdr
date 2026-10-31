@@ -34,6 +34,70 @@ func TestSkillsAreValidForEveryAgent(t *testing.T) {
 		if !strings.Contains(text, Marker) {
 			t.Errorf("%s: no marker, so it would never be updated", s.Name)
 		}
+		for _, f := range s.Files {
+			if !strings.Contains(string(f.Text), Marker) {
+				t.Errorf("%s/%s: no marker, so it would never be updated", s.Name, f.Name)
+			}
+			// Every agent reads the file by its path from SKILL.md.
+			if !strings.Contains(text, "`"+f.Name+"`, in the same folder as this SKILL.md") {
+				t.Errorf("%s: SKILL.md does not point at %s", s.Name, f.Name)
+			}
+		}
+	}
+}
+
+// TestSkillFilesFollowSKILLmd covers a skill's files beside SKILL.md: they
+// are installed and brought up to date with it, each left alone when the
+// user took it over, and removed with it when the skill is turned off.
+func TestSkillFilesFollowSKILLmd(t *testing.T) {
+	var s Skill
+	for _, sk := range All() {
+		if sk.Name == "nerdr-explain" {
+			s = sk
+		}
+	}
+	if len(s.Files) == 0 {
+		t.Fatal("nerdr-explain has its walkthrough in a file of its own")
+	}
+	dir := t.TempDir()
+	if _, err := Install(dir); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(dir, s.Name, s.Files[0].Name)
+	if got, _ := os.ReadFile(file); !bytes.Equal(got, s.Files[0].Text) {
+		t.Fatalf("%s not installed: %q", file, got)
+	}
+	if _, st := s.Find([]string{dir}); st != Current {
+		t.Fatalf("installed: %v", st)
+	}
+
+	_ = os.WriteFile(file, []byte("old\n"+Marker+" …-->\n"), 0o644)
+	if _, st := s.Find([]string{dir}); st != Outdated {
+		t.Fatalf("an outdated file beside SKILL.md: %v", st)
+	}
+	if wrote, _ := Install(dir); len(wrote) != 1 || wrote[0] != s.Name {
+		t.Fatalf("expected only %s updated, got %v", s.Name, wrote)
+	}
+	if got, _ := os.ReadFile(file); !bytes.Equal(got, s.Files[0].Text) {
+		t.Fatalf("%s not brought up to date", file)
+	}
+
+	mine := filepath.Join(dir, s.Name, s.Files[len(s.Files)-1].Name)
+	_ = os.WriteFile(mine, []byte("mine"), 0o644)
+	if wrote, _ := Install(dir); len(wrote) != 0 {
+		t.Fatalf("the user's own file was rewritten: %v", wrote)
+	}
+	if err := RemoveDisabled(dir, func(name string) bool { return name != s.Name }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, s.Name, "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatal("SKILL.md of a skill turned off remains")
+	}
+	for _, f := range s.Files {
+		_, err := os.Stat(filepath.Join(dir, s.Name, f.Name))
+		if keep := filepath.Join(dir, s.Name, f.Name) == mine; os.IsNotExist(err) == keep {
+			t.Fatalf("%s: removed %v, the user's own %v", f.Name, os.IsNotExist(err), keep)
+		}
 	}
 }
 
