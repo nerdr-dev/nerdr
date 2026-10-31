@@ -214,7 +214,7 @@ func (m *Model) skillsBody(t *tab, w, h int) []string {
 
 	if n := m.skillsMissing(t); n > 0 {
 		head = append(head, "")
-		msg := fmt.Sprintf("nerdr puts no skills in place (install = \"off\"), and %s cannot find %d of the ones turned on (✗): what uses them is off. Copy them from skills/ in nerdr's repository, turn them off here, or press p to let nerdr put them in place.", agent, n)
+		msg := fmt.Sprintf("nerdr puts no skills in place (install = \"off\"), and %s cannot find %d of the ones turned on (✗): skill-based guidance is unavailable; F1 explanations and agent-switch handoffs still work. Copy them from skills/ in nerdr's repository, turn them off here, or press s to let nerdr put them in place.", agent, n)
 		for _, l := range wrapRows(msg, textW, 6) {
 			head = append(head, warn(l))
 		}
@@ -246,6 +246,13 @@ func (m *Model) skillsBody(t *tab, w, h int) []string {
 		text = append(text, "")
 	}
 	text = append(text, dim(skillUseLine(tot[s.Name], time.Now())), "")
+	text = append(text, lipgloss.NewStyle().Bold(true).Render("Without this skill"))
+	text = append(text, wrapLines(s.Without(), textW, 1<<20)...)
+	text = append(text, "")
+	text = append(text, wrapLines(skills.CLIHelp, textW, 1<<20)...)
+	text = append(text, "", lipgloss.NewStyle().Bold(true).Render("Tokens and usage"))
+	text = append(text, wrapLines(skills.CostHelp, textW, 1<<20)...)
+	text = append(text, "", lipgloss.NewStyle().Bold(true).Render("Skill instructions"))
 	for _, l := range wrapRows(s.Description(), textW, 1<<20) {
 		text = append(text, lipgloss.NewStyle().Italic(true).Render(l))
 	}

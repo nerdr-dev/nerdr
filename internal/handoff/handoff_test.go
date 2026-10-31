@@ -47,7 +47,7 @@ func TestPrompt(t *testing.T) {
 
 func TestRequestSaysHowToSend(t *testing.T) {
 	r := Request("claude", "codex")
-	for _, w := range []string{"from you (claude) to codex", "nerdr-handoff", `"${NERDR_BIN:-nerdr}" handoff -`, "nerdr: the user is switching this tab's agent"} {
+	for _, w := range []string{"from you (claude) to codex", "no installed skill is needed", "64 KB", "decided and why", "report its error and stop", `"${NERDR_BIN:-nerdr}" handoff -`, "nerdr: the user is switching this tab's agent"} {
 		if !strings.Contains(r, w) {
 			t.Errorf("lacks %q:\n%s", w, r)
 		}

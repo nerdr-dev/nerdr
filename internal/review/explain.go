@@ -1,7 +1,9 @@
 package review
 
 import (
+	_ "embed"
 	"encoding/json"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/nerdr-dev/nerdr/internal/browser"
@@ -20,30 +22,26 @@ type ExplainMsg struct {
 	Notes []string
 }
 
-// explainRequest is what a asks the agent: the words nerdr-explain's skill
-// is used on.
-const explainRequest = "Explain the code for nerdr (the nerdr-explain skill)."
+// Requests carry their own instructions, so F1 works without installed skills.
+//
+//go:embed prompts/explain.md
+var explainRequest string
 
-// askExplain is E: a message asking the worktree's agent to explain its
-// change for the panel, with the nerdr-explain skill.
+//go:embed prompts/walkthrough.md
+var walkthroughRequest string
+
+// askExplain is E: ask the worktree's agent to explain the change.
 func (m *Model) askExplain() tea.Cmd {
-	if !m.explainOn {
-		m.setToast(m.explainOff())
+	if !m.embedded {
 		return nil
 	}
 	return m.askAgent(explainRequest)
 }
 
-// explainOff is what is said for E, and for an explanation missing, while
-// the agents do not have the skill.
-func (m Model) explainOff() string {
-	return "the nerdr-explain skill is off — turn it on in " + m.screenKey(3) + " skills"
-}
-
 // askForOne is how to get an explanation that is missing.
 func (m Model) askForOne() string {
-	if !m.explainOn {
-		return m.explainOff()
+	if !m.embedded {
+		return "ask an agent in nerdr for one"
 	}
 	return "E asks the agent for one"
 }
@@ -81,10 +79,6 @@ func (m *Model) explanation() (ExplainMsg, bool) {
 	return msg, msg.Short != "" || len(msg.Notes) > 0
 }
 
-// walkthroughRequest is what g asks the agent when there is no
-// walkthrough: the words the skill's second mode is used on.
-const walkthroughRequest = "Make a walkthrough of the change for nerdr (the nerdr-explain skill, walkthrough mode)."
-
 // openWalkthrough is g: the walkthrough the agent wrote of the change,
 // drawn as a page from the change as it is now and opened in the browser.
 // With none written yet, it asks the agent for one, as E asks for an
@@ -108,7 +102,7 @@ func (m *Model) oldNote() string {
 	if !m.walkOld || m.walkWanted != "" {
 		return ""
 	}
-	if m.explainOn {
+	if m.embedded {
 		return " — it is older than the change; G asks for a new one"
 	}
 	return " — it is older than the change"
@@ -118,14 +112,10 @@ func (m *Model) oldNote() string {
 // one, which opens when it is written. Pressed again while the agent
 // writes it, it says so; once more, it asks anew.
 func (m *Model) askWalk() tea.Cmd {
-	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
+	if !m.embedded || m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
 		return nil
 	}
 	wt := m.worktrees[m.wtIdx]
-	if !m.explainOn {
-		m.setToast("no walkthrough to make here — " + m.explainOff())
-		return nil
-	}
 	if m.walkWanted == wt.Path && !m.walkNudged {
 		m.walkNudged = true
 		m.setToast("the agent is writing the walkthrough — it opens when it is done; again asks anew")

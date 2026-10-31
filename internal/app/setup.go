@@ -255,7 +255,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 	hints := [][]string{
 		where,
 		{"<tab folder>/.claude/skills (.agents/skills for codex, gemini and agy),", "and the plugins and hooks of opencode, copilot and agy there, kept out of git"},
-		{"nerdr installs nothing: copy the skills from skills/ in nerdr's repository.", "What uses one the agent cannot find is off; " + m.screenKey(4) + " says which."},
+		{"nerdr installs nothing: copy the skills from skills/ in nerdr's repository.", "F1 explanations and agent-switch handoffs still work; " + m.screenKey(4) + " shows missing skills."},
 	}
 	for i, c := range setupChoices {
 		mark := "○"

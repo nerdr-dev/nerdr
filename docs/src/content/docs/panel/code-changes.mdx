@@ -73,13 +73,16 @@ agent then adds:
   subtle effect, which the diff alone does not tell you.
 
 Explanations are written only when you ask, since they cost the agent
-tokens. They need the `nerdr-explain` skill, on by default.
+tokens. E includes the writing instructions in the request, so it works
+even with `nerdr-explain` turned off or uninstalled. The skill, on by
+default, lets the agent discover this workflow from conversation too.
 
 ## A walkthrough of a change
 
 For a larger change, ask for **"a walkthrough for nerdr"**, or press `g`
-in the file list. The agent works out where the change starts and writes
-a guided tour of it, usually five to ten steps grouped by what they do
+in the file list. `g` (or `G` for a new version) includes the necessary
+instructions and works with the skill off. The agent works out where the
+change starts and writes a guided tour of it, usually five to ten steps grouped by what they do
 rather than by file. It opens as a page in your browser:
 
 - A short summary, with the number of files, lines, steps and risks.

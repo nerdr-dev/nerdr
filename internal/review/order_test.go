@@ -204,7 +204,7 @@ func TestDSwitchesBetweenExplanationAndFolder(t *testing.T) {
 }
 
 // TestFilesHintButtons covers the file list's hint row: e is offered only
-// on a file with an explanation, a only beside an agent with the skill,
+// on a file with an explanation, a only beside an agent,
 // and each key on the row is a button.
 func TestFilesHintButtons(t *testing.T) {
 	m := orderModel(t)
@@ -242,9 +242,9 @@ func TestFilesHintButtons(t *testing.T) {
 		t.Fatal("a key cut off by the pane's edge isn't a button")
 	}
 
-	m.embedded, m.explainOn = true, true
+	m.embedded = true
 	if h := m.filesHint(); !strings.Contains(h, "E agent, explain") {
-		t.Fatalf("expected E beside an agent with the skill: %q", h)
+		t.Fatalf("expected E beside an agent: %q", h)
 	}
 	wasOrder := m.showOrder && m.orderIndex.Len() > 0
 	m.clickFilesHint(lipgloss.Width("/ filter · ")+1, 100)
@@ -254,7 +254,7 @@ func TestFilesHintButtons(t *testing.T) {
 }
 
 // TestWalkthroughButton covers g on the file list's hint row: offered once
-// there is a walkthrough, or an agent with the skill to ask for one, and
+// there is a walkthrough, or an agent to ask for one, and
 // clicking it without one asks the agent, once, and opens the walkthrough
 // when it is written.
 func TestWalkthroughButton(t *testing.T) {
@@ -270,11 +270,11 @@ func TestWalkthroughButton(t *testing.T) {
 		t.Fatalf("expected g with a walkthrough: %q", h)
 	}
 
-	m.walk, m.embedded, m.explainOn = false, true, true
+	m.walk, m.embedded = false, true
 	h := m.filesHint()
 	i := strings.Index(h, "g make guide")
 	if i < 0 {
-		t.Fatalf("expected g to make one beside an agent with the skill: %q", h)
+		t.Fatalf("expected g to make one beside an agent: %q", h)
 	}
 	cmd := m.clickFilesHint(lipgloss.Width(h[:i])+2, 200)
 	if cmd == nil {
@@ -282,6 +282,11 @@ func TestWalkthroughButton(t *testing.T) {
 	}
 	if msg, ok := cmd().(AgentMsg); !ok || msg.Text != walkthroughRequest {
 		t.Fatalf("clicking g without a walkthrough: %#v", cmd())
+	}
+	for _, want := range []string{"no installed skill is needed", "walkthrough add -", "conversation language", `"steps"`, `"risks"`, "validation errors"} {
+		if !strings.Contains(cmd().(AgentMsg).Text, want) {
+			t.Errorf("walkthrough request lacks %q", want)
+		}
 	}
 	if h := m.filesHint(); !strings.Contains(h, "g guide…") {
 		t.Fatalf("expected g to show the agent is writing it: %q", h)
@@ -338,7 +343,7 @@ func TestNewWalkthrough(t *testing.T) {
 	m.rebuildTree("")
 	root := t.TempDir()
 	m.worktrees = []git.Worktree{{Path: root, Branch: "work"}}
-	m.curWT, m.embedded, m.explainOn = root, true, true
+	m.curWT, m.embedded = root, true
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

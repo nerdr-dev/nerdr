@@ -317,13 +317,6 @@ func (m Model) SetFocused(on bool) Model {
 	return m
 }
 
-// SetExplain tells the panel whether the agents have the nerdr-explain
-// skill: without it, E and its button are not there.
-func (m Model) SetExplain(on bool) Model {
-	m.explainOn = on
-	return m
-}
-
 // TopFocused reports whether the pane right below the menu is the one with
 // the keyboard, so the menu's frame, which runs into that pane's, wears
 // the same colour: in F1 that is the file list, not the diff below it.
