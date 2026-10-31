@@ -40,9 +40,7 @@ works with you in.
 
 ## Send it
 
-nerdr gives the agents it starts `NERDR_BIN`, the path of the nerdr
-program; use it, and `nerdr` from the PATH when it is not set. Give the
-handoff on stdin with a quoted heredoc, which saves escaping it:
+Give the handoff on stdin with a quoted heredoc, which saves escaping it:
 
 ```bash
 "${NERDR_BIN:-nerdr}" handoff - <<'EOF'
@@ -52,10 +50,8 @@ EOF
 
 or write it to a file outside the repository and pass the path.
 
-If the command fails, show the user its message and stop there. Do not
-look for, build or run another nerdr: any nerdr program only passes the
-request on to the nerdr running this tab, so a sandbox that stops one
-stops them all. The message says what the sandbox must allow.
+If the command fails, show the user its message and stop there; do not
+look for, build or run another nerdr.
 
 Do not commit, push or change files for the handoff. Once it is sent, do
 nothing more: when the user is switching, nerdr stops you right away. If

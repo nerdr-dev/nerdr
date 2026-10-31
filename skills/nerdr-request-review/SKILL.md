@@ -40,18 +40,13 @@ When the user names who should review — an agent, and perhaps its model
 "${NERDR_BIN:-nerdr}" request-review --agent codex --model gpt-6-astra "The retry loop in fetch.go."
 ```
 
-`--agent` is the kind (`codex`, `claude`, `opencode`, …); `--model` is
-the model in that agent's own names, as the user means it — `nerdr
-agents` shows the models the tab's agents run, and the agent's own
-listing (`codex`'s `/model`, `cursor-agent models`, `opencode models`)
-the rest. Leave both out when the user named no one: the reviewer they
-set up reviews. This is the review that sends you findings to fix; do
-not start a reviewer with `nerdr agent` and a message instead.
+`nerdr request-review --help` says how to name them. Leave both out when
+the user named no one: the reviewer they set up reviews. This is the
+review that sends you findings to fix; do not start a reviewer with
+`nerdr agent` and a message instead.
 
-If the command fails, show the user its message and stop there. Do not
-look for, build or run another nerdr: any nerdr program only passes the
-request on to the nerdr running this tab, so a sandbox that stops one
-stops them all. The message says what the sandbox must allow.
+If the command fails, show the user its message and stop there; do not
+look for, build or run another nerdr.
 
 Then end your turn. Do not start more work: the review starts when your
 turn ends, and its findings come to you as a new message. Work on them as

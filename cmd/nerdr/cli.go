@@ -81,9 +81,14 @@ longer needed and the user has not said, ask the user first.
 
 const tabsUsage = `usage: nerdr tabs
 
-Lists every nerdr tab, as JSON: its name and folder, which is yours, its
-branches (commits ahead and behind, changes, pushed, pull request and CI),
-its agents and their state, and its terminals.
+Lists every nerdr tab, as JSON: its name and folder, yours for your own,
+its branches (commits ahead and behind main, lines and files changed,
+pushed, pr, pr_state, ci), its status line, its agents with their state
+(starting, working, blocked, idle, done, exited) and its terminals.
+
+ci is pass, fail, pending, or empty when there is none. When a branch has
+commits after its merged or closed pull request, commits_after_pr says how
+many; they are not in any pull request yet.
 `
 
 const tabUsage = `usage: nerdr tab new --branch NAME [--repo REPO] [--kind KIND] [--model MODEL] TASK

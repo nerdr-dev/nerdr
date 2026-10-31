@@ -1,6 +1,6 @@
 ---
 name: nerdr-spinoff
-description: Make new branches the nerdr way — split work off into new nerdr tabs, one branch, worktree and agent per part. Inside nerdr (NERDR=1 is set), use this whenever the user asks for work on new or separate branches, worktrees, tabs or pull requests ("in two branches", "a branch for the parser fix", "split this up", "split these tasks out into tabs"), whether the work is done already or still to do, instead of creating or switching branches with git in your own worktree, which belongs to your tab, and instead of nerdr tab new, which makes tabs without asking the user and is only for when they say not to be asked. Not on your own initiative: only when the user asks for new branches.
+description: Make new branches the nerdr way: split work off into new nerdr tabs, one branch, worktree and agent per part. Inside nerdr (NERDR=1), use this whenever the user asks for work on new or separate branches, worktrees, tabs or pull requests ("in two branches", "a branch for the parser fix", "split this up", "split these tasks out into tabs"), whether the work is done or still to do — instead of making or switching branches with git in your own worktree, which belongs to your tab, and instead of nerdr tab new, which is only for when the user says not to be asked. Only when the user asks for new branches.
 ---
 
 <!-- nerdr: installed and kept up to date by nerdr. Remove this line to keep your own edits. -->
@@ -51,25 +51,14 @@ the user did not ask you to.
 
 ## 2. Write the plan
 
-The plan is JSON with one entry per part:
+The plan is JSON with one entry per part — a branch name to propose, a
+summary for the user, the prompt for the new agent, and optionally the
+commits and repositories. `"${NERDR_BIN:-nerdr}" spinoff --help` shows
+its shape and what each field takes.
 
-```json
-{"parts": [
-  {"branch":  "fix/parser-nil-input",
-   "summary": "Parser: return an error on nil input instead of panicking.",
-   "prompt":  "…",
-   "commits": ["a1b2c3d", "e4f5a6b"],
-   "repos":   ["api"]}
-]}
-```
-
-- **branch** — a short branch name in the repository's style. The user
-  can change it.
-- **summary** — one to three sentences for the user, shown when they make
-  the tab. Under 600 bytes. What the part is, not how.
-- **prompt** — what the new agent is given as its first message. It has
-  **none of your conversation**, so put in everything it needs, as fully
-  as you can:
+- **summary** — one to three sentences: what the part is, not how.
+- **prompt** — the new agent has **none of your conversation**, so put in
+  everything it needs, as fully as you can:
   - the goal, and why the user wants it;
   - what has been decided already, and the reasons, including options
     you or the user rejected;
@@ -77,30 +66,12 @@ The plan is JSON with one entry per part:
     bug, constraints, pitfalls you hit;
   - what is done and what is left, and how to check it (tests to run);
   - what is *not* part of this branch, so it stays focused.
-  nerdr adds a note after it about which tab it came from and whether
-  your commits are already on its branch. Write in the language the user
-  is working with you in.
-- **commits** — optional: the commits on your branch that hold this
-  part's work, oldest or newest first. Leave it out for a part with no
-  code yet.
-- **repos** — optional: the repositories this part changes. In a tab
-  with several repositories (a folder each in your working folder), the
-  folder names of those it changes, such as `["api"]` for a change to the
-  api alone. Left out, the new tab has those your commits are in, or all
-  of your tab's: leave it out when the part is in your repositories. Only
-  when the user asks for the part to be made in a repository your tab
-  does not have, give that repository's name, such as `["docs"]`. Your
-  commits cannot go to another repository, so describe in the prompt
-  what was done and where to find it. The user can pick other
-  repositories in the end. If you run in a sandbox, nerdr offers your
-  tab's repositories alone; the user can tick another themselves.
+  Write in the language the user is working with you in.
+- **repos** — leave it out when the part is in your tab's repositories.
+  Give a repository's name only when the user asks for the part to be
+  made in one your tab does not have.
 
 ## 3. Send it
-
-nerdr gives the agents it starts `NERDR_BIN`, the path of the nerdr
-program; use it, and `nerdr` from the PATH when it is not set. Give the
-plan on stdin with a quoted heredoc, which saves escaping it for the
-shell:
 
 ```bash
 "${NERDR_BIN:-nerdr}" spinoff - <<'JSON'
@@ -108,21 +79,11 @@ shell:
 JSON
 ```
 
-or write it to a file outside the repository and pass the path.
-
-The command checks the plan first — branch names, empty fields, that the
-commits exist — and says what is wrong with which part. Fix it and send
-it again; a refused plan is not sent.
-
-If it fails for any other reason, show the user its message and stop there. Do not
-look for, build or run another nerdr: any nerdr program only passes the
-request on to the nerdr running this tab, so a sandbox that stops one
-stops them all. The message says what the sandbox must allow.
-
-Nor talk to nerdr's socket yourself, or read nerdr's program for how: the
-command is the only way to send a plan, and what it sends is nerdr's own
-business, which may change. Keep the plan in a file outside the
-repository, so it can be sent unchanged once the user has let you through.
+The command checks the plan and says what is wrong with which part: fix it
+and send it again. If it fails for another reason, show the user its
+message and stop there. Do not look for, build or run another nerdr, and
+do not talk to nerdr's socket yourself: the command is the only way to send
+a plan.
 
 This skill is up to date: nerdr writes it anew whenever it changes. An old
 date on the file means only that it has not changed since.

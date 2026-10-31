@@ -60,9 +60,10 @@ func explain(sock string, err error) error {
 	switch {
 	case errors.Is(err, syscall.EPERM), errors.Is(err, syscall.EACCES):
 		return fmt.Errorf("%w. A sandbox around the agent keeps it from nerdr's socket: "+
-			"allow connecting to %s. Another nerdr program will not help: tell the user", err, sock)
+			"allow connecting to %s. Another nerdr program, or talking to the socket yourself, will not help: tell the user", err, sock)
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
-		return fmt.Errorf("%w: nerdr is not listening at %s. It has quit, or a sandbox around the agent hides the socket", err, sock)
+		return fmt.Errorf("%w: nerdr is not listening at %s. It has quit, or a sandbox around the agent hides the socket. "+
+			"Another nerdr program, or talking to the socket yourself, will not help: tell the user", err, sock)
 	}
 	return err
 }

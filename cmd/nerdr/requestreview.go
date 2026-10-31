@@ -18,9 +18,12 @@ reviews it once your turn ends, and its findings come
 back to you as a message. FOCUS, if given, is what you want it to look at
 most — a part you are unsure of — in a sentence or two.
 
---agent is the kind of agent to review with (codex, claude, …), and
---model the model it reviews with, in that agent's own names — only when
-the user asked for them; without, the reviewer the user set up reviews.
+--agent is the kind of agent to review with (codex, claude, opencode, …),
+and --model the model it reviews with, in that agent's own names, as the
+user means it: nerdr agents shows the models the tab's agents run, and
+the agent's own listing (codex's /model, cursor-agent models, opencode
+models) the rest. Only when the user asked for them; without, the
+reviewer the user set up reviews.
 
 Run it once, when you have finished what you were asked to do, then end
 your turn. Unless nerdr told you code review is on in this tab, run it

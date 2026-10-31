@@ -28,18 +28,25 @@ Only when the user asks for it. The plan is JSON:
 
   branch   the branch name you propose; the user may change it
   summary  shown to the user when they make the tab; under 600 bytes
-  prompt   given to the new agent, which knows nothing of your conversation
-  commits  optional: commits in your branch with this part's work; the user
-           chooses whether the new branch starts with them or writes it anew
+  prompt   given to the new agent, which knows nothing of your conversation;
+           nerdr adds a note after it saying which tab it came from and
+           whether your commits are already on its branch
+  commits  optional: commits in your branch with this part's work and
+           nothing else, oldest or newest first; the user chooses whether
+           the new branch starts with them (nerdr cherry-picks them onto a
+           branch from main) or writes it anew. Leave it out for a part
+           with no code yet
   repos    optional: the repositories this part changes. In a tab with
            several (a folder each in yours), the folders of those it
            changes; or, when the user asks for another repository, its
-           name, which your commits cannot go to. The user picks in the
-           end. Left out, the new tab has those the commits are in, or
-           all of the tab's
+           name, which your commits cannot go to: say in the prompt what
+           was done and where. The user picks in the end. Left out, the
+           new tab has those the commits are in, or all of the tab's
 
-nerdr asks the user about each part in turn and then tells you, as a new
-message, which tabs were made and which parts were skipped.
+The plan is checked first — branch names, empty fields, that the commits
+exist — and a refused plan is not sent: fix what the message says and send
+it again. Sent, nerdr asks the user about each part in turn and then tells
+you, as a new message, which tabs were made and which parts were skipped.
 `
 
 // runSpinoff is the "spinoff" subcommand: it checks the plan while the
