@@ -54,6 +54,8 @@ func TestListingsAreRead(t *testing.T) {
 		"auto", "gpt-5.3-codex")
 	sameIDs(t, "agy", tabbedModels("Fetching available models...\ngemini-3.8-flash-high\tGemini 3.8 Flash (High)\nclaude-sonnet-4-6\tClaude Sonnet 4.6\n"),
 		"gemini-3.8-flash-high", "claude-sonnet-4-6")
+	sameIDs(t, "grok", grokModels("You are logged in with grok.com.\n\nDefault model: grok-4.7\n\nAvailable models:\n  * grok-4.7 (default)\n    grok-4.6\n"),
+		"grok-4.7", "grok-4.6")
 	sameIDs(t, "opencode", tabbedModels("deepseek/deepseek-flash\nopenai/gpt-4.1\n"),
 		"deepseek/deepseek-flash", "openai/gpt-4.1")
 	sameIDs(t, "copilot", copilotModels("  `logLevel`: log level.\n\n  `model`: AI model to use; can be changed with /model.\n"+

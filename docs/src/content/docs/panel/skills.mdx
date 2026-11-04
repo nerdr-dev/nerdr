@@ -113,15 +113,16 @@ PATH:
 | Codex | `~/.agents/skills/` |
 | Gemini | `~/.agents/skills/` |
 | Antigravity | `~/.gemini/config/skills/` |
+| Grok | `~/.agents/skills/` |
 | Cursor | `~/.agents/skills/` or `~/.claude/skills/`; otherwise `~/.cursor/skills/` |
 
 The agents then find the skills outside nerdr too.
 
 With **`install = "worktree"`**, skills go in the folder each agent starts
 in: `.claude/skills/` for Claude, opencode, Copilot and Cursor, and
-`.agents/skills/` for Codex, Gemini and Antigravity, kept out of git
+`.agents/skills/` for Codex, Gemini, Antigravity and Grok, kept out of git
 through `.git/info/exclude`. Use this for sandboxes that cannot reach your
-home folder.
+home folder. Grok reads a project's skills only once you trust its folder.
 
 With **`install = "off"`**, nerdr installs nothing. Copy the folders from
 `skills/` yourself for discovery through conversation. F1 explanations,

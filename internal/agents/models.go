@@ -19,7 +19,7 @@ import (
 // The models an agent can be started with, as the agent itself lists
 // them — nerdr keeps no list of its own, which would be out of date with
 // the next release of any of them. Each lists them its own way: codex in
-// the cache its /model picker reads, cursor, antigravity and opencode
+// the cache its /model picker reads, cursor, antigravity, grok and opencode
 // with a command, copilot in its help on its config; claude names only
 // its aliases, in its help. A kind with none of these has no list, and
 // its model is typed in.
@@ -52,6 +52,9 @@ func Models(specs map[Kind]Spec, k Kind) ([]AgentModel, error) {
 	case Antigravity:
 		out, err := runListing(specs, k, "models")
 		return tabbedModels(out), err
+	case Grok:
+		out, err := runListing(specs, k, "models")
+		return grokModels(out), err
 	case OpenCode:
 		out, err := runListing(specs, k, "models")
 		return tabbedModels(out), err
@@ -110,6 +113,15 @@ func OwnModel(specs map[Kind]Spec, k Kind) string {
 		}
 	case Gemini:
 		return jsonModel(filepath.Join(geminiHome(), "settings.json"))
+	case Grok:
+		var c struct {
+			Models struct {
+				Default string `toml:"default"`
+			} `toml:"models"`
+		}
+		if _, err := toml.DecodeFile(filepath.Join(grokHome(), "config.toml"), &c); err == nil && modelID.MatchString(c.Models.Default) {
+			return c.Models.Default
+		}
 	case Copilot:
 		if home != "" {
 			return jsonModel(filepath.Join(home, ".copilot", "config.json"))
@@ -223,6 +235,25 @@ func tabbedModels(out string) []AgentModel {
 		id, name, _ := strings.Cut(strings.TrimSpace(l), "\t")
 		if modelID.MatchString(id) {
 			models = append(models, AgentModel{ID: id, Name: strings.TrimSpace(name)})
+		}
+	}
+	return models
+}
+
+// grokModels reads `grok models`: one a line under "Available models:",
+// the default marked "* grok-4.7 (default)".
+func grokModels(out string) []AgentModel {
+	var models []AgentModel
+	in := false
+	for _, l := range strings.Split(out, "\n") {
+		l = strings.TrimSpace(l)
+		if !in {
+			in = strings.HasPrefix(l, "Available models")
+			continue
+		}
+		fields := strings.Fields(strings.TrimPrefix(strings.TrimPrefix(l, "*"), "-"))
+		if len(fields) > 0 && modelID.MatchString(fields[0]) {
+			models = append(models, AgentModel{ID: fields[0]})
 		}
 	}
 	return models

@@ -11,7 +11,7 @@ such as a sandbox.
 ## Commands, arguments and wrappers
 
 By default, nerdr runs each agent's command: `claude`, `opencode`,
-`copilot`, `codex`, `cursor-agent`, `gemini` or `agy`. Configure an agent
+`copilot`, `codex`, `cursor-agent`, `gemini`, `agy` or `grok`. Configure an agent
 with `[agents.<name>]`:
 
 | Setting | Effect |
@@ -36,6 +36,7 @@ nerdr appends session arguments last. Wrappers must pass them through.
 | Cursor | `--resume <id>` or `--continue` |
 | Gemini | `--session-id <id>`, `--resume <id>` or `--resume latest` |
 | Antigravity | `--conversation <id>` or `--continue` |
+| Grok | `--session-id <id>` or `--resume <id>` |
 
 For example, with `command = ["my-sandbox", "--", "copilot"]` and
 `args = ["--allow-all"]` under `[agents.copilot]`, nerdr starts a new
@@ -139,7 +140,7 @@ detect = "amp"                # screen rules to use; defaults to the agent's nam
 ```
 
 `detect` selects herdr's screen rules. nerdr has them for amp, cline,
-devin, droid, grok, hermes, kilo, kimi, kiro, letta, maki, muse, pi,
+devin, droid, hermes, kilo, kimi, kiro, letta, maki, muse, pi,
 qodercli and qwen besides its own agents, and herdr does not need to be
 installed. Without matching rules, the status is unknown, but the tab
 still works. `detect` also works for built-in agents, such as one behind

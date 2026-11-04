@@ -173,6 +173,20 @@ ignored. A `Stop` while subagents are still running keeps the agent
 working. agy has no hook for permission prompts, and Esc ends a turn
 without `Stop`: both are read from the screen.
 
+Grok also takes hooks only from files, so nerdr keeps its own in
+`~/.grok/hooks/nerdr.json` with `install = "home"`, or the tab's
+`.grok/hooks/nerdr.json` with `install = "worktree"` (kept out of git when
+nerdr made it, and not touched when the repository tracks one). A file
+there without nerdr's hooks in it is left alone, so replace it with `{}`
+to turn them off. The hooks report through `"$NERDR_BIN" hook grok`: which
+conversation it is in (also after `/new` or `/resume`), prompts, tool
+results, permission prompts and the end of a turn. A hook reports only for
+a grok whose parent is the nerdr it names in `NERDR_GROK_HOOK`, and not
+from inside a subagent, so a grok started through a wrapper is read from
+the screen. Grok runs no hooks in a folder it has not been told to trust,
+and asks in every new folder once any hook exists, a worktree included.
+Until you answer, the tab shows as blocked and is read from the screen.
+
 Clear screen evidence can override hooks through herdr's `visible_*`
 rules. A visible dialog means the agent needs input. A question absent
 for two seconds is treated as answered or dismissed. After an interrupted

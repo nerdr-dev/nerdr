@@ -38,11 +38,12 @@ const (
 	Cursor      Kind = "cursor"
 	Gemini      Kind = "gemini"
 	Antigravity Kind = "agy"
+	Grok        Kind = "grok"
 )
 
 // All is every kind nerdr knows, in the order the picker offers them. Any
 // other agent can be added in the config as a kind of its own; see Spec.
-var All = []Kind{Claude, OpenCode, Copilot, Codex, Cursor, Gemini, Antigravity}
+var All = []Kind{Claude, OpenCode, Copilot, Codex, Cursor, Gemini, Antigravity, Grok}
 
 // Spec is how one kind is launched. Command is the program and any fixed
 // leading arguments (a wrapper such as `my-sandbox -- copilot`); Args are appended
@@ -246,7 +247,7 @@ func StartPrompt(k Kind, prompt string) []string {
 	switch k {
 	case Copilot:
 		return []string{"-i", prompt}
-	case Codex:
+	case Codex, Grok:
 		return []string{"--", prompt}
 	case OpenCode:
 		return []string{"--prompt", prompt}
@@ -275,6 +276,10 @@ func newSession(specs map[Kind]Spec, k Kind) Launch {
 		return Launch{Argv: append(argv, "--session-id", id), SessionID: id}
 	case Gemini:
 		// Gemini takes the id from us as well, so its log is found by it.
+		id := newUUID()
+		return Launch{Argv: append(argv, "--session-id", id), SessionID: id}
+	case Grok:
+		// Grok takes the id from us as well, so resuming need not guess.
 		id := newUUID()
 		return Launch{Argv: append(argv, "--session-id", id), SessionID: id}
 	case Copilot:
@@ -507,6 +512,20 @@ func resume(specs map[Kind]Spec, k Kind, sessionID, dir string, skip map[string]
 			return Launch{Argv: append(argv, "--conversation", sessionID), SessionID: sessionID}
 		}
 		return Launch{Argv: append(argv, "--continue")}
+	case Grok:
+		// Told of an id it never saved, as when the tab was closed before
+		// it was up, grok looks for it on its servers and gives up. Its
+		// --continue and bare --resume are not used: it also lists the
+		// conversations of claude, codex and cursor as its own.
+		if sessionID == "" || !grokHasSession(sessionID, dir) {
+			sessionID = checked(latestGrokSession(dir, skip))
+		}
+		if sessionID != "" {
+			return Launch{Argv: append(argv, "--resume", sessionID), SessionID: sessionID}
+		}
+		l := newSession(specs, k)
+		l.New = true
+		return l
 	}
 	return Launch{Argv: append(argv, s.ResumeArgs...)}
 }
@@ -634,6 +653,8 @@ func HasConversation(specs map[Kind]Spec, k Kind, dir string, skip map[string]bo
 		return id != ""
 	case Antigravity:
 		return latestAntigravityConversation(dir, skip) != ""
+	case Grok:
+		return latestGrokSession(dir, skip) != ""
 	}
 	return false
 }
@@ -881,6 +902,98 @@ func geminiSessionID(path string) string {
 	return head.SessionID
 }
 
+// grokHome is Grok Build's folder, where it keeps its conversations.
+func grokHome() string {
+	if dir := os.Getenv("GROK_HOME"); dir != "" {
+		return dir
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(home, ".grok")
+}
+
+// grokSession is one conversation grok keeps, in a folder of its own.
+type grokSession struct {
+	id, path string
+	at       time.Time
+}
+
+// grokSessions are the conversations had in dir, the newest first. Their
+// folders are grouped by working directory under a name grok makes from it,
+// which is another for a long path: each conversation's summary.json says
+// the directory itself.
+func grokSessions(dir string) []grokSession {
+	g := grokHome()
+	if g == "" {
+		return nil
+	}
+	files, _ := filepath.Glob(filepath.Join(g, "sessions", "*", "*", "summary.json"))
+	var out []grokSession
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		var s struct {
+			Info struct {
+				ID  string `json:"id"`
+				Cwd string `json:"cwd"`
+			} `json:"info"`
+			UpdatedAt time.Time `json:"updated_at"`
+		}
+		if json.Unmarshal(data, &s) != nil || s.Info.ID == "" || !samePath(s.Info.Cwd, dir) {
+			continue
+		}
+		out = append(out, grokSession{s.Info.ID, filepath.Dir(f), s.UpdatedAt})
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].at.After(out[j].at) })
+	return out
+}
+
+// grokHasSession reports whether grok has saved conversation id in dir, so
+// that it can be resumed; one where nothing was said yet can.
+func grokHasSession(id, dir string) bool {
+	return slices.ContainsFunc(grokSessions(dir), func(s grokSession) bool { return s.id == id })
+}
+
+// latestGrokSession is the conversation last written to in dir where the
+// user said something. grok saves one as soon as it is up.
+func latestGrokSession(dir string, skip map[string]bool) string {
+	for _, s := range grokSessions(dir) {
+		if !skip[s.id] && grokSaid(s.path) {
+			return s.id
+		}
+	}
+	return ""
+}
+
+// grokSaid reports whether the user said anything in the conversation in
+// folder: the log numbers what they said, and nothing else that it has
+// under the user's name, such as what grok tells the model about the
+// machine.
+func grokSaid(folder string) bool {
+	f, err := os.Open(filepath.Join(folder, "chat_history.jsonl"))
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	for {
+		line, err := r.ReadBytes('\n')
+		var entry struct {
+			PromptIndex *int `json:"prompt_index"`
+		}
+		if json.Unmarshal(line, &entry) == nil && entry.PromptIndex != nil {
+			return true
+		}
+		if err != nil {
+			return false
+		}
+	}
+}
+
 // latestAntigravityConversation is the conversation last started in dir,
 // from the history of prompts the Antigravity CLI keeps, each with its
 // workspace and conversation.
@@ -956,6 +1069,8 @@ func Claim(specs map[Kind]Spec, k Kind, dir string, skip map[string]bool, since 
 			id = latestOpenCodeSession(specFor(specs, k), dir, skip)
 		case Cursor:
 			id = latestCursorChat(dir, skip)
+		case Grok:
+			id = latestGrokSession(dir, skip)
 		}
 		if id != "" {
 			cands = []string{id}
@@ -1123,6 +1238,7 @@ func antigravitySaid(id string) []string {
 var modelFlags = map[Kind][]string{
 	Claude: {"--model"}, Codex: {"--model", "-m"}, Copilot: {"--model"},
 	Cursor: {"--model"}, Gemini: {"--model", "-m"}, Antigravity: {"--model"},
+	Grok: {"--model", "-m"},
 }
 
 // TakesModel reports whether nerdr can start k with a model of its
