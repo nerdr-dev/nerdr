@@ -213,3 +213,28 @@ func TestClaudeCommandReportsABackgroundCommand(t *testing.T) {
 		t.Fatalf("stop: %+v", r)
 	}
 }
+
+// TestClaudeReportsOnlyProcessesAsProcesses covers what the light of its own
+// goes by: commands and monitors alone. Anything else going is at work.
+func TestClaudeReportsOnlyProcessesAsProcesses(t *testing.T) {
+	shell := ClaudeTask{ID: "b1", Type: "shell"}
+	monitor := ClaudeTask{ID: "m1", Type: "monitor"}
+	for i, c := range []struct {
+		tasks []ClaudeTask
+		w     SubagentWait
+		want  any
+	}{
+		{[]ClaudeTask{shell}, SubagentWait{}, 1},
+		{[]ClaudeTask{shell, monitor}, SubagentWait{}, 2},
+		{[]ClaudeTask{shell, {ID: "a1", Type: "subagent"}}, SubagentWait{}, 1}, // the count has it stopped
+		{[]ClaudeTask{shell}, SubagentWait{Going: 1}, nil},
+		{[]ClaudeTask{shell, {ID: "w1", Type: "workflow"}}, SubagentWait{}, nil},
+		{nil, SubagentWait{Going: 1}, nil},
+		{nil, SubagentWait{}, nil},
+	} {
+		_, p := claudeReport(ClaudeEvent{Event: "Stop", BackgroundTasks: c.tasks}, "tab1", c.w)
+		if got := p["background_processes"]; got != c.want {
+			t.Errorf("%d: %v processes, want %v", i, got, c.want)
+		}
+	}
+}

@@ -408,6 +408,15 @@ func TestTabLightCountsItsReviewers(t *testing.T) {
 		{stIdle, stIdle, stWorking, stWorking},
 		{stWorking, stBlocked, stIdle, stBlocked},
 		{stBlocked, stWorking, stIdle, stBlocked},
+		{stDone, stBackground, stIdle, stBackground},
+		{stIdle, stIdle, stBackground, stBackground},
+		{stBackground, stIdle, stIdle, stBackground},
+		{stWorking, stBackground, stIdle, stWorking},
+		{stIdle, stWorking, stBackground, stWorking},
+		{stIdle, stBackground, stWorking, stWorking},
+		{stBackground, stBlocked, stIdle, stBlocked},
+		{stIdle, stBackground, stBlocked, stBlocked},
+		{stBlocked, stBackground, stIdle, stBlocked},
 	} {
 		tb.status, a.status, b.status = c.own, c.a, c.b
 		if got := tb.lit(); got != c.want {

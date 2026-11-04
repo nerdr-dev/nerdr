@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -151,6 +152,9 @@ func (m *Model) taskRows(t *tab, w, h int) []panelRow {
 		}
 		rows = append(rows, panelRow{label: "status:", text: wrapRows(s, textW, 1)[0]})
 	}
+	if s := backgroundLine(t); s != "" {
+		rows = append(rows, panelRow{label: "bg:", text: ansi.Truncate(s, textW, "…"), dim: true})
+	}
 	if n := strings.TrimSpace(t.Note); n != "" {
 		rows = append(rows, panelRow{label: "note:", text: wrapRows(n, textW, 1)[0]})
 	}
@@ -173,6 +177,20 @@ func (m *Model) taskRows(t *tab, w, h int) []panelRow {
 		return nil
 	}
 	return append(rows[:min(len(rows), room)], panelRow{rule: true})
+}
+
+// backgroundLine says what agent t left running in the background, or "" for
+// nothing. An agent at work again does not say: claude tells nerdr of what is
+// running only as a turn ends.
+func backgroundLine(t *tab) string {
+	if t.status != stBackground || t.hook.processes == 0 {
+		return ""
+	}
+	n := t.hook.processes
+	if n == 1 {
+		return "1 process running in the background"
+	}
+	return strconv.Itoa(n) + " processes running in the background"
 }
 
 // wrapRows wraps text, its own line breaks as spaces, into at most n rows

@@ -39,6 +39,8 @@ func stateName(s status) string {
 		return "idle"
 	case stWorking:
 		return "working"
+	case stBackground:
+		return "background"
 	case stBlocked:
 		return "blocked"
 	case stDone:

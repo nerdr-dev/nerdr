@@ -37,6 +37,8 @@ var (
 		stUnknown:  lipgloss.Color("244"),
 		stExited:   lipgloss.Color("239"),
 		stAsleep:   lipgloss.Color("67"),
+		// Cyan: nothing to do with yellow's "at work" or the blue of asleep.
+		stBackground: lipgloss.Color("45"),
 	}
 	// lightSymbols draws the lights as shapes of their own rather than
 	// circles told apart by colour: status_lights = "symbols".
@@ -58,6 +60,8 @@ func lightGlyph(s status) string {
 			return "×"
 		case stWorking:
 			return "◐"
+		case stBackground:
+			return "◎"
 		case stDone:
 			return "✓"
 		case stIdle:
@@ -105,6 +109,8 @@ func statusTip(s status) string {
 		return "Idle"
 	case stWorking:
 		return "Working"
+	case stBackground:
+		return "Turn over; a process it started in the background still runs"
 	case stBlocked:
 		return "Needs input: the agent is asking you something"
 	case stDone:

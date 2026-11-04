@@ -109,6 +109,27 @@ func waitsInBackground(ev ClaudeEvent, w SubagentWait) bool {
 	return false
 }
 
+// backgroundProcesses is how many commands and monitors a turn over waits
+// on, when that is all it waits on. A subagent, or a kind of task nerdr does
+// not know (a workflow, a teammate), is an agent at work: then it is 0, and
+// the light stays that of an agent working.
+func backgroundProcesses(ev ClaudeEvent, w SubagentWait) int {
+	if w.Going > 0 {
+		return 0
+	}
+	n := 0
+	for _, t := range ev.BackgroundTasks {
+		switch t.Type {
+		case "shell", "monitor":
+			n++
+		case "subagent": // left to w, as in waitsInBackground
+		default:
+			return 0
+		}
+	}
+	return n
+}
+
 // ClaudeState is the state a claude hook event means, or "" for one that
 // says nothing about it, with w its subagents.
 func ClaudeState(ev ClaudeEvent, w SubagentWait) string {
@@ -178,6 +199,9 @@ func claudeReport(ev ClaudeEvent, pane string, w SubagentWait) (string, map[stri
 		p["state"] = state
 		if ev.Event == "Stop" && ev.AgentID == "" && waitsInBackground(ev, w) {
 			p["background"] = true
+			if n := backgroundProcesses(ev, w); n > 0 {
+				p["background_processes"] = n
+			}
 		}
 		return ReportAgent, p
 	case ev.Event == "SessionStart" && p["agent_session_id"] != nil:

@@ -25,7 +25,7 @@ import (
 const agentsUsage = `usage: nerdr agents
 
 Lists the agents of this nerdr tab, as JSON: each one's number, kind,
-model, state (starting, working, blocked, idle, done, exited), how full
+model, state (starting, working, background, blocked, idle, done, exited), how full
 its context window is, and which is you.
 `
 
@@ -84,7 +84,7 @@ const tabsUsage = `usage: nerdr tabs
 Lists every nerdr tab, as JSON: its name and folder, yours for your own,
 its branches (commits ahead and behind main, lines and files changed,
 pushed, pr, pr_state, ci), its status line, its agents with their state
-(starting, working, blocked, idle, done, exited) and its terminals.
+(starting, working, background, blocked, idle, done, exited) and its terminals.
 
 ci is pass, fail, pending, or empty when there is none. When a branch has
 commits after its merged or closed pull request, commits_after_pr says how

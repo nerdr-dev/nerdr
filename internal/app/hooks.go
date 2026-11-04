@@ -184,6 +184,9 @@ type hookAuthority struct {
 	// started in the background, subagents or commands: its screen is
 	// still and at the prompt meanwhile, and says nothing of it.
 	background bool
+	// processes is how many commands and monitors that work is, when it
+	// is nothing else: the agent is not at work itself, stBackground.
+	processes int
 }
 
 // onHook takes a report from an integration.
@@ -201,6 +204,7 @@ func (m *Model) onHook(r hooks.Report) tea.Cmd {
 		t.hook.msg = r.Message
 		t.hook.at = time.Now()
 		t.hook.background = r.Background
+		t.hook.processes = r.Processes
 		switch r.State {
 		case "working":
 			t.hook.state = detect.Working

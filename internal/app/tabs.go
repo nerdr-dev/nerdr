@@ -40,7 +40,17 @@ const (
 	// looked at its tab, to carry its conversation on when it is visited:
 	// see sleep.go.
 	stAsleep
+	// stBackground is an agent whose turn is over, with commands or monitors
+	// it started still running: a test run it takes up again when it ends,
+	// or a dev server that never does. Only the light and the text differ:
+	// to everything else in nerdr it is an agent at work (see atWork), not
+	// done until the last of them is over.
+	stBackground
 )
+
+// atWork reports whether a turn is still going on, in the agent or in what
+// it left running.
+func (s status) atWork() bool { return s == stWorking || s == stBackground }
 
 // tab is one agent in one set of worktrees.
 type tab struct {
@@ -686,7 +696,11 @@ func (t *tab) classify(visible bool, now time.Time) {
 	case detect.Working:
 		t.worked, t.begun = true, true
 		t.awaitWork, t.queuePaused = false, false
-		t.setStatus(stWorking)
+		if hooked && t.hook.processes > 0 {
+			t.setStatus(stBackground)
+		} else {
+			t.setStatus(stWorking)
+		}
 	case detect.Blocked:
 		t.awaitWork = false // it has taken the message up: it asks about it
 		t.begun = true
@@ -727,7 +741,8 @@ func (t *tab) classify(visible bool, now time.Time) {
 //     background, as the screen does not show;
 //   - the turn reported over, but the screen at work: the agent has taken
 //     up work no prompt started, and so no hook reports — claude's, once
-//     a command it put in the background is done.
+//     a command it put in the background is done. The same with commands
+//     still running: the news of one that ended, with others going on.
 //
 // An agent with no idle rule (copilot, cursor, agy, …) has no screen that
 // clearly shows it idle: there a screen no rule knows, still for as long
@@ -749,6 +764,9 @@ func (t *tab) hookState(now time.Time) detect.State {
 	case state == detect.Working && s.State == detect.Idle && t.pane.Quiet() >= interruptQuiet && !t.hook.background:
 		t.hook.state = detect.Idle
 		return detect.Idle
+	case state == detect.Working && t.hook.processes > 0 && s.State == detect.Working && now.Sub(t.hook.at) >= staleIdle:
+		t.hook.processes, t.hook.background = 0, false
+		return detect.Working
 	case state == detect.Idle && s.State == detect.Working && now.Sub(t.hook.at) >= staleIdle:
 		t.hook.state = detect.Working
 		return detect.Working
@@ -766,14 +784,17 @@ func (t *tab) seen() {
 }
 
 // attention ranks how much a tab needs the user: blocked first, then
-// finished work, then work in progress.
+// finished work, then work in progress, then a turn over with a process
+// left running: not idle, or herdr is told so and tells of it as done.
 func (t *tab) attention() int {
 	switch t.lit() {
 	case stBlocked:
-		return 3
+		return 4
 	case stDone:
-		return 2
+		return 3
 	case stWorking:
+		return 2
+	case stBackground:
 		return 1
 	}
 	return 0
@@ -787,6 +808,8 @@ func (s status) label() string {
 		return "idle"
 	case stWorking:
 		return "working"
+	case stBackground:
+		return "background process"
 	case stBlocked:
 		return "needs input"
 	case stDone:

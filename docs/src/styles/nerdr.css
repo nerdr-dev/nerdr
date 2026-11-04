@@ -4,6 +4,7 @@
 	--sl-color-accent: #2fa86f;
 	--sl-color-accent-high: #b7f0d2;
 	--nerdr-working: #e3b341;
+	--nerdr-background: #39c5cf;
 	--nerdr-input: #f0524f;
 	--nerdr-done: #3fb950;
 }
@@ -12,11 +13,13 @@
 	--sl-color-accent: #137a4a;
 	--sl-color-accent-high: #0b3d26;
 	--nerdr-working: #9a6700;
+	--nerdr-background: #0e7c86;
 	--nerdr-input: #cf222e;
 	--nerdr-done: #1a7f37;
 }
 
 .light-working { color: var(--nerdr-working); }
+.light-background { color: var(--nerdr-background); }
 .light-input { color: var(--nerdr-input); }
 .light-done { color: var(--nerdr-done); }
 

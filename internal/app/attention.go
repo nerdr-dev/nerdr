@@ -247,6 +247,8 @@ func (d *summaryDialog) view(m *Model, w, h int) string {
 	switch s.t.status {
 	case stWorking:
 		add(light(stWorking) + " working now")
+	case stBackground:
+		add(light(stBackground) + " a process it started still runs in the background")
 	case stBlocked:
 		add(light(stBlocked) + " " + agent + " needs your input now")
 	}
