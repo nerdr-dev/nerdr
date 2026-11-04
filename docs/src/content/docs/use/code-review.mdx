@@ -59,9 +59,9 @@ the reviewer is doing.
 
 Findings appear beside the code in F1, marked `⚑`, and in F3. When a
 round ends, nerdr asks in the tab whether to send them to the agent now
-or keep them in F3; in another tab, it asks when you come back. Until you
-answer, the tab is marked `⚑` in the tab row and the sidebar, or `✓` if
-the reviewer approved. When you step through the tabs with `ctrl+q →`, a
+or keep them in F3; in another tab, it asks when you come back, also if
+nerdr has been restarted since. Until you answer, the tab is marked `⚑`
+in the tab row and the sidebar, or `✓` if the reviewer approved. When you step through the tabs with `ctrl+q →`, a
 small card shows the result as you pass the tab; press enter to stop
 there and answer. With `send_findings = "auto"` they are sent without
 asking.
@@ -90,7 +90,8 @@ minimised when room runs out. Stop it with the stop button, `×`,
 when the review ends.
 
 Reviews are kept in `reviews.jsonl` beside nerdr's notes. The latest
-findings remain after a restart, but reviewers are not restarted.
+findings remain after a restart, but reviewers are not restarted: a review
+still going on when nerdr quits ends there, without being told of.
 
 <Aside type="tip" title="Read-only reviewers">
 Reviewers are told not to change files, but run with the agent's normal

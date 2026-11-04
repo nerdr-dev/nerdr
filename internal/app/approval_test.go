@@ -38,14 +38,14 @@ func TestApprovalRemarksReachAuthor(t *testing.T) {
 					t.Fatalf("remarks not queued according to send_findings: %+v", msg)
 				}
 				if mode != config.FindingsAuto {
-					if tb.reviewDone == nil || tb.reviewDone.msg != msg {
+					if tb.ReviewDone == nil || tb.ReviewDone.Msg != msg {
 						t.Fatal("no offer to send remarks")
 					}
 					m.sendFindings(tb, msg)
 					if !tb.Messages[0].Auto {
 						t.Fatal("remarks could not be sent")
 					}
-				} else if tb.reviewDone != nil {
+				} else if tb.ReviewDone != nil {
 					t.Fatal("automatic remarks should not ask")
 				}
 			})
@@ -63,7 +63,7 @@ func TestApprovalWithoutRemarksDoesNotQueueMessage(t *testing.T) {
 	if tb.review != nil || len(tb.Messages) != before {
 		t.Fatal("approval without remarks should simply end the review")
 	}
-	if tb.reviewDone == nil || tb.reviewDone.msg.Text != "" {
+	if tb.ReviewDone == nil || tb.ReviewDone.Msg.Text != "" {
 		t.Fatal("with send_findings = ask, the approval is told in a dialog")
 	}
 	m.askReviewDone()
@@ -92,7 +92,7 @@ func TestAutoApprovalWithoutRemarksDoesNotAsk(t *testing.T) {
 	r := &tab{Tab: state.Tab{ID: "approval-reviewer", Agent: "claude"}, reviewOf: tb}
 	tb.review = &reviewRun{seats: []*seat{{r: r}}, round: 1, rounds: 2}
 	m.onReview(hooks.Report{Pane: r.hookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
-	if tb.review != nil || tb.reviewDone != nil {
+	if tb.review != nil || tb.ReviewDone != nil {
 		t.Fatal("with send_findings = auto, approval ends the review without a dialog")
 	}
 }
@@ -113,4 +113,115 @@ func TestApprovalRemarksJoinRequestedChanges(t *testing.T) {
 	if len(tb.Messages) != 1 || !strings.Contains(tb.Messages[0].Text, "optional remark") || !strings.Contains(tb.Messages[0].Text, "required fix") {
 		t.Fatalf("both reviews must reach the author: %+v", tb.Messages)
 	}
+}
+
+// TestReviewDoneOutlivesARestart: a review done in a tab not shown is still
+// told of when the user comes to the tab after nerdr has been restarted,
+// with its findings to send, and only once.
+func TestReviewDoneOutlivesARestart(t *testing.T) {
+	restart := func(t *testing.T, m *Model) *Model {
+		t.Helper()
+		sess, err := state.Load(m.root)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return New(m.cfg, m.root, nil, sess)
+	}
+	done := func(m *Model, tb *tab, res *codereview.Result) {
+		r := &tab{Tab: state.Tab{ID: "reviewer", Agent: "codex"}, reviewOf: tb}
+		tb.review = &reviewRun{seats: []*seat{{r: r}}, round: 1, rounds: 1, tree: "t1"}
+		m.onReview(hooks.Report{Pane: r.hookKey(), Review: res})
+	}
+	findings := &codereview.Result{Verdict: codereview.Changes, Summary: "needs a fix",
+		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "bug"}}}
+
+	t.Run("findings", func(t *testing.T) {
+		m := testModel(t)
+		tb := m.cur()
+		id := tb.ID
+		m.active = 1 // another tab shown
+		done(m, tb, findings)
+
+		m = restart(t, m)
+		m.active = 1
+		m.askReviewDone()
+		if m.dialog != nil {
+			t.Fatalf("asked in the wrong tab: %#v", m.dialog)
+		}
+		var back *tab
+		for _, x := range m.tabs {
+			if x.ID == id {
+				back = x
+			}
+		}
+		if !strings.Contains(ansi.Strip(m.tabBar()), "⚑") {
+			t.Fatalf("the tab's entry should be marked: %s", ansi.Strip(m.tabBar()))
+		}
+		m.active = m.tabIndex(back)
+		m.askReviewDone()
+		rd, ok := m.dialog.(*reviewDoneDialog)
+		if !ok || !rd.asks() {
+			t.Fatalf("coming to the tab should ask about the findings: %#v", m.dialog)
+		}
+		if v := ansi.Strip(rd.view(m, 120, 40)); !strings.Contains(v, "needs a fix") || !strings.Contains(v, "codex") {
+			t.Fatalf("the dialog should show what the reviewer said:\n%s", v)
+		}
+
+		// Told of once: another restart does not ask again.
+		m = restart(t, m)
+		m.active = m.tabIndex(m.tabs[0])
+		m.askReviewDone()
+		if m.dialog != nil {
+			t.Fatalf("asked again after another restart: %#v", m.dialog)
+		}
+		if len(m.tabs[0].Messages) != 1 || !m.tabs[0].findingsWait() {
+			t.Fatalf("the findings should still wait in F3: %+v", m.tabs[0].Messages)
+		}
+	})
+
+	t.Run("sent from F3 before the restart", func(t *testing.T) {
+		m := testModel(t)
+		tb := m.cur()
+		m.active = 1
+		done(m, tb, findings)
+		tb.Messages[0].Auto = true // space in F3
+		m.saveSession()
+
+		m = restart(t, m)
+		m.active = 0
+		m.askReviewDone()
+		if m.dialog != nil {
+			t.Fatalf("findings already on their way should not be asked about: %#v", m.dialog)
+		}
+	})
+
+	t.Run("approved", func(t *testing.T) {
+		m := testModel(t)
+		tb := m.cur()
+		m.active = 1
+		done(m, tb, &codereview.Result{Verdict: codereview.Approve, Summary: "fine"})
+
+		m = restart(t, m)
+		m.active = 0
+		m.askReviewDone()
+		if rd, ok := m.dialog.(*reviewDoneDialog); !ok || rd.asks() {
+			t.Fatalf("the approval should be told of: %#v", m.dialog)
+		}
+	})
+
+	t.Run("agent beside the tab's own", func(t *testing.T) {
+		m := testModel(t)
+		tb := m.cur()
+		a := &tab{Tab: state.Tab{ID: "beside", Name: tb.Name, Agent: "codex", Dir: tb.Dir, Num: 2}, partOf: tb}
+		tb.paneList = append(tb.panes(), &paneTab{kind: paneAgent, a: a})
+		m.active = 1
+		done(m, a, &codereview.Result{Verdict: codereview.Approve, Summary: "fine"})
+
+		m = restart(t, m)
+		m.active = 0
+		m.askReviewDone()
+		if rd, ok := m.dialog.(*reviewDoneDialog); !ok || rd.t.ID != "beside" {
+			t.Fatalf("the review of the agent beside should be told of: %#v", m.dialog)
+		}
+	})
 }

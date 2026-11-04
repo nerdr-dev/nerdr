@@ -95,6 +95,9 @@ type Tab struct {
 	// FindingsSent is set while the agent works on the findings of a
 	// review that has ended; the brief goes when its turn on them does.
 	FindingsSent bool `json:"findings_sent,omitempty"`
+	// ReviewDone is a review that has ended a round and is still to be told
+	// of, the next time the tab is the one shown.
+	ReviewDone *ReviewDone `json:"review_done,omitempty"`
 	// Agents are the agents working beside the tab's own in its worktree,
 	// each in a pane of its own, to be resumed with it.
 	Agents []Tab `json:"agents,omitempty"`
@@ -128,6 +131,26 @@ type Message struct {
 	// Gone is the number of the agent it was for, on one of a tab's
 	// Inactive: that agent's pane was closed before it was sent.
 	Gone int `json:"gone,omitempty"`
+}
+
+// ReviewDone is a review that has ended a round with its findings in the
+// tab's messages, for the user to send, or approved with none: Msg is then
+// empty.
+type ReviewDone struct {
+	Brief string  `json:"brief"`
+	Msg   Message `json:"msg,omitzero"`
+	// Approved is set when the review ended in approval; Says is what each
+	// reviewer said of the work, for the dialog.
+	Approved bool         `json:"approved,omitempty"`
+	Says     []ReviewSaid `json:"says,omitempty"`
+}
+
+// ReviewSaid is a reviewer's conclusion, as the dialog shows it.
+type ReviewSaid struct {
+	Agent    string `json:"agent"`
+	Brief    string `json:"brief"`
+	Summary  string `json:"summary,omitempty"`
+	Approved bool   `json:"approved,omitempty"`
 }
 
 // TakeQueue moves a queue kept the old way into Messages, as auto ones

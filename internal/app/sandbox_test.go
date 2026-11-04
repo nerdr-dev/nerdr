@@ -519,11 +519,11 @@ func TestSandboxedReviewAndHandoffWaitUntilUserApproves(t *testing.T) {
 		}},
 	}
 	m.endRound(tb)
-	if len(tb.Messages) != 1 || tb.Messages[0].Auto || !tb.Messages[0].Sandboxed || tb.reviewDone == nil {
-		t.Fatalf("sandboxed reviewer findings were not held for unsandboxed author: %+v reviewDone=%v", tb.Messages, tb.reviewDone)
+	if len(tb.Messages) != 1 || tb.Messages[0].Auto || !tb.Messages[0].Sandboxed || tb.ReviewDone == nil {
+		t.Fatalf("sandboxed reviewer findings were not held for unsandboxed author: %+v ReviewDone=%v", tb.Messages, tb.ReviewDone)
 	}
 	// User explicitly approves sending the findings.
-	m.sendFindings(tb, tb.reviewDone.msg)
+	m.sendFindings(tb, tb.ReviewDone.Msg)
 	if !tb.Messages[0].Auto || tb.Messages[0].Sandboxed {
 		t.Fatalf("sendFindings did not authorize message: %+v", tb.Messages[0])
 	}

@@ -189,9 +189,6 @@ type tab struct {
 	// reviewer, the tab whose work it reviews. See codereview.go.
 	review   *reviewRun
 	reviewOf *tab
-	// reviewDone is a review whose findings wait in F3, to be asked about
-	// the next time the tab is the one shown; see askReviewDone.
-	reviewDone *reviewDone
 	// reposBusy is set while the tab's repositories are being changed, in
 	// the background (see repos.go): nothing else may start in, close or
 	// change its worktrees until it is done.
