@@ -1,6 +1,7 @@
 package agents
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -78,6 +79,75 @@ func TestGeminiLaunches(t *testing.T) {
 	}
 	if l := Resume(nil, Gemini, "", "/w", nil); !slices.Equal(l.Argv, []string{"gemini", "--resume", "latest"}) || l.SessionID != "" {
 		t.Errorf("resume the latest: %+v", l)
+	}
+}
+
+// writeGrokSession saves a conversation as Grok Build 1.0.70 does; said is
+// what the user said in it, if anything.
+func writeGrokSession(t *testing.T, home, group, id, cwd, at string, said bool) {
+	t.Helper()
+	dir := filepath.Join(home, "sessions", group, id)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	summary := fmt.Sprintf(`{"info":{"id":%q,"cwd":%q},"updated_at":%q,"chat_format_version":1}`, id, cwd, at)
+	log := `{"type":"system","content":"You are Grok"}` + "\n" +
+		`{"type":"user","content":[{"type":"text","text":"<user_info>"}]}` + "\n"
+	if said {
+		log += `{"type":"user","content":[{"type":"text","text":"<user_query>\nhi\n</user_query>"}],"prompt_index":0}` + "\n"
+	}
+	for name, text := range map[string]string{"summary.json": summary, "chat_history.jsonl": log} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func TestGrokLaunches(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("GROK_HOME", home)
+	dir := t.TempDir()
+	const (
+		kept  = "11111111-1111-4111-8111-111111111111"
+		empty = "22222222-2222-4222-8222-222222222222"
+		other = "33333333-3333-4333-8333-333333333333"
+		gone  = "44444444-4444-4444-8444-444444444444"
+	)
+
+	l := NewSession(nil, Grok)
+	if len(l.Argv) != 3 || l.Argv[1] != "--session-id" || l.Argv[2] != l.SessionID || !ValidSessionID(l.SessionID) {
+		t.Errorf("new: %+v", l)
+	}
+	// Nothing to carry on: a new conversation, not its --continue, which
+	// could take up one of claude's.
+	if l := Resume(nil, Grok, "", dir, nil); !l.New || !slices.Contains(l.Argv, "--session-id") || HasConversation(nil, Grok, dir, nil) {
+		t.Errorf("nothing to resume: %+v", l)
+	}
+
+	writeGrokSession(t, home, "a", kept, dir, "2026-11-04T10:00:00Z", true)
+	writeGrokSession(t, home, "a", empty, dir, "2026-11-04T12:00:00Z", false)
+	writeGrokSession(t, home, "b", other, "/elsewhere", "2026-11-04T13:00:00Z", true)
+
+	// By id, also one with nothing said yet.
+	if l := Resume(nil, Grok, empty, dir, nil); !slices.Equal(l.Argv, []string{"grok", "--resume", empty}) {
+		t.Errorf("by id: %+v", l)
+	}
+	// With no id, or one it never saved: the latest with something said,
+	// of this folder only.
+	for _, id := range []string{"", gone, other} {
+		if l := Resume(nil, Grok, id, dir, nil); !slices.Equal(l.Argv, []string{"grok", "--resume", kept}) || l.SessionID != kept {
+			t.Errorf("id %q: %+v", id, l)
+		}
+	}
+	if !HasConversation(nil, Grok, dir, nil) || HasConversation(nil, Grok, dir, map[string]bool{kept: true}) {
+		t.Error("HasConversation does not see the one with something said, or skip")
+	}
+	// Another agent's in the tab is left to it.
+	if l := Resume(nil, Grok, "", dir, map[string]bool{kept: true}); !l.New {
+		t.Errorf("skipped: %+v", l)
+	}
+	if got := StartPrompt(Grok, "agent"); !slices.Equal(got, []string{"--", "agent"}) {
+		t.Errorf("a prompt like its subcommands: %q", got)
 	}
 }
 

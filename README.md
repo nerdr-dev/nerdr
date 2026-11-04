@@ -33,7 +33,7 @@ question.*
   comments and failing CI to the agent, and close the tab when it is
   merged. [GitHub →](https://nerdr.app/panel/github/)
 - **Your agents, as they are.** Claude Code, Codex, Copilot, opencode,
-  Cursor, Gemini and Antigravity, with their own settings, in a sandbox
+  Cursor, Gemini, Antigravity and Grok, with their own settings, in a sandbox
   if you like. [Agents →](https://nerdr.app/configure/agents/)
 - **Your own scripts as plugins.** Custom scripts (like rebuilding Docker or
   seeding a database) that agents can run with parameters, or that you can

@@ -186,6 +186,16 @@ func TestOpenCodeIsToldTheNotes(t *testing.T) {
 	}
 }
 
+// Grok takes the notes as rules on its command line.
+func TestGrokIsToldTheNotes(t *testing.T) {
+	m := testModel(t)
+	m.cfg.Install = config.InstallHome
+	tb := m.cur()
+	if args := m.grokNote(tb); !slices.Equal(args, []string{"--rules", worktreeNote}) {
+		t.Fatalf("args %q", args)
+	}
+}
+
 // Antigravity reads the notes from a folder of nerdr's added to its
 // workspace, one for each worktree, put right at each start.
 func TestAgyIsToldTheNotes(t *testing.T) {

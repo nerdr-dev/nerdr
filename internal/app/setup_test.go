@@ -416,10 +416,16 @@ func TestAgyHooksGoWithTheSkills(t *testing.T) {
 	t.Setenv("HOME", home)
 	m := tabsModel(t)
 	m.cfg.Install = config.InstallHome
-	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.Antigravity: {Command: []string{"sh"}}}
+	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.Antigravity: {Command: []string{"sh"}}, agents.Grok: {Command: []string{"sh"}}}
 	note := m.applySkills()
 	if b, err := os.ReadFile(hooks.AgyHooksHome(home)); err != nil || !strings.Contains(string(b), "hook agy") {
 		t.Fatalf("no hooks in the home folder: %v %s", err, b)
+	}
+	if b, err := os.ReadFile(hooks.GrokHooksHome(home)); err != nil || !strings.Contains(string(b), "hook grok") {
+		t.Fatalf("no grok hooks in the home folder: %v %s", err, b)
+	}
+	if !strings.Contains(note, "~/.grok/hooks/nerdr.json") {
+		t.Errorf("the toast should say where for grok: %q", note)
 	}
 	if !strings.Contains(note, "~/.gemini/config/hooks.json") {
 		t.Errorf("the toast should say where: %q", note)

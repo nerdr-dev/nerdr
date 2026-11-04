@@ -246,6 +246,9 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 	if slices.Contains(agents.Available(m.cfg.Agents), agents.Antigravity) {
 		where = append(where, tildePath(hooks.AgyHooksHome(home), home)+" (nerdr's hooks for agy, which say what it is doing, beside any others)")
 	}
+	if slices.Contains(agents.Available(m.cfg.Agents), agents.Grok) {
+		where = append(where, tildePath(hooks.GrokHooksHome(home), home)+" (nerdr's hooks for grok, which say what it is doing)")
+	}
 	if slices.Contains(agents.Available(m.cfg.Agents), agents.Codex) {
 		where = append(where, tildePath(codexConfig(home), home)+" (trust for nerdr's codex hooks, which say what it is doing)")
 	}
@@ -388,6 +391,15 @@ func (m *Model) applySkills() string {
 				wrote = append(wrote, tildePath(file, home))
 			}
 		}
+		if slices.Contains(agents.Available(m.cfg.Agents), agents.Grok) {
+			// And nerdr's own hooks file among grok's.
+			file := hooks.GrokHooksHome(home)
+			if ok, _, err := hooks.InstallGrokHooks(file); err != nil {
+				return "grok hooks: " + err.Error()
+			} else if ok {
+				wrote = append(wrote, tildePath(file, home))
+			}
+		}
 		if slices.Contains(agents.Available(m.cfg.Agents), agents.Codex) {
 			// codex runs nerdr's hooks, which tell nerdr what it is
 			// doing, once it trusts them, in its own config.
@@ -444,6 +456,17 @@ func (m *Model) installProjectSkills(t *tab) {
 				m.toast("agy hooks: " + err.Error())
 			} else if made {
 				excludes = append(excludes, hooks.AgyHooksExclude)
+			}
+		}
+	}
+	if t.Agent == agents.Grok {
+		// Unless the repository keeps a file by that name.
+		file := hooks.GrokHooksProject(t.Dir)
+		if !tracked(t.Dir, file) {
+			if _, made, err := hooks.InstallGrokHooksProject(t.Dir); err != nil {
+				m.toast("grok hooks: " + err.Error())
+			} else if made {
+				excludes = append(excludes, hooks.GrokHooksExclude)
 			}
 		}
 	}

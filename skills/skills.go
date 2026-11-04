@@ -230,6 +230,8 @@ type Target struct {
 //   - copilot reads ~/.copilot/skills;
 //   - codex reads ~/.agents/skills, and gemini that or ~/.gemini/skills;
 //   - agy (Antigravity) reads ~/.gemini/config/skills;
+//   - grok reads ~/.agents/skills as well as ~/.grok/skills, ~/.claude/skills
+//     and ~/.cursor/skills, and finds each skill once, by its name;
 //   - cursor reads ~/.claude/skills and ~/.agents/skills as well as its
 //     own ~/.cursor/skills, which is used only when neither of the others
 //     is. With both of them it finds each skill twice, which is left to it.
@@ -252,7 +254,7 @@ func Home(home string, kinds []agents.Kind) []Target {
 		out = append(out, Target{filepath.Join(home, ".copilot", "skills"), []agents.Kind{agents.Copilot}})
 	}
 	var shared []agents.Kind
-	for _, k := range []agents.Kind{agents.Codex, agents.Gemini} {
+	for _, k := range []agents.Kind{agents.Codex, agents.Gemini, agents.Grok} {
 		if has[k] {
 			shared = append(shared, k)
 		}
@@ -281,10 +283,11 @@ func Home(home string, kinds []agents.Kind) []Target {
 
 // ProjectDir is the skills folder in dir, the folder an agent of kind k
 // starts in: claude, opencode, copilot and cursor all read .claude/skills
-// there; codex, gemini and agy .agents/skills.
+// there; codex, gemini, agy and grok .agents/skills. grok reads a
+// project's only once its folder is trusted.
 func ProjectDir(dir string, k agents.Kind) string {
 	switch k {
-	case agents.Codex, agents.Gemini, agents.Antigravity:
+	case agents.Codex, agents.Gemini, agents.Antigravity, agents.Grok:
 		return filepath.Join(dir, ".agents", "skills")
 	}
 	return filepath.Join(dir, ".claude", "skills")
@@ -368,6 +371,8 @@ func Dirs(home, dir string, k agents.Kind) []string {
 		out = append(out, filepath.Join(home, ".agents", "skills"), filepath.Join(home, ".gemini", "skills"))
 	case agents.Antigravity:
 		out = append(out, filepath.Join(home, ".gemini", "config", "skills"))
+	case agents.Grok:
+		out = append(out, filepath.Join(home, ".agents", "skills"), filepath.Join(home, ".grok", "skills"), filepath.Join(home, ".claude", "skills"), filepath.Join(home, ".cursor", "skills"))
 	case agents.Cursor:
 		out = append(out, filepath.Join(home, ".claude", "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(home, ".cursor", "skills"))
 	}

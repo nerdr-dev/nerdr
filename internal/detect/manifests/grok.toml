@@ -1,7 +1,7 @@
 id = "grok"
-version = "2026.10.05.1"
+version = "2026.11.04.1"
 min_engine_version = 3
-updated_at = "2026-10-05T00:00:00Z"
+updated_at = "2026-11-04T00:00:00Z"
 aliases = ["grok-build"]
 
 # Evidence: Grok Build 0.2.101 source and 1.0.34 live pane reads.
@@ -28,6 +28,17 @@ aliases = ["grok-build"]
 # Idle footers end with "Ctrl+.:shortcuts" and never contain "Esc:cancel".
 # The startup splash draws its logo with braille characters, so working
 # rules must anchor on the [stop] chip, not on a bare spinner glyph.
+
+# Grok Build 1.0.70 asks whether to trust a folder before anything else, with
+# "grok" for a title. Without this rule it looks idle, and a message typed in
+# would answer the question.
+[[rules]]
+id = "trust_dialog_blocked"
+state = "blocked"
+priority = 1310
+region = "whole_recent"
+visible_blocker = true
+contains = ["do you trust the contents of this directory?", "yes, proceed", "no, quit"]
 
 [[rules]]
 id = "osc_title_blocked"

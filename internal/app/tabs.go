@@ -238,7 +238,7 @@ func (t *tab) pins() []review.Pin {
 // Inherited from a nerdr this one runs in, they are left out: an agent is
 // to report to this one, and one in a sandbox never to a socket it was
 // not given. The user's own, such as NERDR_DEBUG_LOG, are passed on.
-var tabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK",
+var tabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK", "NERDR_GROK_HOOK",
 	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_BIN", "NERDR_DATA_DIR"}
 
 // hostVars are left out of what an agent or terminal of a tab inherits,
@@ -512,6 +512,8 @@ func (m *Model) spawn(t *tab, l agents.Launch, resume bool) tea.Cmd {
 		l.Env = m.copilotNote(t, l.Env)
 	case agents.Antigravity:
 		l.Argv = append(l.Argv, m.agyNote(t)...)
+	case agents.Grok:
+		l.Argv = append(l.Argv, m.grokNote(t)...)
 	}
 	var first []state.Message
 	if !resume {

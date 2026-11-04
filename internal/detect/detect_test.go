@@ -222,6 +222,28 @@ func TestAgyStates(t *testing.T) {
 	}
 }
 
+// Captured from Grok Build 1.0.70 in a pseudo-terminal.
+func TestGrokStates(t *testing.T) {
+	m := For("grok")
+	trust := "Do you trust the contents of this directory?\n/some/folder\n\n" +
+		"Grok Build may run or modify contents in this directory,\nposing security risks.\n\n" +
+		"Yes, proceed\nNo, quit\n"
+	for _, c := range []struct {
+		name, title, screen string
+		want                State
+	}{
+		{"trust dialog", "grok", trust, Blocked},
+		{"working", "⠋ - Waiting for response… - grok", "⠴ Thinking…\n", Working},
+		{"permission", "⚠ Action Required - ⠋ - Remove zz.txt… - grok", "(●) Yes, proceed\n(○) No, reject (type to add feedback)\n", Blocked},
+		{"idle", "grok", "Worked for 7.9s\n\nShift+Tab:mode  Ctrl+x:shortcuts\n", Idle},
+		{"the question quoted", "grok", "Grok asks: do you trust the contents of this directory?\n\nCtrl+x:shortcuts\n", Idle},
+	} {
+		if r := m.Classify(Input{Title: c.title, Screen: c.screen}); r.State != c.want {
+			t.Errorf("%s: got %v (%s), want %v", c.name, r.State, r.Rule, c.want)
+		}
+	}
+}
+
 // The opencode screens below were captured from opencode v2.0.20 running
 // in nerdr's own terminal.
 

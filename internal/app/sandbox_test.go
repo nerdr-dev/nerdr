@@ -381,6 +381,20 @@ func TestOnlyAgyGetsItsHooksVariable(t *testing.T) {
 	}
 }
 
+func TestOnlyGrokGetsItsHooksVariable(t *testing.T) {
+	m, tb := sandboxModel(t)
+	want := "NERDR_GROK_HOOK=" + strconv.Itoa(os.Getpid())
+	if env := m.agentEnv(tb); slices.Contains(env, want) {
+		t.Fatalf("claude got it: %q", env)
+	}
+	fakeAgent(m, agents.Grok)
+	m.newAgent(tb, agents.Grok)
+	other := tb.extraAgents()[0]
+	if env := m.agentEnv(other); !slices.Contains(env, want) {
+		t.Fatalf("grok did not: %q", env)
+	}
+}
+
 // TestSandboxCutOffIsTold covers an agent in a sandbox that ends a turn
 // with nothing it ran come to nerdr: the user is told once what the
 // sandbox must allow; not once it has been heard, nor outside a sandbox.

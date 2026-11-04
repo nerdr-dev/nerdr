@@ -139,6 +139,10 @@ func main() {
 			if len(os.Args) > 2 && os.Args[2] == "agy" {
 				os.Exit(hooks.AgyCommand(os.Args[3:], os.Stdin, os.Stderr))
 			}
+			// nerdr's own hooks in grok; see hooks.InstallGrokHooks.
+			if len(os.Args) > 2 && os.Args[2] == "grok" {
+				os.Exit(hooks.GrokCommand(os.Args[3:], os.Stdin, os.Stderr))
+			}
 			if len(os.Args) > 2 && os.Args[2] == "statusline" {
 				os.Exit(hooks.StatusLineCommand(os.Stdin, os.Stdout, os.Stderr))
 			}

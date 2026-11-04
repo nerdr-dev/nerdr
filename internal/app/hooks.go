@@ -105,6 +105,10 @@ func (m *Model) agentEnv(t *tab) []string {
 		// hooks.AgyCommand.
 		env = append(env, "NERDR_AGY_HOOK="+strconv.Itoa(os.Getpid()))
 	}
+	if t.Agent == agents.Grok {
+		// The same for nerdr's hooks in grok. See hooks.GrokCommand.
+		env = append(env, "NERDR_GROK_HOOK="+strconv.Itoa(os.Getpid()))
+	}
 	return env
 }
 

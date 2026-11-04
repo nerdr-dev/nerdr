@@ -57,6 +57,17 @@ func (m *Model) claudeNote(t *tab) []string {
 	return []string{"--append-system-prompt", note}
 }
 
+// grokNote is the arguments that give t's grok agentNote, in its system
+// prompt. grok keeps the rules a conversation began with: on a resume these
+// change nothing.
+func (m *Model) grokNote(t *tab) []string {
+	note := m.agentNote(t)
+	if note == "" {
+		return nil
+	}
+	return []string{"--rules", note}
+}
+
 // codexNote is the arguments that give t's codex agentNote, as its
 // developer instructions, when it is started as argv with env. Set on the
 // command line they replace those it would have had, so those come first,

@@ -181,6 +181,8 @@ func TestHomeTargetsEachFolderOnce(t *testing.T) {
 		{[]agents.Kind{agents.Codex, agents.Gemini, agents.Cursor}, "/h/.agents/skills"},
 		{[]agents.Kind{agents.Cursor}, "/h/.cursor/skills"},
 		{[]agents.Kind{agents.Antigravity}, "/h/.gemini/config/skills"},
+		{[]agents.Kind{agents.Grok}, "/h/.agents/skills"},
+		{[]agents.Kind{agents.Codex, agents.Grok}, "/h/.agents/skills"},
 		{nil, ""},
 	} {
 		if got := strings.Join(dirs(c.kinds...), " "); got != c.want {
