@@ -292,7 +292,7 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	m.active = m.tabIndex(other)
 	tb.review = &reviewRun{seats: []*seat{{r: codex}}, round: 1, rounds: 1, tree: "t1"}
 	m.onReview(hooks.Report{Pane: codex.hookID, Review: remarks})
-	if tb.review != nil || tb.reviewDone == nil {
+	if tb.review != nil || tb.ReviewDone == nil {
 		t.Fatalf("approval with remarks should end the review and leave them to ask about")
 	}
 	m.active = m.tabIndex(tb)
@@ -334,11 +334,11 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	m.dialog = nil
 	second := &tab{Tab: state.Tab{ID: "second", Name: tb.Name, Agent: "codex"}}
 	tb.paneList = append(tb.panes(), &paneTab{kind: paneAgent, a: second})
-	second.reviewDone = &reviewDone{brief: "b", msg: state.Message{Text: "fix"}}
+	second.ReviewDone = &state.ReviewDone{Brief: "b", Msg: state.Message{Text: "fix"}}
 	second.Messages = []state.Message{{Text: "fix"}}
 	// The first agent's review, its findings gone from F3, does not hide
 	// the second's.
-	tb.reviewDone = &reviewDone{brief: "a", msg: state.Message{Text: "gone"}}
+	tb.ReviewDone = &state.ReviewDone{Brief: "a", Msg: state.Message{Text: "gone"}}
 	if a, _ := tb.reviewToTell(); a != second || !strings.Contains(ansi.Strip(m.tabBar()), "⚑") {
 		t.Fatalf("the second agent's review should be shown and marked, not %v", a)
 	}
@@ -346,7 +346,7 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	if rd, ok := m.dialog.(*reviewDoneDialog); !ok || !strings.Contains(ansi.Strip(rd.view(m, 120, 40)), "Send them to codex") {
 		t.Fatalf("the second agent's review should ask: %#v", m.dialog)
 	}
-	if tb.reviewDone != nil {
+	if tb.ReviewDone != nil {
 		t.Fatal("the first agent's review, its findings gone, should be dropped")
 	}
 }

@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/state"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -16,13 +18,13 @@ import (
 // it is only to be read.
 type reviewDoneDialog struct {
 	t *tab
-	d *reviewDone
+	d *state.ReviewDone
 	// top is the first line of the summaries shown; shown is how many the
 	// last drawing showed.
 	top, shown int
 }
 
-func (rd *reviewDoneDialog) asks() bool { return rd.d.msg.Text != "" }
+func (rd *reviewDoneDialog) asks() bool { return rd.d.Msg.Text != "" }
 
 func (rd *reviewDoneDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	page := max(rd.shown-1, 1)
@@ -42,7 +44,7 @@ func (rd *reviewDoneDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "1", "s", "enter":
 		m.dialog = nil
 		if rd.asks() {
-			m.sendFindings(rd.t, rd.d.msg)
+			m.sendFindings(rd.t, rd.d.Msg)
 		}
 	case "2", "esc", "q", "ctrl+c":
 		m.dialog = nil
@@ -54,13 +56,13 @@ func (rd *reviewDoneDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // one's name and verdict, and under it its summary.
 func (rd *reviewDoneDialog) sayLines(w int) []string {
 	var out []string
-	for i, s := range rd.d.says {
+	for i, s := range rd.d.Says {
 		if i > 0 {
 			out = append(out, "")
 		}
-		out = append(out, lipgloss.NewStyle().Bold(true).Render(s.agent)+" "+verdictStyle(s.approved).Render(s.brief))
-		if s.summary != "" {
-			out = append(out, wrapLines(s.summary, w, 1<<30)...)
+		out = append(out, lipgloss.NewStyle().Bold(true).Render(s.Agent)+" "+verdictStyle(s.Approved).Render(s.Brief))
+		if s.Summary != "" {
+			out = append(out, wrapLines(s.Summary, w, 1<<30)...)
 		}
 	}
 	return out
@@ -80,18 +82,18 @@ func verdictColour(approved bool) lipgloss.Color {
 }
 
 func (rd *reviewDoneDialog) view(m *Model, w, h int) string {
-	colour, mark := verdictColour(rd.d.approved), "⚑"
-	if rd.d.approved {
+	colour, mark := verdictColour(rd.d.Approved), "⚑"
+	if rd.d.Approved {
 		mark = "✓"
 	}
 	inner := min(max(w*2/3, 50), boxInner(w)-2, 100)
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(colour).
 		Render(" " + mark + " Review of " + rd.t.Name + " done ")
 	head := []string{title, ""}
-	if len(rd.d.says) != 1 {
+	if len(rd.d.Says) != 1 {
 		// All reviewers together; one says it on its own line below.
-		for _, l := range wrapLines(rd.d.brief, inner, 3) {
-			head = append(head, verdictStyle(rd.d.approved).Render(l))
+		for _, l := range wrapLines(rd.d.Brief, inner, 3) {
+			head = append(head, verdictStyle(rd.d.Approved).Render(l))
 		}
 		head = append(head, "")
 	}
@@ -123,9 +125,9 @@ func (rd *reviewDoneDialog) view(m *Model, w, h int) string {
 // drawn over its agent while the prefix is on: the walk shows it without
 // asking, and the enter that ends the walk opens the dialog that does.
 // It takes no keys and no clicks. w is the columns it may have.
-func (m *Model) reviewPeek(t *tab, d *reviewDone, w int) string {
-	colour, mark := verdictColour(d.approved), "⚑"
-	if d.approved {
+func (m *Model) reviewPeek(t *tab, d *state.ReviewDone, w int) string {
+	colour, mark := verdictColour(d.Approved), "⚑"
+	if d.Approved {
 		mark = "✓"
 	}
 	inner := min(w-4, 60)
@@ -135,11 +137,11 @@ func (m *Model) reviewPeek(t *tab, d *reviewDone, w int) string {
 	title := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("231")).Background(colour).
 		Render(" " + mark + " Review of " + t.Name + " done ")
 	body := []string{title}
-	for _, l := range wrapLines(d.brief, inner, 2) {
-		body = append(body, verdictStyle(d.approved).Render(l))
+	for _, l := range wrapLines(d.Brief, inner, 2) {
+		body = append(body, verdictStyle(d.Approved).Render(l))
 	}
 	open := "enter: open"
-	if d.msg.Text != "" {
+	if d.Msg.Text != "" {
 		open = "enter: open, to send the findings or keep them in " + m.screenKey(3)
 	}
 	body = append(body, dim(ansi.Truncate(open, inner, "…")))
@@ -157,10 +159,10 @@ func (m *Model) reviewMark(t *tab, bg lipgloss.Color) string {
 	}
 	mark, tip := "⚑", "Review done: its findings wait for you"
 	switch {
-	case d.approved && d.msg.Text != "":
+	case d.Approved && d.Msg.Text != "":
 		mark, tip = "✓", "Review done: approved, its remarks wait for you"
-	case d.approved:
+	case d.Approved:
 		mark, tip = "✓", "Review done: approved"
 	}
-	return m.tip(lipgloss.NewStyle().Background(bg).Foreground(verdictColour(d.approved)).Bold(true).Render(mark), tip)
+	return m.tip(lipgloss.NewStyle().Background(bg).Foreground(verdictColour(d.Approved)).Bold(true).Render(mark), tip)
 }

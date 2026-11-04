@@ -564,7 +564,7 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 		if !auto {
 			// Asked about the remarks; with none, told of the approval,
 			// which is otherwise only a line in the panel.
-			t.reviewDone = &reviewDone{brief: brief, msg: remarks, approved: true, says: says}
+			t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: remarks, Approved: true, Says: says}
 		}
 	case run.round >= run.rounds:
 		// The user decides what is left: the findings wait in F3. Where
@@ -573,7 +573,7 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 		t.Messages = append(t.Messages, fix)
 		brief += " after " + plural(run.round, "round")
 		m.endReview(t, brief, true)
-		t.reviewDone = &reviewDone{brief: brief, msg: fix, says: says}
+		t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: fix, Says: says}
 	default:
 		// The ones that approved have had their say.
 		for _, s := range run.seats {
@@ -596,39 +596,22 @@ func (m *Model) endRound(t *tab) tea.Cmd {
 			m.toast(t.Name + ": " + brief + " — sent to " + string(t.Agent))
 		} else {
 			m.toast(t.Name + ": " + brief + " — in " + m.screenKey(3) + " for you to send to " + string(t.Agent))
-			t.reviewDone = &reviewDone{brief: brief, msg: run.fixMsg, says: says}
+			t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: run.fixMsg, Says: says}
 		}
 		m.notifyReview(t, brief)
 	}
+	m.saveSession() // with what is still to be told of
 	m.resizePanes()
 	return m.pinReview() // the panel shows the findings
 }
 
-// reviewDone is a review that has ended a round with its findings in the
-// tab's messages, for the user to send, or approved with none: msg is
-// then empty.
-type reviewDone struct {
-	brief string
-	msg   state.Message
-	// approved is set when the review ended in approval; says is what
-	// each reviewer said of the work, for the dialog.
-	approved bool
-	says     []reviewSaid
-}
-
-// reviewSaid is a reviewer's conclusion, as the dialog shows it.
-type reviewSaid struct {
-	agent, brief, summary string
-	approved              bool
-}
-
 // reviewSays is what the reviewers at seats said this round.
-func reviewSays(seats []*seat) []reviewSaid {
-	var out []reviewSaid
+func reviewSays(seats []*seat) []state.ReviewSaid {
+	var out []state.ReviewSaid
 	for _, s := range seats {
 		if s.res != nil {
-			out = append(out, reviewSaid{agent: string(s.r.Agent), brief: s.res.Brief(), summary: s.res.Summary,
-				approved: s.res.Verdict == codereview.Approve})
+			out = append(out, state.ReviewSaid{Agent: string(s.r.Agent), Brief: s.res.Brief(), Summary: s.res.Summary,
+				Approved: s.res.Verdict == codereview.Approve})
 		}
 	}
 	return out
@@ -638,7 +621,8 @@ func reviewSays(seats []*seat) []reviewSaid {
 // in F3, whether to send them to its agent now or keep them there, or
 // tells of a review that approved with none. It is
 // asked once, the first time the tab is shown with nothing else open: at
-// once when the review ends in it, or when the user comes back to it. Not
+// once when the review ends in it, or when the user comes back to it, also
+// after nerdr has been restarted: it is saved with the tab until then. Not
 // while the prefix is on: walking the tabs with the arrows, the tab is
 // only passed, and the enter that ends the walk would answer it unseen.
 // The walk shows it meanwhile, without asking; see reviewPeek.
@@ -648,16 +632,22 @@ func (m *Model) askReviewDone() {
 	if cur == nil || m.prefix || m.dialog != nil || m.editor != nil {
 		return
 	}
+	dropped := false
 	for _, a := range append([]*tab{cur}, cur.extraAgents()...) {
-		if a.reviewDone != nil && a.reviewDone.stale(a) {
-			a.reviewDone = nil
+		if a.ReviewDone != nil && a.reviewDoneStale() {
+			a.ReviewDone = nil
+			dropped = true
 		}
 	}
 	t, d := cur.reviewToTell()
 	if t == nil {
+		if dropped {
+			m.saveSession()
+		}
 		return
 	}
-	t.reviewDone = nil
+	t.ReviewDone = nil
+	m.saveSession()
 	m.dialog = &reviewDoneDialog{t: t, d: d}
 }
 
@@ -666,22 +656,23 @@ func (m *Model) askReviewDone() {
 // walked and a mark on cur's entry — and the tab it is of; nil if there
 // is none.
 // One whose findings have gone does not hide another agent's that wait.
-func (cur *tab) reviewToTell() (*tab, *reviewDone) {
+func (cur *tab) reviewToTell() (*tab, *state.ReviewDone) {
 	for _, a := range append([]*tab{cur}, cur.extraAgents()...) {
-		if a.reviewDone != nil && !a.reviewDone.stale(a) {
-			return a, a.reviewDone
+		if a.ReviewDone != nil && !a.reviewDoneStale() {
+			return a, a.ReviewDone
 		}
 	}
 	return nil, nil
 }
 
-// stale reports whether the findings d asks about are no longer t's to
-// send: sent, dropped or set to go from F3 already.
-func (d *reviewDone) stale(t *tab) bool {
-	if d.msg.Text == "" {
+// reviewDoneStale reports whether the findings t.ReviewDone asks about are
+// no longer t's to send: sent, dropped or set to go from F3 already.
+func (t *tab) reviewDoneStale() bool {
+	msg := t.ReviewDone.Msg
+	if msg.Text == "" {
 		return false
 	}
-	i := t.findMessage(d.msg)
+	i := t.findMessage(msg)
 	return i < 0 || t.Messages[i].Auto
 }
 
