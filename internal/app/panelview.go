@@ -97,7 +97,7 @@ func (m *Model) panelBody(w, h int) []string {
 			body = m.messagesBody(a.owner(), iw, ih)
 		}
 	case m.review.Skills():
-		title, body = "nerdr's skills", m.skillsBody(m.cur(), iw, ih)
+		title, body = "skills", m.skillsBody(m.cur(), iw, ih)
 	case m.review.Plugins():
 		title, body = m.pluginsTitle(m.cur()), m.pluginsBody(m.cur(), iw, ih)
 	case m.review.AllPRs():

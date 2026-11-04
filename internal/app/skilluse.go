@@ -5,11 +5,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/skills"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -33,6 +35,9 @@ type skillUse struct {
 // convSkills is one conversation's use of the skills.
 type convSkills struct {
 	Agent string `json:"agent"`
+	// Tab is the tab it was last counted in. Older entries have none, and
+	// count only towards all tabs until their conversation is counted again.
+	Tab string `json:"tab,omitempty"`
 	// Now is what its log says now; Before what earlier conversations
 	// counted under the same key said.
 	Now    map[string]int       `json:"now,omitempty"`
@@ -79,9 +84,9 @@ func (u skillUse) save() error {
 	return denied.Err(os.Rename(tmp, p))
 }
 
-// set takes what conversation key's log, looking as stamp says, counts
-// now, at now, and reports whether anything changed.
-func (u skillUse) set(key, agent, stamp string, counts map[string]int, now time.Time) bool {
+// set takes what conversation key's log in tab, looking as stamp says,
+// counts now, at now, and reports whether anything changed.
+func (u skillUse) set(key, agent, tab, stamp string, counts map[string]int, now time.Time) bool {
 	c := u.Convs[key]
 	if c == nil {
 		if len(counts) == 0 && stamp == "" {
@@ -90,8 +95,8 @@ func (u skillUse) set(key, agent, stamp string, counts map[string]int, now time.
 		c = &convSkills{Agent: agent}
 		u.Convs[key] = c
 	}
-	changed := stamp != c.Log
-	c.Log = stamp
+	changed := stamp != c.Log || tab != c.Tab
+	c.Log, c.Tab = stamp, tab
 	for name, n := range c.Now {
 		if counts[name] < n {
 			// Fewer than before: another conversation under the same key.
@@ -121,10 +126,14 @@ func (u skillUse) set(key, agent, stamp string, counts map[string]int, now time.
 	return changed
 }
 
-// totals sums the skills' use over every conversation.
-func (u skillUse) totals() map[string]*skillTotal {
+// totals sums the skills' use over the conversations of tab, or over every
+// conversation with tab "".
+func (u skillUse) totals(tab string) map[string]*skillTotal {
 	out := map[string]*skillTotal{}
 	for _, c := range u.Convs {
+		if tab != "" && c.Tab != tab {
+			continue
+		}
 		add := func(m map[string]int) {
 			for name, n := range m {
 				s := out[name]
@@ -147,8 +156,8 @@ func (u skillUse) totals() map[string]*skillTotal {
 
 // skillUseMsg is what t's conversation log says of the skills used.
 type skillUseMsg struct {
-	key, agent, stamp string
-	counts            map[string]int
+	key, agent, tab, stamp string
+	counts                 map[string]int
 }
 
 // countSkills reads t's conversation log for the skills its agent used,
@@ -157,58 +166,68 @@ func (m *Model) countSkills(t *tab) tea.Cmd {
 	if t == nil || !agents.Known(t.Agent) {
 		return nil
 	}
-	specs, kind, id, dir := m.cfg.Agents, t.Agent, t.SessionID, t.Dir
+	specs, kind, id, dir, tabID := m.cfg.Agents, t.Agent, t.SessionID, t.Dir, t.owner().ID
 	key := string(kind) + ":" + id
 	if id == "" {
 		key = string(kind) + ":dir:" + dir
 	}
 	return func() tea.Msg {
-		// A log that has not changed since it was counted is not read.
+		// A log that has not changed since it was counted, in this tab, is
+		// not read.
 		stamp := agents.LogStamp(kind, id, dir)
-		if c := loadSkillUse().Convs[key]; stamp != "" && c != nil && c.Log == stamp {
+		if c := loadSkillUse().Convs[key]; stamp != "" && c != nil && c.Log == stamp && c.Tab == tabID {
 			return nil
 		}
 		counts, err := agents.SkillUses(specs, kind, id, dir)
 		if err != nil {
 			return nil
 		}
-		return skillUseMsg{key: key, agent: string(kind), stamp: stamp, counts: counts}
+		return skillUseMsg{key: key, agent: string(kind), tab: tabID, stamp: stamp, counts: counts}
 	}
 }
 
 // onSkillUse keeps what a log said, for F4.
 func (m *Model) onSkillUse(msg skillUseMsg) {
 	u := loadSkillUse() // another nerdr may have written since
-	if u.set(msg.key, msg.agent, msg.stamp, msg.counts, time.Now()) {
+	if u.set(msg.key, msg.agent, msg.tab, msg.stamp, msg.counts, time.Now()) {
 		if err := u.save(); err != nil {
 			debugf("skill use: %v", err)
 		}
 	}
-	m.skillUse = u.totals()
+	m.skillUse = u
 }
 
-// skillTotals is the skills' use, read from the file the first time.
-func (m *Model) skillTotals() map[string]*skillTotal {
-	if m.skillUse == nil {
-		m.skillUse = loadSkillUse().totals()
+// skillTotals is the skills' use in tab t, or in every tab when F4 asks for
+// all of them or no tab is open. The file is read the first time.
+func (m *Model) skillTotals(t *tab) map[string]*skillTotal {
+	if m.skillUse.Convs == nil {
+		m.skillUse = loadSkillUse()
 	}
-	return m.skillUse
+	if m.skills.allTabs || t == nil {
+		return m.skillUse.totals("")
+	}
+	return m.skillUse.totals(t.owner().ID)
 }
 
-// otherSkills are the skills used that are not nerdr's, most used first.
-func (m *Model) otherSkills(own map[string]bool) []string {
-	var out []string
-	for name := range m.skillTotals() {
-		if !own[name] {
-			out = append(out, name)
+// otherSkills are the skills on F4's other list, by name: those t's agent
+// can find (File is set), and those used in the tab or tabs shown, as the
+// agents' own built-in and plugin skills are in no folder nerdr looks in.
+func (m *Model) otherSkills(t *tab, tot map[string]*skillTotal) []skills.Local {
+	m.skillStates(t)
+	seen := map[string]bool{}
+	for _, s := range skills.All() {
+		seen[s.Name] = true
+	}
+	var out []skills.Local
+	for _, l := range m.skills.others {
+		seen[l.Name] = true
+		out = append(out, l)
+	}
+	for name := range tot {
+		if !seen[name] {
+			out = append(out, skills.Local{Skill: skills.Skill{Name: skills.Printable(name)}})
 		}
 	}
-	tot := m.skillTotals()
-	sort.Slice(out, func(i, j int) bool {
-		if tot[out[i]].n != tot[out[j]].n {
-			return tot[out[i]].n > tot[out[j]].n
-		}
-		return out[i] < out[j]
-	})
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out
 }

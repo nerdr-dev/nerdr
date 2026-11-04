@@ -295,3 +295,29 @@ func TestCodexReadsAgentsSkills(t *testing.T) {
 		}
 	}
 }
+
+// Others lists what is not nerdr's, by name, the first folder's when two
+// have it, and cleaned for the screen.
+func TestOthers(t *testing.T) {
+	a, b := t.TempDir(), t.TempDir()
+	write := func(dir, name, text string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(dir, name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, name, "SKILL.md"), []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(a, "Zebra", "---\ndescription: From a\x1b[31m\n---\nBody")
+	write(b, "Zebra", "---\ndescription: From b\n---\nBody")
+	write(b, "alpha", "---\ndescription: >-\n  Two\n  lines\n---\nBody")
+	write(b, All()[0].Name, "not listed")
+	got := Others([]string{a, b})
+	if len(got) != 2 || got[0].Name != "alpha" || got[1].Name != "Zebra" {
+		t.Fatalf("%+v", got)
+	}
+	if got[0].Description() != "Two lines" || got[1].Description() != "From a" {
+		t.Fatalf("%q, %q", got[0].Description(), got[1].Description())
+	}
+}

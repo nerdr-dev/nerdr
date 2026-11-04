@@ -99,7 +99,7 @@ func keyGroups() map[string]commandGroup {
 			{key: "1", label: "Code changes (F1)", run: "e 1", desc: "the tab's changes against main, file by file"},
 			{key: "2", label: "GitHub (F2)", run: "e 2", desc: "the branch's pull request; again for all yours, then your issues"},
 			{key: "3", label: "Tasks (F3)", run: "e 3", desc: "the tasks waiting for the agent: yours, and the review's findings"},
-			{key: "4", label: "Skills (F4)", run: "e 4", desc: "nerdr's skills for the agents: which the agent has, and switch them on or off"},
+			{key: "4", label: "Skills (F4)", run: "e 4", desc: "the agents' skills, nerdr's and others: which the agent has, how much they are used, and switch nerdr's on or off"},
 			{key: "5", label: "Plugins (F5)", run: "e 5", desc: "the plugins there are for the tab: what each does, and the screen of one that has its own"},
 		}},
 		"t": {"Panes", []commandEntry{
