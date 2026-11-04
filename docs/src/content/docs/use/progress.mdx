@@ -15,13 +15,14 @@ Every tab, and every agent in a tab, has a light:
 | Light | Meaning |
 |---|---|
 | <span class="light-working">●</span> yellow | Working |
+| <span class="light-background">●</span> cyan | Turn over, but a process the agent started in the background still runs |
 | <span class="light-input">●</span> red | Needs your input: a question or a permission |
 | <span class="light-done">●</span> green | Done, and not yet seen |
 | ○ | Seen, or idle |
 | `z` blue | Asleep |
 
 Set `status_lights = "symbols"` to tell them apart by shape as well:
-◐ working, × needs input, ✓ done. A done tab counts as seen once it
+◐ working, ◎ background process, × needs input, ✓ done. A done tab counts as seen once it
 has been the active tab for a second while nerdr has focus, so passing
 it on the way to another tab leaves it green.
 

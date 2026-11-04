@@ -257,3 +257,91 @@ func TestWaitingOnBackgroundSubagentsStaysWorking(t *testing.T) {
 		t.Errorf("interrupted: %v, want idle", got)
 	}
 }
+
+// A turn over with only a process left running gets a light of its own; the
+// agent is not done, and takes up its news on the screen with no hook.
+func TestBackgroundProcessHasItsOwnLight(t *testing.T) {
+	tb := claudeTab(t, claudePromptScreen, "auto mode")
+	reported(tb, detect.Working, 3*time.Second)
+	tb.hook.background, tb.hook.processes = true, 2
+	tb.classify(true, time.Now())
+	if tb.status != stBackground {
+		t.Fatalf("waiting on a process: %v", tb.status.label())
+	}
+	if got := backgroundLine(tb); got != "2 processes running in the background" {
+		t.Fatalf("line: %q", got)
+	}
+	tb.hook.processes = 1
+	if got := backgroundLine(tb); got != "1 process running in the background" {
+		t.Fatalf("line: %q", got)
+	}
+
+	// Waiting on a subagent is the agent at work: yellow, and no line.
+	tb.hook.processes = 0
+	tb.classify(true, time.Now())
+	if tb.status != stWorking || backgroundLine(tb) != "" {
+		t.Fatalf("waiting on a subagent: %v, line %q", tb.status.label(), backgroundLine(tb))
+	}
+}
+
+func TestBackgroundProcessGivesWayToWork(t *testing.T) {
+	tb := claudeTab(t, claudeWorkingScreen, "Running")
+	reported(tb, detect.Working, 0)
+	tb.hook.background, tb.hook.processes = true, 1
+	tb.classify(true, time.Now())
+	if tb.status != stBackground {
+		t.Fatalf("just reported: %v (the title may not be redrawn yet)", tb.status.label())
+	}
+	reported(tb, detect.Working, 3*time.Second)
+	tb.hook.background, tb.hook.processes = true, 1
+	tb.classify(true, time.Now())
+	if tb.status != stWorking || tb.hook.processes != 0 {
+		t.Fatalf("woken by its news: %v, %d processes", tb.status.label(), tb.hook.processes)
+	}
+}
+
+// A dialog on the screen is red, with a process running or not.
+func TestBackgroundProcessGivesWayToAQuestion(t *testing.T) {
+	tb := claudeTab(t, claudePermissionScreen, "proceed")
+	reported(tb, detect.Working, 0)
+	tb.hook.background, tb.hook.processes = true, 1
+	tb.classify(true, time.Now())
+	if tb.status != stBlocked {
+		t.Fatalf("%v", tb.status.label())
+	}
+}
+
+// Red and yellow win over the new light, and it over a green seen.
+func TestBackgroundProcessRanksBelowWork(t *testing.T) {
+	r := statusRank(stBackground)
+	for _, s := range []status{stBlocked, stDone, stWorking} {
+		if statusRank(s) <= r {
+			t.Errorf("%v does not win over a background process", s.label())
+		}
+	}
+	if statusRank(stIdle) >= r {
+		t.Error("idle wins over a background process")
+	}
+	if !stBackground.atWork() || !stWorking.atWork() || stIdle.atWork() {
+		t.Error("atWork")
+	}
+}
+
+// A tab with only a process left running is not idle to herdr: were the
+// active idle tab picked instead, herdr would tell of the turn as done. Work
+// in another tab still wins over it.
+func TestNeediestTakesABackgroundProcess(t *testing.T) {
+	idle := &tab{status: stIdle}
+	background := &tab{status: stBackground}
+	m := &Model{tabs: []*tab{idle, background}}
+	if i, got := m.neediest(); got != background || i != 1 {
+		t.Fatalf("picked tab %d", i)
+	}
+	working := &tab{status: stWorking}
+	working.changed = time.Now().Add(-time.Hour)
+	background.changed = time.Now()
+	m.tabs = append(m.tabs, working)
+	if i, got := m.neediest(); got != working || i != 2 {
+		t.Fatalf("with one working: picked tab %d", i)
+	}
+}

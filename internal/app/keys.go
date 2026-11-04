@@ -493,17 +493,14 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		if t == nil {
 			return nil
 		}
-		if t.status != stWorking {
+		if !t.status.atWork() {
 			return m.restart(t)
 		}
 		// Restarting cuts the turn short: what the agent has not written to
 		// its log yet is lost.
 		m.dialog = &confirm{
 			title: "Restart " + m.agentName(t) + "?",
-			lines: []string{
-				string(t.Agent) + " is working. Restarting stops it mid-turn;",
-				"the conversation continues, but the turn is cut short.",
-			},
+			lines: restartLines(t),
 			yes: func(m *Model) tea.Cmd {
 				if !m.live(t) {
 					return nil
@@ -751,4 +748,18 @@ func keyBytes(msg tea.KeyMsg) []byte {
 		return append(out, byte(msg.Type))
 	}
 	return nil
+}
+
+// restartLines is what a restart of t, at work, costs.
+func restartLines(t *tab) []string {
+	if t.status == stBackground {
+		return []string{
+			string(t.Agent) + " has a process running in the background.",
+			"The conversation continues, but restarting stops the process.",
+		}
+	}
+	return []string{
+		string(t.Agent) + " is working. Restarting stops it mid-turn;",
+		"the conversation continues, but the turn is cut short.",
+	}
 }

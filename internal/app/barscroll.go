@@ -36,10 +36,12 @@ type barRow struct {
 func statusRank(s status) int {
 	switch s {
 	case stBlocked:
-		return 6
+		return 7
 	case stDone:
-		return 5
+		return 6
 	case stWorking:
+		return 5
+	case stBackground:
 		return 4
 	case stIdle:
 		return 3

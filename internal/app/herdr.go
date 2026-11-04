@@ -14,7 +14,8 @@ import (
 )
 
 // neediest is the tab that most wants the user — blocked first, then
-// finished, then working, the most recent change winning a tie — or nil
+// finished, then working, then waiting on a background process, the most
+// recent change winning a tie — or nil
 // when every agent is idle.
 func (m *Model) neediest() (int, *tab) {
 	best, bi := (*tab)(nil), -1
@@ -47,7 +48,7 @@ func (m *Model) reportHerdr() {
 	}
 	st := "idle"
 	switch t.lit() {
-	case stWorking:
+	case stWorking, stBackground: // idle would have herdr tell of it as done
 		st = "working"
 	case stBlocked:
 		st = "blocked"
@@ -109,7 +110,7 @@ func (m *Model) onHerdrFocus() tea.Cmd {
 		return nil
 	}
 	i, t := m.neediest()
-	if t == nil || i == m.active || t.attention() < 2 {
+	if t == nil || i == m.active || t.attention() < 3 {
 		return nil
 	}
 	m.setFocus(focusAgent)

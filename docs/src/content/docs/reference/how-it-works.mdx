@@ -105,12 +105,14 @@ write summaries.
 Commands and monitors run in the background work the same way, read
 from the `background_tasks` list on Claude's `Stop`: while a Bash
 command started with `run_in_background`, or a monitor, still runs, the
-agent stays marked as working, since Claude resumes it when the command
-ends or the monitor reports. The first `Stop` that lists none marks it
-done. A command that never ends on its own, such as a dev server, keeps
-the agent marked as working for as long as it runs; run those in a
-nerdr terminal instead. Scheduled wakeups (`/loop`, `ScheduleWakeup`)
-don't count.
+agent is not done, since Claude resumes it when the command ends or the
+monitor reports. If nothing else is going, its light turns cyan and the
+line above the agent says how many are running; nerdr treats it as at
+work in every other way. The first `Stop` that lists none marks it done.
+A command that never ends on its own, such as a dev server, keeps the
+agent from being done for as long as it runs; run those in a nerdr
+terminal instead. Scheduled wakeups (`/loop`, `ScheduleWakeup`) don't
+count.
 
 opencode reports through nerdr's plugin, `nerdr.js`, which nerdr installs
 along with the skills: in `~/.config/opencode/plugins/` with

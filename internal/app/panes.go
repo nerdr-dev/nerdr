@@ -616,12 +616,12 @@ func (m *Model) askClosePane() tea.Cmd {
 		return nil
 	}
 	p := t.focused()
-	if p.kind == paneShell || p.a == nil || p.a.status != stWorking || p == t.ownPane() {
+	if p.kind == paneShell || p.a == nil || !p.a.status.atWork() || p == t.ownPane() {
 		return m.closePane(t, p)
 	}
 	m.dialog = &confirm{
 		title: "Stop " + m.paneName(t, p) + "?",
-		lines: []string{string(p.a.Agent) + " is working. Closing its pane stops it mid-turn."},
+		lines: []string{closeLine(p.a)},
 		yes: func(m *Model) tea.Cmd {
 			if m.tabIndex(t) < 0 || !slices.Contains(t.panes(), p) {
 				return nil
@@ -1401,4 +1401,12 @@ func (m *Model) onClaim(msg claimMsg) {
 		t.sessionUnsure = false
 		m.setSession(t, msg.id)
 	}
+}
+
+// closeLine is what closing the pane of a, at work, costs.
+func closeLine(a *tab) string {
+	if a.status == stBackground {
+		return string(a.Agent) + " has a process running in the background. Closing its pane stops it."
+	}
+	return string(a.Agent) + " is working. Closing its pane stops it mid-turn."
 }

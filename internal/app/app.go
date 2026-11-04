@@ -979,11 +979,11 @@ func (m *Model) detectAgent(t *tab, shown bool, now time.Time) tea.Cmd {
 	if t.status == stWorking {
 		t.LastActive = now
 		t.owner().LastActive = now
-		if was != stWorking {
-			cmds = append(cmds, m.lookUpGoal(t), m.promptLater(t)) // it has been asked something
-			if t.typed != nil {
-				t.typed.worked()
-			}
+	}
+	if t.status.atWork() && !was.atWork() {
+		cmds = append(cmds, m.lookUpGoal(t), m.promptLater(t)) // it has been asked something
+		if t.typed != nil {
+			t.typed.worked()
 		}
 	}
 	if t.typed != nil {
@@ -996,7 +996,7 @@ func (m *Model) detectAgent(t *tab, shown bool, now time.Time) tea.Cmd {
 	if t.status != was {
 		debugf("agent %s: %s -> %s (visible %v, blurred %v; %s)", m.agentName(t), was.label(), t.status.label(), visible, m.blurred, t.why)
 		m.notifyChange(t, visible, now)
-		if was == stWorking {
+		if was.atWork() {
 			// Whatever the agent did is worth a look in the tab bar.
 			t.owner().lookAgain(false)
 		}
@@ -1004,7 +1004,7 @@ func (m *Model) detectAgent(t *tab, shown bool, now time.Time) tea.Cmd {
 	if t.status == stExited && was != stExited {
 		cmds = append(cmds, m.onExit(t))
 	}
-	if was == stWorking && (t.status == stIdle || t.status == stDone) {
+	if was.atWork() && (t.status == stIdle || t.status == stDone) {
 		m.tellCutOff(t)
 		// The log has the turn's prompt by now, whenever it was written.
 		m.findingsDone(t)

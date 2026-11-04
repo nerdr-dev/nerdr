@@ -51,12 +51,12 @@ func (m *Model) keepAwake(now time.Time) {
 // busy is whether an agent works, in a tab or reviewing one.
 func (m *Model) busy() bool {
 	for _, t := range m.tabs {
-		if t.status == stWorking {
+		if t.status.atWork() {
 			return true
 		}
 		if t.review != nil {
 			for _, s := range t.review.seats {
-				if s.r.status == stWorking {
+				if s.r.status.atWork() {
 					return true
 				}
 			}

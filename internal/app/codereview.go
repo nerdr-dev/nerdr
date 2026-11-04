@@ -109,7 +109,8 @@ func (t *tab) lit() status {
 
 // agentLit is agent t's light, unless a reviewer of its work wants more
 // of a look. A reviewer asking something is red over anything, one
-// working yellow over a finished agent's green: the review is not over.
+// working yellow over a finished agent's green, one with only a process
+// left running cyan over it: the review is not over.
 func (t *tab) agentLit() status {
 	s := t.status
 	if t.review == nil || s == stBlocked {
@@ -121,6 +122,10 @@ func (t *tab) agentLit() status {
 			return stBlocked
 		case stWorking:
 			s = stWorking
+		case stBackground:
+			if s != stWorking {
+				s = stBackground
+			}
 		}
 	}
 	return s
@@ -338,7 +343,7 @@ func (m *Model) onTree(msg treeMsg) tea.Cmd {
 			}
 			return nil
 		}
-		if msg.why == treeAuto && (t.status == stWorking || t.nextAuto() >= 0) {
+		if msg.why == treeAuto && (t.status.atWork() || t.nextAuto() >= 0) {
 			// The agent was given more to do while the worktree was
 			// looked at: the end of that turn is the time.
 			return nil
@@ -801,7 +806,7 @@ func (m *Model) detectSeat(t *tab, s *seat, now time.Time) tea.Cmd {
 		}
 		return m.dropReviewer(t, r, string(r.Agent)+" stopped before it sent a review"+why, true)
 	}
-	if was == stWorking && (r.status == stIdle || r.status == stDone) && t.review.phase == reviewing && s.res == nil && r.idleUnasked() {
+	if was.atWork() && (r.status == stIdle || r.status == stDone) && t.review.phase == reviewing && s.res == nil && r.idleUnasked() {
 		// It ended its turn with no review sent: asking the user
 		// something in words, it lost the thread, or what it ran to send
 		// it never reached nerdr.

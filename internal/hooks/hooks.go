@@ -67,6 +67,9 @@ type Report struct {
 	// work it started in the background: subagents (see subagents.go), or
 	// for claude commands and monitors (see waitsInBackground).
 	Background bool
+	// Processes is how many commands and monitors Background waits on,
+	// when nothing else is going: see backgroundProcesses.
+	Processes int
 	// Spinoff is the parts an agent hands to new tabs; see Spinoff.
 	Spinoff []spinoff.Part
 	// Handoff is what an agent wrote for the one taking over its tab; see
@@ -258,6 +261,7 @@ type params struct {
 	ResumeArgv       []string           `json:"resume_argv"`
 	Seq              *int64             `json:"seq"`
 	Background       bool               `json:"background"`
+	Processes        int                `json:"background_processes"`
 	Parts            []spinoff.Part     `json:"parts"`
 	Summary          string             `json:"summary"`
 	Review           *codereview.Result `json:"review"`
@@ -739,6 +743,9 @@ func handleReport(method string) handler {
 			SessionID: p.AgentSessionID, SessionPath: p.AgentSessionPath,
 			SessionSource: p.SessionSource, ResumeArgv: p.ResumeArgv,
 			Background: p.Background && p.State == "working",
+		}
+		if r.Background && p.Processes > 0 {
+			r.Processes = p.Processes
 		}
 		if p.Seq != nil {
 			r.Seq = *p.Seq
