@@ -4,8 +4,9 @@
 
 Please report security problems privately with
 [Report a vulnerability](https://github.com/nerdr-dev/nerdr/security/advisories/new)
-on the repository's Security tab. Do not open an issue, a pull request or a
-discussion for them, since those are public.
+on the repository's Security tab, or by email to
+[contact@nerdr.app](mailto:contact@nerdr.app). Do not open an issue, a pull
+request or a discussion for them, since those are public.
 
 A good report has:
 

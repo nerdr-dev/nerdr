@@ -103,6 +103,12 @@ make e2e      # the real binary in a pseudo-terminal with a fake agent
 The docs site is in [`docs/`](docs); see
 [Development](https://nerdr.app/reference/development/).
 
+## Contact
+
+Email [contact@nerdr.app](mailto:contact@nerdr.app), or
+[open an issue](https://github.com/nerdr-dev/nerdr/issues) for bugs and
+feature requests. For security problems, see [SECURITY.md](SECURITY.md).
+
 ## License
 
 [Apache License 2.0](LICENSE)
