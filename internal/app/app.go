@@ -102,7 +102,7 @@ type Model struct {
 	panelAuto, panelKept bool
 	// skillUse is how much the agents have used each skill, for F4; see
 	// skilluse.go.
-	skillUse map[string]*skillTotal
+	skillUse skillUse
 	// sideZoom is set while the panel is full width because F1's files
 	// were put beside the diff in a panel too narrow for that; putting
 	// them back above makes it narrow again.

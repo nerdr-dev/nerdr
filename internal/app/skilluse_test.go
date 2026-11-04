@@ -16,14 +16,14 @@ func TestSkillUseCounts(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	u := loadSkillUse()
 	at := time.Now()
-	u.set("claude:a", "claude", "", map[string]int{"nerdr-request-review": 2}, at)
-	u.set("claude:a", "claude", "", map[string]int{"nerdr-request-review": 2}, at.Add(time.Hour))
-	u.set("codex:dir:/w", "codex", "", map[string]int{"nerdr-request-review": 3, "nerdr-send": 1}, at)
-	u.set("codex:dir:/w", "codex", "", map[string]int{"nerdr-request-review": 1}, at.Add(time.Minute)) // a new conversation
+	u.set("claude:a", "claude", "t1", "", map[string]int{"nerdr-request-review": 2}, at)
+	u.set("claude:a", "claude", "t1", "", map[string]int{"nerdr-request-review": 2}, at.Add(time.Hour))
+	u.set("codex:dir:/w", "codex", "t2", "", map[string]int{"nerdr-request-review": 3, "nerdr-send": 1}, at)
+	u.set("codex:dir:/w", "codex", "t2", "", map[string]int{"nerdr-request-review": 1}, at.Add(time.Minute)) // a new conversation
 	if err := u.save(); err != nil {
 		t.Fatal(err)
 	}
-	tot := loadSkillUse().totals()
+	tot := loadSkillUse().totals("")
 	try := tot["nerdr-request-review"]
 	if try == nil || try.n != 6 || try.byAgent["claude"] != 2 || try.byAgent["codex"] != 4 {
 		t.Fatalf("nerdr-request-review: %+v", try)
@@ -33,6 +33,10 @@ func TestSkillUseCounts(t *testing.T) {
 	}
 	if tot["nerdr-send"] == nil || tot["nerdr-send"].n != 1 {
 		t.Errorf("nerdr-send from the conversation before: %+v", tot["nerdr-send"])
+	}
+	inTab := loadSkillUse().totals("t1")
+	if got := inTab["nerdr-request-review"]; got == nil || got.n != 2 || inTab["nerdr-send"] != nil {
+		t.Errorf("in tab t1: %+v", inTab)
 	}
 	if got := skillUseLine(try, at.Add(2*time.Minute)); got == "" {
 		t.Error("no line")
@@ -74,7 +78,7 @@ func TestUnchangedLogIsNotCountedAgain(t *testing.T) {
 		t.Fatalf("a changed log should be read again: %#v", msg)
 	}
 	m.onSkillUse(msg)
-	if got := m.skillTotals()["nerdr-request-review"]; got == nil || got.n != 2 {
+	if got := m.skillTotals(tb)["nerdr-request-review"]; got == nil || got.n != 2 {
 		t.Fatalf("total %+v", got)
 	}
 }

@@ -22,13 +22,17 @@ package skills
 import (
 	"bytes"
 	"embed"
+	"io"
 	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
@@ -313,10 +317,25 @@ func Names() string {
 // is for, and when the agent is to use it.
 func (s Skill) Description() string {
 	front, _ := s.split()
-	for _, l := range strings.Split(front, "\n") {
-		if d, ok := strings.CutPrefix(l, "description:"); ok {
-			return strings.TrimSpace(d)
+	lines := strings.Split(front, "\n")
+	for i, l := range lines {
+		d, ok := strings.CutPrefix(l, "description:")
+		if !ok {
+			continue
 		}
+		d = strings.TrimSpace(d)
+		if d != "" && !strings.HasPrefix(d, "|") && !strings.HasPrefix(d, ">") {
+			return d
+		}
+		// A YAML block: the indented lines that follow.
+		var block []string
+		for _, l := range lines[i+1:] {
+			if l != "" && l[0] != ' ' && l[0] != '\t' {
+				break
+			}
+			block = append(block, strings.TrimSpace(l))
+		}
+		return strings.TrimSpace(strings.Join(block, " "))
 	}
 	return ""
 }
@@ -372,6 +391,76 @@ func Dirs(home, dir string, k agents.Kind) []string {
 		out = append(out, filepath.Join(home, ".claude", "skills"), filepath.Join(home, ".agents", "skills"), filepath.Join(home, ".cursor", "skills"))
 	}
 	return out
+}
+
+// maxSkillFile is how much of a file that is not nerdr's is read, for showing.
+const maxSkillFile = 256 << 10
+
+// Local is a skill in a skills folder that nerdr does not ship.
+type Local struct {
+	Skill
+	File string // its SKILL.md
+}
+
+// Others are the skills in dirs that are not nerdr's, by name; a name in
+// two folders is the first folder's, as with Find. Their files are the
+// user's or a repository's, so what they say is cleaned for the screen.
+func Others(dirs []string) []Local {
+	seen := map[string]bool{}
+	for _, s := range All() {
+		seen[s.Name] = true
+	}
+	var out []Local
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if seen[e.Name()] {
+				continue
+			}
+			file := filepath.Join(d, e.Name(), "SKILL.md")
+			text, ok := ReadShown(file)
+			if !ok {
+				continue
+			}
+			seen[e.Name()] = true
+			out = append(out, Local{Skill{Name: Printable(e.Name()), Text: text}, file})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
+	return out
+}
+
+// ReadShown is the start of file, cleaned for the screen, if it is a regular
+// file: a FIFO would hang the caller.
+func ReadShown(file string) ([]byte, bool) {
+	st, err := os.Stat(file)
+	if err != nil || !st.Mode().IsRegular() {
+		return nil, false
+	}
+	f, err := os.Open(file)
+	if err != nil {
+		return nil, false
+	}
+	defer f.Close()
+	text, err := io.ReadAll(io.LimitReader(f, maxSkillFile))
+	if err != nil {
+		return nil, false
+	}
+	return []byte(Printable(string(text))), true
+}
+
+// Printable is s without escape sequences and control characters other
+// than newlines and tabs, safe to draw on the terminal.
+func Printable(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || (!unicode.IsControl(r) && r != utf8.RuneError) {
+			return r
+		}
+		return -1
+	}, ansi.Strip(s))
 }
 
 // State is whether an agent can use a skill.

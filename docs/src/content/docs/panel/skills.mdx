@@ -28,21 +28,34 @@ reads only when it needs them, such as the walkthrough part of
 
 ## The F4 screen
 
-F4 shows each skill and whether the tab's agent has it: `✓` installed,
-`~` an older copy that is updated at the next start, `✗` missing.
+F4 has three lists. **nerdr** shows nerdr's skills and whether the tab's
+agent has them: `✓` installed, `~` an older copy that is updated at the next
+start, `✗` missing. **other** shows the skills in the folders the tab's
+agent reads, and any others used, such as an agent's built-in or plugin
+skills; nerdr can only read these, and does not turn them on or off. Both
+are sorted by name. **context** shows what else the agent reads
+at start: instruction files, rules, memory, MCP servers, and the note nerdr
+adds itself. These are the places the agent's documentation names, narrowed
+to what exists; for Cursor and Antigravity they are the usual places. The
+list is read-only, shows only the names of MCP servers, and leaves out
+servers from plugins and connectors.
 
 | Key | Action |
 |---|---|
-| `↑` / `↓` | Read a skill |
-| `space` | Turn it on or off |
+| `tab` | Switch between the lists |
+| `a` | Count use in this tab or in all tabs |
+| `↑` / `↓` | Read a skill or file |
+| `space` | Turn one of nerdr's skills on or off |
 | `pgdown` / `b` | Scroll |
 | `s` | Change where skills are installed |
 
-F4 also counts how often each agent has used each skill and when it
-last did, and lists the other skills the agents used. nerdr counts from
-each agent's conversation log when a turn ends. These are use counts,
-not measured token costs. The selected skill shows **Without this skill**
-first: CLI examples, what the skill adds, and what turning it off changes.
+F4 also counts how often each agent has used each skill and when it last
+did, in the active tab until you press `a`. A conversation joins a tab's
+count when nerdr counts it there, so older conversations may show only
+under all tabs. nerdr counts from each agent's conversation log when a
+turn ends. These are use counts, not measured token costs. One of nerdr's
+skills shows **Without this skill** first: CLI examples, what the skill
+adds, and what turning it off changes.
 
 ## Turning skills off
 
@@ -60,10 +73,10 @@ Turn off skills you do not use in F4 or with `enabled_skills`:
 enabled_skills = ["nerdr-explain", "nerdr-spinoff"]
 ```
 
-An empty list turns all of them off. Restart running agents to reload
-their instructions; turning a skill off cannot remove text already in a
-conversation. Your own copies of skills remain discoverable until you
-remove them yourself.
+An empty list turns all of them off. Claude notices a change by itself;
+restart other running agents. Turning a skill off cannot remove text
+already in a conversation. Your own copies of skills remain discoverable
+until you remove them yourself.
 
 **F1 explanations and walkthroughs, and handoffs requested when switching
 agents, work with their skills off.** nerdr includes the necessary
