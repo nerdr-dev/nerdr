@@ -147,3 +147,114 @@ func (m *Core) TakeIssueNews() map[string]bool {
 	}
 	return out
 }
+
+// TickIssues asks GitHub again when it is time to: while the issues are
+// watched or their list is shown.
+func (m *Core) TickIssues(now time.Time) Cmd {
+	shown := m.Client != nil && m.Client.Sight().IssuesShown
+	if !IsOn(m.Cfg.IssueNotify) && !shown {
+		return nil
+	}
+	every := m.GithubEvery(IssueWatchEvery)
+	if shown {
+		every = m.GithubEvery(IssueAllEvery)
+	}
+	if now.Sub(m.IssueWatch.At) < every {
+		return nil
+	}
+	return Batch(m.RefreshIssues(), m.Tell(IssuesDueMsg{}))
+}
+
+// RefreshIssues asks GitHub for the issues assigned to you, unless it is
+// being asked.
+func (m *Core) RefreshIssues() Cmd {
+	w := &m.IssueWatch
+	if w.Busy {
+		return nil
+	}
+	if !github.Available() {
+		w.MineErr = "the gh CLI is not installed"
+		return nil
+	}
+	w.Busy, w.At = true, time.Now()
+	root, wtDir, dirs := m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs
+	return func() Event { return fetchMyIssues(root, wtDir, dirs) }
+}
+
+// fetchMyIssues searches for the issues assigned to you, and finds the
+// repository here each is in.
+func fetchMyIssues(root, wtDir string, dirs []string) IssueWatchMsg {
+	issues, err := github.MyIssues()
+	if err != nil {
+		return IssueWatchMsg{Err: err.Error()}
+	}
+	repos, err := workspace.ScanAll(root, wtDir, dirs)
+	if err != nil {
+		return IssueWatchMsg{Err: err.Error()}
+	}
+	byName := map[string]workspace.Repo{}
+	for _, r := range repos {
+		names, _, err := RepoNames(r.Path)
+		if err != nil {
+			continue
+		}
+		for _, n := range names {
+			if _, ok := byName[n]; !ok {
+				byName[n] = r
+			}
+		}
+	}
+	var msg IssueWatchMsg
+	for _, is := range issues {
+		msg.Keys = append(msg.Keys, IssueKey(is.Repo, is.Number))
+		if r, ok := byName[is.Repo]; ok {
+			msg.Entries = append(msg.Entries, IssueEntry{Repo: r, Issue: is})
+		}
+	}
+	return msg
+}
+
+// OnIssueWatch takes a look at the issues assigned to you: the client shows
+// it, those newly assigned in the repositories here are told, and news of
+// those no longer assigned, or closed, is forgotten. The
+// first look only learns which there are. A look that failed keeps what
+// was known, so the next one does not take them all for news.
+func (m *Core) OnIssueWatch(msg IssueWatchMsg) {
+	w := &m.IssueWatch
+	w.Busy = false
+	w.MineErr = msg.Err
+	if msg.Err != "" {
+		m.Tell(IssuesMsg{})
+		return
+	}
+	var news []state.IssueNews
+	if w.Seeded {
+		for _, e := range msg.Entries {
+			k := IssueKey(e.Issue.Repo, e.Issue.Number)
+			if !w.Known[k] {
+				news = append(news, state.IssueNews{Key: k, Repo: e.Repo.Name, Number: e.Issue.Number, Title: e.Issue.Title})
+			}
+		}
+	}
+	w.Known, w.Seeded = map[string]bool{}, true
+	for _, k := range msg.Keys {
+		w.Known[k] = true
+	}
+	// News of an issue no longer assigned to you, or closed, no longer
+	// holds.
+	kept := w.News[:0:0]
+	for _, n := range w.News {
+		if w.Known[n.Key] {
+			kept = append(kept, n)
+		}
+	}
+	w.News = kept
+	w.Mine = msg.Entries
+	SortIssueEntries(w.Mine)
+	if len(news) > 0 && IsOn(m.Cfg.IssueNotify) {
+		w.News = append(w.News, news...)
+		m.Tell(IssueNewsMsg{News: news})
+	}
+	m.Tell(IssuesMsg{})
+	m.SaveSession()
+}

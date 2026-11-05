@@ -480,7 +480,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case core.InfoTickMsg:
 		m.toastDenied()
-		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), m.tickPRs(time.Now()), m.tickIssues(time.Now()), m.syncPRPanel(),
+		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), m.tickPRs(time.Now()), fromCore(m.TickIssues(time.Now())), m.syncPRPanel(),
 			fromCore(m.SleepIdle(time.Now())), fromCore(core.InfoTick()))
 
 	case sentMsg:
@@ -546,10 +546,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case prWatchMsg:
 		m.onPRWatch(msg)
-		return nil
-
-	case core.IssueWatchMsg:
-		m.onIssueWatch(msg)
 		return nil
 
 	case core.IssueAllMsg:

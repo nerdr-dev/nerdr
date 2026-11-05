@@ -38,13 +38,13 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	old := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "Old", Repo: "me/app"}}
 	fresh := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "Login fails", Repo: "me/app"}}
 
-	m.onIssueWatch(issueLook([]string{"me/far#1"}, old))
+	m.OnIssueWatch(issueLook([]string{"me/far#1"}, old))
 	if len(m.IssueWatch.News) != 0 || m.issueBadge() != "" {
 		t.Fatalf("the first look should only learn: %+v", m.IssueWatch.News)
 	}
 
-	m.onIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
-	m.onIssueWatch(issueLook([]string{"me/far#1", "me/far#2"}, old, fresh))
+	m.OnIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
+	m.OnIssueWatch(issueLook([]string{"me/far#1", "me/far#2"}, old, fresh))
 	if len(m.IssueWatch.News) != 1 || m.IssueWatch.News[0].Number != 9 {
 		t.Fatalf("news = %+v", m.IssueWatch.News)
 	}
@@ -79,17 +79,17 @@ func TestIssueWatchDropsStaleNews(t *testing.T) {
 	a := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "A", Repo: "me/app"}}
 	b := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "B", Repo: "me/app"}}
 
-	m.onIssueWatch(issueLook(nil))
-	m.onIssueWatch(issueLook(nil, a, b))
-	m.onIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
+	m.OnIssueWatch(issueLook(nil))
+	m.OnIssueWatch(issueLook(nil, a, b))
+	m.OnIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
 	if len(m.IssueWatch.News) != 2 {
 		t.Fatalf("news = %+v", m.IssueWatch.News)
 	}
-	m.onIssueWatch(issueLook(nil, b))
+	m.OnIssueWatch(issueLook(nil, b))
 	if len(m.IssueWatch.News) != 1 || m.IssueWatch.News[0].Number != 9 {
 		t.Fatalf("an issue no longer assigned should take its news away: %+v", m.IssueWatch.News)
 	}
-	m.onIssueWatch(issueLook(nil))
+	m.OnIssueWatch(issueLook(nil))
 	if m.issueBadge() != "" {
 		t.Fatalf("badge = %q", m.issueBadge())
 	}
@@ -101,7 +101,7 @@ func TestIssueWatchOff(t *testing.T) {
 	m := tabsModel(t)
 	no := false
 	m.Cfg.IssueNotify = &no
-	if m.tickIssues(time.Now()) != nil {
+	if m.TickIssues(time.Now()) != nil {
 		t.Fatal("issues should not be asked for when not watched or shown")
 	}
 }
