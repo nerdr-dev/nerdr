@@ -369,7 +369,7 @@ func (m *Model) openTabLimit() {
 // another tab: the tab row, or the group row, has entries hidden, or the
 // tab row has no room for one more.
 func (m *Model) barsFull() bool {
-	row := m.tabRows[m.CurGroup()]
+	row := m.tabRows[m.curGroup()]
 	return m.groupRow.hidden > 0 || (row != nil && (row.hidden > 0 || !row.room))
 }
 

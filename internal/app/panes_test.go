@@ -574,7 +574,7 @@ func TestPanelMakesRoomForPanes(t *testing.T) {
 	for i := 0; i < 4 && !m.panelAuto; i++ {
 		m.runCommand("t t")
 	}
-	if !m.panelAuto || !m.panelSmall || m.reviewOpen || len(m.PaneCols(tb, 1000)) < 2 {
+	if !m.panelAuto || !m.panelSmall || m.reviewOpen || len(m.paneCols(tb, 1000)) < 2 {
 		t.Fatal("with more panes than fit beside it, the panel should be made small")
 	}
 	m.handleKey(keyMsg("f1"))
@@ -703,7 +703,7 @@ func TestDragTheDividerBetweenPanes(t *testing.T) {
 	tb := m.Cur()
 	m.runCommand("t t")
 	ax, aw, _ := m.tabArea(tb)
-	cols := m.PaneCols(tb, aw)
+	cols := m.paneCols(tb, aw)
 	if len(cols) != 2 {
 		t.Fatalf("want the agent and the terminal side by side, got %d panes", len(cols))
 	}
@@ -716,7 +716,7 @@ func TestDragTheDividerBetweenPanes(t *testing.T) {
 	mouse(gap-20, tea.MouseButtonLeft, tea.MouseActionMotion)
 	mouse(gap-20, tea.MouseButtonLeft, tea.MouseActionRelease)
 
-	after := m.PaneCols(tb, aw)
+	after := m.paneCols(tb, aw)
 	if after[0].W != cols[0].W-20 || after[1].W != cols[1].W+20 {
 		t.Fatalf("widths %d and %d, want %d and %d", after[0].W, after[1].W, cols[0].W-20, cols[1].W+20)
 	}
@@ -726,7 +726,7 @@ func TestDragTheDividerBetweenPanes(t *testing.T) {
 	}
 
 	mouse(ax+after[0].X+after[0].W, tea.MouseButtonRight, tea.MouseActionPress)
-	if again := m.PaneCols(tb, aw); again[0].W != cols[0].W {
+	if again := m.paneCols(tb, aw); again[0].W != cols[0].W {
 		t.Fatalf("a right-click should share the room evenly: %d, want %d", again[0].W, cols[0].W)
 	}
 }

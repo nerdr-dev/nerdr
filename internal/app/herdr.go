@@ -1,7 +1,9 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
+	"strconv"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/editor"
@@ -74,5 +76,76 @@ func (m *Model) checkEditor() {
 	if exited, _, _ := m.editor.Exited(); exited {
 		go m.editor.Close()
 		m.editor = nil
+	}
+}
+
+// reportHerdr tells herdr the state of the tab that most needs attention.
+// herdr shows one agent per pane, and this pane has all of nerdr's.
+func (m *Model) reportHerdr() {
+	if m.Herdr == nil {
+		return
+	}
+	_, t := m.Neediest()
+	if t == nil {
+		t = m.Cur()
+	}
+	tokens := m.herdrTokens()
+	if t == nil {
+		m.Herdr.Report("unknown", "no tabs", "nerdr", tokens)
+		return
+	}
+	st := "idle"
+	switch t.Lit() {
+	case core.StWorking, core.StBackground: // idle would have herdr tell of it as done
+		st = "working"
+	case core.StBlocked:
+		st = "blocked"
+	case core.StUnknown, core.StStarting, core.StExited, core.StAsleep:
+		st = "unknown"
+	}
+	working := 0
+	for _, x := range m.Tabs {
+		if x.Lit() == core.StWorking && x != t {
+			working++
+		}
+	}
+	msg := t.Name + ": " + t.Lit().Label()
+	if working > 0 {
+		msg += fmt.Sprintf(" · %d more working", working)
+	}
+	m.Herdr.Report(st, msg, "nerdr · "+t.Name, tokens)
+}
+
+// herdrTokens sum every tab up for herdr's sidebar, which shows one agent
+// per pane: $summary is e.g. "5 tabs · 2 working · 1 needs input", and
+// $tabs, $working, $blocked and $done are the counts.
+func (m *Model) herdrTokens() map[string]string {
+	var working, blocked, done int
+	for _, t := range m.Tabs {
+		switch t.Lit() {
+		case core.StWorking:
+			working++
+		case core.StBlocked:
+			blocked++
+		case core.StDone:
+			done++
+		}
+	}
+	summary := core.Plural(len(m.Tabs), "tab")
+	if working > 0 {
+		summary += fmt.Sprintf(" · %d working", working)
+	}
+	if blocked > 0 {
+		summary += fmt.Sprintf(" · %d need%s input", blocked, map[bool]string{true: "s", false: ""}[blocked == 1])
+	}
+	if done > 0 {
+		summary += fmt.Sprintf(" · %d done", done)
+	}
+	return map[string]string{
+		"summary": summary,
+		"tabs":    strconv.Itoa(len(m.Tabs)),
+		"working": strconv.Itoa(working),
+		"blocked": strconv.Itoa(blocked),
+		"done":    strconv.Itoa(done),
 	}
 }

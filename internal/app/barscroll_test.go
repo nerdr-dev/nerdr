@@ -96,7 +96,7 @@ func TestHiddenMarkerShowsTheKeenestLight(t *testing.T) {
 	m.Tabs[8].Light = core.StBlocked
 	m.Tabs[6].Light = core.StWorking
 	m.View()
-	row := m.tabRows[m.CurGroup()]
+	row := m.tabRows[m.curGroup()]
 	if row.hidden == 0 {
 		t.Fatal("no tabs hidden at 120 columns")
 	}

@@ -172,7 +172,7 @@ func (r *renamer) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		if name := strings.TrimSpace(r.input.Value()); name != "" && m.TabIndex(r.t) >= 0 {
 			r.t.Name = name
 			m.SaveSession()
-			m.ReportHerdr()
+			m.reportHerdr()
 		}
 		return nil
 	}
@@ -271,7 +271,7 @@ func branchOf(t *core.Tab) string {
 // moveTab moves the active tab one place left (-1) or right (1) among the
 // tabs of its group.
 func (m *Model) moveTab(delta int) tea.Cmd {
-	idx := m.GroupTabs(m.CurGroup())
+	idx := m.GroupTabs(m.curGroup())
 	for pos, i := range idx {
 		if i != m.Active {
 			continue

@@ -29,7 +29,7 @@ func (m *Model) tabRow() int { return m.barRows() - 1 }
 // selectInGroup goes to the n-th tab (0-based) of the active group; a
 // negative n counts from the end.
 func (m *Model) selectInGroup(n int) tea.Cmd {
-	idx := m.GroupTabs(m.CurGroup())
+	idx := m.GroupTabs(m.curGroup())
 	if len(idx) == 0 {
 		return nil
 	}
@@ -60,7 +60,7 @@ func (m *Model) stepTab(delta int) tea.Cmd {
 // stepInGroup moves to the next or previous tab of the active group,
 // wrapping round within it.
 func (m *Model) stepInGroup(delta int) tea.Cmd {
-	idx := m.GroupTabs(m.CurGroup())
+	idx := m.GroupTabs(m.curGroup())
 	for pos, i := range idx {
 		if i == m.Active {
 			if len(idx) < 2 {
@@ -79,7 +79,7 @@ func (m *Model) stepGroup(delta int) tea.Cmd {
 	if len(gs) < 2 {
 		return nil
 	}
-	cur := m.CurGroup()
+	cur := m.curGroup()
 	for pos, g := range gs {
 		if g == cur {
 			return m.selectGroup(gs[(pos+delta+len(gs))%len(gs)])
@@ -107,4 +107,12 @@ func (m *Model) groupTab(g string) int {
 		}
 	}
 	return idx[0]
+}
+
+// curGroup is the active tab's group.
+func (m *Model) curGroup() string {
+	if t := m.Cur(); t != nil {
+		return t.GroupName()
+	}
+	return ""
 }

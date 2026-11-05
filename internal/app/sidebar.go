@@ -166,7 +166,7 @@ func (m *Model) railEntry(active, walking bool, s core.Status, of string, mark f
 // lights under the » that makes it wide; wide, the « at the right of its
 // top, by the agent.
 func (m *Model) repoList(w, h int, small bool) []string {
-	cur := m.CurGroup()
+	cur := m.curGroup()
 	walking := m.prefix && m.onGroups
 	var lines []string
 	if small {
@@ -227,7 +227,7 @@ func (m *Model) repoList(w, h int, small bool) []string {
 // row numbers them, in a w×h frame; with the details on, each but the
 // active one has them on a line under it.
 func (m *Model) tabList(w, h int, small bool) []string {
-	g := m.CurGroup()
+	g := m.curGroup()
 	walking := m.prefix && !m.onGroups
 	now := time.Now()
 	var lines []string

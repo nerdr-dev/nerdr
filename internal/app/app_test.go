@@ -121,7 +121,7 @@ func TestNotesInsideHerdr(t *testing.T) {
 		t.Fatalf("notes = %d", len(m.notes))
 	}
 	before := m.Herdr.State()
-	m.ReportHerdr() // the pane turns blocked: herdr notifies of top itself
+	m.reportHerdr() // the pane turns blocked: herdr notifies of top itself
 	m.flushNotes(before)
 
 	// Wait for the report as well as the notification: both run in the

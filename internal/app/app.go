@@ -298,7 +298,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		m.entered, t.LastActive = t, now // as enter does
 	}
 	for i, t := range m.Tabs {
-		if sess.Split != "" && t.ID == sess.Split && i != m.Active && t.GroupName() == m.CurGroup() {
+		if sess.Split != "" && t.ID == sess.Split && i != m.Active && t.GroupName() == m.curGroup() {
 			m.split, m.splitLeft = t, sess.SplitLeft
 			m.reviewOpen = false
 		}
@@ -507,7 +507,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 				t.Seen()
 			}
 		}
-		m.ReportHerdr()
+		m.reportHerdr()
 		return cmd
 
 	case tea.BlurMsg:
@@ -768,7 +768,7 @@ func (m *Model) detect() tea.Cmd {
 		}
 	}
 	m.keepAwake(now)
-	m.ReportHerdr()
+	m.reportHerdr()
 	m.flushNotes(herdrBefore)
 	return tea.Batch(cmds...)
 }
@@ -968,7 +968,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 		m.resizePanes() // the tab may have changed sides, or have the window
 	}
 	m.SaveSession()
-	m.ReportHerdr()
+	m.reportHerdr()
 	var ask tea.Cmd
 	if m.dialog == nil && t.Spinoff != nil {
 		ask = m.openSpinoff(t)

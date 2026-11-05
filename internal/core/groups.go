@@ -39,14 +39,6 @@ func (m *Core) GroupTabs(g string) []int {
 	return out
 }
 
-// CurGroup is the active tab's group.
-func (m *Core) CurGroup() string {
-	if t := m.Cur(); t != nil {
-		return t.GroupName()
-	}
-	return ""
-}
-
 // GroupStatus is the light a group shows: that of the tab in it that most
 // needs attention, so a question in a group not in view is still seen.
 func (m *Core) GroupStatus(g string) Status {

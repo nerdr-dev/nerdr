@@ -2,13 +2,14 @@ package core
 
 import (
 	"fmt"
-	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
@@ -49,57 +50,8 @@ func (m *Core) AgentByHook(id string) *Tab {
 	return nil
 }
 
-// PaneCol is one pane on screen: x and w its columns in the tab's area,
-// its frame included.
-type PaneCol struct {
-	P    *PaneTab
-	X, W int
-}
-
 // PaneMinW is the narrowest a pane is shown, its frame included.
 func (m *Core) PaneMinW() int { return max(m.Cfg.PaneMinWidth, 20) }
-
-// PaneCols are the panes of t shown in w columns: the one with the
-// keyboard, and as many of the others not minimised as there is room for,
-// those used last first, in the order of the row.
-func (m *Core) PaneCols(t *Tab, w int) []PaneCol {
-	ps := t.Panes()
-	f := t.Focused()
-	open := []*PaneTab{f}
-	for _, p := range ps {
-		if p != f && !p.Small {
-			open = append(open, p)
-		}
-	}
-	slices.SortStableFunc(open[1:], func(a, b *PaneTab) int { return b.Used.Compare(a.Used) })
-	n := min(len(open), max((w+1)/(m.PaneMinW()+1), 1))
-	shown := open[:n]
-	var out []PaneCol
-	for _, p := range ps {
-		if slices.Contains(shown, p) {
-			out = append(out, PaneCol{P: p})
-		}
-	}
-	// The room left by the columns between them, shared by weight; each
-	// at least paneMinShare wide.
-	room := w - (len(out) - 1)
-	sum := 0.0
-	for _, c := range out {
-		sum += c.P.Share()
-	}
-	x := 0
-	for i := range out {
-		left := len(out) - 1 - i // panes after this one
-		cw := int(float64(room)*out[i].P.Share()/sum + 0.5)
-		cw = min(max(cw, PaneMinShare), w-x-left*(PaneMinShare+1))
-		if i == len(out)-1 {
-			cw = w - x
-		}
-		out[i].X, out[i].W = x, cw
-		x += cw + 1
-	}
-	return out
-}
 
 // PaneMinShare is the narrowest a divider can make a pane, its frame
 // included.
@@ -227,40 +179,6 @@ func (m *Core) ClaimSession(t *Tab) Cmd {
 	}
 }
 
-// stepPane moves the keyboard to the pane d along from the one with it,
-// round past the ends; minimised ones are gone to too, and shown.
-func (m *Core) StepPane(d int) Cmd {
-	t := m.Cur()
-	if t == nil {
-		return nil
-	}
-	ps := t.Panes()
-	i := slices.Index(ps, t.Focused())
-	return m.Client.FocusPane(t, ps[(i+d+len(ps))%len(ps)])
-}
-
-// movePane moves the pane with the keyboard d places along, to the left
-// for d < 0; not past the ends. The tab's own agent stays first.
-func (m *Core) MovePane(d int) Cmd {
-	t := m.Cur()
-	if t == nil {
-		return nil
-	}
-	ps := t.Panes()
-	i := slices.Index(ps, t.Focused())
-	if i == 0 {
-		m.Toast(m.AgentLabel(t, t) + " is the tab's first agent: it stays first")
-		return nil
-	}
-	j := i + d
-	if j < 1 || j >= len(ps) {
-		return nil
-	}
-	ps[i], ps[j] = ps[j], ps[i]
-	m.SaveSession()
-	return m.Client.Resize()
-}
-
 // addPane puts p last in t's panes, and gives it the keyboard unless
 // quiet: a review that starts by itself does not take it, and is the
 // first to be folded away.
@@ -271,17 +189,6 @@ func (m *Core) AddPane(t *Tab, p *PaneTab, quiet bool) Cmd {
 		return nil
 	}
 	return m.Client.FocusPane(t, p)
-}
-
-// newShell opens a terminal in the active tab's worktree, in a pane of
-// its own, last.
-func (m *Core) NewShell() Cmd {
-	t := m.Cur()
-	if t == nil {
-		return nil
-	}
-	_, cmd := m.NewShellIn(t, false)
-	return cmd
 }
 
 // newShellIn opens a terminal in t's worktree, in a pane of its own,

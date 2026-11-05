@@ -297,7 +297,7 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 		t.Fatalf("approval with remarks should end the review and leave them to ask about")
 	}
 	m.Active = m.TabIndex(tb)
-	n := slices.Index(m.GroupTabs(m.CurGroup()), m.Active) + 1
+	n := slices.Index(m.GroupTabs(m.curGroup()), m.Active) + 1
 	m.Active = m.TabIndex(other)
 	m.startPrefix()
 	m.Update(keyMsg(strconv.Itoa(n)))
