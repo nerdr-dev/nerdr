@@ -113,6 +113,7 @@ func TestClassifyFollowsAHook(t *testing.T) {
 	a := silent(t)
 	now := time.Now()
 	a.Hook = HookAuthority{Source: "s", State: detect.Working, At: now}
+	a.Tasked = true // OnHook records a working report
 	if a.Classify(false, now); a.Light != StWorking || !a.Worked || !a.Begun {
 		t.Fatalf("working: %s, worked %v, begun %v", a.Light.Label(), a.Worked, a.Begun)
 	}

@@ -211,6 +211,7 @@ func (m *Core) OnHook(r hooks.Report) Cmd {
 		t.Hook.Processes = r.Processes
 		switch r.State {
 		case "working":
+			t.Tasked = true
 			t.Hook.State = detect.Working
 		case "blocked":
 			t.Hook.State = detect.Blocked

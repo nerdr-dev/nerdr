@@ -356,6 +356,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	t.Light = StStarting
 	t.Raw = detect.Unknown
 	t.Worked = false
+	t.Tasked = len(first) > 0
 	t.Err = ""
 	t.Scroll = 0
 	t.Changed = time.Now()

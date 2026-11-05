@@ -82,7 +82,11 @@ type Agent struct {
 	// Changed is when Light last changed, to pick the most recent of
 	// several agents that need attention.
 	Changed time.Time
-	// Worked is set once the agent has been seen working since it was
+	// Tasked records that this process has been given work, by a startup
+	// prompt, queued message, typed input or a working hook. Startup screen
+	// activity alone does not qualify, and Seen does not clear it.
+	Tasked bool
+	// Worked is set once the agent has been seen working on a task since it was
 	// last looked at; only then does going idle mean "done".
 	Worked bool
 	// Begun is set once the agent has been seen taking up something it
