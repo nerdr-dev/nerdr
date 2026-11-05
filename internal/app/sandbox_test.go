@@ -30,7 +30,7 @@ func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {
 			tb.Light = core.StIdle
 			focus := "text from inside the sandbox"
 			m.Update(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Focus: focus, Peer: hooks.Peer{Known: true}})
-			m.onTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"})
+			m.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"})
 			if tb.Review == nil || len(tb.Review.Seats) != 1 {
 				t.Fatal("a sandboxed reviewer should start")
 			}
@@ -38,7 +38,7 @@ func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {
 			if r := tb.Review.Seats[0].R; !r.InSandbox || r.Agent != agents.Claude || tb.Review.Focus != focus {
 				t.Fatalf("review escaped the sandbox: reviewer=%s sandboxed=%v", r.Agent, r.InSandbox)
 			}
-			m.addReviewer(tb, core.Reviewer{Kind: agents.Codex})
+			m.AddReviewer(tb, core.Reviewer{Kind: agents.Codex})
 			if len(tb.Review.Seats) != 1 {
 				t.Fatal("added an unsandboxed reviewer to an existing review")
 			}
@@ -57,7 +57,7 @@ func TestSandboxedReviewRechecksConfigBeforeSpawn(t *testing.T) {
 	s := m.Cfg.Agents[agents.Claude]
 	s.Sandboxed = false
 	m.Cfg.Agents[agents.Claude] = s
-	m.onTree(core.TreeMsg{T: tb, Why: core.TreeHand, By: core.Reviewer{Kind: agents.Claude}, Changed: true, Tree: "changed"})
+	m.OnTree(core.TreeMsg{T: tb, Why: core.TreeHand, By: core.Reviewer{Kind: agents.Claude}, Changed: true, Tree: "changed"})
 	if tb.Review != nil {
 		t.Cleanup(func() { m.EndReview(tb, "done", false) })
 		t.Fatal("review started after its sandbox was disabled")
@@ -435,7 +435,7 @@ func TestCutOffReviewerSaysWhy(t *testing.T) {
 	m.Cfg.Review = config.Review{Agent: "claude"}
 	tb.Light = core.StIdle
 	m.Update(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Peer: hooks.Peer{Known: true}})
-	m.onTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"})
+	m.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"})
 	if tb.Review == nil {
 		t.Fatal("no review started")
 	}

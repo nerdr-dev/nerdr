@@ -65,7 +65,7 @@ func TestReadyNamesTheReviewer(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("ready between turns looks at the worktree")
 	}
-	m.onTree(cmd().(core.TreeMsg))
+	m.OnTree(cmd().(core.TreeMsg))
 	t.Cleanup(func() { m.EndReview(tb, "done", false) })
 	if tb.Review == nil || tb.Review.Seats[0].R.Agent != agents.Codex || tb.Review.Seats[0].R.Model != "gpt-6-astra" {
 		t.Fatalf("review %+v", tb.Review)
@@ -82,7 +82,7 @@ func TestReviewModelFromTheConfig(t *testing.T) {
 	out := argvAgent(t, m)
 	m.Cfg.Review.Models = map[agents.Kind]string{agents.Codex: "gpt-6-sol"}
 	tb := reviewOn(t, m)
-	m.onTree(m.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Kind: "codex"})().(core.TreeMsg))
+	m.OnTree(m.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Kind: "codex"})().(core.TreeMsg))
 	t.Cleanup(func() { m.EndReview(tb, "done", false) })
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-sol\n") {
 		t.Fatalf("started with %q", argv)
@@ -119,7 +119,7 @@ func TestReviewPanePicksAModel(t *testing.T) {
 	if look == nil || m.reviewPick != nil {
 		t.Fatal("enter starts the review")
 	}
-	m.onTree(m.LookAtTree(tb, core.TreeHand, core.Reviewer{Kind: agents.Codex, Model: "gpt-6-astra"})().(core.TreeMsg))
+	m.OnTree(m.LookAtTree(tb, core.TreeHand, core.Reviewer{Kind: agents.Codex, Model: "gpt-6-astra"})().(core.TreeMsg))
 	t.Cleanup(func() { m.EndReview(tb, "done", false) })
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-astra\n") {
 		t.Fatalf("started with %q", argv)

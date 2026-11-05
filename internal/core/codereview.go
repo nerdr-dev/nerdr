@@ -1,6 +1,8 @@
 package core
 
 import (
+	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -641,4 +643,166 @@ func (t *Tab) FindingsQueued() bool {
 // message waiting to be typed in, none just sent.
 func (t *Tab) IdleUnasked() bool {
 	return t.NextAuto() < 0 && !t.AwaitWork
+}
+
+// OnTree goes on from a look at a tab's worktree.
+func (m *Core) OnTree(msg TreeMsg) Cmd {
+	t := msg.T
+	if !m.Live(t) {
+		return nil
+	}
+	if msg.Err != nil {
+		if msg.Why != TreeAuto {
+			m.Toast(t.Name + ": could not look at the worktree for a review: " + msg.Err.Error())
+		}
+		return nil
+	}
+	switch msg.Why {
+	case TreeAuto, TreeHand:
+		if t.Review != nil {
+			if msg.Why == TreeHand && msg.By.Kind != "" {
+				// Picked while the look for another reviewer was on its
+				// way: it joins that one.
+				return m.AddReviewer(t, msg.By)
+			}
+			return nil
+		}
+		if msg.Why == TreeAuto && (t.Light.AtWork() || t.NextAuto() >= 0) {
+			// The agent was given more to do while the worktree was
+			// looked at: the end of that turn is the time.
+			return nil
+		}
+		focus, by := "", msg.By
+		if a := t.ReviewAsk; a != nil {
+			focus = a.Focus
+			if by.Kind == "" {
+				by = a.By
+			}
+		}
+		t.ReviewAsk = nil
+		if !msg.Changed {
+			if msg.Why == TreeHand {
+				m.Toast(t.Name + ": nothing to review — the worktree is as its base")
+			}
+			return nil
+		}
+		if msg.Why == TreeAuto && msg.Tree == t.Reviewed {
+			return nil // reviewed as it is
+		}
+		if by.Kind == "" {
+			by = Reviewer{Kind: m.ReviewKind(t)}
+		}
+		return m.StartReview(t, by, msg.Base, msg.Tree, focus)
+	case TreeFixed:
+		run := t.Review
+		if run == nil || run.Phase != Fixing {
+			return nil
+		}
+		if msg.Tree == run.Tree {
+			m.EndReview(t, run.Brief+" · "+string(t.Agent)+" changed nothing", true)
+			return nil
+		}
+		run.Round++
+		run.Tree = msg.Tree
+		run.Phase = Reviewing
+		for _, s := range run.Seats {
+			s.Res = nil
+			m.AddMessage(s.R, codereview.Again(string(t.Agent), run.Round, run.Rounds), true)
+		}
+		m.Tell(PanesMsg{})
+		m.Toast(t.Name + ": " + m.ReviewerNames(t) + " review again (round " + strconv.Itoa(run.Round) + ")")
+		return nil
+	}
+	return nil
+}
+
+// StartReview starts by reviewing t's work, looking most at focus.
+func (m *Core) StartReview(t *Tab, by Reviewer, base, tree, focus string) Cmd {
+	t.Review = &ReviewRun{Round: 1, Rounds: max(m.Cfg.Review.Rounds, 1), Base: base, Tree: tree, Focus: focus,
+		Id: time.Now().Format(time.RFC3339Nano)}
+	cmd := m.AddReviewer(t, by)
+	if len(t.Review.Seats) == 0 {
+		t.Review = nil
+	}
+	return cmd
+}
+
+// AddReviewer starts by reviewing t's work, beside the reviewers at it
+// already, in the round they are in.
+func (m *Core) AddReviewer(t *Tab, by Reviewer) Cmd {
+	k, model := by.Kind, by.Model
+	if model == "" {
+		model = m.Cfg.Review.Models[k]
+	}
+	if !agents.TakesModel(k) {
+		model = ""
+	}
+	// The review prompt contains the author's text and the reviewer reads
+	// its worktree. Keep that work inside a sandbox too, including when
+	// the config changed while the worktree was being inspected.
+	if m.Confined(hooks.Report{}, t) && !m.SandboxedKind(k) {
+		m.Toast(t.Name + ": a sandboxed agent's work needs a sandboxed reviewer")
+		return nil
+	}
+	run := t.Review
+	if run.Phase != Reviewing {
+		m.Toast(t.Name + ": " + string(t.Agent) + " is on the findings · another reviewer can join when the work is reviewed again")
+		return nil
+	}
+	for _, s := range run.Seats {
+		if s.R.Agent == k {
+			m.Toast(t.Name + ": " + string(k) + " is reviewing already")
+			return nil
+		}
+	}
+	r := &Tab{AgentState: Agent{Tab: state.Tab{
+		ID: t.ID + "-review-" + string(k), Name: t.Owner().Name + " · review", Dir: t.Dir, Agent: k, Worktrees: t.Worktrees,
+		Model: model,
+	}, Light: StStarting}, ReviewOf: t}
+	req := codereview.Request(string(t.Agent), string(k), run.Base, run.Focus, run.Round, run.Rounds)
+	l := agents.NewSession(agents.WithModel(m.Cfg.Agents, k, model), k)
+	l.Argv = append(l.Argv, m.Cfg.Review.Args[k]...)
+	if first := agents.StartPrompt(k, req); first != nil {
+		l.Argv = append(l.Argv, first...)
+	} else {
+		r.Messages = []state.Message{{Text: req, Auto: true}}
+	}
+	p := m.ReviewPaneFor(t, r)
+	cmd := m.Spawn(r, l, false)
+	if r.Pane == nil {
+		m.Toast(t.Name + ": " + r.Err)
+		p.A = nil
+		return cmd
+	}
+	run.Seats = append(run.Seats, &Seat{R: r})
+	m.Tell(TermsMsg{T: t.Owner()})
+	m.Tell(PanesMsg{}) // the panes say so
+	with := string(k)
+	if model != "" {
+		with += " (" + model + ")"
+	}
+	Debugf("review %s: %s started", m.AgentName(t), with)
+	m.Toast(m.AgentName(t) + ": " + with + " reviews " + string(t.Agent) + "'s work, in a pane beside it")
+	return cmd
+}
+
+// ReviewPaneFor is the pane reviewer r of of's work is shown in: the
+// pane it was picked in, or, for a review that started by itself, a new
+// one beside of's that leaves the keyboard where it is.
+func (m *Core) ReviewPaneFor(of, r *Tab) *PaneTab {
+	o := of.Owner()
+	for _, p := range o.Panes() {
+		if p.Kind == PaneReview && p.Of == of && p.A == nil {
+			p.A = r
+			return p
+		}
+	}
+	p := &PaneTab{Kind: PaneReview, A: r, Of: of}
+	ps := o.Panes()
+	at := len(ps) - 1
+	if op := of.PaneOf(); op != nil {
+		at = slices.Index(ps, op)
+	}
+	o.PaneList = slices.Insert(ps, at+1, p)
+	return p
 }

@@ -38,7 +38,7 @@ func TestReviewWaitsForReady(t *testing.T) {
 	if m.AfterTurn(tb) == nil {
 		t.Fatal("the end of the turn ready was said in should look at the worktree")
 	}
-	m.onTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "t1"})
+	m.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "t1"})
 	t.Cleanup(func() { m.EndReview(tb, "done", false) })
 	if tb.Review == nil || tb.Review.Focus != "the locking" || tb.ReviewAsk != nil {
 		t.Fatalf("review %+v, ask %v", tb.Review, tb.ReviewAsk)
