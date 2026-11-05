@@ -49,3 +49,36 @@ func TestReviewReuseCheckCatchesStale(t *testing.T) {
 	}()
 	m.View()
 }
+
+// Core changes on its own goroutine, between the client's messages, and
+// counts it in Gen: the panel is drawn anew, though the message that follows
+// is only a tick. The change here is made to the panel itself, as the check
+// above does, standing for one to the state the panel shows.
+func TestReviewReuseAfterCoreChanged(t *testing.T) {
+	for _, counted := range []bool{true, false} {
+		m := testModel(t)
+		m.reviewOpen = true
+		m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+		m.View()
+		m.Mu.Lock()
+		rm, _ := m.review.Update(keyMsg("f3"))
+		m.review = rm.(review.Model)
+		if counted {
+			m.Gen++ // as the loop does for each event of core's
+		}
+		m.Mu.Unlock()
+		m.Update(core.RedrawMsg{})
+		func() {
+			defer func() {
+				r := recover()
+				if counted && r != nil {
+					t.Fatalf("the change was not drawn: %v", r)
+				}
+				if !counted && r == nil {
+					t.Fatal("the check cannot see the change: the test shows nothing")
+				}
+			}()
+			m.View()
+		}()
+	}
+}

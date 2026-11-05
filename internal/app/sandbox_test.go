@@ -730,8 +730,8 @@ func TestQuittingTakesNoConversationFromAStranger(t *testing.T) {
 	m.NewAgent(tb, agents.Codex)
 	codex := tb.ExtraAgents()[0]
 	codex.SessionID = "before"
-	m.quitting = true
-	defer func() { m.quitting = false }()
+	m.Quitting = true
+	defer func() { m.Quitting = false }()
 
 	stranger := hooks.Peer{Known: true, Chain: []int{1 << 30, 1}}
 	m.Update(hooks.Report{Method: hooks.ReportAgentSession, Pane: codex.HookKey(), SessionID: "planted", Peer: stranger})
