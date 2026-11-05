@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // Client is whoever shows core to the user: today's TUI, or nobody
@@ -36,13 +37,15 @@ type Client interface {
 }
 
 // Sight is what the client shows that core's background work goes by: the
-// tab it keeps beside the one in front (Beside), shown or not; the worktree
+// tab it keeps beside the one in front (Beside), shown or not; whether it
+// shows the issues (IssuesShown); the worktree
 // whose files it watches for changes (WatchWt), and how many it has seen
 // (WatchN).
 type Sight struct {
-	Beside  *Tab
-	WatchWt string
-	WatchN  int
+	Beside      *Tab
+	IssuesShown bool
+	WatchWt     string
+	WatchN      int
 }
 
 // Tell gives the client ev; see Client.Tell.
@@ -99,6 +102,14 @@ type (
 	// switch with. Both wait in T until then.
 	SpinoffAskMsg struct{ T *Tab }
 	SwitchAskMsg  struct{ T *Tab }
+
+	// IssuesMsg is a change in what is known of the issues; IssueNewsMsg,
+	// issues newly assigned to you, kept in IssueWatch.News too, to tell
+	// of. IssuesDueMsg says it is time to ask again for what the client
+	// shows of the issues.
+	IssuesMsg    struct{}
+	IssueNewsMsg struct{ News []state.IssueNews }
+	IssuesDueMsg struct{}
 
 	// OverlapsMsg is a change in which tabs change the same files; see
 	// Core.Overlaps.

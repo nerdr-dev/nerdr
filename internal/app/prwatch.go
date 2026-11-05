@@ -185,7 +185,7 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) prWatchMs
 	)
 	for _, r := range repos {
 		if withPRs != nil {
-			if names, elsewhere, err := repoNames(r.Path); err == nil && !core.AskRepo(names, elsewhere, withPRs) {
+			if names, elsewhere, err := core.RepoNames(r.Path); err == nil && !core.AskRepo(names, elsewhere, withPRs) {
 				mu.Lock()
 				msg.answered[r.Path] = true // none of yours open in it
 				mu.Unlock()
@@ -227,32 +227,6 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) prWatchMs
 	}
 	wg.Wait()
 	return msg
-}
-
-// remoteCache keeps what a repository's remotes are, for remoteCacheFor:
-// they hardly ever change, and fetchPRs would read them for every
-// repository at every look.
-var remoteCache = struct {
-	sync.Mutex
-	m map[string]core.RemoteInfo
-}{m: map[string]core.RemoteInfo{}}
-
-// repoNames is github.RepoNames, kept for a while.
-func repoNames(path string) ([]string, bool, error) {
-	remoteCache.Lock()
-	in, ok := remoteCache.m[path]
-	remoteCache.Unlock()
-	if ok && time.Since(in.At) < core.RemoteCacheFor {
-		return in.Names, in.Elsewhere, nil
-	}
-	names, elsewhere, err := github.RepoNames(path)
-	if err != nil {
-		return nil, false, err
-	}
-	remoteCache.Lock()
-	remoteCache.m[path] = core.RemoteInfo{Names: names, Elsewhere: elsewhere, At: time.Now()}
-	remoteCache.Unlock()
-	return names, elsewhere, nil
 }
 
 // onPRWatch takes a look at the pull requests: the lists show it, and

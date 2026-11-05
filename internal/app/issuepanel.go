@@ -52,7 +52,7 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	if time.Since(m.IssueWatch.At) < m.GithubEvery(core.IssueAllEvery) {
 		return m.refreshAllIssues(false)
 	}
-	return tea.Batch(m.refreshIssues(), m.refreshAllIssues(false))
+	return tea.Batch(fromCore(m.RefreshIssues()), m.refreshAllIssues(false))
 }
 
 // showIssues shows the issues in the review panel, with the keyboard:

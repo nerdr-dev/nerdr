@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/github"
@@ -123,4 +124,30 @@ func PrNewsLabel(n state.PRNews) string {
 		return fmt.Sprintf("%s #%d", n.Tab, n.Number)
 	}
 	return fmt.Sprintf("%s #%d", n.Repo, n.Number)
+}
+
+// remoteCache keeps what a repository's remotes are, for RemoteCacheFor:
+// they hardly ever change, and the look at the pull requests would read them
+// for every repository at every look.
+var remoteCache = struct {
+	sync.Mutex
+	m map[string]RemoteInfo
+}{m: map[string]RemoteInfo{}}
+
+// RepoNames is github.RepoNames, kept for a while.
+func RepoNames(path string) ([]string, bool, error) {
+	remoteCache.Lock()
+	in, ok := remoteCache.m[path]
+	remoteCache.Unlock()
+	if ok && time.Since(in.At) < RemoteCacheFor {
+		return in.Names, in.Elsewhere, nil
+	}
+	names, elsewhere, err := github.RepoNames(path)
+	if err != nil {
+		return nil, false, err
+	}
+	remoteCache.Lock()
+	remoteCache.m[path] = RemoteInfo{Names: names, Elsewhere: elsewhere, At: time.Now()}
+	remoteCache.Unlock()
+	return names, elsewhere, nil
 }

@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -28,115 +27,6 @@ import (
 // panel.
 func (m *Model) issuesShown() bool {
 	return m.panelIssues()
-}
-
-// tickIssues asks GitHub again when it is time to: while the issues are
-// watched or their list is shown.
-func (m *Model) tickIssues(now time.Time) tea.Cmd {
-	if !core.IsOn(m.Cfg.IssueNotify) && !m.issuesShown() {
-		return nil
-	}
-	every := m.GithubEvery(core.IssueWatchEvery)
-	if m.issuesShown() {
-		every = m.GithubEvery(core.IssueAllEvery)
-	}
-	if now.Sub(m.IssueWatch.At) < every {
-		return nil
-	}
-	return tea.Batch(m.refreshIssues(), m.refreshAllIssues(false))
-}
-
-// refreshIssues asks GitHub for the issues assigned to you, unless it is
-// being asked.
-func (m *Model) refreshIssues() tea.Cmd {
-	w := &m.IssueWatch
-	if w.Busy {
-		return nil
-	}
-	if !github.Available() {
-		w.MineErr = "the gh CLI is not installed"
-		return nil
-	}
-	w.Busy, w.At = true, time.Now()
-	root, wtDir, dirs := m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs
-	return func() tea.Msg { return fetchMyIssues(root, wtDir, dirs) }
-}
-
-// fetchMyIssues searches for the issues assigned to you, and finds the
-// repository here each is in.
-func fetchMyIssues(root, wtDir string, dirs []string) core.IssueWatchMsg {
-	issues, err := github.MyIssues()
-	if err != nil {
-		return core.IssueWatchMsg{Err: err.Error()}
-	}
-	repos, err := workspace.ScanAll(root, wtDir, dirs)
-	if err != nil {
-		return core.IssueWatchMsg{Err: err.Error()}
-	}
-	byName := map[string]workspace.Repo{}
-	for _, r := range repos {
-		names, _, err := repoNames(r.Path)
-		if err != nil {
-			continue
-		}
-		for _, n := range names {
-			if _, ok := byName[n]; !ok {
-				byName[n] = r
-			}
-		}
-	}
-	var msg core.IssueWatchMsg
-	for _, is := range issues {
-		msg.Keys = append(msg.Keys, core.IssueKey(is.Repo, is.Number))
-		if r, ok := byName[is.Repo]; ok {
-			msg.Entries = append(msg.Entries, core.IssueEntry{Repo: r, Issue: is})
-		}
-	}
-	return msg
-}
-
-// onIssueWatch takes a look at the issues assigned to you: the list shows
-// it, those newly assigned in the repositories here are told, and news of
-// those no longer assigned, or closed, is forgotten. The
-// first look only learns which there are. A look that failed keeps what
-// was known, so the next one does not take them all for news.
-func (m *Model) onIssueWatch(msg core.IssueWatchMsg) {
-	w := &m.IssueWatch
-	w.Busy = false
-	w.MineErr = msg.Err
-	if msg.Err != "" {
-		m.applyIssues()
-		return
-	}
-	var news []state.IssueNews
-	if w.Seeded {
-		for _, e := range msg.Entries {
-			k := core.IssueKey(e.Issue.Repo, e.Issue.Number)
-			if !w.Known[k] {
-				news = append(news, state.IssueNews{Key: k, Repo: e.Repo.Name, Number: e.Issue.Number, Title: e.Issue.Title})
-			}
-		}
-	}
-	w.Known, w.Seeded = map[string]bool{}, true
-	for _, k := range msg.Keys {
-		w.Known[k] = true
-	}
-	// News of an issue no longer assigned to you, or closed, no longer
-	// holds.
-	kept := w.News[:0:0]
-	for _, n := range w.News {
-		if w.Known[n.Key] {
-			kept = append(kept, n)
-		}
-	}
-	w.News = kept
-	w.Mine = msg.Entries
-	core.SortIssueEntries(w.Mine)
-	if len(news) > 0 && core.IsOn(m.Cfg.IssueNotify) {
-		m.tellIssueNews(news)
-	}
-	m.applyIssues()
-	m.SaveSession()
 }
 
 // refreshAllIssues asks the repositories the issue list shows for their
@@ -182,10 +72,9 @@ func (m *Model) applyIssues() {
 	}
 }
 
-// tellIssueNews tells of issues newly assigned to you, and keeps them for
-// the marks.
+// tellIssueNews tells of issues newly assigned to you, which core keeps
+// for the marks.
 func (m *Model) tellIssueNews(news []state.IssueNews) {
-	m.IssueWatch.News = append(m.IssueWatch.News, news...)
 	n := news[0]
 	label := fmt.Sprintf("%s #%d", n.Repo, n.Number)
 	what := "assigned to you: " + n.Title
