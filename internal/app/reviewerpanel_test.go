@@ -123,16 +123,16 @@ func TestReviewersSideBySide(t *testing.T) {
 	if tb.Review.Phase != core.Reviewing || len(tb.Messages) != held {
 		t.Fatal("the round should wait for gemini's review")
 	}
-	if line := m.ReviewLine(tb); !strings.Contains(line, "codex: 1 finding") || !strings.Contains(line, "gemini") {
+	if line := m.reviewLine(tb); !strings.Contains(line, "codex: 1 finding") || !strings.Contains(line, "gemini") {
 		t.Fatalf("the line should say how each stands: %s", line)
 	}
 	queued := tb.Messages
 	tb.Messages = nil
-	if line := m.ReviewLine(tb); strings.Contains(line, "wait for the review") {
+	if line := m.reviewLine(tb); strings.Contains(line, "wait for the review") {
 		t.Fatalf("with no messages, none wait: %s", line)
 	}
 	tb.Messages = []state.Message{{Text: "later"}}
-	if line := m.ReviewLine(tb); !strings.Contains(line, "messages in "+m.screenKey(3)+" wait for the review") {
+	if line := m.reviewLine(tb); !strings.Contains(line, "messages in "+m.screenKey(3)+" wait for the review") {
 		t.Fatalf("the line should say the messages wait for the review: %s", line)
 	}
 	tb.Messages = queued
@@ -145,7 +145,7 @@ func TestReviewersSideBySide(t *testing.T) {
 	if len(tb.Messages) != held+1 || !strings.Contains(tb.Messages[0].Text, "codex reviewed your change") {
 		t.Fatalf("one message with codex's findings should go to the agent: %+v", tb.Messages)
 	}
-	if line := m.ReviewLine(tb); !strings.Contains(line, "gemini: approved") {
+	if line := m.reviewLine(tb); !strings.Contains(line, "gemini: approved") {
 		t.Fatalf("the line should keep gemini's approval: %s", line)
 	}
 
@@ -247,7 +247,7 @@ func TestReviewDoneAsks(t *testing.T) {
 	if i := tb.FindMessage(run.FixMsg); i < 0 || !tb.Messages[i].Auto {
 		t.Fatalf("1 should send the findings, as the review still knows them: %+v", tb.Messages)
 	}
-	if line := m.ReviewLine(tb); !strings.Contains(line, "is on it") {
+	if line := m.reviewLine(tb); !strings.Contains(line, "is on it") {
 		t.Fatalf("the line should say the agent has them: %s", line)
 	}
 	m.dialog = nil
@@ -361,11 +361,11 @@ func TestReviewLineSaysF4WhileTheFindingsWait(t *testing.T) {
 	tb.ReviewBrief = "codex: 3 findings after 2 rounds · findings in F3"
 	fix := codereview.FixPrompt([]codereview.Review{{Agent: "codex", Result: codereview.Result{Summary: "s"}}}, 2, 2)
 	tb.Messages = []state.Message{{Text: fix}}
-	if line := m.ReviewLine(tb); !strings.Contains(line, "findings in") || strings.Count(line, "findings in") != 1 {
+	if line := m.reviewLine(tb); !strings.Contains(line, "findings in") || strings.Count(line, "findings in") != 1 {
 		t.Fatalf("the findings wait: %q", line)
 	}
 	tb.Messages = nil // sent before nerdr kept that it was
-	if line := m.ReviewLine(tb); line != "codex: 3 findings after 2 rounds" {
+	if line := m.reviewLine(tb); line != "codex: 3 findings after 2 rounds" {
 		t.Fatalf("the findings are sent: %q", line)
 	}
 }
@@ -378,7 +378,7 @@ func TestReviewLineGoesWhenTheFindingsAreDone(t *testing.T) {
 	tb.ReviewBrief = "codex: 3 findings after 1 round"
 	fix := codereview.FixPrompt([]codereview.Review{{Agent: "codex", Result: codereview.Result{Summary: "s"}}}, 1, 1)
 	tb.Messages = []state.Message{{Text: fix, Auto: true}}
-	if line := m.ReviewLine(tb); line != "codex: 3 findings after 1 round · sent to claude" {
+	if line := m.reviewLine(tb); line != "codex: 3 findings after 1 round · sent to claude" {
 		t.Fatalf("set to go: %q", line)
 	}
 	m.FindingsDone(tb)
@@ -386,11 +386,11 @@ func TestReviewLineGoesWhenTheFindingsAreDone(t *testing.T) {
 		t.Fatal("the brief stays while the findings have not gone in")
 	}
 	tb.Messages, tb.FindingsSent = nil, true // typed in: see deliverQueue
-	if line := m.ReviewLine(tb); !strings.HasSuffix(line, " · sent to claude") {
+	if line := m.reviewLine(tb); !strings.HasSuffix(line, " · sent to claude") {
 		t.Fatalf("being worked on: %q", line)
 	}
 	m.FindingsDone(tb)
-	if tb.ReviewBrief != "" || tb.FindingsSent || m.ReviewLine(tb) != "" {
+	if tb.ReviewBrief != "" || tb.FindingsSent || m.reviewLine(tb) != "" {
 		t.Fatalf("after the turn on them: %q, sent %v", tb.ReviewBrief, tb.FindingsSent)
 	}
 }

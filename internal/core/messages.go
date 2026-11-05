@@ -2,7 +2,6 @@ package core
 
 import (
 	"strconv"
-	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
@@ -15,26 +14,6 @@ const MessageRows = 2
 // starts: enter there puts nothing in, so an enter meant for the agent,
 // pressed while F3 has the keyboard, does not send a message by mistake.
 const NoMessage = -1
-
-// messagesLine is the panel's line about t's messages, "" when there are
-// none.
-func (m *Core) MessagesLine(t *Tab) string {
-	n, auto := len(t.Messages), t.AutoCount()
-	var parts []string
-	if kept := n - auto; kept > 0 {
-		parts = append(parts, Plural(kept, "task")+" waiting for you to put in")
-	}
-	if auto > 0 {
-		parts = append(parts, Plural(auto, "task")+" sent by itself when the agent is idle")
-	}
-	if gone := len(t.Inactive); gone > 0 {
-		parts = append(parts, Plural(gone, "task")+" for a closed agent")
-	}
-	if len(parts) == 0 {
-		return ""
-	}
-	return strings.Join(parts, " · ") + " · " + m.Client.ScreenKey(3)
-}
 
 // dropFrom is list without message i.
 func DropFrom(list []state.Message, i int) []state.Message {

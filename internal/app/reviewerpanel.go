@@ -130,7 +130,7 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 	of := p.Of
 	if r := p.A; r != nil {
 		head := []string{
-			" " + ansi.Truncate(m.ReviewLine(of), w-2, "…"),
+			" " + ansi.Truncate(m.reviewLine(of), w-2, "…"),
 			" " + m.reviewerButtons(t, p),
 			dim(strings.Repeat("─", w)),
 		}
@@ -143,7 +143,7 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 	var lines []string
 	switch {
 	case of.Review != nil:
-		lines = append(lines, " "+ansi.Truncate(m.ReviewLine(of), w-2, "…"), "",
+		lines = append(lines, " "+ansi.Truncate(m.reviewLine(of), w-2, "…"), "",
 			" Review "+m.AgentLabel(t, of)+"'s work beside "+m.ReviewerNames(of)+" with:", "")
 	default:
 		lines = append(lines, " Review "+m.AgentLabel(t, of)+"'s work in this worktree with:", "")
