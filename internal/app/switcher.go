@@ -255,7 +255,7 @@ func (m *Model) renameGroup(g, name string) {
 	if to == "" {
 		to = core.MultiGroup
 	}
-	if id, ok := m.lastInGroup[g]; ok && m.lastInGroup[to] == "" {
+	if id, ok := m.lastInGroup[g]; ok && m.lastInGroup[to] == (core.TabRef{}) {
 		m.lastInGroup[to] = id
 	}
 	m.SaveSession()

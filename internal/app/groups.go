@@ -102,7 +102,7 @@ func (m *Model) groupTab(g string) int {
 	}
 	want := m.lastInGroup[g]
 	for _, i := range idx {
-		if m.Tabs[i].ID == want {
+		if m.Ref(m.Tabs[i]) == want {
 			return i
 		}
 	}

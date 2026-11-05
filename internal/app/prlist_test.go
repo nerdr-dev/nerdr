@@ -112,7 +112,7 @@ func TestAgentRequestOpensAMessageForTheTab(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected the message dialog, got %T", m.dialog)
 	}
-	if m.Cur().ID != "b" || !d.picked["b"] || d.input.Value() != "About `x` in a.go:3: why?" {
+	if m.Cur().ID != "b" || !d.picked[core.TabRef{Tab: "b"}] || d.input.Value() != "About `x` in a.go:3: why?" {
 		t.Fatalf("tab %s picked %v text %q", m.Cur().ID, d.picked, d.input.Value())
 	}
 	if len(m.Tabs[1].Messages) != 0 {
