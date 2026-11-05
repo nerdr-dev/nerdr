@@ -36,7 +36,7 @@ const wizardPRRows = 8
 // wizardPRs is the pull requests the new-tab dialog lists.
 type wizardPRs struct {
 	repo    string // the repository's path they are of, "" for none
-	entries []prEntry
+	entries []core.PREntry
 	loading bool
 	loaded  bool
 	err     string
@@ -86,7 +86,7 @@ func (w *wizard) loadPRs(m *Model) tea.Cmd {
 func (w *wizard) setPRs(m *Model, got repoPRs, asked map[string]bool) {
 	w.pulls.entries = nil
 	for _, e := range got.marked(asked) {
-		if m.tabOnBranch(e.repo.Path, e.branch()) == nil {
+		if m.tabOnBranch(e.Repo.Path, e.Branch()) == nil {
 			w.pulls.entries = append(w.pulls.entries, e)
 		}
 	}
@@ -116,14 +116,14 @@ func (m *Model) onWizardPRs(msg wizardPRsMsg) {
 
 // shownPRs is the pull requests listed, narrowed by what is typed as the
 // branch: its number, branch, title or who opened it.
-func (w *wizard) shownPRs() []prEntry {
+func (w *wizard) shownPRs() []core.PREntry {
 	q := strings.ToLower(strings.TrimSpace(w.branch.Value()))
 	if q == "" {
 		return w.pulls.entries
 	}
-	var out []prEntry
+	var out []core.PREntry
 	for _, e := range w.pulls.entries {
-		hay := strings.ToLower(strings.Join([]string{"#" + strconv.Itoa(e.pr.Number), e.headName(), e.pr.Title, e.pr.Author}, " "))
+		hay := strings.ToLower(strings.Join([]string{"#" + strconv.Itoa(e.PR.Number), headName(e), e.PR.Title, e.PR.Author}, " "))
 		if strings.Contains(hay, q) {
 			out = append(out, e)
 		}
@@ -169,24 +169,24 @@ func (w *wizard) prsKey(m *Model, msg tea.KeyMsg) (tea.Cmd, bool) {
 // pickPR is enter on a pull request in the list: a tab on the worktree it
 // is checked out in, or on to the branch, continued, once a fork's is
 // fetched.
-func (w *wizard) pickPR(m *Model, e prEntry) tea.Cmd {
-	if e.wt = checkedOut(e); e.wt != "" {
+func (w *wizard) pickPR(m *Model, e core.PREntry) tea.Cmd {
+	if e.Wt = checkedOut(e); e.Wt != "" {
 		g := m.worktreeGroup(e)
 		w.group, w.fromBranch, w.err = &g, true, ""
 		return w.toAgent(m)
 	}
-	if e.pr.Fork != "" {
-		w.err, w.busy = "", "fetching #"+strconv.Itoa(e.pr.Number)+" from origin…"
+	if e.PR.Fork != "" {
+		w.err, w.busy = "", "fetching #"+strconv.Itoa(e.PR.Number)+" from origin…"
 		return func() tea.Msg {
-			return forkFetchedMsg{w: w, e: e, err: workspace.FetchForkPR(e.repo.Path, e.pr.Number, e.branch())}
+			return forkFetchedMsg{w: w, e: e, err: workspace.FetchForkPR(e.Repo.Path, e.PR.Number, e.Branch())}
 		}
 	}
 	return w.continuePR(m, e)
 }
 
 // continuePR goes on with e's branch as the branch, continuing it.
-func (w *wizard) continuePR(m *Model, e prEntry) tea.Cmd {
-	w.branch.SetValue(e.branch())
+func (w *wizard) continuePR(m *Model, e core.PREntry) tea.Cmd {
+	w.branch.SetValue(e.Branch())
 	w.branch.CursorEnd()
 	w.useExisting = true
 	cmd := w.focusField(fieldBranch)
@@ -196,16 +196,16 @@ func (w *wizard) continuePR(m *Model, e prEntry) tea.Cmd {
 // forkPRNamed is the listed pull request from a fork whose branch is
 // named name, and whether the list can say: it can when it has the
 // repository's.
-func (w *wizard) forkPRNamed(name string) (prEntry, bool, bool) {
+func (w *wizard) forkPRNamed(name string) (core.PREntry, bool, bool) {
 	if !w.pulls.loaded {
-		return prEntry{}, false, false
+		return core.PREntry{}, false, false
 	}
 	for _, e := range w.pulls.entries {
-		if e.pr.Fork != "" && e.pr.Branch == name {
+		if e.PR.Fork != "" && e.PR.Branch == name {
 			return e, true, true
 		}
 	}
-	return prEntry{}, false, true
+	return core.PREntry{}, false, true
 }
 
 // prLines draws the list, inner wide and at most rows rows of pull
@@ -233,14 +233,14 @@ func (w *wizard) prLines(m *Model, inner, rows int, sel lipgloss.Style) []string
 	rows = max(min(rows, wizardPRRows), 3)
 	var out []string
 	for i, e := range shown {
-		row := padTo("#"+strconv.Itoa(e.pr.Number), prColNum) +
+		row := padTo("#"+strconv.Itoa(e.PR.Number), prColNum) +
 			padTo(m.prWhere(e), prColWhere) +
-			padTo(ansi.Truncate(term.PrintableLine(e.headName()), prColBranch(true)-1, "…"), prColBranch(true)) +
-			padTo(ansi.Truncate(term.PrintableLine(e.pr.Author), prColAuthor-1, "…"), prColAuthor)
-		if e.asked {
+			padTo(ansi.Truncate(term.PrintableLine(headName(e)), prColBranch(true)-1, "…"), prColBranch(true)) +
+			padTo(ansi.Truncate(term.PrintableLine(e.PR.Author), prColAuthor-1, "…"), prColAuthor)
+		if e.Asked {
 			row += askedMark + "  "
 		}
-		row = ansi.Truncate(cursorLine(on && i == w.pulls.cursor, row+term.PrintableLine(e.pr.Title), sel), inner, "…")
+		row = ansi.Truncate(cursorLine(on && i == w.pulls.cursor, row+term.PrintableLine(e.PR.Title), sel), inner, "…")
 		out = append(out, m.onClick(row, func(m *Model) tea.Cmd {
 			w.pulls.cursor = i
 			return w.pickPR(m, e)

@@ -23,7 +23,7 @@ import (
 // requests.
 type repoPRs struct {
 	at      time.Time
-	entries []prEntry
+	entries []core.PREntry
 	names   []string // the repository on github.com, "owner/name"
 	err     string
 }
@@ -123,19 +123,19 @@ func fetchRepoPRs(r workspace.Repo) repoPRs {
 		}
 	}
 	for _, pr := range prs {
-		got.entries = append(got.entries, prEntry{repo: r, pr: pr, wt: checkouts[localBranch(pr)]})
+		got.entries = append(got.entries, core.PREntry{Repo: r, PR: pr, Wt: checkouts[core.LocalBranch(pr)]})
 	}
 	return got
 }
 
 // marked is got's pull requests, those your review is asked for, by
 // github.RequestKey in asked, marked.
-func (got repoPRs) marked(asked map[string]bool) []prEntry {
-	out := make([]prEntry, 0, len(got.entries))
+func (got repoPRs) marked(asked map[string]bool) []core.PREntry {
+	out := make([]core.PREntry, 0, len(got.entries))
 	for _, e := range got.entries {
 		for _, n := range got.names {
-			if asked[github.RequestKey(n, e.pr.Number)] {
-				e.asked = true
+			if asked[github.RequestKey(n, e.PR.Number)] {
+				e.Asked = true
 			}
 		}
 		out = append(out, e)
@@ -145,16 +145,16 @@ func (got repoPRs) marked(asked map[string]bool) []prEntry {
 
 // sortAllPREntries groups pull requests by repository, those your review
 // is asked for first within each, then the most recently updated.
-func sortAllPREntries(entries []prEntry) {
+func sortAllPREntries(entries []core.PREntry) {
 	sort.SliceStable(entries, func(i, j int) bool {
 		x, y := entries[i], entries[j]
 		switch {
-		case x.repo.Name != y.repo.Name:
-			return x.repo.Name < y.repo.Name
-		case x.asked != y.asked:
-			return x.asked
+		case x.Repo.Name != y.Repo.Name:
+			return x.Repo.Name < y.Repo.Name
+		case x.Asked != y.Asked:
+			return x.Asked
 		}
-		return y.pr.UpdatedAt.Before(x.pr.UpdatedAt)
+		return y.PR.UpdatedAt.Before(x.PR.UpdatedAt)
 	})
 }
 
@@ -183,9 +183,9 @@ func (m *Model) onPRAll(msg prAllMsg) {
 // allPREntries is everyone's open pull requests as the list shows them,
 // by repository, those your review is asked for first within each, and
 // what went wrong asking.
-func (m *Model) allPREntries() ([]prEntry, []string) {
+func (m *Model) allPREntries() ([]core.PREntry, []string) {
 	a := &m.prAll
-	var entries []prEntry
+	var entries []core.PREntry
 	var errs []string
 	for _, got := range a.repos {
 		entries = append(entries, got.marked(a.asked)...)
@@ -202,10 +202,10 @@ func (m *Model) allPREntries() ([]prEntry, []string) {
 }
 
 // askedCount is how many of entries your review is asked for.
-func askedCount(entries []prEntry) int {
+func askedCount(entries []core.PREntry) int {
 	n := 0
 	for _, e := range entries {
-		if e.asked {
+		if e.Asked {
 			n++
 		}
 	}

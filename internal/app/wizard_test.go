@@ -464,15 +464,15 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 	now := time.Now()
 	got := repoPRs{at: now, names: []string{"acme/app"}}
 	for i := 1; i <= 20; i++ {
-		got.entries = append(got.entries, prEntry{repo: app, pr: github.PR{Number: i, Title: fmt.Sprintf("Change %d", i),
+		got.entries = append(got.entries, core.PREntry{Repo: app, PR: github.PR{Number: i, Title: fmt.Sprintf("Change %d", i),
 			Author: "ann", Branch: fmt.Sprintf("change-%d", i), UpdatedAt: now.Add(-time.Duration(i) * time.Hour)}})
 	}
-	got.entries = append(got.entries, prEntry{repo: app, pr: github.PR{Number: 21, Title: "From a fork", Author: "bob",
+	got.entries = append(got.entries, core.PREntry{Repo: app, PR: github.PR{Number: 21, Title: "From a fork", Author: "bob",
 		Branch: "main", Fork: "bob", UpdatedAt: now.Add(-48 * time.Hour)}})
 	w.pulls = wizardPRs{repo: app.Path}
 	w.setPRs(m, got, map[string]bool{github.RequestKey("acme/app", 15): true})
 	for _, e := range w.pulls.entries {
-		if e.pr.Number == 2 {
+		if e.PR.Number == 2 {
 			t.Fatal("#2 has a tab open on its branch: there is no new tab to make for it")
 		}
 	}
@@ -485,8 +485,8 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 		!strings.Contains(view, "↓ ") || strings.Contains(view, "Change 20") {
 		t.Fatalf("the list should show its first rows, the one asking your review marked:\n%s", view)
 	}
-	if w.shownPRs()[0].pr.Number != 15 {
-		t.Fatalf("the one asking your review should be first: #%d", w.shownPRs()[0].pr.Number)
+	if w.shownPRs()[0].PR.Number != 15 {
+		t.Fatalf("the one asking your review should be first: #%d", w.shownPRs()[0].PR.Number)
 	}
 
 	w.key(m, keyMsg("down"))
@@ -497,21 +497,21 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 		w.key(m, keyMsg("down"))
 	}
 	cur := w.shownPRs()[w.pulls.cursor]
-	if view := ansi.Strip(w.view(m, 140, 50)); !strings.Contains(view, fmt.Sprintf("❯ #%d", cur.pr.Number)) || !strings.Contains(view, "↑ ") {
-		t.Fatalf("the list should scroll to the cursor (#%d):\n%s", cur.pr.Number, view)
+	if view := ansi.Strip(w.view(m, 140, 50)); !strings.Contains(view, fmt.Sprintf("❯ #%d", cur.PR.Number)) || !strings.Contains(view, "↑ ") {
+		t.Fatalf("the list should scroll to the cursor (#%d):\n%s", cur.PR.Number, view)
 	}
 
 	// Typing narrows the list, from the branch name.
 	for _, r := range "fork" {
 		w.key(m, keyMsg(string(r)))
 	}
-	if w.field != fieldBranch || w.branch.Value() != "fork" || len(w.shownPRs()) != 1 || w.shownPRs()[0].pr.Number != 21 {
+	if w.field != fieldBranch || w.branch.Value() != "fork" || len(w.shownPRs()) != 1 || w.shownPRs()[0].PR.Number != 21 {
 		t.Fatalf("typing should narrow the list: field %d %q %d", w.field, w.branch.Value(), len(w.shownPRs()))
 	}
 	if view := ansi.Strip(w.view(m, 140, 50)); strings.Contains(view, "review asked") {
 		t.Fatalf("#15, asking your review, is filtered away: the heading should not say so:\n%s", view)
 	}
-	if e, isFork, listed := w.forkPRNamed("main"); !listed || !isFork || e.pr.Number != 21 {
+	if e, isFork, listed := w.forkPRNamed("main"); !listed || !isFork || e.PR.Number != 21 {
 		t.Fatal("the list should know the fork's branch")
 	}
 

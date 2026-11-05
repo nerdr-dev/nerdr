@@ -325,7 +325,7 @@ func TestTooltip(t *testing.T) {
 // requests, and a click on "this branch" goes back to the branch's.
 func TestClickPRViews(t *testing.T) {
 	m := testModel(t)
-	m.prWatch.at = time.Now() // known already: GitHub is not asked
+	m.prWatch.At = time.Now() // known already: GitHub is not asked
 	m.handleKey(keyMsg("f2"))
 	// As my PRs has it: the title in the border, the views right below.
 	lines := strings.Split(ansi.Strip(m.View()), "\n")

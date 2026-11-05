@@ -10,6 +10,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 const (
@@ -150,4 +151,65 @@ func RepoNames(path string) ([]string, bool, error) {
 	remoteCache.m[path] = RemoteInfo{Names: names, Elsewhere: elsewhere, At: time.Now()}
 	remoteCache.Unlock()
 	return names, elsewhere, nil
+}
+
+// PREntry is one pull request, and where its branch is checked out, if
+// anywhere.
+type PREntry struct {
+	Repo workspace.Repo
+	PR   github.PR
+	Wt   string // the worktree with the branch, "" when there is none
+	// Asked is set when your review of it is asked for, on you or on a
+	// team of yours.
+	Asked bool
+}
+
+// Branch is the local branch the pull request is worked on in: its own,
+// or, from a fork, the one FetchForkPR fetches it into.
+func (e PREntry) Branch() string { return LocalBranch(e.PR) }
+
+// LocalBranch is the local branch pr is worked on in; see PREntry.Branch.
+func LocalBranch(pr github.PR) string {
+	if pr.Fork != "" {
+		return workspace.ForkBranch(pr.Number, pr.Branch)
+	}
+	return pr.Branch
+}
+
+// SortPREntries groups the list by repository, the most recently updated
+// first within each.
+func SortPREntries(entries []PREntry) {
+	sort.SliceStable(entries, func(i, j int) bool {
+		a, b := entries[i], entries[j]
+		if a.Repo.Name != b.Repo.Name {
+			return a.Repo.Name < b.Repo.Name
+		}
+		return b.PR.UpdatedAt.Before(a.PR.UpdatedAt)
+	})
+}
+
+// PRWatchState is what is known of your pull requests.
+type PRWatchState struct {
+	Entries []PREntry
+	Errs    map[string]string // by repository path: why it did not answer
+
+	Known map[string]state.PRSeen // by prKey
+	Repos map[string]bool         // the repositories that have answered once
+	News  []state.PRNews          // not seen in the list yet, oldest first
+	// Skip is the repositories with no GitHub remote, and until when they
+	// are left alone.
+	Skip map[string]time.Time
+
+	Busy bool
+	At   time.Time // when GitHub was last asked
+}
+
+// PRWatchMsg is a look at the pull requests.
+type PRWatchMsg struct {
+	PRs      []PREntry
+	Answered map[string]bool   // repository paths
+	Failed   map[string]string // repository path: "<name>: <why>"
+	// NotGitHub is the repositories that failed for want of a GitHub
+	// remote; Skipped those left alone this time.
+	NotGitHub, Skipped map[string]bool
 }

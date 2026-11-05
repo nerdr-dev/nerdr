@@ -188,7 +188,7 @@ type Model struct {
 	wheelHeld                bool
 
 	// prWatch is the watching of your pull requests; see prwatch.go.
-	prWatch prWatch
+	prWatch core.PRWatchState
 	prAll   prAll // everyone's pull requests, while the list shows them; see prall.go
 	// prPanel is all your pull requests as the review panel's F2 shows
 	// them, and prPanelShown whether it did at the last look; see
@@ -544,7 +544,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case review.EditMsg:
 		return m.openEditor(msg)
 
-	case prWatchMsg:
+	case core.PRWatchMsg:
 		m.onPRWatch(msg)
 		return nil
 

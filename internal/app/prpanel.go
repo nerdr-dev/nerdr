@@ -184,7 +184,7 @@ func (m *Model) syncPRPanel() tea.Cmd {
 
 // syncAllPRs is syncPRPanel for the list of all your PRs.
 func (m *Model) syncAllPRs() tea.Cmd {
-	m.review.SetPRNews(len(m.prWatch.news) > 0)
+	m.review.SetPRNews(len(m.prWatch.News) > 0)
 	shown := m.panelAllPRs()
 	entered := shown && !m.prPanelShown
 	m.prPanelShown = shown
@@ -199,7 +199,7 @@ func (m *Model) syncAllPRs() tea.Cmd {
 		d.news = nil
 		d.pointAt(m.Cur())
 	}
-	if len(m.prWatch.news) > 0 {
+	if len(m.prWatch.News) > 0 {
 		if d.news == nil {
 			d.news = map[string][]string{}
 		}
@@ -271,7 +271,7 @@ func (m *Model) allPRsBody(w, h int) []string {
 // those nerdr finds where it was started and in repo_dirs, which with
 // everyone's can be many more than one works in.
 func (m *Model) prScope(all bool) string {
-	whose, n := "Your", len(m.prWatch.repos)
+	whose, n := "Your", len(m.prWatch.Repos)
 	if all {
 		whose, n = "Everyone's", len(m.prAll.repos)
 	}
@@ -298,7 +298,7 @@ func (m *Model) prScope(all bool) string {
 // shown the one on: each a button for its view.
 func (m *Model) prViewsLine(shown review.PRView) string {
 	var out string
-	prNews := len(m.prWatch.news) > 0 && shown != review.ViewMyPRs
+	prNews := len(m.prWatch.News) > 0 && shown != review.ViewMyPRs
 	issueNews := len(m.IssueWatch.News) > 0 && shown != review.ViewIssues
 	for i, l := range review.PRViews(shown, prNews, issueNews) {
 		v := review.PRView(i)
@@ -338,8 +338,8 @@ func (m *Model) panelKeys(do func(tea.KeyMsg) tea.Cmd, w int, pairs ...string) [
 // openPRInPanel is enter on a PR in the panel: to the tab on its branch,
 // with the panel on that PR — its reviews, checks and conversation, where
 // a and f answer them — and the keyboard. With no tab, as the P list does.
-func (m *Model) openPRInPanel(e prEntry) tea.Cmd {
-	if m.tabOnBranch(e.repo.Path, e.branch()) == nil {
+func (m *Model) openPRInPanel(e core.PREntry) tea.Cmd {
+	if m.tabOnBranch(e.Repo.Path, e.Branch()) == nil {
 		return m.goToPR(e)
 	}
 	cmd := m.goToPR(e)
@@ -370,12 +370,12 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		return nil
 	}
 	e := d.entries[d.cursor]
-	t := m.tabOnBranch(e.repo.Path, e.branch())
+	t := m.tabOnBranch(e.Repo.Path, e.Branch())
 	if t == nil {
-		m.toast("no tab works on " + e.branch() + ": enter opens one")
+		m.toast("no tab works on " + e.Branch() + ": enter opens one")
 		return nil
 	}
-	key := core.PrKey(e.repo.Path, e.pr.Number)
+	key := core.PrKey(e.Repo.Path, e.PR.Number)
 	if m.prAsking[key] {
 		return nil
 	}
@@ -383,20 +383,20 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		m.prAsking = map[string]bool{}
 	}
 	m.prAsking[key] = true
-	dir := e.repo.Path
+	dir := e.Repo.Path
 	for _, w := range t.Worktrees {
-		if filepath.Clean(w.Repo) == filepath.Clean(e.repo.Path) {
+		if filepath.Clean(w.Repo) == filepath.Clean(e.Repo.Path) {
 			dir = w.Path
 		}
 	}
-	what := "draft replies to #" + strconv.Itoa(e.pr.Number) + "'s reviews"
+	what := "draft replies to #" + strconv.Itoa(e.PR.Number) + "'s reviews"
 	if fix {
-		what = "fix #" + strconv.Itoa(e.pr.Number) + "'s build"
-		m.toast("reading the build log of #" + strconv.Itoa(e.pr.Number) + "…")
+		what = "fix #" + strconv.Itoa(e.PR.Number) + "'s build"
+		m.toast("reading the build log of #" + strconv.Itoa(e.PR.Number) + "…")
 	}
 	return func() tea.Msg {
 		msg := prAskMsg{t: t, key: key, what: what}
-		pr, err := github.FetchPR(dir, e.pr.Number)
+		pr, err := github.FetchPR(dir, e.PR.Number)
 		switch {
 		case err != nil:
 			msg.err = err
