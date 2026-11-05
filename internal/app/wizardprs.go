@@ -86,7 +86,7 @@ func (w *wizard) loadPRs(m *Model) tea.Cmd {
 func (w *wizard) setPRs(m *Model, got repoPRs, asked map[string]bool) {
 	w.pulls.entries = nil
 	for _, e := range got.marked(asked) {
-		if m.tabOnBranch(e.Repo.Path, e.Branch()) == nil {
+		if m.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
 			w.pulls.entries = append(w.pulls.entries, e)
 		}
 	}

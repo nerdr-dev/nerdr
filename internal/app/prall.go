@@ -110,7 +110,7 @@ func fetchAllPRs(root, wtDir string, dirs []string, at map[string]time.Time, eve
 func fetchRepoPRs(r workspace.Repo) repoPRs {
 	got := repoPRs{at: time.Now()}
 	got.names, _, _ = core.RepoNames(r.Path)
-	prs, err := github.ListPRs(r.Path, prListLimit)
+	prs, err := github.ListPRs(r.Path, core.PRListLimit)
 	if err != nil {
 		got.err = r.Name + ": " + err.Error()
 	}

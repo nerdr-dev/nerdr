@@ -429,7 +429,7 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	if remove {
 		delete(m.GroupNames, t.Dir)
 	}
-	m.forgetTabPRNews(t.Name)
+	m.ForgetTabPRNews(t.Name)
 	m.resizePanes()
 	m.scrolling = false
 	m.SaveSession()

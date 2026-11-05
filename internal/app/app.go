@@ -187,9 +187,7 @@ type Model struct {
 	lastWheelStep, lastWheel time.Time
 	wheelHeld                bool
 
-	// prWatch is the watching of your pull requests; see prwatch.go.
-	prWatch core.PRWatchState
-	prAll   prAll // everyone's pull requests, while the list shows them; see prall.go
+	prAll prAll // everyone's pull requests, while the list shows them; see prall.go
 	// prPanel is all your pull requests as the review panel's F2 shows
 	// them, and prPanelShown whether it did at the last look; see
 	// prpanel.go.
@@ -305,7 +303,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 			m.reviewOpen = false
 		}
 	}
-	m.loadPRWatch(sess.PRs)
+	m.LoadPRWatch(sess.PRs)
 	m.LoadIssueWatch(sess.Issues)
 	m.GroupNames = sess.GroupNames
 	m.SandboxedDirs = sess.SandboxedDirs
@@ -480,7 +478,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case core.InfoTickMsg:
 		m.toastDenied()
-		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), m.tickPRs(time.Now()), fromCore(m.TickIssues(time.Now())), m.syncPRPanel(),
+		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), fromCore(m.TickPRs(time.Now())), fromCore(m.TickIssues(time.Now())), m.syncPRPanel(),
 			fromCore(m.SleepIdle(time.Now())), fromCore(core.InfoTick()))
 
 	case sentMsg:
@@ -543,10 +541,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case review.EditMsg:
 		return m.openEditor(msg)
-
-	case core.PRWatchMsg:
-		m.onPRWatch(msg)
-		return nil
 
 	case core.IssueAllMsg:
 		m.onIssueAll(msg)
