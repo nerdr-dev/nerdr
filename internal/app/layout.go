@@ -98,7 +98,7 @@ func (m *Model) setLayout(k string) tea.Cmd {
 		m.reviewOpen, m.reviewZoom = false, false
 		if m.split != nil {
 			m.split = nil
-			m.saveSession()
+			m.SaveSession()
 		}
 		m.setFocus(core.FocusAgent)
 	case "z":
@@ -169,7 +169,7 @@ func (p *layoutPicker) restore(m *Model) tea.Cmd {
 	m.focus = b.focus
 	m.review = m.review.SetFocused(b.focus == core.FocusReview)
 	if splitChanged {
-		m.saveSession()
+		m.SaveSession()
 	}
 	return tea.Batch(cmd, m.resize())
 }

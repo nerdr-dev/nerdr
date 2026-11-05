@@ -220,7 +220,7 @@ func (m *Core) OnReady(rep hooks.Report) Cmd {
 // in the same worktree.
 func (m *Core) SetSession(t *Tab, id string) {
 	t.SessionID = id
-	m.Client.SaveSession()
+	m.SaveSession()
 	if t.ReviewOf != nil && id != "" {
 		_ = codereview.SaveSession(t.Dir, string(t.Agent), id)
 	}
@@ -330,7 +330,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 		t.Messages = append([]state.Message{run.FixMsg}, t.Messages...)
 		run.Phase = Fixing
 		t.ReviewBrief = brief
-		m.Client.SaveSession()
+		m.SaveSession()
 		if auto {
 			m.Toast(t.Name + ": " + brief + " — sent to " + string(t.Agent))
 		} else {
@@ -339,7 +339,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 		}
 		m.Client.NotifyReview(t, brief)
 	}
-	m.Client.SaveSession() // with what is still to be told of
+	m.SaveSession() // with what is still to be told of
 	m.Client.ResizePanes()
 	return m.Client.PinReview() // the panel shows the findings
 }
@@ -356,7 +356,7 @@ func (m *Core) SendFindings(t *Tab, msg state.Message) {
 	if run := t.Review; run != nil && run.FixMsg == msg {
 		run.FixMsg = t.Messages[i] // still the findings the review waits on
 	}
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes()
 	m.Toast(t.Name + ": the findings go to " + string(t.Agent))
 }
@@ -382,7 +382,7 @@ func (m *Core) EndReview(t *Tab, brief string, notify bool) {
 	}
 	t.Review = nil
 	t.ReviewBrief, t.FindingsSent = brief, false
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes()
 	m.Toast(t.Name + ": review " + brief)
 	if notify {
@@ -535,7 +535,7 @@ func (m *Core) FindingsDone(t *Tab) {
 		return
 	}
 	t.FindingsSent, t.ReviewBrief = false, ""
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes()
 }
 

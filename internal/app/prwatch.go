@@ -324,7 +324,7 @@ func (m *Model) onPRWatch(msg prWatchMsg) {
 		m.tellPRNews(news)
 	}
 	m.applyPRs()
-	m.saveSession()
+	m.SaveSession()
 }
 
 // applyPRs shows what is known in the lists on screen.
@@ -425,7 +425,7 @@ func (m *Model) takePRNews() map[string][]string {
 	}
 	if len(m.prWatch.news) > 0 {
 		m.prWatch.news = nil
-		m.saveSession()
+		m.SaveSession()
 	}
 	m.review.SetPRNews(false)
 	return out

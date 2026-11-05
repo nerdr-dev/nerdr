@@ -136,7 +136,7 @@ func (m *Model) onIssueWatch(msg core.IssueWatchMsg) {
 		m.tellIssueNews(news)
 	}
 	m.applyIssues()
-	m.saveSession()
+	m.SaveSession()
 }
 
 // refreshAllIssues asks the repositories the issue list shows for their

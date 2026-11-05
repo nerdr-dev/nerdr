@@ -179,7 +179,7 @@ func (m *Core) FollowBranches(t *Tab) {
 		changed = true
 	}
 	if changed {
-		m.Client.SaveSession()
+		m.SaveSession()
 	}
 }
 

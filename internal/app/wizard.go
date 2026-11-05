@@ -857,7 +857,7 @@ func (m *Model) addTab(name, dir, group string, wts []workspace.Worktree, kind a
 	} else {
 		cmd = fromCore(m.Start(t, false))
 	}
-	m.saveSession()
+	m.SaveSession()
 	return t, tea.Batch(cmd, m.selectTab(m.Active), m.resize())
 }
 

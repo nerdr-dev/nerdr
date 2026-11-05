@@ -967,7 +967,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	if m.split != nil || splitEnded {
 		m.resizePanes() // the tab may have changed sides, or have the window
 	}
-	m.saveSession()
+	m.SaveSession()
 	m.ReportHerdr()
 	var ask tea.Cmd
 	if m.dialog == nil && t.Spinoff != nil {
@@ -1019,7 +1019,7 @@ func (m *Model) Shutdown() {
 // which takes a while and runs out of the screen's way when quitting.
 func (m *Model) stopping() []*term.Pane {
 	m.Quitting = true
-	m.saveSession()
+	m.SaveSession()
 	var panes []*term.Pane
 	for _, t := range m.Tabs {
 		for _, p := range t.Panes() {

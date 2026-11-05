@@ -214,7 +214,7 @@ func (m *Core) AddTabWith(name, dir, group string, wts []workspace.Worktree, kin
 	m.Tabs = append(m.Tabs, t)
 	m.AddMessageFrom(t, task, true, sandboxed) // before the start, which may take it
 	cmd := m.Start(t, false)
-	m.Client.SaveSession()
+	m.SaveSession()
 	return t, Batch(cmd, m.Client.Resize())
 }
 
@@ -248,7 +248,7 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 		m.AddMessage(sender, fmt.Sprintf("nerdr: %d of the parts you sent were left out: %d parts already wait for the user to go through. "+
 			"Send them again once the user has been through those.", dropped, spinoff.MaxParts), true)
 	}
-	m.Client.SaveSession()
+	m.SaveSession()
 	cmd := m.Client.Detect() // the light turns red at once
 	if t == m.Cur() && m.Client.DialogClosed() {
 		return Batch(cmd, m.Client.OpenSpinoff(t))

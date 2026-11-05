@@ -16,12 +16,10 @@ import (
 // watcher is a client that looks at everything and remembers what it was told.
 type watcher struct {
 	NoClient
-	saved  int
 	toasts []string
 }
 
 func (w *watcher) Toast(s string)           { w.toasts = append(w.toasts, s) }
-func (w *watcher) SaveSession()             { w.saved++ }
 func (w *watcher) AgentVisible(_ *Tab) bool { return true }
 
 // sendEnterIn runs c and what it leads to, and returns the SendEnter among
@@ -94,8 +92,11 @@ func TestWholeRoundWithNoTUI(t *testing.T) {
 	time.Sleep(QueueQuiet + 100*time.Millisecond)
 
 	ev := sendEnterIn(t, c.DetectAgent(tb, true, time.Now()))
-	if len(tb.Messages) != 0 || !tb.AwaitWork || w.saved == 0 {
-		t.Fatalf("not sent: %+v, await %v, saved %d", tb.Messages, tb.AwaitWork, w.saved)
+	if len(tb.Messages) != 0 || !tb.AwaitWork {
+		t.Fatalf("not sent: %+v, await %v", tb.Messages, tb.AwaitWork)
+	}
+	if s, err := state.Load(c.Root); err != nil || len(s.Tabs) != 1 || len(s.Tabs[0].Messages) != 0 {
+		t.Fatalf("not saved as sent: %+v, %v", s.Tabs, err)
 	}
 	c.SendEnter(ev)
 	waitFor(t, "the agent answers", func() bool { return strings.Contains(tb.Pane.Text(0), "got") })

@@ -143,7 +143,7 @@ func (m *Core) TakeIssueNews() map[string]bool {
 	}
 	if len(m.IssueWatch.News) > 0 {
 		m.IssueWatch.News = nil
-		m.Client.SaveSession()
+		m.SaveSession()
 	}
 	return out
 }

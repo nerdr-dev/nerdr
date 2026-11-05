@@ -20,7 +20,7 @@ func (m *Core) AskHandoff(t *Tab, k agents.Kind) {
 	// and go to the new agent.
 	t.Messages = append([]state.Message{w.Asked}, t.Messages...)
 	t.Handoff = w
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes() // the panel says it is waiting
 	m.Toast(m.AgentName(t) + ": asked " + string(t.Agent) + " for a handoff to " + string(k))
 }
@@ -36,7 +36,7 @@ func (m *Core) CancelHandoff(t *Tab) {
 		t.DropMessage(i)
 	}
 	t.Handoff = nil
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes()
 }
 
@@ -102,7 +102,7 @@ func (m *Core) SwitchAgent(t *Tab, k agents.Kind, summary string) Cmd {
 	t.AwaitWork, t.QueuePaused = false, false
 	m.Client.StopScrolling()
 	m.Client.SetFocus(FocusAgent)
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes()
 	m.Toast(m.AgentName(t) + ": switched to " + string(k))
 	specs, id, dir, tabID := m.SpecsFor(t), t.SessionID, t.Dir, t.ID

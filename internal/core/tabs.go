@@ -267,7 +267,7 @@ func (m *Core) FirstAsArgs(t *Tab) ([]string, state.Message) {
 	t.DropMessage(0)
 	m.SetGoal(t, msg.Text)
 	m.SetLast(t, msg.Text)
-	m.Client.SaveSession()
+	m.SaveSession()
 	return args, msg
 }
 

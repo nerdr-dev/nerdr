@@ -84,14 +84,14 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 			l := *list
 			l[r.I-1], l[r.I] = l[r.I], l[r.I-1]
 			m.msgCursor--
-			m.saveSession()
+			m.SaveSession()
 		}
 	case "J", "shift+down":
 		if has && i+1 < len(refs) && refs[i+1].A == r.A {
 			l := *list
 			l[r.I+1], l[r.I] = l[r.I], l[r.I+1]
 			m.msgCursor++
-			m.saveSession()
+			m.SaveSession()
 		}
 	case " ", "x":
 		switch {
@@ -107,7 +107,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 			if run := a.Review; run != nil && run.FixMsg == old {
 				run.FixMsg = a.Messages[r.I]
 			}
-			m.saveSession()
+			m.SaveSession()
 		}
 	case "enter":
 		switch {
@@ -130,7 +130,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 		if has {
 			*list = core.DropFrom(*list, r.I)
 			m.msgCursor = min(i, len(refs)-2)
-			m.saveSession()
+			m.SaveSession()
 		}
 	}
 	return nil
@@ -143,7 +143,7 @@ func (m *Model) putIn(t *core.Tab, i int) tea.Cmd {
 		return nil
 	}
 	t.DropMessage(i)
-	m.saveSession()
+	m.SaveSession()
 	// The keyboard goes to the agent it was put in, whichever pane had it.
 	cmd := m.goToAgent(t)
 	m.toast("put in: enter sends it")

@@ -268,7 +268,7 @@ func (m *Core) HookSession(r hooks.Report) *Tab {
 	}
 	if len(r.ResumeArgv) > 0 && !m.Confined(r, t) && !slices.Equal(r.ResumeArgv, t.ResumeArgv) {
 		t.ResumeArgv = r.ResumeArgv
-		m.Client.SaveSession()
+		m.SaveSession()
 	}
 	return t
 }
