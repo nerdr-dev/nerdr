@@ -19,7 +19,12 @@ type watcher struct {
 	toasts []string
 }
 
-func (w *watcher) Toast(s string)           { w.toasts = append(w.toasts, s) }
+func (w *watcher) Tell(ev Event) Cmd {
+	if s, ok := ev.(ToastMsg); ok {
+		w.toasts = append(w.toasts, string(s))
+	}
+	return nil
+}
 func (w *watcher) AgentVisible(_ *Tab) bool { return true }
 
 // sendEnterIn runs c and what it leads to, and returns the SendEnter among

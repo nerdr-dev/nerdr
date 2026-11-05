@@ -258,21 +258,22 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 	return nil, ev
 }
 
-// DetectAll looks at every agent. A client decides what counts as shown; with
-// none, nothing is.
+// DetectAll looks at every agent. The client says which tabs are shown, and
+// does its part at the start and the end; with none, nothing is shown.
 func (m *Core) DetectAll(now time.Time) Cmd {
-	if m.Client != nil {
-		if _, none := m.Client.(NoClient); !none {
-			return m.Client.Detect()
-		}
-	}
-	var cmds []Cmd
+	cmds := []Cmd{m.Tell(DetectStartMsg{})}
 	for _, t := range m.Tabs {
-		cmds = append(cmds, m.DetectAgent(t, false, now))
-		for _, a := range t.ExtraAgents() {
-			cmds = append(cmds, m.DetectAgent(a, false, now))
+		shown := m.Client != nil && m.Client.TabShown(t)
+		if shown {
+			t.ShownAt = now
 		}
+		cmds = append(cmds, m.DetectAgent(t, shown, now))
+		for _, a := range t.ExtraAgents() {
+			cmds = append(cmds, m.DetectAgent(a, shown, now))
+		}
+		m.ReportWhenBegun(t, now)
 	}
+	cmds = append(cmds, m.Tell(DetectDoneMsg{Now: now}))
 	return Batch(cmds...)
 }
 

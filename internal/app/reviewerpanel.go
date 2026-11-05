@@ -77,13 +77,6 @@ func (m *Model) reviewPaneFor(of, r *core.Tab) *core.PaneTab {
 	return p
 }
 
-// dropReviewPane takes reviewer r's pane away, once it is let go.
-func (m *Model) dropReviewPane(r *core.Tab) {
-	if p := r.PaneOf(); p != nil {
-		m.dropPane(r.Owner(), p)
-	}
-}
-
 // reviewPickKey handles a key in review pane p while it lists the agents
 // to review with.
 func (m *Model) reviewPickKey(t *core.Tab, p *core.PaneTab, msg tea.KeyMsg) tea.Cmd {
@@ -94,7 +87,7 @@ func (m *Model) reviewPickKey(t *core.Tab, p *core.PaneTab, msg tea.KeyMsg) tea.
 	}
 	switch k {
 	case "esc", "q":
-		m.dropPane(t, p)
+		m.DropPane(t, p)
 		return m.resize()
 	case "-", "left":
 		return m.setRounds(of, -1)

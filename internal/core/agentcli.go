@@ -346,7 +346,7 @@ func (m *Core) TakeReply(t, from *Tab, n int) hooks.Answer {
 		if msg.Auto && msg.From == n && (!msg.Sandboxed || from.InSandbox) {
 			from.DropMessage(i)
 			m.SaveSession()
-			m.Client.ResizePanes()
+			m.Tell(PanesMsg{})
 			return hooks.Answer{Text: msg.Text}
 		}
 	}
@@ -503,7 +503,7 @@ func (m *Core) TabMade(msg TabMadeMsg) Cmd {
 		group = msg.From.Owner().Group
 	}
 	t, cmd := m.AddTabWith(msg.Plan.Branch, msg.Plan.Dir, group, msg.Wts, msg.Kind, msg.Model, msg.Task, msg.Confined)
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 	note := "made " + t.Name + " for " + m.AgentName(msg.From)
 	if len(msg.Warnings) > 0 {
 		note += "; " + strings.Join(msg.Warnings, "; ")

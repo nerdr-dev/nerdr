@@ -126,7 +126,7 @@ func (m *Core) SetHookSocketError(err error) {
 	if errors.Is(err, hooks.ErrTaken) {
 		m.HookSockErr += "; quit that nerdr and restart this one, or its tabs cannot ask, try, review, spin off or hand off"
 	}
-	m.Client.Notice("no socket for the agents: " + m.HookSockErr)
+	m.Tell(NoticeMsg("no socket for the agents: " + m.HookSockErr))
 }
 
 // SetSocketShared says another nerdr has the socket a sandbox is told
@@ -141,7 +141,7 @@ func (m *Core) SetSocketShared(taken error) {
 			break
 		}
 	}
-	m.Client.Notice(note)
+	m.Tell(NoticeMsg(note))
 }
 
 // agentEnv is the environment an agent runs with: childEnv, the socket
@@ -220,7 +220,7 @@ func (m *Core) OnHook(r hooks.Report) Cmd {
 		default:
 			t.Hook.State = detect.Unknown
 		}
-		return m.Client.Detect() // at once: a hook is news the screen may not show yet
+		return m.DetectAll(time.Now()) // at once: a hook is news the screen may not show yet
 	case hooks.ReleaseAgent:
 		if r.Source == t.Hook.Source {
 			t.Hook.Source, t.Hook.Msg = "", ""
@@ -278,6 +278,6 @@ func (m *Core) HookSession(r hooks.Report) *Tab {
 func (m *Core) TellCutOff(t *Tab) {
 	if why := m.CutOff(t); why != "" && !t.ToldCutOff {
 		t.ToldCutOff = true
-		m.Client.Notice(m.AgentName(t) + ": " + why)
+		m.Tell(NoticeMsg(m.AgentName(t) + ": " + why))
 	}
 }

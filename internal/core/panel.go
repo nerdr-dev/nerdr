@@ -104,7 +104,7 @@ func (m *Core) SetLast(t *Tab, msg string) {
 		t.AddPrompt(msg, t.LastAt)
 	}
 	m.SaveSession()
-	m.Client.ResizePanes() // the panel may have changed height
+	m.Tell(PanesMsg{}) // the panel may have changed height
 }
 
 // noteLast keeps msg, which the agent's log says was sent at at, as the
@@ -158,7 +158,7 @@ func (m *Core) SetLatest(t *Tab, l agents.Latest) {
 	}
 	if changed {
 		m.SaveSession()
-		m.Client.ResizePanes()
+		m.Tell(PanesMsg{})
 	}
 }
 
@@ -168,7 +168,7 @@ func (m *Core) SetGoal(t *Tab, goal string) {
 	}
 	t.Goal = strings.TrimSpace(clean.Text(goal))
 	m.SaveSession()
-	m.Client.ResizePanes() // the panel takes rows above the agent
+	m.Tell(PanesMsg{}) // the panel takes rows above the agent
 }
 
 // GoalWrap is the last message wrapped for one width, kept since the panel

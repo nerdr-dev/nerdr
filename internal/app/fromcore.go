@@ -33,9 +33,6 @@ func toCore(c tea.Cmd) core.Cmd {
 	return func() core.Event { return c() }
 }
 
-// Toast is core's way of showing the user a short message; see core.Client.
-func (m *Model) Toast(s string) { m.toast(s) }
-
 // stopScrolling leaves the scrollback view.
 func (m *Model) stopScrolling() { m.scrolling = false }
 

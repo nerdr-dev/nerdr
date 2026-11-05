@@ -21,7 +21,7 @@ func (m *Core) AskHandoff(t *Tab, k agents.Kind) {
 	t.Messages = append([]state.Message{w.Asked}, t.Messages...)
 	t.Handoff = w
 	m.SaveSession()
-	m.Client.ResizePanes() // the panel says it is waiting
+	m.Tell(PanesMsg{}) // the panel says it is waiting
 	m.Toast(m.AgentName(t) + ": asked " + string(t.Agent) + " for a handoff to " + string(k))
 }
 
@@ -37,7 +37,7 @@ func (m *Core) CancelHandoff(t *Tab) {
 	}
 	t.Handoff = nil
 	m.SaveSession()
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 }
 
 // checkHandoff switches t once its agent is not going to send the handoff
@@ -100,10 +100,9 @@ func (m *Core) SwitchAgent(t *Tab, k agents.Kind, summary string) Cmd {
 	t.Err = ""
 	// What the old agent was sent is no concern of the new one's.
 	t.AwaitWork, t.QueuePaused = false, false
-	m.Client.StopScrolling()
-	m.Client.SetFocus(FocusAgent)
+	m.Tell(SwitchedMsg{T: t})
 	m.SaveSession()
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 	m.Toast(m.AgentName(t) + ": switched to " + string(k))
 	specs, id, dir, tabID := m.SpecsFor(t), t.SessionID, t.Dir, t.ID
 	skip, shared := m.OthersSessions(t), m.SharesKind(t)
@@ -199,6 +198,6 @@ func (m *Core) OnHandoff(r hooks.Report) Cmd {
 	if t == m.FrontAgent() && m.Client.DialogClosed() {
 		return m.Client.OpenSwitchAgent()
 	}
-	m.Toast(m.AgentName(t) + ": " + string(t.Agent) + " wrote a handoff; " + m.Client.KeyName("a s") + " switches the agent")
+	m.Toast(m.AgentName(t) + ": " + string(t.Agent) + " wrote a handoff; " + KeyRef("a s") + " switches the agent")
 	return nil
 }
