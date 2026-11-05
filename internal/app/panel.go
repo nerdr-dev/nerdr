@@ -92,10 +92,10 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 		rows = append(rows, core.PanelRow{Label: "swap:", Text: ansi.Truncate("waiting for "+string(t.Agent)+"'s handoff to "+string(w.To)+" · "+
 			m.pk("a s")+" switches now or cancels", textW, "…"), Dim: true})
 	}
-	if s := m.ReviewLine(t); s != "" && t.ReviewOf == nil {
+	if s := m.reviewLine(t); s != "" && t.ReviewOf == nil {
 		rows = append(rows, core.PanelRow{Label: "rev:", Text: ansi.Truncate(s, textW, "…"), Dim: t.Review == nil})
 	}
-	if s := m.MessagesLine(t); s != "" {
+	if s := m.messagesLine(t); s != "" {
 		rows = append(rows, core.PanelRow{Label: "tasks:", Text: ansi.Truncate(s, textW, "…"), Dim: true})
 	}
 	if core.IsOn(m.Cfg.CloseMerged) && t.Info.Merged() {
@@ -177,4 +177,80 @@ func backgroundLine(t *core.Tab) string {
 		return "1 process running in the background"
 	}
 	return strconv.Itoa(n) + " processes running in the background"
+}
+
+// reviewLine is what the panel above t's agent says of its review.
+func (m *Model) reviewLine(t *core.Tab) string {
+	run := t.Review
+	if run == nil {
+		// Briefs kept before said where the findings were, and went on
+		// saying it after they were sent.
+		brief, _, _ := strings.Cut(t.ReviewBrief, " · findings in ")
+		switch {
+		case brief == "":
+		case t.FindingsWait():
+			brief += " · findings in " + m.screenKey(3)
+		case t.FindingsSent || t.FindingsQueued():
+			brief += " · sent to " + string(t.Agent)
+		}
+		return brief
+	}
+	round := "round " + strconv.Itoa(run.Round) + "/" + strconv.Itoa(run.Rounds)
+	switch {
+	case run.Phase == core.Fixing && t.FindMessage(run.FixMsg) >= 0 && !run.FixMsg.Auto:
+		return run.Brief + " · " + round + " · in " + m.screenKey(3) + " for you to send to " + string(t.Agent)
+	case run.Phase == core.Fixing:
+		return run.Brief + " · " + round + " · " + string(t.Agent) + " is on it"
+	}
+	var each []string
+	waits := false // on the user
+	for _, s := range run.Seats {
+		r := s.R
+		switch {
+		case s.Res != nil:
+			each = append(each, string(r.Agent)+": "+s.Res.Brief())
+		case r.Light == core.StBlocked:
+			each = append(each, string(r.Agent)+" needs input to review")
+			waits = true
+		case r.Light == core.StExited || r.Pane == nil:
+			each = append(each, string(r.Agent)+" is not running")
+		case (r.Light == core.StIdle || r.Light == core.StDone) && r.IdleUnasked() && r.Worked && m.CutOff(r) != "":
+			each = append(each, string(r.Agent)+" could not send its review: its sandbox keeps it from nerdr")
+			waits = true
+		case (r.Light == core.StIdle || r.Light == core.StDone) && r.IdleUnasked() && r.Worked:
+			each = append(each, string(r.Agent)+" stopped without sending a review")
+			waits = true
+		default:
+			each = append(each, string(r.Agent)+" reviewing")
+		}
+	}
+	line := strings.Join(append(run.Approved, each...), " · ")
+	if !waits {
+		line += " · " + round
+		// Said only when there are some: they go once the review is done.
+		if len(t.Messages) > 0 {
+			line += " · messages in " + m.screenKey(3) + " wait for the review"
+		}
+	}
+	return line
+}
+
+// messagesLine is the panel's line about t's messages, "" when there are
+// none.
+func (m *Model) messagesLine(t *core.Tab) string {
+	n, auto := len(t.Messages), t.AutoCount()
+	var parts []string
+	if kept := n - auto; kept > 0 {
+		parts = append(parts, core.Plural(kept, "task")+" waiting for you to put in")
+	}
+	if auto > 0 {
+		parts = append(parts, core.Plural(auto, "task")+" sent by itself when the agent is idle")
+	}
+	if gone := len(t.Inactive); gone > 0 {
+		parts = append(parts, core.Plural(gone, "task")+" for a closed agent")
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return strings.Join(parts, " · ") + " · " + m.screenKey(3)
 }

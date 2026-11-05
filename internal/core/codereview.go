@@ -1,7 +1,6 @@
 package core
 
 import (
-	"strconv"
 	"strings"
 	"time"
 
@@ -469,62 +468,6 @@ func (m *Core) DetectSeat(t *Tab, s *Seat, now time.Time) Cmd {
 	}
 	m.CheckSent(r, now)
 	return m.DeliverQueue(r, now)
-}
-
-// reviewLine is what the panel above t's agent says of its review.
-func (m *Core) ReviewLine(t *Tab) string {
-	run := t.Review
-	if run == nil {
-		// Briefs kept before said where the findings were, and went on
-		// saying it after they were sent.
-		brief, _, _ := strings.Cut(t.ReviewBrief, " · findings in ")
-		switch {
-		case brief == "":
-		case t.FindingsWait():
-			brief += " · findings in " + m.Client.ScreenKey(3)
-		case t.FindingsSent || t.FindingsQueued():
-			brief += " · sent to " + string(t.Agent)
-		}
-		return brief
-	}
-	round := "round " + strconv.Itoa(run.Round) + "/" + strconv.Itoa(run.Rounds)
-	switch {
-	case run.Phase == Fixing && t.FindMessage(run.FixMsg) >= 0 && !run.FixMsg.Auto:
-		return run.Brief + " · " + round + " · in " + m.Client.ScreenKey(3) + " for you to send to " + string(t.Agent)
-	case run.Phase == Fixing:
-		return run.Brief + " · " + round + " · " + string(t.Agent) + " is on it"
-	}
-	var each []string
-	waits := false // on the user
-	for _, s := range run.Seats {
-		r := s.R
-		switch {
-		case s.Res != nil:
-			each = append(each, string(r.Agent)+": "+s.Res.Brief())
-		case r.Light == StBlocked:
-			each = append(each, string(r.Agent)+" needs input to review")
-			waits = true
-		case r.Light == StExited || r.Pane == nil:
-			each = append(each, string(r.Agent)+" is not running")
-		case (r.Light == StIdle || r.Light == StDone) && r.IdleUnasked() && r.Worked && m.CutOff(r) != "":
-			each = append(each, string(r.Agent)+" could not send its review: its sandbox keeps it from nerdr")
-			waits = true
-		case (r.Light == StIdle || r.Light == StDone) && r.IdleUnasked() && r.Worked:
-			each = append(each, string(r.Agent)+" stopped without sending a review")
-			waits = true
-		default:
-			each = append(each, string(r.Agent)+" reviewing")
-		}
-	}
-	line := strings.Join(append(run.Approved, each...), " · ")
-	if !waits {
-		line += " · " + round
-		// Said only when there are some: they go once the review is done.
-		if len(t.Messages) > 0 {
-			line += " · messages in " + m.Client.ScreenKey(3) + " wait for the review"
-		}
-	}
-	return line
 }
 
 // findingsDone takes the brief of a review that has ended off the panel

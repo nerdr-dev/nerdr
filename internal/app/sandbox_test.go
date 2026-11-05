@@ -443,11 +443,11 @@ func TestCutOffReviewerSaysWhy(t *testing.T) {
 	r := tb.Review.Seats[0].R
 	r.Messages, r.AwaitWork = nil, false
 	r.Reports, r.Heard, r.Worked, r.Light = true, false, true, core.StIdle
-	if line := m.ReviewLine(tb); !strings.Contains(line, "could not send its review: its sandbox keeps it from nerdr") {
+	if line := m.reviewLine(tb); !strings.Contains(line, "could not send its review: its sandbox keeps it from nerdr") {
 		t.Fatalf("review line %q", line)
 	}
 	r.Heard = true
-	if line := m.ReviewLine(tb); !strings.Contains(line, "stopped without sending a review") {
+	if line := m.reviewLine(tb); !strings.Contains(line, "stopped without sending a review") {
 		t.Fatalf("heard from, it only stopped: %q", line)
 	}
 }
