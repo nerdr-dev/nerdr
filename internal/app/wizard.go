@@ -424,7 +424,7 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 					if it.Mode != "new" || err != nil {
 						continue
 					}
-					n, owner, ok := fork.pr.Number, fork.pr.Fork, isFork
+					n, owner, ok := fork.PR.Number, fork.PR.Fork, isFork
 					if !listed {
 						n, owner, ok = github.ForkPR(it.Repo.Path, name)
 					}
@@ -612,7 +612,7 @@ func (w *wizard) repoExisting() []workspace.Group {
 	repo := filepath.Clean(picked[0].Path)
 	listed := map[string]bool{}
 	for _, e := range w.pulls.entries {
-		listed[e.branch()] = true
+		listed[e.Branch()] = true
 	}
 	var out []workspace.Group
 	for _, g := range w.existing {

@@ -3,13 +3,11 @@ package app
 import (
 	"fmt"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -27,7 +25,7 @@ import (
 type prList struct {
 	all     bool // everyone's open pull requests, not only yours
 	loading bool
-	entries []prEntry
+	entries []core.PREntry
 	errs    []string
 	cursor  int
 	// want is the branches of the tab the list was opened from, by
@@ -39,35 +37,13 @@ type prList struct {
 	news map[string][]string
 }
 
-// prEntry is one pull request, and where its branch is checked out, if
-// anywhere.
-type prEntry struct {
-	repo workspace.Repo
-	pr   github.PR
-	wt   string // the worktree with the branch, "" when there is none
-	// asked is set when your review of it is asked for, on you or on a
-	// team of yours.
-	asked bool
-}
-
-// branch is the local branch the pull request is worked on in: its own,
-// or, from a fork, the one FetchForkPR fetches it into.
-func (e prEntry) branch() string { return localBranch(e.pr) }
-
-func localBranch(pr github.PR) string {
-	if pr.Fork != "" {
-		return workspace.ForkBranch(pr.Number, pr.Branch)
-	}
-	return pr.Branch
-}
-
 // headName is the pull request's branch as the list shows it: from a
 // fork, with the fork's owner before it, as GitHub shows it.
-func (e prEntry) headName() string {
-	if e.pr.Fork != "" {
-		return e.pr.Fork + ":" + e.pr.Branch
+func headName(e core.PREntry) string {
+	if e.PR.Fork != "" {
+		return e.PR.Fork + ":" + e.PR.Branch
 	}
-	return e.pr.Branch
+	return e.PR.Branch
 }
 
 // prListLimit caps how many PRs are asked for per repository.
@@ -77,40 +53,28 @@ const prListLimit = 50
 // again when that is old or there is none.
 func (m *Model) showPRs() tea.Cmd {
 	m.applyPRs()
-	if time.Since(m.prWatch.at) < m.GithubEvery(core.PrWatchEvery) {
+	if time.Since(m.prWatch.At) < m.GithubEvery(core.PrWatchEvery) {
 		return nil
 	}
 	return m.refreshPRs()
 }
 
-// sortPREntries groups the list by repository, the most recently updated
-// first within each.
-func sortPREntries(entries []prEntry) {
-	sort.SliceStable(entries, func(i, j int) bool {
-		a, b := entries[i], entries[j]
-		if a.repo.Name != b.repo.Name {
-			return a.repo.Name < b.repo.Name
-		}
-		return b.pr.UpdatedAt.Before(a.pr.UpdatedAt)
-	})
-}
-
 // apply installs the list, keeping the cursor on the same PR.
-func (d *prList) apply(entries []prEntry, errs []string) {
+func (d *prList) apply(entries []core.PREntry, errs []string) {
 	var repo string
 	var number int
 	if d.cursor < len(d.entries) {
-		repo, number = d.entries[d.cursor].repo.Path, d.entries[d.cursor].pr.Number
+		repo, number = d.entries[d.cursor].Repo.Path, d.entries[d.cursor].PR.Number
 	}
 	d.entries, d.errs = entries, errs
 	d.cursor = min(d.cursor, max(len(d.entries)-1, 0))
 	for i, e := range d.entries {
-		if e.repo.Path == repo && e.pr.Number == number {
+		if e.Repo.Path == repo && e.PR.Number == number {
 			d.cursor = i
 		}
 	}
 	for i, e := range d.entries {
-		if b, ok := d.want[filepath.Clean(e.repo.Path)]; ok && b == e.branch() {
+		if b, ok := d.want[filepath.Clean(e.Repo.Path)]; ok && b == e.Branch() {
 			d.cursor, d.want = i, nil
 			break
 		}
@@ -151,7 +115,7 @@ func (d *prList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return m.showPRs()
 	case "o":
 		if d.cursor < len(d.entries) {
-			m.openURL(d.entries[d.cursor].pr.URL)
+			m.openURL(d.entries[d.cursor].PR.URL)
 		}
 	case "t":
 		if d.cursor < len(d.entries) {
@@ -167,7 +131,7 @@ func (d *prList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 
 // prTitleDialog shows a PR's whole title, which the list cuts to fit.
 // Any key closes it.
-type prTitleDialog struct{ e prEntry }
+type prTitleDialog struct{ e core.PREntry }
 
 func (d *prTitleDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	m.dialog = nil
@@ -176,25 +140,25 @@ func (d *prTitleDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 
 func (d *prTitleDialog) view(m *Model, w, h int) string {
 	e := d.e
-	lines := wrapWords(term.PrintableLine(e.pr.Title), max(min(w-10, 90), 20))
-	lines = append(lines, "", dim(term.PrintableLine(e.repo.Name)+" · "+term.PrintableLine(e.headName())))
-	if e.pr.URL != "" {
-		lines = append(lines, dim(e.pr.URL))
+	lines := wrapWords(term.PrintableLine(e.PR.Title), max(min(w-10, 90), 20))
+	lines = append(lines, "", dim(term.PrintableLine(e.Repo.Name)+" · "+term.PrintableLine(headName(e))))
+	if e.PR.URL != "" {
+		lines = append(lines, dim(e.PR.URL))
 	}
-	return box(fmt.Sprintf("#%d", e.pr.Number), lines, w)
+	return box(fmt.Sprintf("#%d", e.PR.Number), lines, w)
 }
 
 // goToPR goes to the tab working on e's branch. Without one it asks
 // whether to open the worktree the branch is checked out in, or, when
 // there is none, whether to make one.
-func (m *Model) goToPR(e prEntry) tea.Cmd {
-	if t := m.tabOnBranch(e.repo.Path, e.branch()); t != nil {
+func (m *Model) goToPR(e core.PREntry) tea.Cmd {
+	if t := m.tabOnBranch(e.Repo.Path, e.Branch()); t != nil {
 		m.dialog = nil
 		m.setFocus(core.FocusAgent)
 		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
 	}
-	e.wt = checkedOut(e)
-	if e.wt != "" {
+	e.Wt = checkedOut(e)
+	if e.Wt != "" {
 		g := m.worktreeGroup(e)
 		cmd := m.openWizard()
 		if w, ok := m.dialog.(*wizard); ok {
@@ -206,28 +170,28 @@ func (m *Model) goToPR(e prEntry) tea.Cmd {
 		return cmd
 	}
 	lines := []string{
-		"No worktree has " + e.branch() + " checked out.",
+		"No worktree has " + e.Branch() + " checked out.",
 		"Make one in " + m.WtRoot + ", and a tab for it?",
 	}
-	if e.pr.Fork != "" {
+	if e.PR.Fork != "" {
 		// Its branch is not on origin: a branch of its name made here
 		// would start from main, and not be the pull request at all.
 		lines = []string{
-			"#" + fmt.Sprint(e.pr.Number) + " is from " + e.pr.Fork + "'s fork, not a branch on origin.",
-			"Fetch it as " + e.branch() + ", and make a worktree in " + m.WtRoot + " and a tab for it?",
+			"#" + fmt.Sprint(e.PR.Number) + " is from " + e.PR.Fork + "'s fork, not a branch on origin.",
+			"Fetch it as " + e.Branch() + ", and make a worktree in " + m.WtRoot + " and a tab for it?",
 			"nerdr will not push it: the branch is in the fork.",
 		}
 	}
 	m.dialog = &confirm{
-		title: "#" + fmt.Sprint(e.pr.Number) + " " + e.headName(),
+		title: "#" + fmt.Sprint(e.PR.Number) + " " + headName(e),
 		lines: lines,
 		yes: func(m *Model) tea.Cmd {
-			if e.pr.Fork == "" {
+			if e.PR.Fork == "" {
 				return m.openPRWizard(e)
 			}
-			m.toast("fetching #" + fmt.Sprint(e.pr.Number) + " from origin…")
+			m.toast("fetching #" + fmt.Sprint(e.PR.Number) + " from origin…")
 			return func() tea.Msg {
-				return forkFetchedMsg{e: e, err: workspace.FetchForkPR(e.repo.Path, e.pr.Number, e.branch())}
+				return forkFetchedMsg{e: e, err: workspace.FetchForkPR(e.Repo.Path, e.PR.Number, e.Branch())}
 			}
 		},
 	}
@@ -238,7 +202,7 @@ func (m *Model) goToPR(e prEntry) tea.Cmd {
 // branch, for a tab to be made on it.
 type forkFetchedMsg struct {
 	w   *wizard // the new-tab dialog it was picked in, nil from F2
-	e   prEntry
+	e   core.PREntry
 	err error
 }
 
@@ -263,10 +227,10 @@ func (m *Model) onForkFetched(msg forkFetchedMsg) tea.Cmd {
 }
 
 // openPRWizard starts the new-tab steps on e's branch, continuing it.
-func (m *Model) openPRWizard(e prEntry) tea.Cmd {
-	cmd := m.openWizardFor(e.repo.Path)
+func (m *Model) openPRWizard(e core.PREntry) tea.Cmd {
+	cmd := m.openWizardFor(e.Repo.Path)
 	if w, ok := m.dialog.(*wizard); ok {
-		w.branch.SetValue(e.branch())
+		w.branch.SetValue(e.Branch())
 		w.branch.CursorEnd()
 		w.useExisting = true
 	}
@@ -277,13 +241,13 @@ func (m *Model) openPRWizard(e prEntry) tea.Cmd {
 // now: the list's, from when GitHub was last asked, can be minutes old,
 // from before a worktree was made or removed. The list's when git cannot
 // say.
-func checkedOut(e prEntry) string {
-	wts, err := git.ListWorktrees(e.repo.Path)
+func checkedOut(e core.PREntry) string {
+	wts, err := git.ListWorktrees(e.Repo.Path)
 	if err != nil {
-		return e.wt
+		return e.Wt
 	}
 	for _, w := range wts {
-		if w.Branch == e.branch() {
+		if w.Branch == e.Branch() {
 			return w.Path
 		}
 	}
@@ -305,7 +269,7 @@ func (m *Model) tabOnBranch(repo, branch string) *core.Tab {
 // worktreeGroup is what a tab on e's worktree opens: the folder nerdr made
 // it in, with the other repositories' worktrees beside it when the branch
 // spans several, or the worktree alone when nerdr did not make it.
-func (m *Model) worktreeGroup(e prEntry) workspace.Group {
+func (m *Model) worktreeGroup(e core.PREntry) workspace.Group {
 	open := map[string]bool{}
 	for _, t := range m.Tabs {
 		open[t.Dir] = true
@@ -313,24 +277,24 @@ func (m *Model) worktreeGroup(e prEntry) workspace.Group {
 	repos, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
 	for _, g := range workspace.Existing(m.WtRoot, repos, open) {
 		for _, w := range g.Worktrees {
-			if filepath.Clean(w.Path) == filepath.Clean(e.wt) {
+			if filepath.Clean(w.Path) == filepath.Clean(e.Wt) {
 				return g
 			}
 		}
 	}
 	return workspace.Group{
-		Name:      e.branch(),
-		Dir:       e.wt,
-		Worktrees: []workspace.Worktree{{Repo: e.repo.Path, Path: e.wt, Branch: e.branch()}},
+		Name:      e.Branch(),
+		Dir:       e.Wt,
+		Worktrees: []workspace.Worktree{{Repo: e.Repo.Path, Path: e.Wt, Branch: e.Branch()}},
 	}
 }
 
 // Where a PR's branch is, as the list's last glyph column says it.
-func (m *Model) prWhere(e prEntry) string {
+func (m *Model) prWhere(e core.PREntry) string {
 	switch {
-	case m.tabOnBranch(e.repo.Path, e.branch()) != nil:
+	case m.tabOnBranch(e.Repo.Path, e.Branch()) != nil:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("tab")
-	case e.wt != "":
+	case e.Wt != "":
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render("disk")
 	}
 	return dim("·")
@@ -386,16 +350,16 @@ func (d *prList) table(m *Model, inner, rows int) []string {
 	top := min(max(d.cursor-rows/2, 0), max(len(d.entries)-rows, 0))
 	for i := top; i < len(d.entries) && i < top+rows; i++ {
 		e := d.entries[i]
-		rev, ci := review.PRGlyphs(e.pr)
+		rev, ci := review.PRGlyphs(e.PR)
 		when := ""
 		if wide {
 			when = padTo("", prColDate)
-			if !e.pr.UpdatedAt.IsZero() {
-				when = padTo(dim(e.pr.UpdatedAt.Format("2006-01-02")), prColDate)
+			if !e.PR.UpdatedAt.IsZero() {
+				when = padTo(dim(e.PR.UpdatedAt.Format("2006-01-02")), prColDate)
 			}
 		}
-		title := term.PrintableLine(e.pr.Title)
-		if news := d.news[core.PrKey(e.repo.Path, e.pr.Number)]; len(news) > 0 {
+		title := term.PrintableLine(e.PR.Title)
+		if news := d.news[core.PrKey(e.Repo.Path, e.PR.Number)]; len(news) > 0 {
 			// Before the title, so a long one is what gets cut. An approval
 			// is the review column's ✓, with who in its tip.
 			var said []string
@@ -410,22 +374,22 @@ func (d *prList) table(m *Model, inner, rows int) []string {
 			}
 			title = warn(mark) + "  " + title
 		}
-		if e.asked {
+		if e.Asked {
 			title = askedMark + "  " + title
 		}
 		if d.all {
-			title = padTo(ansi.Truncate(term.PrintableLine(e.pr.Author), prColAuthor-1, "…"), prColAuthor) + title
+			title = padTo(ansi.Truncate(term.PrintableLine(e.PR.Author), prColAuthor-1, "…"), prColAuthor) + title
 		}
 		var tip []string
 		for _, s := range []struct{ state, what string }{{"APPROVED", "approved by "}, {"CHANGES_REQUESTED", "changes requested by "}} {
-			if who := review.Reviewers(e.pr, s.state); len(who) > 0 {
+			if who := review.Reviewers(e.PR, s.state); len(who) > 0 {
 				tip = append(tip, s.what+strings.Join(who, ", "))
 			}
 		}
 		rev = m.tip(rev, strings.Join(tip, " · "))
-		row := padTo(fmt.Sprintf("#%d", e.pr.Number), prColNum) +
-			padTo(ansi.Truncate(term.PrintableLine(e.repo.Name), prColRepo-1, "…"), prColRepo) +
-			padTo(ansi.Truncate(term.PrintableLine(e.headName()), prColBranch(wide)-1, "…"), prColBranch(wide)) +
+		row := padTo(fmt.Sprintf("#%d", e.PR.Number), prColNum) +
+			padTo(ansi.Truncate(term.PrintableLine(e.Repo.Name), prColRepo-1, "…"), prColRepo) +
+			padTo(ansi.Truncate(term.PrintableLine(headName(e)), prColBranch(wide)-1, "…"), prColBranch(wide)) +
 			padTo(rev, prColGlyph) + padTo(ci, 4) + padTo(m.prWhere(e), prColWhere) + when + title
 		row = ansi.Truncate(cursorLine(i == d.cursor, row, sel), inner, "…")
 		lines = append(lines, m.onClick(row, func(m *Model) tea.Cmd {

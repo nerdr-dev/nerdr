@@ -36,19 +36,19 @@ func TestPickingAPRGoesWhereItsBranchIs(t *testing.T) {
 	)
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
 
-	m.goToPR(prEntry{repo: repo, pr: github.PR{Number: 3, Branch: "fix/login"}, wt: "/w/b"})
+	m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 3, Branch: "fix/login"}, Wt: "/w/b"})
 	if m.dialog != nil || m.Cur().ID != "b" {
 		t.Fatalf("a PR with a tab should go to it: dialog %T, tab %s", m.dialog, m.Cur().ID)
 	}
 
-	m.goToPR(prEntry{repo: repo, pr: github.PR{Number: 4, Branch: "feat/x"}, wt: "/elsewhere/x"})
+	m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 4, Branch: "feat/x"}, Wt: "/elsewhere/x"})
 	w, ok := m.dialog.(*wizard)
 	if !ok || w.step != stepAgent || w.group == nil || w.group.Dir != "/elsewhere/x" ||
 		w.group.Worktrees[0].Branch != "feat/x" || w.group.Worktrees[0].Repo != "/r/app" {
 		t.Fatalf("a checked-out branch should be offered for opening: %#v", m.dialog)
 	}
 
-	m.goToPR(prEntry{repo: repo, pr: github.PR{Number: 5, Branch: "feat/y"}})
+	m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}})
 	c, ok := m.dialog.(*confirm)
 	if !ok || !strings.Contains(strings.Join(c.lines, " "), "No worktree has feat/y") {
 		t.Fatalf("a branch nowhere should ask to make a worktree: %#v", m.dialog)
@@ -86,7 +86,7 @@ func TestPRToItsWorktree(t *testing.T) {
 		}
 	}
 	m := tabsModel(t)
-	m.goToPR(prEntry{repo: workspace.Repo{Name: "app", Path: repo}, pr: github.PR{Number: 9, Branch: "feat/z"}})
+	m.goToPR(core.PREntry{Repo: workspace.Repo{Name: "app", Path: repo}, PR: github.PR{Number: 9, Branch: "feat/z"}})
 	w, ok := m.dialog.(*wizard)
 	// Compared as the folders they are: on a Mac the temporary folder is
 	// under /var, which git gives as /private/var.
@@ -199,10 +199,10 @@ func TestPRListPointsAtTheTabsPR(t *testing.T) {
 		state.Tab{ID: "a", Name: "a", Dir: "/w/a", Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/a", Branch: "fix/login"}}},
 	)
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
-	entries := []prEntry{
-		{repo: repo, pr: github.PR{Number: 1, Branch: "other"}},
-		{repo: repo, pr: github.PR{Number: 2, Branch: "fix/login"}},
-		{repo: repo, pr: github.PR{Number: 3, Branch: "more"}},
+	entries := []core.PREntry{
+		{Repo: repo, PR: github.PR{Number: 1, Branch: "other"}},
+		{Repo: repo, PR: github.PR{Number: 2, Branch: "fix/login"}},
+		{Repo: repo, PR: github.PR{Number: 3, Branch: "more"}},
 	}
 	d := &prList{}
 	d.pointAt(m.Cur())
