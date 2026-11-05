@@ -116,3 +116,26 @@ func TestCoreChangingTheClientCounts(t *testing.T) {
 	m.Update(core.RedrawMsg{})
 	m.View() // panics if the panel with the old focus is reused
 }
+
+// A tab's name changed by core on its own goroutine, between two Updates,
+// widens the sidebar: the agent's program is given the narrower room on the
+// next Update, though nothing changed during it.
+func TestCoreWideningTheSidebarResizesTheAgent(t *testing.T) {
+	m := testModel(t)
+	m.sideBar = true
+	tb := runningTab(t, m)
+	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+	before, _ := tb.Pane.Size()
+
+	m.Mu.Lock()
+	tb.Name = strings.Repeat("x", 30) // as FollowBranches does, on the loop
+	m.Gen++
+	m.Mu.Unlock()
+	m.Update(core.ChangedMsg{})
+
+	after, _ := tb.Pane.Size()
+	want, _ := m.paneSize(tb)
+	if after == before || after != want {
+		t.Fatalf("the agent is %d columns after the sidebar widened, was %d, want %d", after, before, want)
+	}
+}
