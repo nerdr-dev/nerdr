@@ -2,7 +2,6 @@ package app
 
 import (
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -17,21 +16,11 @@ import (
 // shown to the user before a worktree is made with it, the first time and
 // each time it has changed, and done only once they allow it.
 
-// askRepoSetup goes on with then once the user has said whether the
-// .nerdr.toml of each of repos may be done, asking first about those not
-// yet allowed as they are now. The dialog open, a wizard or the spinoff
-// one, is put back for then.
-func (m *Model) askRepoSetup(repos []string, then func(m *Model) tea.Cmd) tea.Cmd {
-	file := core.SetupAllowedFile()
-	ask := workspace.ToAllow(file, repos)
-	if len(ask) == 0 {
-		return then(m)
-	}
-	var names []string
-	for r := range ask {
-		names = append(names, r)
-	}
-	sort.Strings(names)
+// askRepoSetup asks core's question q, whether the .nerdr.toml of each of
+// its repositories may be done. The dialog open, a wizard or the spinoff
+// one, is put back for what core goes on with.
+func (m *Model) askRepoSetup(q *core.Question) {
+	names, ask := q.Repos, q.Setup
 	lines := []string{
 		"The repository asks, in " + workspace.RepoConfigFile + ", for this in the new worktree.",
 		"It runs as you, outside any agent's sandbox, and an agent may",
@@ -60,18 +49,19 @@ func (m *Model) askRepoSetup(repos []string, then func(m *Model) tea.Cmd) tea.Cm
 		title: "Allow " + workspace.RepoConfigFile + "?",
 		lines: lines,
 		yes: func(m *Model) tea.Cmd {
-			for _, r := range names {
-				if err := workspace.Allow(file, r, ask[r]); err != nil {
-					m.toast("could not keep that it is allowed: " + err.Error())
-				}
-			}
 			m.dialog = back
-			return then(m)
+			return fromCore(m.Answer(q, core.AnswerAllowed))
 		},
 		no: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return then(m)
+			return fromCore(m.Answer(q, core.RunDeclined))
 		},
 	}
-	return nil
+}
+
+// askSetup goes on with then once the user has said whether the .nerdr.toml
+// of each of repos may be done, asking first, through core, about those not
+// yet allowed as they are now.
+func (m *Model) askSetup(repos []string, then func(m *Model) tea.Cmd) tea.Cmd {
+	return fromCore(m.AskSetup(repos, func() core.Cmd { return toCore(then(m)) }))
 }

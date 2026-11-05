@@ -2,7 +2,6 @@ package app
 
 import (
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
 // What core tells and asks the TUI; see core.Client. What changes the TUI's
@@ -47,6 +46,25 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.look()
 	case core.DetectDoneMsg:
 		return toCore(m.detected(ev.Now))
+	case core.AskMsg:
+		m.Gen++
+		switch ev.Q.Kind {
+		case core.AskRepoSetup:
+			m.askRepoSetup(ev.Q)
+		case core.AskPluginRun:
+			m.askPluginRun(ev.Q)
+		}
+	case core.AnsweredMsg:
+		m.Gen++
+		if q := m.plugins.asking; q != nil && q.q == ev.Q {
+			q.answered(m)
+		}
+	case core.SpinoffAskMsg:
+		m.Gen++
+		return toCore(m.openSpinoff(ev.T))
+	case core.SwitchAskMsg:
+		m.Gen++
+		return toCore(m.openSwitchAgent())
 	case core.PluginUIMsg:
 		m.Gen++
 		m.ensurePluginUI(ev.T, ev.P, ev.Key)
@@ -76,18 +94,3 @@ func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.sh
 func (m *Model) TabSize(t *core.Tab) (int, int) { return m.tabSize(t) }
 
 func (m *Model) DialogClosed() bool { return m.dialogClosed() }
-
-func (m *Model) OpenSpinoff(t *core.Tab) core.Cmd {
-	m.Gen++
-	return toCore(m.openSpinoff(t))
-}
-
-func (m *Model) OpenSwitchAgent() core.Cmd {
-	m.Gen++
-	return toCore(m.openSwitchAgent())
-}
-
-func (m *Model) AskPluginRun(a *core.Tab, p plugin.Plugin, vals map[string]any, dir string, confined bool, decide func(answer string) core.Cmd) {
-	m.Gen++
-	m.askPluginRun(a, p, vals, dir, confined, decide)
-}

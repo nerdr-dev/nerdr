@@ -196,7 +196,7 @@ func (m *Core) OnHandoff(r hooks.Report) Cmd {
 	}
 	t.HandoffReady = &HandoffNote{From: t.Agent, Text: r.Handoff, At: time.Now()}
 	if t == m.FrontAgent() && m.Client.DialogClosed() {
-		return m.Client.OpenSwitchAgent()
+		return m.Tell(SwitchAskMsg{T: t})
 	}
 	m.Toast(m.AgentName(t) + ": " + string(t.Agent) + " wrote a handoff; " + KeyRef("a s") + " switches the agent")
 	return nil

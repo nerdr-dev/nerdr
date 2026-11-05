@@ -241,10 +241,12 @@ func (l *Loop) next() (Event, bool) {
 func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 	switch ev.(type) {
 	case frameEv:
+		var cmd Cmd
 		if !m.Quitting {
 			m.CheckShells()
+			cmd = m.ExpireAsks(time.Now())
 		}
-		return nil, FrameMsg{}
+		return cmd, FrameMsg{}
 	case detectEv:
 		if m.Quitting {
 			return nil, nil

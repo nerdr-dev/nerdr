@@ -11,20 +11,29 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // TestNoClientAllowsNothing: what needs the user's yes does not happen while
 // nobody is there to say it. It waits, or is refused; it is never taken as yes.
 func TestNoClientAllowsNothing(t *testing.T) {
-	var c Client = NoClient{}
+	repo := t.TempDir()
+	if err := os.WriteFile(filepath.Join(repo, workspace.RepoConfigFile), []byte(`setup = "make deps"`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	core := &Core{Client: NoClient{}}
 	ran := false
-	cmd := c.AskRepoSetup([]string{"/r"}, func() Cmd {
+	cmd := core.AskSetup([]string{repo}, func() Cmd {
 		ran = true
 		return nil
 	})
 	if ran || cmd != nil {
 		t.Fatal("a repository's setup ran with nobody to allow it")
 	}
+	if !core.Asked(AskRepoSetup) {
+		t.Fatal("the question did not wait for a client")
+	}
+	var c Client = NoClient{}
 	if c.AgentVisible(&Tab{}) {
 		t.Fatal("an agent counted as looked at with nobody there")
 	}

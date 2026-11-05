@@ -24,6 +24,10 @@ type Core struct {
 
 	// Client is told what the user is to see; see Client.
 	Client Client
+	// Asking is what waits for the user to answer, the first asked first;
+	// see Asked.
+	Asking  []*Question
+	lastAsk int
 
 	// pluginRuns is the runs of plugins by agents; see pluginruns.go.
 	PluginRuns PluginRuns

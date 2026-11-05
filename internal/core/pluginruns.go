@@ -300,15 +300,22 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 		if where == "" {
 			where = o.Dir
 		}
-		m.Client.AskPluginRun(from, p, vals, where, confined, func(answer string) Cmd {
-			if answer == "allowed" {
+		decide := func(answer string) Cmd {
+			if answer == AnswerAllowed {
 				return start()
 			}
 			dir.Close()
 			reply(hooks.Answer{Text: answer})
 			return nil
-		})
-		return nil
+		}
+		if m.Asked(AskPluginRun) || m.Client == nil || !m.Client.DialogClosed() {
+			// Asked again once the user is free to answer; with no client,
+			// once there is one: only a user can say yes.
+			m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " would run the plugin " + p.Name + ", and asks again soon")
+			return decide(RunBusy)
+		}
+		q := &Question{Kind: AskPluginRun, A: from, P: p, Vals: vals, Dir: where, Confined: confined, Until: time.Now().Add(RunAskWait)}
+		return m.Ask(q, decide)
 	}
 	return start()
 }

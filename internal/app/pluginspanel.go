@@ -596,10 +596,6 @@ func (m *Model) checkPluginUIs() {
 	now := time.Now()
 	m.checkPluginsGone(now)
 	m.PumpRuns(now)
-	if q := m.plugins.asking; q != nil && now.After(q.until) {
-		q.answer(m, core.RunUnanswered)
-		m.toast(q.agent + "'s run of " + q.name + " was not answered in time, and did not run")
-	}
 	for k, r := range m.PluginRuns.Runs {
 		if !slices.Contains(m.Tabs, r.T) {
 			if r.Running() {
