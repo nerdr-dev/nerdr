@@ -49,6 +49,15 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.tellIssueNews(ev.News)
 	case core.IssuesDueMsg:
 		return toCore(m.refreshAllIssues(false))
+	case core.PRsMsg:
+		m.Gen++
+		m.applyPRs()
+	case core.PRNewsMsg:
+		m.Gen++
+		m.tellPRNews(ev.News)
+	case core.PRMarkMsg:
+		m.Gen++
+		m.review.SetPRNews(len(m.PRWatch.News) > 0)
 	case core.OverlapsMsg:
 		m.Gen++
 		m.shareOverlaps()
@@ -102,7 +111,7 @@ func (m *Model) Layout() core.Layout { return m.layout() }
 
 func (m *Model) Sight() core.Sight {
 	wt, n := m.review.WatchChanges()
-	return core.Sight{Beside: m.splitTab(), IssuesShown: m.issuesShown(), WatchWt: wt, WatchN: n}
+	return core.Sight{Beside: m.splitTab(), IssuesShown: m.issuesShown(), PRsShown: m.prsShown(), WatchWt: wt, WatchN: n}
 }
 
 func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.shellSize(t, p) }

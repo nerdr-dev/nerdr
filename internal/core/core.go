@@ -57,6 +57,8 @@ type Core struct {
 	// IssueWatch is the watching of the issues assigned to you; see
 	// issuewatch.go.
 	IssueWatch IssueWatch
+	// PRWatch is the watching of your pull requests; see prwatch.go.
+	PRWatch PRWatchState
 	// GroupNames is the group name given to each folder of worktrees in
 	// several repositories, kept when its tab is closed; see addTab.
 	GroupNames map[string]string

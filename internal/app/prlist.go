@@ -46,17 +46,14 @@ func headName(e core.PREntry) string {
 	return e.PR.Branch
 }
 
-// prListLimit caps how many PRs are asked for per repository.
-const prListLimit = 50
-
 // showPRs fills the lists on screen with what is known, and asks GitHub
 // again when that is old or there is none.
 func (m *Model) showPRs() tea.Cmd {
 	m.applyPRs()
-	if time.Since(m.prWatch.At) < m.GithubEvery(core.PrWatchEvery) {
+	if time.Since(m.PRWatch.At) < m.GithubEvery(core.PrWatchEvery) {
 		return nil
 	}
-	return m.refreshPRs()
+	return fromCore(m.RefreshPRs())
 }
 
 // apply installs the list, keeping the cursor on the same PR.
@@ -105,7 +102,7 @@ func (d *prList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		if d.all {
 			return m.refreshAllPRs(true)
 		}
-		return m.refreshPRs()
+		return fromCore(m.RefreshPRs())
 	case "m":
 		d.all = !d.all
 		m.applyPRs()
@@ -152,7 +149,7 @@ func (d *prTitleDialog) view(m *Model, w, h int) string {
 // whether to open the worktree the branch is checked out in, or, when
 // there is none, whether to make one.
 func (m *Model) goToPR(e core.PREntry) tea.Cmd {
-	if t := m.tabOnBranch(e.Repo.Path, e.Branch()); t != nil {
+	if t := m.TabOnBranch(e.Repo.Path, e.Branch()); t != nil {
 		m.dialog = nil
 		m.setFocus(core.FocusAgent)
 		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
@@ -254,18 +251,6 @@ func checkedOut(e core.PREntry) string {
 	return ""
 }
 
-// tabOnBranch is the tab with a worktree of repo on branch, or nil.
-func (m *Model) tabOnBranch(repo, branch string) *core.Tab {
-	for _, t := range m.Tabs {
-		for _, w := range t.Worktrees {
-			if filepath.Clean(w.Repo) == filepath.Clean(repo) && w.Branch == branch {
-				return t
-			}
-		}
-	}
-	return nil
-}
-
 // worktreeGroup is what a tab on e's worktree opens: the folder nerdr made
 // it in, with the other repositories' worktrees beside it when the branch
 // spans several, or the worktree alone when nerdr did not make it.
@@ -292,7 +277,7 @@ func (m *Model) worktreeGroup(e core.PREntry) workspace.Group {
 // Where a PR's branch is, as the list's last glyph column says it.
 func (m *Model) prWhere(e core.PREntry) string {
 	switch {
-	case m.tabOnBranch(e.Repo.Path, e.Branch()) != nil:
+	case m.TabOnBranch(e.Repo.Path, e.Branch()) != nil:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("tab")
 	case e.Wt != "":
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render("disk")

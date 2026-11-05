@@ -38,12 +38,13 @@ type Client interface {
 
 // Sight is what the client shows that core's background work goes by: the
 // tab it keeps beside the one in front (Beside), shown or not; whether it
-// shows the issues (IssuesShown); the worktree
+// shows the issues, or a list of the pull requests (IssuesShown, PRsShown); the worktree
 // whose files it watches for changes (WatchWt), and how many it has seen
 // (WatchN).
 type Sight struct {
 	Beside      *Tab
 	IssuesShown bool
+	PRsShown    bool
 	WatchWt     string
 	WatchN      int
 }
@@ -110,6 +111,13 @@ type (
 	IssuesMsg    struct{}
 	IssueNewsMsg struct{ News []state.IssueNews }
 	IssuesDueMsg struct{}
+
+	// PRsMsg is a change in what is known of your pull requests;
+	// PRNewsMsg, news of them, kept in PRWatch.News too, to tell of; and
+	// PRMarkMsg a change in whether there is news not seen yet.
+	PRsMsg    struct{}
+	PRNewsMsg struct{ News []state.PRNews }
+	PRMarkMsg struct{}
 
 	// OverlapsMsg is a change in which tabs change the same files; see
 	// Core.Overlaps.

@@ -184,7 +184,7 @@ func (m *Model) syncPRPanel() tea.Cmd {
 
 // syncAllPRs is syncPRPanel for the list of all your PRs.
 func (m *Model) syncAllPRs() tea.Cmd {
-	m.review.SetPRNews(len(m.prWatch.News) > 0)
+	m.review.SetPRNews(len(m.PRWatch.News) > 0)
 	shown := m.panelAllPRs()
 	entered := shown && !m.prPanelShown
 	m.prPanelShown = shown
@@ -199,11 +199,11 @@ func (m *Model) syncAllPRs() tea.Cmd {
 		d.news = nil
 		d.pointAt(m.Cur())
 	}
-	if len(m.prWatch.News) > 0 {
+	if len(m.PRWatch.News) > 0 {
 		if d.news == nil {
 			d.news = map[string][]string{}
 		}
-		for k, whats := range m.takePRNews() {
+		for k, whats := range m.TakePRNews() {
 			d.news[k] = append(d.news[k], whats...)
 		}
 	}
@@ -271,7 +271,7 @@ func (m *Model) allPRsBody(w, h int) []string {
 // those nerdr finds where it was started and in repo_dirs, which with
 // everyone's can be many more than one works in.
 func (m *Model) prScope(all bool) string {
-	whose, n := "Your", len(m.prWatch.Repos)
+	whose, n := "Your", len(m.PRWatch.Repos)
 	if all {
 		whose, n = "Everyone's", len(m.prAll.repos)
 	}
@@ -298,7 +298,7 @@ func (m *Model) prScope(all bool) string {
 // shown the one on: each a button for its view.
 func (m *Model) prViewsLine(shown review.PRView) string {
 	var out string
-	prNews := len(m.prWatch.News) > 0 && shown != review.ViewMyPRs
+	prNews := len(m.PRWatch.News) > 0 && shown != review.ViewMyPRs
 	issueNews := len(m.IssueWatch.News) > 0 && shown != review.ViewIssues
 	for i, l := range review.PRViews(shown, prNews, issueNews) {
 		v := review.PRView(i)
@@ -339,7 +339,7 @@ func (m *Model) panelKeys(do func(tea.KeyMsg) tea.Cmd, w int, pairs ...string) [
 // with the panel on that PR — its reviews, checks and conversation, where
 // a and f answer them — and the keyboard. With no tab, as the P list does.
 func (m *Model) openPRInPanel(e core.PREntry) tea.Cmd {
-	if m.tabOnBranch(e.Repo.Path, e.Branch()) == nil {
+	if m.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
 		return m.goToPR(e)
 	}
 	cmd := m.goToPR(e)
@@ -370,7 +370,7 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		return nil
 	}
 	e := d.entries[d.cursor]
-	t := m.tabOnBranch(e.Repo.Path, e.Branch())
+	t := m.TabOnBranch(e.Repo.Path, e.Branch())
 	if t == nil {
 		m.toast("no tab works on " + e.Branch() + ": enter opens one")
 		return nil
