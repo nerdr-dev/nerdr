@@ -275,7 +275,7 @@ func (m *Model) changeRepos(t *core.Tab, c *repoChange) tea.Cmd {
 				if p.Shell != nil {
 					progs = append(progs, p.Shell)
 				}
-				m.dropPane(t, p)
+				m.DropPane(t, p)
 			}
 		}
 		m.scrolling = false

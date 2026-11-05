@@ -24,6 +24,9 @@ import (
 // panes' goroutines hold on to it (notify), so it must not be copied.
 type Model struct {
 	core.Core
+	// herdrBefore is the state reported to herdr when the last look at the
+	// agents began; see flushNotes.
+	herdrBefore string
 	// Active is the index in Tabs of the tab in front, the client's own:
 	// core knows only what Front says.
 	Active int
@@ -751,29 +754,27 @@ func (m *Model) syncInput() {
 }
 
 // detect refreshes every agent's traffic light and passes the result on.
-func (m *Model) detect() tea.Cmd {
-	now := time.Now()
-	herdrBefore := m.Herdr.State()
-	m.look()
-	var cmds []tea.Cmd
-	for i, t := range m.Tabs {
-		shown := i == m.Active || (t == m.splitTab() && m.splitShown())
-		if shown {
-			t.ShownAt = now
-		}
-		cmds = append(cmds, fromCore(m.DetectAgent(t, shown, now)))
-		for _, a := range t.ExtraAgents() {
-			cmds = append(cmds, fromCore(m.DetectAgent(a, shown, now)))
-		}
-		m.ReportWhenBegun(t, now)
-		if shown && m.editor == nil && !m.blurred {
-			m.toastSeen(t)
+func (m *Model) detect() tea.Cmd { return fromCore(m.DetectAll(time.Now())) }
+
+// tabShown reports whether t is on screen: in front, or beside it.
+func (m *Model) tabShown(t *core.Tab) bool {
+	return t == m.Cur() || t == m.splitTab() && m.splitShown()
+}
+
+// detected is the TUI's part once core has looked at every agent: news of
+// the tabs shown has done its job, and what was gathered to tell is told.
+func (m *Model) detected(now time.Time) tea.Cmd {
+	if m.editor == nil && !m.blurred {
+		for _, t := range m.Tabs {
+			if m.tabShown(t) {
+				m.toastSeen(t)
+			}
 		}
 	}
 	m.keepAwake(now)
 	m.reportHerdr()
-	m.flushNotes(herdrBefore)
-	return tea.Batch(cmds...)
+	m.flushNotes(m.herdrBefore)
+	return nil
 }
 
 // agentVisible reports whether agent a is on screen, in a pane of the tab

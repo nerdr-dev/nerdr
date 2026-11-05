@@ -198,18 +198,13 @@ func (m *Model) focusTerms(t *core.Tab) {
 	}
 }
 
-// dropPane takes p out of t's panes; the keyboard goes to the one used
-// last when it had it, mostly the one it was opened from.
-func (m *Model) dropPane(t *core.Tab, p *core.PaneTab) {
-	ps := t.Panes()
-	i := slices.Index(ps, p)
-	if i < 0 || p == t.OwnPane() {
-		return
-	}
+// paneClosed is p taken out of t's panes by core: the keyboard goes to the
+// one used last when p had it, mostly the one it was opened from.
+func (m *Model) paneClosed(t *core.Tab, p *core.PaneTab) {
 	if t.On == p {
 		var next *core.PaneTab
-		for _, q := range ps {
-			if q != p && (next == nil || q.Used.After(next.Used)) {
+		for _, q := range t.Panes() {
+			if next == nil || q.Used.After(next.Used) {
 				next = q
 			}
 		}
@@ -219,7 +214,6 @@ func (m *Model) dropPane(t *core.Tab, p *core.PaneTab) {
 		m.scrolling = false
 		t.Scroll = 0
 	}
-	t.PaneList = slices.Delete(ps, i, i+1)
 	m.focusTerms(t)
 	m.resizePanes()
 }
@@ -648,7 +642,8 @@ func (m *Model) stepPane(d int) core.Cmd {
 	}
 	ps := t.Panes()
 	i := slices.Index(ps, t.Focused())
-	return m.Client.FocusPane(t, ps[(i+d+len(ps))%len(ps)])
+	m.Gen++
+	return toCore(m.focusPane(t, ps[(i+d+len(ps))%len(ps)]))
 }
 
 // movePane moves the pane with the keyboard d places along, to the left
@@ -670,7 +665,8 @@ func (m *Model) movePane(d int) core.Cmd {
 	}
 	ps[i], ps[j] = ps[j], ps[i]
 	m.SaveSession()
-	return m.Client.Resize()
+	m.Gen++
+	return toCore(m.resize())
 }
 
 // newShell opens a terminal in the active tab's worktree, in a pane of

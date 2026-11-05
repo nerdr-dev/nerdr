@@ -246,7 +246,7 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 		return nil
 	case !plugin.AllowedKey(PluginsAllowedFile(), key):
 		m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " would run the plugin " + p.Name +
-			", not allowed as it is: " + m.Client.ScreenKey(5) + " and a show it and allow it")
+			", not allowed as it is: " + ScreenRef(5) + " and a show it and allow it")
 		reply(hooks.Answer{Text: RunNotAllowed})
 		return nil
 	}
@@ -293,7 +293,7 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 			return nil
 		}
 		reply(hooks.Answer{Text: "started " + run.Id})
-		return m.Client.ShowPluginRun(o, p, run)
+		return m.Tell(PluginRunMsg{T: o, P: p, Run: run})
 	}
 	if m.Cfg.ConfirmPluginRuns || p.Confirm || confined {
 		where := r.Dir
@@ -364,10 +364,10 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 		old.Proc.Stop()
 	}
 	if p.Shows(plugin.ShowUI) {
-		m.Client.EnsurePluginUI(o, p, key)
+		m.Tell(PluginUIMsg{T: o, P: p, Key: key})
 	}
 	v.Runs[uiKey], v.ByID[run.Id] = run, run
-	m.Client.PluginEvent(o, p.Dir, run.StartEvent())
+	m.Tell(PluginEventMsg{T: o, Dir: p.Dir, Ev: run.StartEvent()})
 	return run, nil
 }
 
@@ -399,7 +399,7 @@ func (m *Core) PumpRuns(now time.Time) {
 		run.Pumped = next
 		if text != "" {
 			run.Add(text)
-			m.Client.PluginEvent(run.T, run.Dir, map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)})
+			m.Tell(PluginEventMsg{T: run.T, Dir: run.Dir, Ev: map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)}})
 			if run.Watch {
 				m.TellWatcher(run, text, run.Confined)
 			}
@@ -504,7 +504,7 @@ func (m *Core) EndRun(run *PluginRun, exit int, sandboxed bool) {
 		}
 		m.PluginRuns.Finished[run.Id] = run
 	}
-	m.Client.PluginEvent(run.T, run.Dir, map[string]any{"event": "end", "run": run.Id, "exit": exit})
+	m.Tell(PluginEventMsg{T: run.T, Dir: run.Dir, Ev: map[string]any{"event": "end", "run": run.Id, "exit": exit}})
 	if !run.Watch || run.StopBy == "you" || run.From == nil || !slices.Contains(m.AllAgents(), run.From) {
 		return
 	}

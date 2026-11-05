@@ -186,10 +186,10 @@ func (m *Core) ClaimSession(t *Tab) Cmd {
 func (m *Core) AddPane(t *Tab, p *PaneTab, quiet bool) Cmd {
 	t.PaneList = append(t.Panes(), p)
 	if quiet {
-		m.Client.ResizePanes()
+		m.Tell(PanesMsg{})
 		return nil
 	}
-	return m.Client.FocusPane(t, p)
+	return m.Tell(PaneOpenedMsg{T: t, P: p})
 }
 
 // newShellIn opens a terminal in t's worktree, in a pane of its own,
@@ -211,12 +211,12 @@ func (m *Core) NewShellIn(t *Tab, quiet bool) (*PaneTab, Cmd) {
 	env := append(ChildEnv(t), "NERDR_SHELL=1")
 	sh, err := term.Start(m.ShellCommand(), t.Dir, env, w, h, m.Notify)
 	if err != nil {
-		m.Client.DropPane(t, p)
+		m.DropPane(t, p)
 		m.Toast("terminal: " + err.Error())
-		return nil, m.Client.Resize()
+		return nil, m.Tell(LayoutMsg{})
 	}
 	p.Shell = sh
-	m.Client.FocusTerms(t)
+	m.Tell(TermsMsg{T: t})
 	return p, cmd
 }
 
@@ -231,7 +231,7 @@ func (m *Core) CheckShells() {
 			}
 			if exited, _, _ := p.Shell.Exited(); exited {
 				go p.Shell.Close()
-				m.Client.DropPane(t, p)
+				m.DropPane(t, p)
 			}
 		}
 	}
@@ -263,7 +263,7 @@ func (m *Core) NewAgentWith(t *Tab, k agents.Kind, model, task string, quiet, sa
 		m.Toast(t.Name + ": " + a.Err)
 	}
 	m.SaveSession()
-	m.Client.FocusTerms(t)
+	m.Tell(TermsMsg{T: t})
 	return a, Batch(cmd, start)
 }
 
@@ -312,7 +312,7 @@ func (m *Core) OnMessage(r hooks.Report) Cmd {
 	m.AddMessageFrom(to, text, true, m.Confined(r, from))
 	to.Messages[len(to.Messages)-1].From = from.Num // for nerdr send --wait
 	m.SaveSession()
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 	m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " → " + m.AgentLabel(o, to) + ": a message, sent when it is idle")
 	when := "now"
 	if to.Light != StIdle && to.Light != StDone {
@@ -636,7 +636,7 @@ func (t *Tab) NoteSaid(s string) {
 func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 	switch {
 	case p == t.OwnPane():
-		m.Toast(m.AgentLabel(t, t) + " is the tab's first agent: it stays as long as the tab · " + m.Client.KeyName("x") + " closes the tab")
+		m.Toast(m.AgentLabel(t, t) + " is the tab's first agent: it stays as long as the tab · " + KeyRef("x") + " closes the tab")
 		return nil
 	case p.Kind == PaneShell:
 		if p.Shell != nil {
@@ -644,7 +644,7 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 		}
 	case p.Kind == PaneReview && p.A != nil:
 		if p.Of.SeatOf(p.A) != nil {
-			return Batch(m.DropReviewer(p.Of, p.A, string(p.A.Agent)+" stopped", false), m.Client.Resize())
+			return Batch(m.DropReviewer(p.Of, p.A, string(p.A.Agent)+" stopped", false), m.Tell(LayoutMsg{}))
 		}
 	case p.Kind == PaneAgent && p.A != nil:
 		a := p.A
@@ -653,7 +653,7 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 		}
 		for _, q := range append([]*PaneTab{}, t.Panes()...) {
 			if q.Kind == PaneReview && q.Of == a {
-				m.Client.DropPane(t, q)
+				m.DropPane(t, q)
 			}
 		}
 		if a.Pane != nil {
@@ -661,17 +661,17 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 		}
 		name := m.PaneName(t, p)
 		kept := t.KeepTasks(a)
-		m.Client.DropPane(t, p)
+		m.DropPane(t, p)
 		m.SaveSession()
 		note := t.Name + ": stopped " + name + "; its conversation is kept by " + string(a.Agent)
 		if kept > 0 {
-			note += " · " + Plural(kept, "task") + " for it wait in " + m.Client.ScreenKey(3) + ", inactive"
+			note += " · " + Plural(kept, "task") + " for it wait in " + ScreenRef(3) + ", inactive"
 		}
 		m.Toast(note)
-		return m.Client.Resize()
+		return m.Tell(LayoutMsg{})
 	}
-	m.Client.DropPane(t, p)
-	return m.Client.Resize()
+	m.DropPane(t, p)
+	return m.Tell(LayoutMsg{})
 }
 
 // PaneName is what p is called in its frame and in the row.
@@ -708,4 +708,22 @@ func (m *Core) AgentName(a *Tab) string {
 		return o.Name + " · " + m.PaneName(o, p)
 	}
 	return o.Name + " · " + string(a.Agent)
+}
+
+// DropPane takes p out of t's panes, but for t's own, and tells the client.
+func (m *Core) DropPane(t *Tab, p *PaneTab) {
+	ps := t.Panes()
+	i := slices.Index(ps, p)
+	if i < 0 || p == t.OwnPane() {
+		return
+	}
+	t.PaneList = slices.Delete(ps, i, i+1)
+	m.Tell(PaneClosedMsg{T: t, P: p})
+}
+
+// DropReviewPane takes reviewer r's pane out of its tab.
+func (m *Core) DropReviewPane(r *Tab) {
+	if p := r.PaneOf(); p != nil {
+		m.DropPane(r.Owner(), p)
+	}
 }

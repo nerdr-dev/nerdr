@@ -251,8 +251,8 @@ func (m *Core) OnReview(rep hooks.Report) Cmd {
 	}
 	if !m.RoundDone(t) {
 		m.Toast(t.Name + ": " + string(r.Agent) + ": " + res.Brief() + " · waiting for the other reviewers")
-		m.Client.ResizePanes()
-		return m.Client.PinReview()
+		m.Tell(PanesMsg{})
+		return m.Tell(ReviewMsg{})
 	}
 	return m.EndRound(t)
 }
@@ -319,7 +319,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 				if s.R.Pane != nil {
 					go s.R.Pane.Close()
 				}
-				m.Client.DropReviewPane(s.R)
+				m.DropReviewPane(s.R)
 			}
 		}
 		run.Seats = stay
@@ -333,14 +333,14 @@ func (m *Core) EndRound(t *Tab) Cmd {
 		if auto {
 			m.Toast(t.Name + ": " + brief + " — sent to " + string(t.Agent))
 		} else {
-			m.Toast(t.Name + ": " + brief + " — in " + m.Client.ScreenKey(3) + " for you to send to " + string(t.Agent))
+			m.Toast(t.Name + ": " + brief + " — in " + ScreenRef(3) + " for you to send to " + string(t.Agent))
 			t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: run.FixMsg, Says: says}
 		}
-		m.Client.NotifyReview(t, brief)
+		m.Tell(ReviewNewsMsg{T: t, Text: brief})
 	}
 	m.SaveSession() // with what is still to be told of
-	m.Client.ResizePanes()
-	return m.Client.PinReview() // the panel shows the findings
+	m.Tell(PanesMsg{})
+	return m.Tell(ReviewMsg{}) // the panel shows the findings
 }
 
 // sendFindings sets the findings msg in t's messages to go to its agent by
@@ -356,7 +356,7 @@ func (m *Core) SendFindings(t *Tab, msg state.Message) {
 		run.FixMsg = t.Messages[i] // still the findings the review waits on
 	}
 	m.SaveSession()
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 	m.Toast(t.Name + ": the findings go to " + string(t.Agent))
 }
 
@@ -377,15 +377,15 @@ func (m *Core) EndReview(t *Tab, brief string, notify bool) {
 		if p := s.R.Pane; p != nil {
 			go p.Close()
 		}
-		m.Client.DropReviewPane(s.R)
+		m.DropReviewPane(s.R)
 	}
 	t.Review = nil
 	t.ReviewBrief, t.FindingsSent = brief, false
 	m.SaveSession()
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 	m.Toast(t.Name + ": review " + brief)
 	if notify {
-		m.Client.NotifyReview(t, brief)
+		m.Tell(ReviewNewsMsg{T: t, Text: brief})
 	}
 }
 
@@ -406,12 +406,12 @@ func (m *Core) DropReviewer(t, r *Tab, why string, notify bool) Cmd {
 	if p := r.Pane; p != nil {
 		go p.Close()
 	}
-	m.Client.DropReviewPane(r)
+	m.DropReviewPane(r)
 	m.Toast(t.Name + ": " + why + " · the review goes on with " + m.ReviewerNames(t))
 	if run.Phase == Reviewing && m.RoundDone(t) {
 		return m.EndRound(t)
 	}
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 	return nil
 }
 
@@ -440,8 +440,8 @@ func (m *Core) DetectSeat(t *Tab, s *Seat, now time.Time) Cmd {
 	was := r.Light
 	r.Classify(visible, now)
 	if r.Light != was && r.Light == StBlocked {
-		m.Client.NotifyChange(r, visible, now)
-		m.Client.ResizePanes() // the panel says it asks something
+		m.Tell(LightMsg{A: r, Visible: visible, Now: now})
+		m.Tell(PanesMsg{}) // the panel says it asks something
 	}
 	if r.Light == StExited && was != StExited {
 		why := ""
@@ -459,12 +459,12 @@ func (m *Core) DetectSeat(t *Tab, s *Seat, now time.Time) Cmd {
 		// something in words, it lost the thread, or what it ran to send
 		// it never reached nerdr.
 		if m.CutOff(r) != "" {
-			m.Client.NotifyReview(t, "waits: "+string(r.Agent)+" could not send its review to nerdr")
+			m.Tell(ReviewNewsMsg{T: t, Text: "waits: " + string(r.Agent) + " could not send its review to nerdr"})
 			m.TellCutOff(r)
 		} else {
-			m.Client.NotifyReview(t, "waits: "+string(r.Agent)+" stopped without sending one: see its pane")
+			m.Tell(ReviewNewsMsg{T: t, Text: "waits: " + string(r.Agent) + " stopped without sending one: see its pane"})
 		}
-		m.Client.ResizePanes()
+		m.Tell(PanesMsg{})
 	}
 	m.CheckSent(r, now)
 	return m.DeliverQueue(r, now)
@@ -479,7 +479,7 @@ func (m *Core) FindingsDone(t *Tab) {
 	}
 	t.FindingsSent, t.ReviewBrief = false, ""
 	m.SaveSession()
-	m.Client.ResizePanes()
+	m.Tell(PanesMsg{})
 }
 
 // ReviewPhase is where a review stands.

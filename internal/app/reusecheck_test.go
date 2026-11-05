@@ -109,7 +109,7 @@ func TestCoreChangingTheClientCounts(t *testing.T) {
 	m.setFocus(core.FocusReview)
 	m.View()
 	before := m.Gen
-	m.SetFocus(core.FocusAgent) // core's way, through Client
+	m.Tell(core.SwitchedMsg{T: m.Cur()}) // core's way, through Client
 	if m.Gen == before {
 		t.Fatal("core changing the focus did not count")
 	}

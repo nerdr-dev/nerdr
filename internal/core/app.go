@@ -128,7 +128,7 @@ func (m *Core) DetectAgent(t *Tab, shown bool, now time.Time) Cmd {
 	}
 	if t.Light != was {
 		Debugf("agent %s: %s -> %s (visible %v; %s)", m.AgentName(t), was.Label(), t.Light.Label(), visible, t.Why)
-		m.Client.NotifyChange(t, visible, now)
+		m.Tell(LightMsg{A: t, Visible: visible, Now: now})
 		if was.AtWork() {
 			// Whatever the agent did is worth a look in the tab bar.
 			t.Owner().LookAgain(false)

@@ -215,7 +215,7 @@ func (m *Core) AddTabWith(name, dir, group string, wts []workspace.Worktree, kin
 	m.AddMessageFrom(t, task, true, sandboxed) // before the start, which may take it
 	cmd := m.Start(t, false)
 	m.SaveSession()
-	return t, Batch(cmd, m.Client.Resize())
+	return t, Batch(cmd, m.Tell(LayoutMsg{}))
 }
 
 // onSpinoff takes the parts an agent sent.
@@ -249,7 +249,7 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 			"Send them again once the user has been through those.", dropped, spinoff.MaxParts), true)
 	}
 	m.SaveSession()
-	cmd := m.Client.Detect() // the light turns red at once
+	cmd := m.DetectAll(time.Now()) // the light turns red at once
 	if t == m.Front() && m.Client.DialogClosed() {
 		return Batch(cmd, m.Client.OpenSpinoff(t))
 	}
