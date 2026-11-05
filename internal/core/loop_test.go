@@ -192,3 +192,29 @@ func TestLoopDrawsDoNotPileUp(t *testing.T) {
 		t.Fatalf("the client would get %v", got)
 	}
 }
+
+// TestLoopPanicLetsGoOfMu: a panic in core's handling of an event leaves Mu
+// free, for the client to put the terminal back and stop the agents.
+func TestLoopPanicLetsGoOfMu(t *testing.T) {
+	got := make(chan Event, 16)
+	c := &Core{Client: NoClient{}, Wake: make(chan struct{}, 1)}
+	l := NewLoop(c, func(ev Event) { got <- ev })
+	l.Start()
+	defer l.Stop()
+	l.Post(GoalMsg{}) // no tab: handling it panics
+	for {
+		select {
+		case ev := <-got:
+			if _, ok := ev.(PanicMsg); !ok {
+				continue
+			}
+			if !c.Mu.TryLock() {
+				t.Fatal("Mu is still held after the panic")
+			}
+			c.Mu.Unlock()
+			return
+		case <-time.After(5 * time.Second):
+			t.Fatal("the panic did not arrive")
+		}
+	}
+}

@@ -69,7 +69,8 @@ func (m *Model) reviewSet(r review.Model, w int) review.Model {
 func (m *Model) panelBody(w, h int) []string {
 	// The branch's rows have zones in them, numbered for one frame only:
 	// drawn anew each time.
-	if !m.reviewReuse || m.reviewView == "" || m.review.BranchPR() {
+	// Core may have changed it since Update, on its own goroutine.
+	if !m.reviewReuse || m.Gen != m.reviewGen || m.reviewView == "" || m.review.BranchPR() {
 		m.review = m.reviewSet(m.review, w)
 		m.reviewView = m.review.View()
 		m.reviewGen = m.Gen

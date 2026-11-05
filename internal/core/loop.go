@@ -136,13 +136,19 @@ func (l *Loop) run() {
 
 // step handles one event, and starts the work it leads to with Mu let go.
 func (l *Loop) step(ev Event) {
-	l.c.Mu.Lock()
-	cmd, tell := l.c.loopEvent(ev)
-	l.c.Mu.Unlock()
+	cmd, tell := l.handle(ev)
 	if tell != nil {
 		l.send(tell)
 	}
 	l.runCmd(cmd)
+}
+
+// handle is loopEvent with Mu held, and let go even if it panics: the client
+// takes Mu to put the terminal back, and to stop the agents.
+func (l *Loop) handle(ev Event) (Cmd, Event) {
+	l.c.Mu.Lock()
+	defer l.c.Mu.Unlock()
+	return l.c.loopEvent(ev)
 }
 
 // runCmd runs cmd away from the loop. What comes of it comes back to Post.

@@ -45,5 +45,6 @@ func (m *Model) dialogClosed() bool { return m.dialog == nil }
 // AskRepoSetup runs then once the user has allowed what repos set up; see
 // askRepoSetup.
 func (m *Model) AskRepoSetup(repos []string, then func() core.Cmd) core.Cmd {
+	m.Gen++
 	return toCore(m.askRepoSetup(repos, func(*Model) tea.Cmd { return fromCore(then()) }))
 }
