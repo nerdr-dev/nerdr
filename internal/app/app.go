@@ -489,6 +489,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case sentMsg:
 		m.onSent(msg)
+		if m.router != nil {
+			m.router.PrefixSeen()
+		}
 		return nil
 
 	case core.SkillUseMsg:
