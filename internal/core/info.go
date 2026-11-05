@@ -1,7 +1,10 @@
 package core
 
 import (
+	"path"
+	"path/filepath"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 
@@ -322,4 +325,155 @@ func (t *Tab) LookAgain(pr bool) {
 		t.Info.StalePR = true
 		t.PrAsks++
 	}
+}
+
+// RefreshInfo starts a look at the tab that most wants one, if any. One at
+// a time: the look runs git in every worktree of the tab, and a slow
+// repository must not pile them up.
+func (m *Core) RefreshInfo() Cmd {
+	if m.InfoBusy {
+		return nil
+	}
+	now := time.Now()
+	var pick *Tab
+	for _, t := range m.Tabs {
+		every, _ := m.InfoEvery(t)
+		due := t.Info.Stale || now.Sub(t.Info.At) > every
+		if !due {
+			continue
+		}
+		// The tab in front first, then the one waited on longest.
+		if pick == nil || t == m.Front() || (pick != m.Front() && t.Info.At.Before(pick.Info.At)) {
+			pick = t
+		}
+	}
+	if pick == nil {
+		return nil
+	}
+	m.InfoBusy = true
+	prev := pick.Info
+	_, prEvery := m.InfoEvery(pick)
+	withPR := prev.StalePR || now.Sub(prev.PrAt) > prEvery
+	skip, watchN := m.MaySkip(pick, now)
+	id, wts := pick.ID, append([]workspace.Worktree(nil), pick.Worktrees...)
+	asks, prAsks := pick.InfoAsks, pick.PrAsks
+	return func() Event {
+		in := LookAt(wts, prev, withPR, skip)
+		in.WatchN = watchN
+		return InfoMsg{Id: id, Info: in, Asks: asks, PrAsks: prAsks}
+	}
+}
+
+// MaySkip reports whether a look at t can keep what the last one found
+// when its git files are as they were then: nothing asked for a fresh
+// look, the last full one is recent, and no file was edited since — as
+// far as can be told: the review panel's watch sees edits in the worktree
+// it shows; in another, only an agent that is not working is taken not to
+// edit. watchN is the watch's count of changes to keep with the look.
+func (m *Core) MaySkip(t *Tab, now time.Time) (skip bool, watchN int) {
+	prev := t.Info
+	watchN = prev.WatchN
+	if !prev.Known() || prev.Stale || now.Sub(prev.FullAt) >= FullInfoEvery {
+		return false, watchN
+	}
+	var wt string
+	n := 0
+	if m.Client != nil {
+		s := m.Client.Sight()
+		wt, n = s.WatchWt, s.WatchN
+	}
+	for _, w := range t.Worktrees {
+		if wt != "" && filepath.Clean(w.Path) == filepath.Clean(wt) {
+			return n == prev.WatchN && (len(t.Worktrees) == 1 || t.Light != StWorking), n
+		}
+	}
+	return t.Light != StWorking, watchN
+}
+
+// InfoEvery is how often t's branches, and its pull requests, are looked
+// at: often while it is on screen or its agent works, seldom otherwise.
+func (m *Core) InfoEvery(t *Tab) (branches, prs time.Duration) {
+	if m.Client != nil && m.Client.TabShown(t) || t.Light == StWorking {
+		return InfoEvery, m.GithubEvery(PrEvery)
+	}
+	return IdleInfoEvery, m.GithubEvery(IdlePREvery)
+}
+
+// FileKey is a file of repository Repo, its main checkout.
+type FileKey struct{ Repo, File string }
+
+// SetInfo takes a finished look and works out the overlaps again.
+func (m *Core) SetInfo(msg InfoMsg) {
+	m.InfoBusy = false
+	for _, t := range m.Tabs {
+		if t.ID == msg.Id {
+			if len(msg.Info.Wts) != len(t.Worktrees) {
+				t.Info.Stale = true // the tab changed while it was looked at
+				return
+			}
+			merged := t.Info.Merged()
+			t.Info = msg.Info
+			t.Info.Stale = t.InfoAsks != msg.Asks
+			t.Info.StalePR = t.PrAsks != msg.PrAsks
+			m.FollowBranches(t)
+			if t.Info.Merged() != merged {
+				m.Tell(PanesMsg{}) // the panel says so, or no longer does
+			}
+		}
+	}
+	m.FindOverlaps()
+}
+
+// FindOverlaps records, for every tab, the other tabs that change some of
+// the same files in the same repository.
+func (m *Core) FindOverlaps() {
+	type key struct{ repo, file string }
+	who := map[key][]*Tab{}
+	for _, t := range m.Tabs {
+		for _, w := range t.Info.Wts {
+			for _, f := range w.Stats.Changed {
+				k := key{w.Repo, f}
+				who[k] = append(who[k], t)
+			}
+		}
+	}
+	m.Overlaps = map[string][]Overlap{}
+	m.Shared = map[string]map[FileKey][]string{}
+	byPair := map[[2]string]*Overlap{}
+	for k, ts := range who {
+		if len(ts) < 2 {
+			continue
+		}
+		for _, a := range ts {
+			if m.Shared[a.ID] == nil {
+				m.Shared[a.ID] = map[FileKey][]string{}
+			}
+			for _, b := range ts {
+				if a != b {
+					key := FileKey{Repo: k.repo, File: k.file}
+					m.Shared[a.ID][key] = append(m.Shared[a.ID][key], b.Name)
+				}
+			}
+			for _, b := range ts {
+				if a == b {
+					continue
+				}
+				pk := [2]string{a.ID, b.ID}
+				o := byPair[pk]
+				if o == nil {
+					o = &Overlap{With: b}
+					byPair[pk] = o
+				}
+				o.Files = append(o.Files, path.Join(BaseName(k.repo), k.file))
+			}
+		}
+	}
+	for pk, o := range byPair {
+		sort.Strings(o.Files)
+		m.Overlaps[pk[0]] = append(m.Overlaps[pk[0]], *o)
+	}
+	for _, list := range m.Overlaps {
+		sort.Slice(list, func(i, j int) bool { return list[i].With.Name < list[j].With.Name })
+	}
+	m.Tell(OverlapsMsg{})
 }

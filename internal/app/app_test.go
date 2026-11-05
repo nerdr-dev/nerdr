@@ -51,15 +51,15 @@ func TestFindOverlaps(t *testing.T) {
 	c := mk("c", map[string][]string{"/r/other": {"y.go"}}) // same name, other repo
 	m := &Model{Tabs: []*core.Tab{a, b, c}}
 	m.Client = m
-	m.findOverlaps()
+	m.FindOverlaps()
 
-	if got := m.overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
+	if got := m.Overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
 		t.Fatalf("a: %+v", got)
 	}
-	if got := m.overlaps["b"]; len(got) != 1 || got[0].With != a {
+	if got := m.Overlaps["b"]; len(got) != 1 || got[0].With != a {
 		t.Fatalf("b: %+v", got)
 	}
-	if got := m.overlaps["c"]; len(got) != 0 {
+	if got := m.Overlaps["c"]; len(got) != 0 {
 		t.Fatalf("c: %+v", got)
 	}
 }

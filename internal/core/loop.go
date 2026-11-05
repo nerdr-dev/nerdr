@@ -290,6 +290,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.OnReport(ev), true
 	case TabMadeMsg:
 		return m.TabMade(ev), true
+	case InfoMsg:
+		m.SetInfo(ev)
+		return m.RefreshInfo(), true
 	case HeadsMsg:
 		m.SetHeads(ev)
 		return nil, true

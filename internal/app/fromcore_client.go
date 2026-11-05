@@ -41,6 +41,9 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.Gen++
 		m.stopScrolling()
 		m.setFocus(core.FocusAgent)
+	case core.OverlapsMsg:
+		m.Gen++
+		m.shareOverlaps()
 	case core.DetectStartMsg:
 		m.herdrBefore = m.Herdr.State()
 		m.look()
@@ -88,6 +91,11 @@ func (m *Model) TabShown(t *core.Tab) bool { return m.tabShown(t) }
 func (m *Model) AgentVisible(a *core.Tab) bool { return m.agentVisible(a) }
 
 func (m *Model) Layout() core.Layout { return m.layout() }
+
+func (m *Model) Sight() core.Sight {
+	wt, n := m.review.WatchChanges()
+	return core.Sight{WatchWt: wt, WatchN: n}
+}
 
 func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.shellSize(t, p) }
 

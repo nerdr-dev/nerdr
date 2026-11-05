@@ -532,7 +532,7 @@ func (m *Model) overlapWarning() string {
 	if t == nil {
 		return ""
 	}
-	ov := m.overlaps[t.ID]
+	ov := m.Overlaps[t.ID]
 	if len(ov) == 0 {
 		return ""
 	}

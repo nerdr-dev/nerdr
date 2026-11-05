@@ -31,6 +31,16 @@ type Client interface {
 	ShellSize(t *Tab, p *PaneTab) (w, h int)
 	// Layout is how the client lays out the tabs, for the session.
 	Layout() Layout
+	// Sight is what core's background work goes by of what the client shows.
+	Sight() Sight
+}
+
+// Sight is what the client shows that core's background work goes by: the
+// worktree whose files it watches for changes (WatchWt), and how many it has
+// seen (WatchN).
+type Sight struct {
+	WatchWt string
+	WatchN  int
 }
 
 // Tell gives the client ev; see Client.Tell.
@@ -87,6 +97,10 @@ type (
 	// switch with. Both wait in T until then.
 	SpinoffAskMsg struct{ T *Tab }
 	SwitchAskMsg  struct{ T *Tab }
+
+	// OverlapsMsg is a change in which tabs change the same files; see
+	// Core.Overlaps.
+	OverlapsMsg struct{}
 
 	// DetectStartMsg and DetectDoneMsg are the start and the end of a look at
 	// every agent.
@@ -170,3 +184,4 @@ func (NoClient) DialogClosed() bool                      { return false }
 func (NoClient) TabSize(_ *Tab) (int, int)               { return 0, 0 }
 func (NoClient) ShellSize(_ *Tab, _ *PaneTab) (int, int) { return 0, 0 }
 func (NoClient) Layout() Layout                          { return Layout{} }
+func (NoClient) Sight() Sight                            { return Sight{} }
