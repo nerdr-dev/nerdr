@@ -609,13 +609,28 @@ func (m *Model) closePane(t *tab, p *paneTab) tea.Cmd {
 }
 
 // askClosePane closes the pane with the keyboard, asking first when an
-// agent in it is at work.
+// agent in it is at work or a terminal has a foreground command.
 func (m *Model) askClosePane() tea.Cmd {
 	t := m.cur()
 	if t == nil {
 		return nil
 	}
 	p := t.focused()
+	if p.kind == paneShell && p.shell != nil && p.shell.Busy() {
+		m.dialog = &confirm{
+			title:     "Stop the process and close the terminal?",
+			lines:     []string{"A process is still running in this terminal."},
+			defaultNo: true,
+			yesLabel:  "Stop and close", noLabel: "Cancel",
+			yes: func(m *Model) tea.Cmd {
+				if m.tabIndex(t) < 0 || !slices.Contains(t.panes(), p) {
+					return nil
+				}
+				return m.closePane(t, p)
+			},
+		}
+		return nil
+	}
 	if p.kind == paneShell || p.a == nil || !p.a.status.atWork() || p == t.ownPane() {
 		return m.closePane(t, p)
 	}

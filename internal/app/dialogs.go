@@ -28,6 +28,9 @@ type confirm struct {
 	yes   func(m *Model) tea.Cmd
 	// no, when set, is run on no as well.
 	no func(m *Model) tea.Cmd
+	// defaultNo makes Enter cancel. Labels default to yes/no.
+	defaultNo         bool
+	yesLabel, noLabel string
 	// strict takes any key but yes for no: the question came from a
 	// single key that may have been meant as the start of a word for the
 	// agent, and the next letter of that word must not answer it.
@@ -42,6 +45,13 @@ type confirm struct {
 }
 
 func (c *confirm) key(m *Model, msg tea.KeyMsg) tea.Cmd {
+	if c.defaultNo && msg.String() == "enter" {
+		m.dialog = nil
+		if c.no != nil {
+			return c.no(m)
+		}
+		return nil
+	}
 	if c.scroll != nil {
 		page := max(c.shown-1, 1)
 		switch msg.String() {
@@ -105,7 +115,18 @@ func (c *confirm) view(m *Model, w, h int) string {
 		}
 		body = append(body, c.after...)
 	}
-	body = append(body, "", m.button("y", "yes")+"   "+m.button("n", "no"))
+	yes, no := c.yesLabel, c.noLabel
+	if yes == "" {
+		yes = "yes"
+	}
+	if no == "" {
+		no = "no"
+	}
+	buttons := m.button("y", yes) + "   " + m.button("n", no)
+	if c.defaultNo {
+		buttons = m.button("enter", no) + "   " + m.button("y", yes)
+	}
+	body = append(body, "", buttons)
 	return box(c.title, body, w)
 }
 

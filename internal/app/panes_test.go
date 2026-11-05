@@ -807,3 +807,37 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 		}
 	}
 }
+
+func TestCloseBusyTerminal(t *testing.T) {
+	m := paneModel(t)
+	m.cfg.Shell = "bash --norc --noprofile -i"
+	m.runCommand("t t")
+	tb := m.cur()
+	p := tb.focused()
+	p.shell.Write([]byte("sleep 60\r"))
+	for end := time.Now().Add(5 * time.Second); !p.shell.Busy(); {
+		if time.Now().After(end) {
+			t.Fatal("command did not start")
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	for _, key := range []string{"enter", "esc", "n"} {
+		clickOn(t, m, "×", tea.MouseButtonLeft)
+		if m.dialog == nil {
+			t.Fatal("closing a busy terminal should ask first")
+		}
+		view := ansi.Strip(m.View())
+		if !strings.Contains(view, "Stop and close") || !strings.Contains(view, "Cancel") {
+			t.Fatalf("missing terminal close choices: %s", view)
+		}
+		m.handleKey(keyMsg(key))
+		if m.dialog != nil || !slices.Contains(tb.panes(), p) || !p.shell.Busy() {
+			t.Fatalf("%s should leave the terminal and command running", key)
+		}
+	}
+	m.runCommand("t x")
+	m.handleKey(keyMsg("y"))
+	if m.dialog != nil || slices.Contains(tb.panes(), p) {
+		t.Fatal("confirmation should close the terminal")
+	}
+}
