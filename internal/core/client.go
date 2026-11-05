@@ -36,9 +36,11 @@ type Client interface {
 }
 
 // Sight is what the client shows that core's background work goes by: the
-// worktree whose files it watches for changes (WatchWt), and how many it has
-// seen (WatchN).
+// tab it keeps beside the one in front (Beside), shown or not; the worktree
+// whose files it watches for changes (WatchWt), and how many it has seen
+// (WatchN).
 type Sight struct {
+	Beside  *Tab
 	WatchWt string
 	WatchN  int
 }

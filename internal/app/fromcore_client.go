@@ -94,7 +94,7 @@ func (m *Model) Layout() core.Layout { return m.layout() }
 
 func (m *Model) Sight() core.Sight {
 	wt, n := m.review.WatchChanges()
-	return core.Sight{WatchWt: wt, WatchN: n}
+	return core.Sight{Beside: m.splitTab(), WatchWt: wt, WatchN: n}
 }
 
 func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.shellSize(t, p) }

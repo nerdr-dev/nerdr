@@ -31,7 +31,7 @@ func TestIdleAgentSleepsAndWakes(t *testing.T) {
 	shown, other := m.Cur(), m.Tabs[1]
 	idleAgent(t, shown, time.Hour)
 	idleAgent(t, other, time.Hour)
-	m.sleepIdle(time.Now())
+	m.SleepIdle(time.Now())
 	if shown.Light == core.StAsleep {
 		t.Fatal("the tab on screen was put to sleep")
 	}
@@ -61,22 +61,22 @@ func TestAgentStaysAwake(t *testing.T) {
 	tb := m.Tabs[1]
 	idleAgent(t, tb, time.Hour)
 	tb.Messages = []state.Message{{Text: "next", Auto: true}}
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep with a task waiting")
 	}
 	tb.Messages = nil
 	tb.Changed = time.Now().Add(-time.Minute)
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep before sleep_after")
 	}
 	tb.Changed = time.Now().Add(-time.Hour)
 	tb.Agent, tb.SessionID = "copilot", ""
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep with no conversation to carry on")
 	}
 	m.Cfg.SleepAfter = 0
 	tb.Agent, tb.SessionID = "claude", "s"
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep with sleep_after 0")
 	}
 }
@@ -116,16 +116,16 @@ func TestBesideAgentKeepsTheTabAwake(t *testing.T) {
 	idleAgent(t, tb, time.Hour)
 	a := beside(tb)
 	idleAgent(t, a, time.Hour)
-	if !m.canSleep(tb, time.Now()) {
+	if !m.CanSleep(tb, time.Now()) {
 		t.Fatal("the tab cannot sleep to begin with")
 	}
 	a.Messages = []state.Message{{Text: "next", Auto: true}}
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep with a task waiting for the agent beside")
 	}
 	a.Messages = nil
 	a.Review = &core.ReviewRun{}
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep with the agent beside under review")
 	}
 	a.Review = nil
@@ -149,12 +149,12 @@ func TestRecentlySeenTabStaysAwake(t *testing.T) {
 	tb := m.Tabs[1]
 	idleAgent(t, tb, time.Hour)
 	tb.LastActive = time.Now().Add(-time.Minute) // left a minute ago
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep a minute after it was left")
 	}
 	tb.LastActive = time.Now().Add(-time.Hour)
 	tb.ShownAt = time.Now().Add(-time.Minute) // beside the other in a split
-	if m.canSleep(tb, time.Now()) {
+	if m.CanSleep(tb, time.Now()) {
 		t.Error("asleep a minute after it was on screen")
 	}
 }

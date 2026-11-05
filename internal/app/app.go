@@ -481,7 +481,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case core.InfoTickMsg:
 		m.toastDenied()
 		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), m.tickPRs(time.Now()), m.tickIssues(time.Now()), m.syncPRPanel(),
-			m.sleepIdle(time.Now()), fromCore(core.InfoTick()))
+			fromCore(m.SleepIdle(time.Now())), fromCore(core.InfoTick()))
 
 	case sentMsg:
 		m.onSent(msg)

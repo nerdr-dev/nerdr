@@ -102,3 +102,48 @@ func (m *Core) WakeTab(t *Tab) Cmd {
 	}
 	return Batch(cmds...)
 }
+
+// SleepIdle puts to sleep the agents of the tabs that have been done, seen
+// and out of sight for sleep_after, and wakes those asleep that have been
+// given something to do since.
+func (m *Core) SleepIdle(now time.Time) Cmd {
+	var cmds []Cmd
+	for _, t := range m.Tabs {
+		switch {
+		case t.Light == StAsleep && (TabHasAuto(t) || m.kept(t)):
+			// Given a task since, or on screen by a way track missed.
+			cmds = append(cmds, m.WakeTab(t))
+		case m.CanSleep(t, now):
+			m.SleepTab(t, now)
+		}
+	}
+	return Batch(cmds...)
+}
+
+// CanSleep says whether t's agents can be put to sleep now: each done,
+// seen and idle for sleep_after, and the tab out of sight as long.
+func (m *Core) CanSleep(t *Tab, now time.Time) bool {
+	d := m.SleepAfter()
+	if d == 0 || m.kept(t) || now.Sub(t.LastActive) < d || now.Sub(t.ShownAt) < d {
+		return false
+	}
+	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
+		if a.Pane == nil || a.Light != StIdle || now.Sub(a.Changed) < d || !m.CanCarryOn(a) ||
+			a.Review != nil || a.Spinoff != nil || HasAuto(a) || m.Watching(a) {
+			return false
+		}
+		if exited, _, _ := a.Pane.Exited(); exited {
+			return false
+		}
+	}
+	return true
+}
+
+// kept reports whether the client keeps t in view: in front, or beside it
+// though the window may be too narrow to show both.
+func (m *Core) kept(t *Tab) bool {
+	if m.Client == nil {
+		return false
+	}
+	return t == m.Client.Front() || t == m.Client.Sight().Beside
+}

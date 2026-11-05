@@ -54,39 +54,3 @@ func (m *Model) restoreStarts() []tea.Cmd {
 	}
 	return cmds
 }
-
-// sleepIdle puts to sleep the agents of the tabs that have been done, seen
-// and out of sight for sleep_after, and wakes those asleep that have been
-// given something to do since.
-func (m *Model) sleepIdle(now time.Time) tea.Cmd {
-	var cmds []tea.Cmd
-	for _, t := range m.Tabs {
-		switch {
-		case t.Light == core.StAsleep && (core.TabHasAuto(t) || t == m.Cur() || t == m.splitTab()):
-			// Given a task since, or on screen by a way track missed.
-			cmds = append(cmds, fromCore(m.WakeTab(t)))
-		case m.canSleep(t, now):
-			m.SleepTab(t, now)
-		}
-	}
-	return tea.Batch(cmds...)
-}
-
-// canSleep says whether t's agents can be put to sleep now: each done,
-// seen and idle for sleep_after, and the tab out of sight as long.
-func (m *Model) canSleep(t *core.Tab, now time.Time) bool {
-	d := m.SleepAfter()
-	if d == 0 || t == m.Cur() || t == m.splitTab() || now.Sub(t.LastActive) < d || now.Sub(t.ShownAt) < d {
-		return false
-	}
-	for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
-		if a.Pane == nil || a.Light != core.StIdle || now.Sub(a.Changed) < d || !m.CanCarryOn(a) ||
-			a.Review != nil || a.Spinoff != nil || core.HasAuto(a) || m.Watching(a) {
-			return false
-		}
-		if exited, _, _ := a.Pane.Exited(); exited {
-			return false
-		}
-	}
-	return true
-}
