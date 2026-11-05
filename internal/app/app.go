@@ -24,6 +24,10 @@ import (
 // panes' goroutines hold on to it (notify), so it must not be copied.
 type Model struct {
 	core.Core
+	// laidRows and laidSide are the bar rows and the sidebar's width at
+	// the end of the last Update, laidOut once they are; see Update.
+	laidRows, laidSide int
+	laidOut            bool
 	// herdrBefore is the state reported to herdr when the last look at the
 	// agents began; see flushNotes.
 	herdrBefore string
@@ -381,7 +385,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	msgs, rows, side := m.panelMessages(), m.barRows(), m.sideW()
+	msgs := m.panelMessages()
+	if !m.laidOut {
+		m.laidRows, m.laidSide, m.laidOut = m.barRows(), m.sideW(), true
+	}
 	switch msg.(type) {
 	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg, core.RedrawMsg:
 		m.reviewReuse = m.Gen == m.reviewGen
@@ -391,12 +398,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.sameFrame = false
 	cmd := m.update(msg)
 	m.askReviewDone()
-	if m.barRows() != rows || m.sideW() != side {
+	if m.barRows() != m.laidRows || m.sideW() != m.laidSide {
 		// The repository row came or went: a second repository's first
 		// tab, its last one closed, or b. Or the sidebar came, went or
-		// changed its width with a tab's name.
+		// changed its width with a tab's name. Measured against the last
+		// Update, not this one's start: core, on its own goroutine, may
+		// have changed them in between.
 		cmd = tea.Batch(cmd, m.resize())
 	}
+	m.laidRows, m.laidSide = m.barRows(), m.sideW()
 	if m.panelMessages() && (!msgs || isKey(msg, "f3") && m.dialog == nil) {
 		// Arriving on F3, the keyboard goes with it — and on F3 pressed
 		// again from the agent: the arrows and space are for the list then,
