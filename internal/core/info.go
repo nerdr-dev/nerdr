@@ -47,6 +47,8 @@ func PrState(pr github.Status) string {
 	return s
 }
 
+// InfoTickMsg tells the client that core has looked at the background
+// work, as it does every InfoTickN: its own turn for the same.
 type InfoTickMsg struct{}
 
 type InfoMsg struct {
@@ -57,8 +59,11 @@ type InfoMsg struct {
 	Asks, PrAsks int
 }
 
-func InfoTick() Cmd {
-	return Tick(InfoTickN, func(time.Time) Event { return InfoTickMsg{} })
+// InfoTick is the background work due now: the branches, the pull requests,
+// the issues, and agents to put to sleep or wake. The loop runs it every
+// InfoTickN, with a client or without.
+func (m *Core) InfoTick(now time.Time) Cmd {
+	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now))
 }
 
 // GithubEvery is d, an interval of asking GitHub written for the default

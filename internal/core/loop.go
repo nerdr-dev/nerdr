@@ -26,11 +26,12 @@ type PanicMsg struct {
 
 func (p PanicMsg) String() string { return fmt.Sprintf("%v\n%s", p.Value, p.Stack) }
 
-// frameEv and detectEv are the loop's own: a program has drawn, and it is time
-// to look at the agents.
+// frameEv, detectEv and infoEv are the loop's own: a program has drawn, it is
+// time to look at the agents, and at what goes on in the background.
 type (
 	frameEv  struct{}
 	detectEv struct{}
+	infoEv   struct{}
 )
 
 // Loop runs core on a goroutine of its own, so that it goes on whether or not
@@ -85,15 +86,21 @@ func (l *Loop) Start() {
 			l.Post(frameEv{})
 		}
 	})
+	l.every(DetectEvery, detectEv{})
+	l.every(InfoTickN, infoEv{})
+}
+
+// every posts ev every d until Stop.
+func (l *Loop) every(d time.Duration, ev Event) {
 	l.guarded(func() {
-		t := time.NewTicker(DetectEvery)
+		t := time.NewTicker(d)
 		defer t.Stop()
 		for {
 			select {
 			case <-l.stop:
 				return
 			case <-t.C:
-				l.Post(detectEv{})
+				l.Post(ev)
 			}
 		}
 	})
@@ -252,6 +259,11 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 			return nil, nil
 		}
 		return m.DetectAll(time.Now()), RedrawMsg{}
+	case infoEv:
+		if m.Quitting {
+			return nil, nil
+		}
+		return m.InfoTick(time.Now()), InfoTickMsg{}
 	}
 	if cmd, ok := m.Handle(ev); ok {
 		m.Gen++
