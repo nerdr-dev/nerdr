@@ -631,7 +631,7 @@ func (m *Core) OnNewTab(r hooks.Report) Cmd {
 	reply(hooks.Answer{Text: fmt.Sprintf("nerdr is making the tab %s, with %s; you get a message when it is there, or why it is not. "+
 		"Follow it with nerdr tabs.", r.Branch, k)})
 	branch, model, wtRoot, allowed := r.Branch, r.Model, m.WtRoot, SetupAllowedFile()
-	return m.Client.AskRepoSetup(paths, func() Cmd {
+	return m.AskSetup(paths, func() Cmd {
 		return func() Event {
 			res := TabMadeMsg{From: from, Branch: branch, Kind: k, Model: model, Task: task, Confined: confined}
 			plan, err := workspace.MakePlan(wtRoot, branch, repos)

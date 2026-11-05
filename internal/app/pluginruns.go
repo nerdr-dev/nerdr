@@ -159,39 +159,38 @@ func (m *Model) runOutput(run *core.PluginRun, w, n int) []string {
 	return out
 }
 
-// runQuestion is the user asked whether an agent may run a plugin.
+// runQuestion is the user asked whether an agent may run a plugin: core's
+// question, and the dialog that shows it.
 type runQuestion struct {
-	dialog      *confirm
-	agent, name string
-	until       time.Time
-	decide      func(answer string) core.Cmd
+	dialog *confirm
+	q      *core.Question
 }
 
-// answer decides the run with what, and takes the question away.
+// answer answers the question with what; core tells of it being answered
+// with AnsweredMsg, which takes it away.
 func (q *runQuestion) answer(m *Model, what string) tea.Cmd {
+	return fromCore(m.Answer(q.q, what))
+}
+
+// answered takes the question away once core has its answer, from the
+// user or from the time running out.
+func (q *runQuestion) answered(m *Model) {
 	if m.dialog == q.dialog {
 		m.dialog = nil
 	}
 	if m.plugins.asking == q {
 		m.plugins.asking = nil
 	}
-	return fromCore(q.decide(what))
 }
 
-// askPluginRun asks the user whether agent a may run plugin p with vals,
-// in the folder dir, and decides with "allowed", "declined" or
-// "unanswered". While they answer another question, or another agent's,
-// it is "busy". The question says where it runs, and, for an agent in a
-// sandbox, that it runs outside: a plugin that builds or runs what is in
+// askPluginRun asks the user whether an agent may run a plugin, as core's
+// question q says: with what values, in which folder, and, for an agent in
+// a sandbox, that it runs outside: a plugin that builds or runs what is in
 // the folder runs what the agent wrote there.
-func (m *Model) askPluginRun(a *core.Tab, p plugin.Plugin, vals map[string]any, dir string, confined bool, decide func(answer string) core.Cmd) {
+func (m *Model) askPluginRun(q *core.Question) {
+	a, p, vals, dir := q.A, q.P, q.Vals, q.Dir
 	o := a.Owner()
 	agent := m.AgentLabel(o, a)
-	if m.dialog != nil || m.plugins.asking != nil {
-		m.toast(o.Name + ": " + agent + " would run the plugin " + p.Name + ", and asks again soon")
-		decide(core.RunBusy)
-		return
-	}
 	bold := lipgloss.NewStyle().Bold(true)
 	lines := []string{o.Name + ": " + bold.Render(agent) + " would run it, as you, with", ""}
 	names := make([]string, 0, len(vals))
@@ -206,19 +205,19 @@ func (m *Model) askPluginRun(a *core.Tab, p plugin.Plugin, vals map[string]any, 
 		lines = append(lines, dim("  no parameters"))
 	}
 	lines = append(lines, "", "in "+bold.Render(clean.Line(dir)))
-	if confined {
+	if q.Confined {
 		lines = append(lines, warn(agent+" runs in a sandbox: this runs outside it, on what it wrote there"))
 	}
 	lines = append(lines, "", dim(fmt.Sprintf("y runs it · n does not · unanswered in %s, it does not run", core.Duration(core.RunAskWait))))
-	q := &runQuestion{agent: agent, name: p.Name, until: time.Now().Add(core.RunAskWait), decide: decide}
-	q.dialog = &confirm{
+	rq := &runQuestion{q: q}
+	rq.dialog = &confirm{
 		title: "Run " + p.Name + "?",
 		lines: lines,
-		yes:   func(m *Model) tea.Cmd { return q.answer(m, "allowed") },
-		no:    func(m *Model) tea.Cmd { return q.answer(m, core.RunDeclined) },
+		yes:   func(m *Model) tea.Cmd { return rq.answer(m, core.AnswerAllowed) },
+		no:    func(m *Model) tea.Cmd { return rq.answer(m, core.RunDeclined) },
 	}
-	m.plugins.asking = q
-	m.dialog = q.dialog
+	m.plugins.asking = rq
+	m.dialog = rq.dialog
 }
 
 // ensurePluginUI has p's screen running, as allowed with key, in tab t.

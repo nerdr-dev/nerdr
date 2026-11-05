@@ -526,7 +526,7 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			for _, it := range plan.Items {
 				repos = append(repos, it.Repo.Path)
 			}
-			return m.askRepoSetup(repos, func(m *Model) tea.Cmd { return w.create(plan) })
+			return m.askSetup(repos, func(m *Model) tea.Cmd { return w.create(plan) })
 		}
 		return nil
 	}

@@ -320,7 +320,7 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 	for _, r := range repos {
 		paths = append(paths, r.Path)
 	}
-	return m.askRepoSetup(paths, func(m *Model) tea.Cmd {
+	return m.askSetup(paths, func(m *Model) tea.Cmd {
 		return fromCore(m.SpinoffCreate(t, pt, kind, name, reuse, elsewhere, group, repos, own))
 	})
 }

@@ -251,7 +251,7 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 	m.SaveSession()
 	cmd := m.DetectAll(time.Now()) // the light turns red at once
 	if t == m.Front() && m.Client.DialogClosed() {
-		return Batch(cmd, m.Client.OpenSpinoff(t))
+		return Batch(cmd, m.Tell(SpinoffAskMsg{T: t}))
 	}
 	return cmd
 }

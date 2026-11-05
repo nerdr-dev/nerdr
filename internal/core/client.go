@@ -8,26 +8,14 @@ import (
 )
 
 // Client is whoever shows core to the user: today's TUI, or nobody
-// (NoClient). Core tells it what happens with Tell, waits on it for what only
-// the user can answer, and asks it what it shows. What the client does with
+// (NoClient). Core tells it what happens with Tell, and what only the user can
+// answer (AskMsg, SpinoffAskMsg, SwitchAskMsg), and asks it what it shows. What the client does with
 // that, how it lays out the screen and where the keyboard is, is its own.
 type Client interface {
 	// Tell gives the client an event of core's as it happens: one of the
 	// *Msg types below. The work the client starts from it comes back as the
 	// Cmd.
 	Tell(ev Event) Cmd
-
-	// AskRepoSetup runs then once the user has allowed what repos set up, and
-	// never without that. With no client the question waits for one.
-	AskRepoSetup(repos []string, then func() Cmd) Cmd
-	// AskPluginRun asks whether agent a may run plugin p with vals, in the
-	// folder dir, and decides with "allowed", RunDeclined, RunUnanswered or
-	// RunBusy. confined says that a runs in a sandbox and p outside it.
-	AskPluginRun(a *Tab, p plugin.Plugin, vals map[string]any, dir string, confined bool, decide func(answer string) Cmd)
-	// OpenSpinoff and OpenSwitchAgent ask the user about the parts t split
-	// off, and about the agent to switch the tab to.
-	OpenSpinoff(t *Tab) Cmd
-	OpenSwitchAgent() Cmd
 
 	// What the client shows. Front is the tab in front of the user, nil when
 	// there is none; TabShown whether t is on screen, in front or beside it.
@@ -93,6 +81,12 @@ type (
 	TermsMsg struct{ T *Tab }
 	// SwitchedMsg is T's agent switched to another kind.
 	SwitchedMsg struct{ T *Tab }
+
+	// SpinoffAskMsg is the parts T split off, waiting for the user to go
+	// through; SwitchAskMsg the handoff T's agent wrote, for the user to
+	// switch with. Both wait in T until then.
+	SpinoffAskMsg struct{ T *Tab }
+	SwitchAskMsg  struct{ T *Tab }
 
 	// DetectStartMsg and DetectDoneMsg are the start and the end of a look at
 	// every agent.
@@ -168,19 +162,11 @@ var _ Client = NoClient{}
 // looked at. It is what core runs with when no client is connected.
 type NoClient struct{}
 
-func (NoClient) Tell(_ Event) Cmd                          { return nil }
-func (NoClient) Front() *Tab                               { return nil }
-func (NoClient) TabShown(_ *Tab) bool                      { return false }
-func (NoClient) AgentVisible(_ *Tab) bool                  { return false }
-func (NoClient) DialogClosed() bool                        { return false }
-func (NoClient) TabSize(_ *Tab) (int, int)                 { return 0, 0 }
-func (NoClient) ShellSize(_ *Tab, _ *PaneTab) (int, int)   { return 0, 0 }
-func (NoClient) Layout() Layout                            { return Layout{} }
-func (NoClient) AskRepoSetup(_ []string, _ func() Cmd) Cmd { return nil }
-func (NoClient) OpenSpinoff(_ *Tab) Cmd                    { return nil }
-func (NoClient) OpenSwitchAgent() Cmd                      { return nil }
-
-// AskPluginRun has it ask again: only a user can say yes.
-func (NoClient) AskPluginRun(_ *Tab, _ plugin.Plugin, _ map[string]any, _ string, _ bool, decide func(answer string) Cmd) {
-	decide(RunBusy)
-}
+func (NoClient) Tell(_ Event) Cmd                        { return nil }
+func (NoClient) Front() *Tab                             { return nil }
+func (NoClient) TabShown(_ *Tab) bool                    { return false }
+func (NoClient) AgentVisible(_ *Tab) bool                { return false }
+func (NoClient) DialogClosed() bool                      { return false }
+func (NoClient) TabSize(_ *Tab) (int, int)               { return 0, 0 }
+func (NoClient) ShellSize(_ *Tab, _ *PaneTab) (int, int) { return 0, 0 }
+func (NoClient) Layout() Layout                          { return Layout{} }

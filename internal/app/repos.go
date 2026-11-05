@@ -239,7 +239,7 @@ func (d *repoDialog) apply(m *Model) tea.Cmd {
 	for _, it := range c.add.Items {
 		repos = append(repos, it.Repo.Path)
 	}
-	return m.askRepoSetup(repos, func(m *Model) tea.Cmd {
+	return m.askSetup(repos, func(m *Model) tea.Cmd {
 		m.dialog = nil
 		return m.changeRepos(t, c)
 	})
