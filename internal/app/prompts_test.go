@@ -34,10 +34,10 @@ func TestSavedPromptPicked(t *testing.T) {
 	if !strings.Contains(view, "commit, push and open a pull request") || !strings.Contains(view, "rebase on main") {
 		t.Fatalf("both are listed:\n%s", view)
 	}
-	before := tb.pane.Inputs()
+	before := tb.Pane.Inputs()
 	d.key(m, keyMsg("2"))
-	if m.dialog != nil || len(tb.said) != 1 || tb.said[0] != "rebase on main" || tb.pane.Inputs() != before+1 {
-		t.Fatalf("typed in as a paste, without enter: %q", tb.said)
+	if m.dialog != nil || len(tb.Said) != 1 || tb.Said[0] != "rebase on main" || tb.Pane.Inputs() != before+1 {
+		t.Fatalf("typed in as a paste, without enter: %q", tb.Said)
 	}
 
 	m.runCommand("l")
@@ -49,12 +49,12 @@ func TestSavedPromptPicked(t *testing.T) {
 		t.Fatalf("typing finds it: %v", hits)
 	}
 	cmd := d.key(m, keyMsg("enter"))
-	if len(tb.said) != 2 || tb.said[1] != "commit, push and open a pull request" {
-		t.Fatalf("enter uses the one found: %q", tb.said)
+	if len(tb.Said) != 2 || tb.Said[1] != "commit, push and open a pull request" {
+		t.Fatalf("enter uses the one found: %q", tb.Said)
 	}
-	before = tb.pane.Inputs()
-	m.Update(promptEnterMsg{t: tb, pane: tb.pane})
-	if tb.pane.Inputs() != before+1 || cmd == nil {
+	before = tb.Pane.Inputs()
+	m.Update(promptEnterMsg{t: tb, pane: tb.Pane})
+	if tb.Pane.Inputs() != before+1 || cmd == nil {
 		t.Fatal("enter is pressed after a prompt that says so")
 	}
 }
@@ -175,22 +175,22 @@ func TestSavedPromptEnterToItsAgent(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("enter is to follow")
 	}
-	msg := promptEnterMsg{t: tb, pane: tb.pane}
+	msg := promptEnterMsg{t: tb, pane: tb.Pane}
 	m.handleKey(keyMsg("f3")) // the keyboard to the panel
-	before := tb.pane.Inputs()
+	before := tb.Pane.Inputs()
 	m.Update(msg)
-	if tb.pane.Inputs() != before+1 {
+	if tb.Pane.Inputs() != before+1 {
 		t.Fatal("enter goes to the agent it was typed into")
 	}
 
-	old := tb.pane
+	old := tb.Pane
 	runningTab(t, m) // restarted: another program in the tab
-	if tb.pane == old {
+	if tb.Pane == old {
 		t.Fatal("the pane should be a new one")
 	}
-	before = tb.pane.Inputs()
+	before = tb.Pane.Inputs()
 	m.Update(msg)
-	if tb.pane.Inputs() != before {
+	if tb.Pane.Inputs() != before {
 		t.Fatal("no enter for a program that never had the prompt")
 	}
 }

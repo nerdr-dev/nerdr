@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,7 +18,7 @@ import (
 // waiting in F3 it asks whether to send them to the agent now; with none,
 // it is only to be read.
 type reviewDoneDialog struct {
-	t *tab
+	t *core.Tab
 	d *state.ReviewDone
 	// top is the first line of the summaries shown; shown is how many the
 	// last drawing showed.
@@ -44,7 +45,7 @@ func (rd *reviewDoneDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "1", "s", "enter":
 		m.dialog = nil
 		if rd.asks() {
-			m.sendFindings(rd.t, rd.d.Msg)
+			m.SendFindings(rd.t, rd.d.Msg)
 		}
 	case "2", "esc", "q", "ctrl+c":
 		m.dialog = nil
@@ -125,7 +126,7 @@ func (rd *reviewDoneDialog) view(m *Model, w, h int) string {
 // drawn over its agent while the prefix is on: the walk shows it without
 // asking, and the enter that ends the walk opens the dialog that does.
 // It takes no keys and no clicks. w is the columns it may have.
-func (m *Model) reviewPeek(t *tab, d *state.ReviewDone, w int) string {
+func (m *Model) reviewPeek(t *core.Tab, d *state.ReviewDone, w int) string {
 	colour, mark := verdictColour(d.Approved), "⚑"
 	if d.Approved {
 		mark = "✓"
@@ -152,8 +153,8 @@ func (m *Model) reviewPeek(t *tab, d *state.ReviewDone, w int) string {
 // reviewMark is the ⚑ or ✓ on t's entry in the tab row and the sidebar
 // while a review done in it waits to be told of, on background bg; "" when
 // none does.
-func (m *Model) reviewMark(t *tab, bg lipgloss.Color) string {
-	_, d := t.reviewToTell()
+func (m *Model) reviewMark(t *core.Tab, bg lipgloss.Color) string {
+	_, d := t.ReviewToTell()
 	if d == nil {
 		return ""
 	}

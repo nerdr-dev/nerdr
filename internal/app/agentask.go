@@ -1,8 +1,6 @@
 package app
 
 import (
-	"path/filepath"
-
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -18,14 +16,14 @@ import (
 // askAgent opens the message dialog for the tab working in msg.Dir, with
 // msg.Text written in.
 func (m *Model) askAgent(msg review.AgentMsg) tea.Cmd {
-	t := m.tabFor(msg.Dir)
+	t := m.TabFor(msg.Dir)
 	if t == nil {
 		m.toast("no tab works in " + msg.Dir)
 		return nil
 	}
 	var cmd tea.Cmd
-	if t != m.cur() {
-		cmd = m.selectTab(m.tabIndex(t))
+	if t != m.Cur() {
+		cmd = m.selectTab(m.TabIndex(t))
 	}
 	m.openMessage(false)
 	d, ok := m.dialog.(*messageDialog)
@@ -37,20 +35,4 @@ func (m *Model) askAgent(msg review.AgentMsg) tea.Cmd {
 	d.input.SetValue(msg.Text)
 	d.fit(m)
 	return cmd
-}
-
-// tabFor is the tab one of whose worktrees is dir, or nil.
-func (m *Model) tabFor(dir string) *tab {
-	dir = filepath.Clean(dir)
-	for _, t := range m.tabs {
-		if filepath.Clean(t.Dir) == dir {
-			return t
-		}
-		for _, w := range t.Worktrees {
-			if filepath.Clean(w.Path) == dir {
-				return t
-			}
-		}
-	}
-	return nil
 }

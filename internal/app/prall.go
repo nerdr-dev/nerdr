@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -17,10 +18,6 @@ import (
 // it, with those your review is asked for marked and first. They are
 // asked for only while that list is shown, and not watched: news is of
 // your own.
-
-// prAllEvery is how long a repository's open pull requests, asked for by
-// the list, are taken as they were.
-const prAllEvery = 2 * time.Minute
 
 // repoPRs is what a repository answered when asked for its open pull
 // requests.
@@ -68,7 +65,7 @@ func (m *Model) refreshAllPRs(force bool) tea.Cmd {
 	}
 	a.busy = true
 	m.applyPRs()
-	root, wtDir, dirs, every := m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs, m.githubEvery(prAllEvery)
+	root, wtDir, dirs, every := m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs, m.GithubEvery(core.PrAllEvery)
 	return func() tea.Msg { return fetchAllPRs(root, wtDir, dirs, at, every, force) }
 }
 
@@ -87,7 +84,7 @@ func fetchAllPRs(root, wtDir string, dirs []string, at map[string]time.Time, eve
 	var (
 		mu  sync.Mutex
 		wg  sync.WaitGroup
-		sem = make(chan struct{}, prFetchers)
+		sem = make(chan struct{}, core.PrFetchers)
 	)
 	for _, r := range repos {
 		if t, ok := at[r.Path]; ok && !force && time.Since(t) < every {

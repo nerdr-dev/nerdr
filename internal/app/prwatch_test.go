@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -45,7 +46,7 @@ func newsOf(m *Model) string {
 func TestPRWatchTellsWhatChanged(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.cfg.PRNotify = &yes
+	m.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
 	t0 := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -108,15 +109,15 @@ func TestPRWatchGonePR(t *testing.T) {
 	m := testModel(t)
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me"}
-	tb := m.tabs[1]
-	tb.info = tabInfo{at: time.Now(), wts: []wtInfo{{repo: "/r/app", hasPR: true, pr: github.Status{Number: 7, State: "OPEN"}}}}
+	tb := m.Tabs[1]
+	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", HasPR: true, Pr: github.Status{Number: 7, State: "OPEN"}}}}
 	m.onPRWatch(prLook([]workspace.Repo{app}, nil, prEntry{repo: app, pr: pr}))
 	m.onPRWatch(prLook(nil, []workspace.Repo{app}))
-	if tb.info.stalePR {
+	if tb.Info.StalePR {
 		t.Fatal("still open, or not answered: no look asked for")
 	}
 	m.onPRWatch(prLook([]workspace.Repo{app}, nil))
-	if !tb.info.stalePR || !tb.info.stale {
+	if !tb.Info.StalePR || !tb.Info.Stale {
 		t.Fatal("a PR gone from the open ones should have its tab looked at")
 	}
 }
@@ -126,7 +127,7 @@ func TestPRWatchGonePR(t *testing.T) {
 func TestPRWatchChecks(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.cfg.PRNotify = &yes
+	m.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me", Head: "c1", Checks: []github.Check{{Name: "lint", Status: "FAILURE"}}}
 	look := func() { m.onPRWatch(prLook([]workspace.Repo{app}, nil, prEntry{repo: app, pr: pr})) }
@@ -154,7 +155,7 @@ func TestPRWatchChecks(t *testing.T) {
 func TestPRWatchDropsStaleNews(t *testing.T) {
 	m := tabsModel(t, state.Tab{Name: "login", Dir: t.TempDir()}, state.Tab{Name: "other", Dir: t.TempDir()})
 	yes := true
-	m.cfg.PRNotify = &yes
+	m.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me", Head: "c1", Checks: []github.Check{{Name: "lint", Status: "SUCCESS"}}}
 	look := func(prs ...prEntry) { m.onPRWatch(prLook([]workspace.Repo{app}, nil, prs...)) }
@@ -186,9 +187,9 @@ func TestPRWatchDropsStaleNews(t *testing.T) {
 		t.Fatalf("a PR no longer open should take its news away: %q", got)
 	}
 
-	m.tellPRNews([]state.PRNews{{Key: prKey(app.Path, 8), Repo: "app", Number: 8, What: "approved by ann", Tab: "login"},
-		{Key: prKey(app.Path, 9), Repo: "app", Number: 9, What: "approved by ann"}})
-	m.closeTab(m.tabs[0], false, false, nil)
+	m.tellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 8), Repo: "app", Number: 8, What: "approved by ann", Tab: "login"},
+		{Key: core.PrKey(app.Path, 9), Repo: "app", Number: 9, What: "approved by ann"}})
+	m.closeTab(m.Tabs[0], false, false, nil)
 	if len(m.prWatch.news) != 1 || m.prWatch.news[0].Number != 9 {
 		t.Fatalf("closing a tab should take its news away, and only its: %+v", m.prWatch.news)
 	}
@@ -202,7 +203,7 @@ func TestPRWatchLeavesNonGitHubAlone(t *testing.T) {
 	msg := prLook(nil, []workspace.Repo{local})
 	msg.notGitHub[local.Path] = true
 	m.onPRWatch(msg)
-	if until := m.prWatch.skip[local.Path]; time.Until(until) < notGitHubFor-time.Minute {
+	if until := m.prWatch.skip[local.Path]; time.Until(until) < core.NotGitHubFor-time.Minute {
 		t.Fatalf("not left alone: %v", until)
 	}
 	skipped := prLook(nil, nil)
@@ -219,14 +220,14 @@ func TestPRWatchLeavesNonGitHubAlone(t *testing.T) {
 func TestPRWatchAcrossRestarts(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.cfg.PRNotify = &yes
+	m.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me", Head: "c1"}
 	m.onPRWatch(prLook([]workspace.Repo{app}, nil, prEntry{repo: app, pr: pr}))
 
 	saved := m.savedPRWatch()
 	m2 := tabsModel(t)
-	m2.cfg.PRNotify = &yes
+	m2.Cfg.PRNotify = &yes
 	m2.loadPRWatch(saved)
 	pr.Reviews = []github.Review{{Author: "ann", State: "APPROVED", SubmittedAt: time.Now()}}
 	m2.onPRWatch(prLook([]workspace.Repo{app}, nil, prEntry{repo: app, pr: pr}))
@@ -246,7 +247,7 @@ func TestPRWatchAcrossRestarts(t *testing.T) {
 func TestPRWatchOff(t *testing.T) {
 	m := tabsModel(t)
 	no := false
-	m.cfg.PRNotify = &no
+	m.Cfg.PRNotify = &no
 	if m.tickPRs(time.Now()) != nil {
 		t.Fatal("watching while turned off")
 	}
@@ -267,7 +268,7 @@ func TestAllPRsInPanel(t *testing.T) {
 		t.Fatal("F2 first shows the branch's PR")
 	}
 	m.handleKey(keyMsg("f2"))
-	if !m.panelAllPRs() || m.focus != focusReview {
+	if !m.panelAllPRs() || m.focus != core.FocusReview {
 		t.Fatal("F2 again should show all PRs, with the keyboard")
 	}
 	if view := strings.Join(m.panelLines(120, 30), "\n"); !strings.Contains(view, "#7") || !strings.Contains(view, "my PRs") {
@@ -280,7 +281,7 @@ func TestAllPRsInPanel(t *testing.T) {
 
 	// News while on F1: F2 is marked, and going there shows it.
 	m.handleKey(keyMsg("f1"))
-	m.tellPRNews([]state.PRNews{{Key: prKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann"}})
+	m.tellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann"}})
 	if menu := ansi.Strip(strings.Join(m.railLines(30), "\n")); !strings.Contains(menu, "github◆") {
 		t.Fatalf("F2 not marked: %s", menu)
 	}
@@ -297,9 +298,9 @@ func TestAllPRsInPanel(t *testing.T) {
 
 	// The mark in the bar opens the same view.
 	m.handleKey(keyMsg("f1"))
-	m.setFocus(focusAgent)
+	m.setFocus(core.FocusAgent)
 	m.showAllPRs()
-	if !m.panelAllPRs() || m.focus != focusReview {
+	if !m.panelAllPRs() || m.focus != core.FocusReview {
 		t.Fatal("the mark should show all PRs in the panel")
 	}
 }
@@ -314,7 +315,7 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 		state.Tab{ID: "a", Name: "here", Dir: "/w/here"},
 		state.Tab{ID: "b", Name: "login", Dir: "/w/login", Worktrees: []workspace.Worktree{wt}},
 	)
-	m.active = 0
+	m.Active = 0
 	m.reviewOpen = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.prWatch.at = time.Now()
@@ -323,7 +324,7 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 		{repo: app, pr: github.PR{Number: 9, Branch: "nowhere", Title: "Elsewhere"}},
 	}
 	m.showAllPRs()
-	login := m.tabs[1]
+	login := m.Tabs[1]
 
 	if m.askAboutPR(true) == nil {
 		t.Fatal("f on a PR with a tab should start making the message")
@@ -331,11 +332,11 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 	if m.askAboutPR(true) != nil {
 		t.Fatal("a second f while the first is being made should do nothing")
 	}
-	m.onPRAsk(prAskMsg{t: login, key: prKey(app.Path, 7), what: "fix #7's build", text: "A CI check failed."})
+	m.onPRAsk(prAskMsg{t: login, key: core.PrKey(app.Path, 7), what: "fix #7's build", text: "A CI check failed."})
 	if len(login.Messages) != 1 || login.Messages[0].Auto {
 		t.Fatalf("the message should wait in the tab's F3, not go by itself: %+v", login.Messages)
 	}
-	if m.cur().Name != "here" || !m.panelAllPRs() {
+	if m.Cur().Name != "here" || !m.panelAllPRs() {
 		t.Fatal("making the message should leave you where you are")
 	}
 	if !strings.Contains(m.toastText, "login's F3") {
@@ -357,11 +358,11 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 	if view := strings.Join(m.panelLines(120, 30), "\n"); !strings.Contains(view, "this branch") {
 		t.Fatalf("enter should show the PR, not the screen the tab was left on:\n%s", view)
 	}
-	if m.cur().Name != "login" || m.review.AllPRs() || m.focus != focusReview {
-		t.Fatalf("enter should go to the tab, on its PR: tab %s, all %v, focus %v", m.cur().Name, m.review.AllPRs(), m.focus)
+	if m.Cur().Name != "login" || m.review.AllPRs() || m.focus != core.FocusReview {
+		t.Fatalf("enter should go to the tab, on its PR: tab %s, all %v, focus %v", m.Cur().Name, m.review.AllPRs(), m.focus)
 	}
 
-	m.tellPRNews([]state.PRNews{{Key: prKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann", Tab: "login"}})
+	m.tellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann", Tab: "login"}})
 	if !strings.HasPrefix(m.toastText, "login #7: approved by ann") {
 		t.Fatalf("news should name the tab: %q", m.toastText)
 	}
@@ -382,7 +383,7 @@ func TestAskRepo(t *testing.T) {
 		{[]string{"acme/other"}, true, true},                   // also on a host the search does not cover
 		{nil, false, false},                                    // no remote: no PRs
 	} {
-		if got := askRepo(c.names, c.elsewhere, withPRs); got != c.want {
+		if got := core.AskRepo(c.names, c.elsewhere, withPRs); got != c.want {
 			t.Errorf("askRepo(%v, %v) = %v, want %v", c.names, c.elsewhere, got, c.want)
 		}
 	}
@@ -420,11 +421,11 @@ func TestBranchesOnF3(t *testing.T) {
 // PRs, and the tab panel, keep theirs.
 func TestBranchLinesLeaveShownPR(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/a", Path: "/w/a", Branch: "x"}, {Repo: "/r/b", Path: "/w/b", Branch: "x"}}
-	tb.info = tabInfo{at: time.Now(), wts: []wtInfo{
-		{hasPR: true, pr: github.Status{Number: 3, State: "OPEN"}},
-		{hasPR: true, pr: github.Status{Number: 4, State: "OPEN"}},
+	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{
+		{HasPR: true, Pr: github.Status{Number: 3, State: "OPEN"}},
+		{HasPR: true, Pr: github.Status{Number: 4, State: "OPEN"}},
 	}}
 	p := &tabPanel{t: tb}
 	f2 := strings.Join(p.branchLines(m, "/w/a/"), "\n")
@@ -442,7 +443,7 @@ func TestBranchLinesLeaveShownPR(t *testing.T) {
 func TestIssuesOnF3(t *testing.T) {
 	m := testModel(t)
 	m.prWatch.at = time.Now() // known already: GitHub is not asked
-	m.issueWatch.at = time.Now()
+	m.IssueWatch.At = time.Now()
 	m.handleKey(keyMsg("f2"))
 	m.handleKey(keyMsg("f2"))
 	if !m.review.AllPRs() {
@@ -464,7 +465,7 @@ func TestIssuesOnF3(t *testing.T) {
 		t.Fatal("shift+tab should go back to the issues")
 	}
 	m.handleKey(keyMsg("esc"))
-	if m.focus != focusAgent {
+	if m.focus != core.FocusAgent {
 		t.Fatal("esc should give the agent the keyboard")
 	}
 }
@@ -476,12 +477,12 @@ func TestIssuesOnF3(t *testing.T) {
 func TestF3ListsTheReposBranches(t *testing.T) {
 	m := testModel(t)
 	m.prWatch.at = time.Now()
-	m.issueWatch.at = time.Now()
-	tb := m.cur()
+	m.IssueWatch.At = time.Now()
+	tb := m.Cur()
 	a, b := t.TempDir(), t.TempDir()
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/front", Path: a, Branch: "x"}, {Repo: "/r/back", Path: b, Branch: "y"}}
-	tb.info = tabInfo{at: time.Now(), wts: []wtInfo{
-		{hasPR: true, pr: github.Status{Number: 3, State: "OPEN"}},
+	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{
+		{HasPR: true, Pr: github.Status{Number: 3, State: "OPEN"}},
 		{},
 	}}
 	m.pinReview()
@@ -574,7 +575,7 @@ func TestSmallPanel(t *testing.T) {
 		t.Errorf("the agent should have all but the column: %d of %d", aw, m.bodyW())
 	}
 	m.handleKey(keyMsg("f2"))
-	if !m.reviewOpen || m.focus != focusReview {
+	if !m.reviewOpen || m.focus != core.FocusReview {
 		t.Fatal("an F-key should open the panel")
 	}
 	m.run("a a", keyMsg("a"))
@@ -585,7 +586,7 @@ func TestSmallPanel(t *testing.T) {
 	if !m.reviewOpen || m.panelSmall {
 		t.Fatal("« should keep the panel open")
 	}
-	m.setFocus(focusAgent)
+	m.setFocus(core.FocusAgent)
 	if !m.reviewOpen {
 		t.Fatal("a panel kept open stays open")
 	}
@@ -659,8 +660,8 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 func TestPRListSaysWhatItIs(t *testing.T) {
 	m := testModel(t)
 	home, _ := os.UserHomeDir()
-	m.root = filepath.Join(home, "develop")
-	m.cfg.RepoDirs = []string{"/srv/repos"}
+	m.Root = filepath.Join(home, "develop")
+	m.Cfg.RepoDirs = []string{"/srv/repos"}
 	m.prWatch.repos = map[string]bool{"/a": true}
 	m.prAll.repos = map[string]repoPRs{"/a": {}, "/b": {}, "/c": {}}
 	if got := ansi.Strip(m.prScope(false)); got != "Your open pull requests · in 1 repository under ~/develop, /srv/repos" {

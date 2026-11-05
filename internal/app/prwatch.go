@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -31,17 +30,6 @@ import (
 // kept in the session, so what happened while nerdr was not running is
 // told at the next start; a repository seen for the first time only
 // teaches how things stand.
-
-const (
-	// prWatchEvery is how often GitHub is asked.
-	prWatchEvery = 2 * time.Minute
-	// prFetchers is how many repositories are asked at once: each is a gh
-	// process and a request to GitHub.
-	prFetchers = 4
-	// notGitHubFor is how long a repository with no GitHub remote is left
-	// alone before it is asked again.
-	notGitHubFor = 30 * time.Minute
-)
 
 // prWatch is what is known of your pull requests.
 type prWatch struct {
@@ -67,21 +55,21 @@ type prWatch struct {
 func (m *Model) lookAtGonePRs(before, after []prEntry) {
 	open := map[string]bool{}
 	for _, e := range after {
-		open[prKey(filepath.Clean(e.repo.Path), e.pr.Number)] = true
+		open[core.PrKey(filepath.Clean(e.repo.Path), e.pr.Number)] = true
 	}
 	gone := map[string]bool{}
 	for _, e := range before {
-		if k := prKey(filepath.Clean(e.repo.Path), e.pr.Number); !open[k] {
+		if k := core.PrKey(filepath.Clean(e.repo.Path), e.pr.Number); !open[k] {
 			gone[k] = true
 		}
 	}
 	if len(gone) == 0 {
 		return
 	}
-	for _, t := range m.tabs {
-		for _, wi := range t.info.wts {
-			if wi.hasPR && gone[prKey(filepath.Clean(wi.repo), wi.pr.Number)] {
-				t.lookAgain(true)
+	for _, t := range m.Tabs {
+		for _, wi := range t.Info.Wts {
+			if wi.HasPR && gone[core.PrKey(filepath.Clean(wi.Repo), wi.Pr.Number)] {
+				t.LookAgain(true)
 			}
 		}
 	}
@@ -96,8 +84,6 @@ type prWatchMsg struct {
 	// remote; skipped those left alone this time.
 	notGitHub, skipped map[string]bool
 }
-
-func prKey(repo string, number int) string { return repo + "#" + strconv.Itoa(number) }
 
 // loadPRWatch takes up what the session kept of the watching.
 func (m *Model) loadPRWatch(s *state.PRWatch) {
@@ -134,10 +120,10 @@ func (m *Model) prsShown() bool {
 // tickPRs asks GitHub again when it is time to: while the PRs are watched
 // or their list is shown.
 func (m *Model) tickPRs(now time.Time) tea.Cmd {
-	if !isOn(m.cfg.PRNotify) && !m.prsShown() {
+	if !core.IsOn(m.Cfg.PRNotify) && !m.prsShown() {
 		return nil
 	}
-	if now.Sub(m.prWatch.at) < m.githubEvery(prWatchEvery) {
+	if now.Sub(m.prWatch.at) < m.GithubEvery(core.PrWatchEvery) {
 		return nil
 	}
 	return m.refreshPRs()
@@ -165,7 +151,7 @@ func (m *Model) refreshPRs() tea.Cmd {
 	}
 	w.busy, w.at = true, now
 	m.applyPRs()
-	root, wtDir, dirs := m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs
+	root, wtDir, dirs := m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs
 	return func() tea.Msg { return fetchPRs(root, wtDir, dirs, skip) }
 }
 
@@ -189,17 +175,17 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) prWatchMs
 	}
 	withPRs, err := github.ReposWithMyPRs()
 	if err != nil {
-		debugf("pr search: %v; asking every repository", err)
+		core.Debugf("pr search: %v; asking every repository", err)
 		withPRs = nil
 	}
 	var (
 		mu  sync.Mutex
 		wg  sync.WaitGroup
-		sem = make(chan struct{}, prFetchers)
+		sem = make(chan struct{}, core.PrFetchers)
 	)
 	for _, r := range repos {
 		if withPRs != nil {
-			if names, elsewhere, err := repoNames(r.Path); err == nil && !askRepo(names, elsewhere, withPRs) {
+			if names, elsewhere, err := repoNames(r.Path); err == nil && !core.AskRepo(names, elsewhere, withPRs) {
 				mu.Lock()
 				msg.answered[r.Path] = true // none of yours open in it
 				mu.Unlock()
@@ -243,51 +229,28 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) prWatchMs
 	return msg
 }
 
-// askRepo reports whether a repository with remotes on github.com names,
-// and elsewhere when it has one anywhere else, has to be asked for its PRs,
-// given the repositories the search found PRs of yours in.
-func askRepo(names []string, elsewhere bool, withPRs map[string]bool) bool {
-	if elsewhere {
-		return true // the search covers github.com only
-	}
-	for _, n := range names {
-		if withPRs[n] {
-			return true
-		}
-	}
-	return false // on github.com with none of yours open, or no remote at all
-}
-
 // remoteCache keeps what a repository's remotes are, for remoteCacheFor:
 // they hardly ever change, and fetchPRs would read them for every
 // repository at every look.
 var remoteCache = struct {
 	sync.Mutex
-	m map[string]remoteInfo
-}{m: map[string]remoteInfo{}}
-
-const remoteCacheFor = 10 * time.Minute
-
-type remoteInfo struct {
-	names     []string
-	elsewhere bool
-	at        time.Time
-}
+	m map[string]core.RemoteInfo
+}{m: map[string]core.RemoteInfo{}}
 
 // repoNames is github.RepoNames, kept for a while.
 func repoNames(path string) ([]string, bool, error) {
 	remoteCache.Lock()
 	in, ok := remoteCache.m[path]
 	remoteCache.Unlock()
-	if ok && time.Since(in.at) < remoteCacheFor {
-		return in.names, in.elsewhere, nil
+	if ok && time.Since(in.At) < core.RemoteCacheFor {
+		return in.Names, in.Elsewhere, nil
 	}
 	names, elsewhere, err := github.RepoNames(path)
 	if err != nil {
 		return nil, false, err
 	}
 	remoteCache.Lock()
-	remoteCache.m[path] = remoteInfo{names: names, elsewhere: elsewhere, at: time.Now()}
+	remoteCache.m[path] = core.RemoteInfo{Names: names, Elsewhere: elsewhere, At: time.Now()}
 	remoteCache.Unlock()
 	return names, elsewhere, nil
 }
@@ -327,7 +290,7 @@ func (m *Model) onPRWatch(msg prWatchMsg) {
 	for r, why := range msg.failed {
 		w.errs[r] = why
 		if msg.notGitHub[r] {
-			w.skip[r] = time.Now().Add(notGitHubFor)
+			w.skip[r] = time.Now().Add(core.NotGitHubFor)
 		}
 	}
 
@@ -339,15 +302,15 @@ func (m *Model) onPRWatch(msg prWatchMsg) {
 	}
 	var news []state.PRNews
 	for _, e := range msg.prs {
-		k := prKey(e.repo.Path, e.pr.Number)
-		now := seenOf(e.repo.Path, e.pr)
+		k := core.PrKey(e.repo.Path, e.pr.Number)
+		now := core.SeenOf(e.repo.Path, e.pr)
 		if w.repos[e.repo.Path] {
 			tabName := ""
 			if t := m.tabOnBranch(e.repo.Path, e.branch()); t != nil {
 				tabName = t.Name
 			}
-			for _, c := range prChanges(w.known[k], now) {
-				news = append(news, state.PRNews{Key: k, Repo: e.repo.Name, Number: e.pr.Number, What: c.what, Tab: tabName, Checks: c.checks})
+			for _, c := range core.PrChanges(w.known[k], now) {
+				news = append(news, state.PRNews{Key: k, Repo: e.repo.Name, Number: e.pr.Number, What: c.What, Tab: tabName, Checks: c.Checks})
 			}
 		}
 		known[k] = now
@@ -357,7 +320,7 @@ func (m *Model) onPRWatch(msg prWatchMsg) {
 	}
 	w.known = known
 	m.dropStalePRNews()
-	if len(news) > 0 && isOn(m.cfg.PRNotify) {
+	if len(news) > 0 && core.IsOn(m.Cfg.PRNotify) {
 		m.tellPRNews(news)
 	}
 	m.applyPRs()
@@ -381,99 +344,30 @@ func (m *Model) applyPRs() {
 	}
 }
 
-// seenOf is how pr stands. A check counts by the commit it ran on, so the
-// same check failing again after a push is news; one cancelled is not
-// taken for failed, being most often cancelled on purpose. Reviews by its
-// author (a reply to a review comment is one) and drafts not yet sent are
-// not counted.
-func seenOf(repo string, pr github.PR) state.PRSeen {
-	s := state.PRSeen{Repo: repo, Failing: map[string]bool{}, Reviews: map[string]state.ReviewSeen{}}
-	for _, c := range pr.Checks {
-		if github.Failed(c.Status) && !strings.EqualFold(c.Status, "CANCELLED") {
-			s.Failing[pr.Head+"/"+c.Name] = true
-		}
-	}
-	for _, rv := range pr.Reviews {
-		switch {
-		case rv.Author == pr.Author, rv.SubmittedAt.IsZero():
-		case rv.State == "PENDING", rv.State == "DISMISSED":
-		default:
-			s.Reviews[rv.Author] = state.ReviewSeen{State: rv.State, At: rv.SubmittedAt}
-		}
-	}
-	return s
-}
-
-// prChange is one thing that happened to a pull request, and the failing
-// checks it is about, if it is about checks.
-type prChange struct {
-	what   string
-	checks []string
-}
-
-// prChanges says what happened between two looks at a pull request: the
-// checks that have come to fail, and the reviews that have come in.
-func prChanges(before, now state.PRSeen) []prChange {
-	var out []prChange
-	var keys []string
-	for key := range now.Failing {
-		if !before.Failing[key] {
-			keys = append(keys, key)
-		}
-	}
-	sort.Strings(keys)
-	switch len(keys) {
-	case 0:
-	case 1:
-		_, name, _ := strings.Cut(keys[0], "/")
-		out = append(out, prChange{"check failed: " + name, keys})
-	default:
-		out = append(out, prChange{fmt.Sprintf("%d checks failed", len(keys)), keys})
-	}
-	var who []string
-	for author, rv := range now.Reviews {
-		if old, ok := before.Reviews[author]; !ok || rv.At.After(old.At) {
-			who = append(who, author)
-		}
-	}
-	sort.Strings(who)
-	for _, author := range who {
-		switch now.Reviews[author].State {
-		case "APPROVED":
-			out = append(out, prChange{what: "approved by " + author})
-		case "CHANGES_REQUESTED":
-			out = append(out, prChange{what: "changes requested by " + author})
-		default:
-			out = append(out, prChange{what: "reviewed by " + author})
-		}
-	}
-	return out
-}
-
 // tellPRNews tells of news, and keeps it for the marks.
 func (m *Model) tellPRNews(news []state.PRNews) {
 	m.prWatch.news = append(m.prWatch.news, news...)
 	m.review.SetPRNews(true)
 	n := news[0]
-	text := prNewsLabel(n) + ": " + n.What
+	text := core.PrNewsLabel(n) + ": " + n.What
 	if len(news) > 1 {
 		text += fmt.Sprintf(" (and %d more)", len(news)-1)
 	}
 	m.toastText = text + " · " + m.screenKey(2)
-	m.toastUntil = time.Now().Add(inAppFor)
+	m.toastUntil = time.Now().Add(core.InAppFor)
 	if !m.blurred {
 		return
 	}
-	title, body := "nerdr · "+prNewsLabel(n), n.What
+	title, body := "nerdr · "+core.PrNewsLabel(n), n.What
 	if len(news) > 1 {
 		body += fmt.Sprintf(" (and %d more)", len(news)-1)
 	}
-	debugf("pr notify: %s: %s", title, body)
-	if m.herdr != nil {
-		m.herdr.Notify(title, body, "request")
+	core.Debugf("pr notify: %s: %s", title, body)
+	if m.Herdr != nil {
+		m.Herdr.Notify(title, body, "request")
 		return
 	}
-	go desktopNotify(title, body)
+	go core.DesktopNotify(title, body)
 }
 
 // dropStalePRNews forgets news not seen yet that no longer holds: of a
@@ -520,15 +414,6 @@ func (m *Model) keepPRNews(keep func(state.PRNews) bool) {
 	}
 	w.news = news
 	m.review.SetPRNews(len(news) > 0)
-}
-
-// prNewsLabel names the PR news is of: by the tab working on its branch,
-// which is how you know the work, else by its repository.
-func prNewsLabel(n state.PRNews) string {
-	if n.Tab != "" {
-		return fmt.Sprintf("%s #%d", n.Tab, n.Number)
-	}
-	return fmt.Sprintf("%s #%d", n.Repo, n.Number)
 }
 
 // takePRNews is the news not seen yet, by pull request, and forgets it:

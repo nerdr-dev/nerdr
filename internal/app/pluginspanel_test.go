@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
@@ -24,7 +25,7 @@ func TestPluginScreen(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	wt := t.TempDir()
 	tb.Dir, tb.Worktrees[0].Path = wt, wt
 	dir := filepath.Join(cfg, "nerdr", "plugins", "hello")
@@ -94,7 +95,7 @@ func TestPluginChangedWhileAsked(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	wt := t.TempDir()
 	tb.Dir, tb.Worktrees[0].Path = wt, wt
 	plugins := filepath.Join(cfg, "nerdr", "plugins")
@@ -132,7 +133,7 @@ func TestPluginPickSurvivesTheListChanging(t *testing.T) {
 	}
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
@@ -183,7 +184,7 @@ func TestPluginsWaitForTheUser(t *testing.T) {
 	plugins := filepath.Join(cfg, "nerdr", "plugins")
 	writePlugin(t, plugins, "mine", "echo the-script-itself; cat\n")
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	p := m.pluginList(tb)[0]
@@ -322,7 +323,7 @@ func TestPluginPreviewSkipsSpecialFiles(t *testing.T) {
 // A file too large to draw is named, not read into the question.
 func TestPluginPreviewDoesNotReadHugeFiles(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "big.txt"), make([]byte, maxPreviewFile+1), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "big.txt"), make([]byte, core.MaxPreviewFile+1), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	lines := pluginPreview(dir, 100, 40)
@@ -340,7 +341,7 @@ func TestPluginDisallow(t *testing.T) {
 	writePlugin(t, plugins, "mine", "cat\n")
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
@@ -348,7 +349,7 @@ func TestPluginDisallow(t *testing.T) {
 	m.Update(keyMsg("a"))
 	m.Update(keyMsg("y"))
 	p := m.pluginList(tb)[0]
-	if !plugin.Allowed(pluginsAllowedFile(), p) {
+	if !plugin.Allowed(core.PluginsAllowedFile(), p) {
 		t.Fatal("not allowed after a")
 	}
 	m.Update(keyMsg("d"))
@@ -357,7 +358,7 @@ func TestPluginDisallow(t *testing.T) {
 	}
 	m.Update(keyMsg("y"))
 	p = m.pluginList(tb)[0]
-	if plugin.Allowed(pluginsAllowedFile(), p) {
+	if plugin.Allowed(core.PluginsAllowedFile(), p) {
 		t.Fatal("still allowed after d")
 	}
 }
@@ -369,7 +370,7 @@ func TestPluginUISecondScreenKeepsTheKeyboard(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	toml := "description = \"x\"\nrun = [\"true\"]\nui = [\"sh\", \"-c\", \"cat\"]\nshow = [\"ui\"]\n"
@@ -403,7 +404,7 @@ func TestPluginUIChangedContentRestarts(t *testing.T) {
 	writePlugin(t, plugins, "mine", "cat\n")
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
@@ -435,7 +436,7 @@ func TestPluginGoneStopsItsScreenAndRuns(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	p := allowedPlugin(t, cfg, "gone", "description = \"x\"\nrun = [\"sleep\", \"30\"]\nui = [\"sh\", \"-c\", \"cat\"]\nshow = [\"ui\"]\n")
@@ -461,12 +462,12 @@ func TestPluginGoneStopsItsScreenAndRuns(t *testing.T) {
 	if m.pluginUIOf(tb, p) != nil {
 		t.Fatal("the screen of a gone plugin is still there")
 	}
-	if _, ok := m.plugins.runs[pluginUIKey(tb, p)]; ok {
+	if _, ok := m.PluginRuns.Runs[core.PluginUIKey(tb, p)]; ok {
 		t.Fatal("the run of a gone plugin is still in F5")
 	}
-	for _, run := range []*pluginRun{first, second} {
-		if run.stopBy != "the plugin is gone" {
-			t.Fatalf("a run was not stopped: %q", run.stopBy)
+	for _, run := range []*core.PluginRun{first, second} {
+		if run.StopBy != "the plugin is gone" {
+			t.Fatalf("a run was not stopped: %q", run.StopBy)
 		}
 	}
 }
@@ -480,7 +481,7 @@ func TestPluginGoneWaitsForAnEditor(t *testing.T) {
 	writePlugin(t, plugins, "mine", "cat\n")
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	m.Update(tea.KeyMsg{Type: tea.KeyF5})
@@ -524,7 +525,7 @@ func TestPluginListScrollsToThePick(t *testing.T) {
 		writePlugin(t, plugins, fmt.Sprintf("p%02d", i), "cat\n")
 	}
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	m.Update(tea.KeyMsg{Type: tea.KeyF5})
@@ -545,7 +546,7 @@ func TestPluginUIFocusClearedByOtherPanel(t *testing.T) {
 	writePlugin(t, plugins, "mine", "cat\n")
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	m.Update(tea.KeyMsg{Type: tea.KeyF5})
@@ -573,7 +574,7 @@ func TestPluginDisallowOldVersions(t *testing.T) {
 	writePlugin(t, plugins, "mine", "cat\n")
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
@@ -581,7 +582,7 @@ func TestPluginDisallowOldVersions(t *testing.T) {
 	m.Update(keyMsg("a"))
 	m.Update(keyMsg("y"))
 	old := m.pluginList(tb)[0]
-	if !plugin.Allowed(pluginsAllowedFile(), old) {
+	if !plugin.Allowed(core.PluginsAllowedFile(), old) {
 		t.Fatal("not allowed after a")
 	}
 	writePlugin(t, plugins, "mine", "cat\n# changed\n")
@@ -592,7 +593,7 @@ func TestPluginDisallowOldVersions(t *testing.T) {
 		t.Fatalf("d did not ask: dialog %T", m.dialog)
 	}
 	m.Update(keyMsg("y"))
-	if plugin.Allowed(pluginsAllowedFile(), old) || plugin.AllowedDir(pluginsAllowedFile(), old.Dir) {
+	if plugin.Allowed(core.PluginsAllowedFile(), old) || plugin.AllowedDir(core.PluginsAllowedFile(), old.Dir) {
 		t.Fatal("an old version is still allowed after d")
 	}
 }

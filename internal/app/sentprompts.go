@@ -7,6 +7,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +22,7 @@ import (
 // nerdr kept of the tab's prompts, and Claude's own log of them once that
 // is read. Any other key closes it.
 type sentDialog struct {
-	t    *tab
+	t    *core.Tab
 	list []state.Prompt // the oldest first, as the tab keeps them
 	pick int            // counted from the latest
 	// reading is set while Claude's log is read for the list.
@@ -35,18 +36,18 @@ type sentDialog struct {
 
 // sentMsg is the list of t's prompts read from its agent's log.
 type sentMsg struct {
-	t    *tab
+	t    *core.Tab
 	list []agents.Prompt
 }
 
 // sentShownFull is the most rows the prompt picked takes.
 const sentShownFull = 10
 
-func (m *Model) openSent() tea.Cmd { return m.openSentOf(m.curAgent()) }
+func (m *Model) openSent() tea.Cmd { return m.openSentOf(m.CurAgent()) }
 
 // openSentOf opens the list of what was sent to agent t.
-func (m *Model) openSentOf(t *tab) tea.Cmd {
-	if t == nil || !m.live(t) {
+func (m *Model) openSentOf(t *core.Tab) tea.Cmd {
+	if t == nil || !m.Live(t) {
 		return nil
 	}
 	d := &sentDialog{t: t, list: t.Prompts}
@@ -60,7 +61,7 @@ func (m *Model) openSentOf(t *tab) tea.Cmd {
 	}
 	d.reading = true
 	kind, id := t.Agent, t.SessionID
-	return func() tea.Msg { return sentMsg{t: t, list: agents.PromptsOf(kind, id, promptsKept)} }
+	return func() tea.Msg { return sentMsg{t: t, list: agents.PromptsOf(kind, id, core.PromptsKept)} }
 }
 
 // onSent takes the list read from the log into the dialog, if it is
@@ -155,7 +156,7 @@ func (d *sentDialog) view(m *Model, w, h int) string {
 	first := max(min(d.pick-rows/2, len(d.list)-rows), 0)
 	for i := first; i < min(first+rows, len(d.list)); i++ {
 		p := d.at(i)
-		text := truncName(strings.Join(strings.Fields(p.Text), " "), max(inner-16, 10))
+		text := core.TruncName(strings.Join(strings.Fields(p.Text), " "), max(inner-16, 10))
 		row := dim(padTo(sentTime(p.At), 12)) + " " + text
 		if i == d.pick {
 			lines = append(lines, "❯ "+lipgloss.NewStyle().Bold(true).Render(row))

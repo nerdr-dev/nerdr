@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/skills"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -46,7 +47,7 @@ type skillsView struct {
 	contextCursor  int
 	allTabs        bool
 
-	context contextView
+	context core.ContextView
 
 	key    string // the tab and agent looked for
 	at     time.Time
@@ -63,7 +64,7 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 	v := &m.skills
 	switch msg.String() {
 	case "esc", "q":
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return m.resize()
 	case "tab", "right", "l":
 		v.list, v.scroll = (v.list+1)%skillLists, 0
@@ -82,7 +83,7 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		v.scroll = 0
 	case "down", "j":
-		t := m.cur()
+		t := m.Cur()
 		switch v.list {
 		case listOther:
 			v.otherCursor = min(v.otherCursor+1, max(len(m.otherSkills(t, m.skillTotals(t)))-1, 0))
@@ -103,19 +104,19 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 		all := skills.All()
 		enabled := []string{}
 		for i, sk := range all {
-			if m.cfg.SkillEnabled(sk.Name) != (i == v.cursor) {
+			if m.Cfg.SkillEnabled(sk.Name) != (i == v.cursor) {
 				enabled = append(enabled, sk.Name)
 			}
 		}
-		if m.cfg.Install == "" {
+		if m.Cfg.Install == "" {
 			return m.openSetup(nil)
 		}
 		if err := config.SaveSkills(enabled); err != nil {
 			m.toast(err.Error())
 			return nil
 		}
-		m.cfg.EnabledSkills = enabled
-		note := m.applySkills()
+		m.Cfg.EnabledSkills = enabled
+		note := m.ApplySkills()
 		v.at = time.Time{}
 		m.toast(strings.TrimSpace(skillsChangedNote + " " + note))
 	case "s":
@@ -130,7 +131,7 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 
 // skillStates is where the agent of t has each skill, and in what state,
 // looked up again when the last look is old or was for another tab.
-func (m *Model) skillStates(t *tab) ([]string, []skills.State) {
+func (m *Model) skillStates(t *core.Tab) ([]string, []skills.State) {
 	all := skills.All()
 	v := &m.skills
 	key := ""
@@ -151,7 +152,7 @@ func (m *Model) skillStates(t *tab) ([]string, []skills.State) {
 	v.others = skills.Others(dirs)
 	for i, s := range all {
 		file, st := s.Find(dirs)
-		v.found[i], v.states[i] = tildePath(file, home), st
+		v.found[i], v.states[i] = core.TildePath(file, home), st
 	}
 	return v.found, v.states
 }
@@ -159,11 +160,11 @@ func (m *Model) skillStates(t *tab) ([]string, []skills.State) {
 // skillOn is whether tab t's agent can use the skill called name: it is
 // turned on and, with skills "off", where the agent looks for skills, as
 // nerdr then puts none in place. What uses a skill is offered only then.
-func (m *Model) skillOn(t *tab, name string) bool {
-	if !m.cfg.SkillEnabled(name) {
+func (m *Model) skillOn(t *core.Tab, name string) bool {
+	if !m.Cfg.SkillEnabled(name) {
 		return false
 	}
-	if m.cfg.Install != config.InstallOff {
+	if m.Cfg.Install != config.InstallOff {
 		return true
 	}
 	if t == nil {
@@ -180,13 +181,13 @@ func (m *Model) skillOn(t *tab, name string) bool {
 
 // skillsMissing is how many of the skills turned on t's agent cannot find
 // when nerdr puts none in place, and so are not used.
-func (m *Model) skillsMissing(t *tab) int {
-	if m.cfg.Install != config.InstallOff || t == nil {
+func (m *Model) skillsMissing(t *core.Tab) int {
+	if m.Cfg.Install != config.InstallOff || t == nil {
 		return 0
 	}
 	n := 0
 	for _, s := range skills.All() {
-		if m.cfg.SkillEnabled(s.Name) && !m.skillOn(t, s.Name) {
+		if m.Cfg.SkillEnabled(s.Name) && !m.skillOn(t, s.Name) {
 			n++
 		}
 	}
@@ -208,7 +209,7 @@ func skillMark(st skills.State, agent string) (string, string) {
 }
 
 // skillsBody draws the skills for t's agent, w×h, for the panel's frame.
-func (m *Model) skillsBody(t *tab, w, h int) []string {
+func (m *Model) skillsBody(t *core.Tab, w, h int) []string {
 	tot := m.skillTotals(t)
 	others := m.otherSkills(t, tot)
 	items := m.contextItems(t)
@@ -266,7 +267,7 @@ func (m *Model) skillsTabs(nerdr, other, context, w int) string {
 			if m.skills.list != list {
 				m.skills.list, m.skills.scroll = list, 0
 			}
-			m.setFocus(focusReview)
+			m.setFocus(core.FocusReview)
 			return nil
 		})
 	}
@@ -287,27 +288,27 @@ func (m *Model) skillsTabs(nerdr, other, context, w int) string {
 }
 
 // skillRow is a row of F4's lists, picking the skill when clicked.
-func (m *Model) skillRow(picked bool, mark, name string, u *skillTotal, pick func(*Model)) string {
+func (m *Model) skillRow(picked bool, mark, name string, u *core.SkillTotal, pick func(*Model)) string {
 	cursor := "  "
-	if picked && m.focus == focusReview {
+	if picked && m.focus == core.FocusReview {
 		cursor, name = lipgloss.NewStyle().Foreground(accent).Bold(true).Render("❯ "), lipgloss.NewStyle().Foreground(accent).Bold(true).Render(name)
 	} else if picked {
 		name = lipgloss.NewStyle().Bold(true).Render(name)
 	}
 	if u != nil {
-		name += dim(fmt.Sprintf("  %d×", u.n))
+		name += dim(fmt.Sprintf("  %d×", u.N))
 	}
 	return m.onClick(cursor+mark+name, func(m *Model) tea.Cmd {
 		pick(m)
 		m.skills.scroll = 0
-		m.setFocus(focusReview)
+		m.setFocus(core.FocusReview)
 		return nil
 	})
 }
 
 // nerdrSkillsList is the list of nerdr's skills, and the text of the one
 // picked.
-func (m *Model) nerdrSkillsList(t *tab, tot map[string]*skillTotal, textW int) (head, text []string) {
+func (m *Model) nerdrSkillsList(t *core.Tab, tot map[string]*core.SkillTotal, textW int) (head, text []string) {
 	all := skills.All()
 	v := &m.skills
 	v.cursor = min(max(v.cursor, 0), len(all)-1)
@@ -322,7 +323,7 @@ func (m *Model) nerdrSkillsList(t *tab, tot map[string]*skillTotal, textW int) (
 			mark = dim("·")
 		}
 		name := "[ ] " + s.Name
-		if m.cfg.SkillEnabled(s.Name) {
+		if m.Cfg.SkillEnabled(s.Name) {
 			name = "[✓] " + s.Name
 		}
 		head = append(head, m.skillRow(i == v.cursor, mark+" ", name, tot[s.Name], func(m *Model) { m.skills.cursor = i }))
@@ -340,7 +341,7 @@ func (m *Model) nerdrSkillsList(t *tab, tot map[string]*skillTotal, textW int) (
 	text = append(text, dim("── "+s.Name+" "+strings.Repeat("─", max(textW-lipgloss.Width(s.Name)-4, 0))))
 	if t != nil {
 		mark, what := skillMark(states[v.cursor], agent)
-		if !m.cfg.SkillEnabled(s.Name) {
+		if !m.Cfg.SkillEnabled(s.Name) {
 			what = "turned off; claude notices by itself, other agents at their next start; text they already read stays"
 			if states[v.cursor] == skills.Own {
 				what += "; your own copy is still discoverable — remove it yourself"
@@ -351,7 +352,7 @@ func (m *Model) nerdrSkillsList(t *tab, tot map[string]*skillTotal, textW int) (
 			text = append(text, dim("  "+found[v.cursor]))
 		} else {
 			why := "nerdr puts the skills in place at start, as the install setting says."
-			if m.cfg.Install == config.InstallOff {
+			if m.Cfg.Install == config.InstallOff {
 				why = "nerdr puts no skills in place (install = \"off\" in the config): copy this one from skills/ in nerdr's repository into a folder " + agent + " reads skills from, or turn it off here."
 			}
 			for _, l := range wrapRows(why, textW-2, 3) {
@@ -378,7 +379,7 @@ func (m *Model) nerdrSkillsList(t *tab, tot map[string]*skillTotal, textW int) (
 
 // otherSkillsList is the list of the skills that are not nerdr's, and the
 // text of the one picked.
-func (m *Model) otherSkillsList(t *tab, others []skills.Local, tot map[string]*skillTotal, textW int) (head, text []string) {
+func (m *Model) otherSkillsList(t *core.Tab, others []skills.Local, tot map[string]*core.SkillTotal, textW int) (head, text []string) {
 	v := &m.skills
 	if len(others) == 0 {
 		return []string{dim("  No other skills found or used here.")}, nil
@@ -391,7 +392,7 @@ func (m *Model) otherSkillsList(t *tab, others []skills.Local, tot map[string]*s
 	home, _ := os.UserHomeDir()
 	text = append(text, dim("── "+s.Name+" "+strings.Repeat("─", max(textW-lipgloss.Width(s.Name)-4, 0))))
 	if s.File != "" {
-		text = append(text, dim("  "+tildePath(s.File, home)))
+		text = append(text, dim("  "+core.TildePath(s.File, home)))
 	} else {
 		for _, l := range wrapRows("Not in a folder this tab's agent reads: built into an agent, from a plugin, or used elsewhere.", textW-2, 3) {
 			text = append(text, dim("  "+l))
@@ -429,22 +430,22 @@ func (m *Model) skillKeys(pairs ...string) string {
 
 // skillUseLine says how much the agents have used a skill, by agent, and
 // when last.
-func skillUseLine(u *skillTotal, now time.Time) string {
-	if u == nil || u.n == 0 {
+func skillUseLine(u *core.SkillTotal, now time.Time) string {
+	if u == nil || u.N == 0 {
 		return "not used yet, as far as the agents' logs say"
 	}
-	agents := make([]string, 0, len(u.byAgent))
-	for a := range u.byAgent {
+	agents := make([]string, 0, len(u.ByAgent))
+	for a := range u.ByAgent {
 		agents = append(agents, a)
 	}
-	sort.Slice(agents, func(i, j int) bool { return u.byAgent[agents[i]] > u.byAgent[agents[j]] })
+	sort.Slice(agents, func(i, j int) bool { return u.ByAgent[agents[i]] > u.ByAgent[agents[j]] })
 	var by []string
 	for _, a := range agents {
-		by = append(by, fmt.Sprintf("%s %d", a, u.byAgent[a]))
+		by = append(by, fmt.Sprintf("%s %d", a, u.ByAgent[a]))
 	}
-	line := fmt.Sprintf("used %d× · %s", u.n, strings.Join(by, ", "))
-	if !u.last.IsZero() {
-		line += " · last " + duration(now.Sub(u.last)) + " ago"
+	line := fmt.Sprintf("used %d× · %s", u.N, strings.Join(by, ", "))
+	if !u.Last.IsZero() {
+		line += " · last " + core.Duration(now.Sub(u.Last)) + " ago"
 	}
 	return line
 }

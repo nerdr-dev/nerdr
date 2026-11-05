@@ -9,6 +9,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -156,7 +157,7 @@ type planMsg struct {
 }
 
 func (m *Model) openWizard() tea.Cmd {
-	if m.tabLimitReached() {
+	if m.TabLimitReached() {
 		m.openTabLimit()
 		return nil
 	}
@@ -165,8 +166,8 @@ func (m *Model) openWizard() tea.Cmd {
 	}
 	w := &wizard{picked: map[int]bool{}}
 	w.scan(m)
-	w.agents = agents.Available(m.cfg.Agents)
-	w.repoDir = workspace.NewRepoDir(m.root, m.cfg.RepoDirs)
+	w.agents = agents.Available(m.Cfg.Agents)
+	w.repoDir = workspace.NewRepoDir(m.Root, m.Cfg.RepoDirs)
 	// Starting inside a repository: that is the one to work on.
 	if len(w.repos) == 1 {
 		w.picked[0] = true
@@ -177,12 +178,12 @@ func (m *Model) openWizard() tea.Cmd {
 	w.branch.CharLimit = 100
 	w.groupName = textinput.New()
 	w.groupName.Prompt = "group:  "
-	w.groupName.Placeholder = multiGroup
+	w.groupName.Placeholder = core.MultiGroup
 	w.groupName.CharLimit = 40
 	// The groups there are, so a tab joins one by the same name rather
 	// than starting another for a typo: → takes the one suggested (tab
 	// moves between the fields).
-	w.groups = m.knownGroupNames()
+	w.groups = m.KnownGroupNames()
 	w.groupName.ShowSuggestions = true
 	w.groupName.SetSuggestions(w.groups)
 	w.groupName.KeyMap.AcceptSuggestion = key.NewBinding(key.WithKeys("right"))
@@ -208,16 +209,16 @@ func (m *Model) openNewRepoDialog() tea.Cmd {
 // scan finds the repositories to pick from, and the worktrees of theirs
 // no tab has open.
 func (w *wizard) scan(m *Model) {
-	repos, err := workspace.ScanAll(m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs)
+	repos, err := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
 	w.repos = repos
 	if err != nil {
 		w.err = err.Error()
 	}
 	open := map[string]bool{}
-	for _, t := range m.tabs {
+	for _, t := range m.Tabs {
 		open[t.Dir] = true
 	}
-	w.existing = workspace.Existing(m.wtRoot, repos, open)
+	w.existing = workspace.Existing(m.WtRoot, repos, open)
 }
 
 // noAgentHint says what to do when no agent is found, the first thing the
@@ -233,7 +234,7 @@ func noAgentHint() []string {
 // openWizardFor opens the new-tab dialog with the repository at repo
 // picked, at the branch name: the menus' "new tab in <repo>".
 func (m *Model) openWizardFor(repo string) tea.Cmd {
-	if !m.tabLimitReached() && m.offerRoom(func(m *Model) tea.Cmd { return m.openWizardFor(repo) }) {
+	if !m.TabLimitReached() && m.offerRoom(func(m *Model) tea.Cmd { return m.openWizardFor(repo) }) {
 		return nil
 	}
 	cmd := m.openWizard()
@@ -403,7 +404,7 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 			w.err = ""
 			w.busy = "checking…"
-			wtRoot, repos, on := m.wtRoot, w.pickedRepos(), w.on
+			wtRoot, repos, on := m.WtRoot, w.pickedRepos(), w.on
 			// The list knows the picked repository's forks' pull requests;
 			// with several picked, or no list, GitHub is asked.
 			fork, isFork, listed := w.forkPRNamed(name)
@@ -539,7 +540,7 @@ func (w *wizard) create(plan workspace.Plan) tea.Cmd {
 	agent, task, group := w.agents[w.agentIdx], w.task.Value(), w.chosenGroup()
 	progress := make(chan string, 16)
 	w.progress = progress
-	allowed := setupAllowedFile()
+	allowed := core.SetupAllowedFile()
 	work := func() tea.Msg {
 		defer close(progress)
 		warnings, err := plan.Sync()
@@ -804,18 +805,18 @@ func (m *Model) createdBehind(msg wizardMsg) tea.Cmd {
 		m.toast("could not make " + msg.plan.Branch + ": " + msg.err.Error())
 		return nil
 	}
-	if len(m.tabs) == 0 {
+	if len(m.Tabs) == 0 {
 		return m.createdTab(msg) // nothing else to be busy with
 	}
-	t, cmd := m.addTabBeside(msg.plan.Branch, msg.plan.Dir, msg.group, msg.wts, msg.agent, msg.task)
+	t, cmd := m.AddTabBeside(msg.plan.Branch, msg.plan.Dir, msg.group, msg.wts, msg.agent, msg.task)
 	m.toast(t.Name + " is ready in a tab of its own")
 	m.setUpCreated(t, msg)
-	return cmd
+	return fromCore(cmd)
 }
 
 // setUpCreated shows a tab made from the wizard its task, which addTab
 // gave its agent.
-func (m *Model) setUpCreated(t *tab, msg wizardMsg) {
+func (m *Model) setUpCreated(t *core.Tab, msg wizardMsg) {
 	if strings.TrimSpace(msg.task) != "" {
 		t.Goal = strings.TrimSpace(msg.task)
 		m.resizePanes() // the panel takes rows above the agent
@@ -835,29 +836,29 @@ func (m *Model) setUpCreated(t *tab, msg wizardMsg) {
 //
 // The group is kept for the folder: a tab opened on it again with no group
 // given, from the list of existing worktrees, goes in the same one.
-func (m *Model) addTab(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, carryOn bool, task string) (*tab, tea.Cmd) {
-	group = m.rememberGroup(dir, group, wts)
-	t := &tab{Tab: state.Tab{
-		ID:        newTabID(),
+func (m *Model) addTab(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, carryOn bool, task string) (*core.Tab, tea.Cmd) {
+	group = m.RememberGroup(dir, group, wts)
+	t := &core.Tab{AgentState: core.Agent{Tab: state.Tab{
+		ID:        core.NewTabID(),
 		Name:      name,
 		Dir:       dir,
 		Agent:     kind,
 		Worktrees: wts,
 		Group:     group,
-	}}
-	trustWorktrees(t)
-	m.tabs = append(m.tabs, t)
-	m.active = len(m.tabs) - 1
-	m.setFocus(focusAgent)
-	m.addMessage(t, task, true) // before the start, which may take it
+	}}}
+	core.TrustWorktrees(t)
+	m.Tabs = append(m.Tabs, t)
+	m.Active = len(m.Tabs) - 1
+	m.setFocus(core.FocusAgent)
+	m.AddMessage(t, task, true) // before the start, which may take it
 	var cmd tea.Cmd
 	if carryOn {
-		cmd = m.carryOn(t)
+		cmd = fromCore(m.CarryOn(t))
 	} else {
-		cmd = m.start(t, false)
+		cmd = fromCore(m.Start(t, false))
 	}
 	m.saveSession()
-	return t, tea.Batch(cmd, m.selectTab(m.active), m.resize())
+	return t, tea.Batch(cmd, m.selectTab(m.Active), m.resize())
 }
 
 func (w *wizard) pickedRepos() []workspace.Repo {
@@ -882,7 +883,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 			lines = append(lines, noAgentHint()...)
 			lines = append(lines, "")
 		}
-		lines = append(lines, "Repositories in "+dim(strings.Join(append([]string{m.root}, m.cfg.RepoDirs...), ", "))+":", "")
+		lines = append(lines, "Repositories in "+dim(strings.Join(append([]string{m.Root}, m.Cfg.RepoDirs...), ", "))+":", "")
 		if len(w.repos) == 0 {
 			lines = append(lines, warn("  None found, so there is nothing to pick."), "")
 			if w.repoDir != "" {
@@ -909,7 +910,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 			}))
 		}
 		if len(w.existing) > 0 {
-			lines = append(lines, "", "Or open an existing worktree in "+dim(m.wtRoot)+":", "")
+			lines = append(lines, "", "Or open an existing worktree in "+dim(m.WtRoot)+":", "")
 			lists = append(lists, scrollList{start: len(lines), n: len(w.existing), cursor: w.cursor - len(w.repos)})
 			nameW := 0
 			for _, g := range w.existing {
@@ -978,7 +979,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 		if w.multi() {
 			lines = append(lines, "",
 				m.onClick(w.groupName.View(), func(m *Model) tea.Cmd { return w.focusField(fieldGroup) }),
-				dim("The group the tab goes in, spanning several repositories; "+multiGroup+" if empty."))
+				dim("The group the tab goes in, spanning several repositories; "+core.MultiGroup+" if empty."))
 			if len(w.groups) > 0 {
 				line := dim("existing (→ completes):")
 				for _, g := range w.groups {
@@ -1000,7 +1001,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 		} else if w.field == fieldPRs {
 			lines = append(lines, m.keys("", "↑↓ move", "enter", "take it", "", "typing narrows", "tab", "next field", "esc", "back"))
 		} else {
-			lines = append(lines, m.keys("enter", "continue", "tab", "next field", "", newLineHint, "esc", "back"))
+			lines = append(lines, m.keys("enter", "continue", "tab", "next field", "", core.NewLineHint, "esc", "back"))
 		}
 	case stepExisting:
 		lines = append(lines, "Branch "+sel.Render(w.plan.Branch)+" in "+dim(w.plan.Dir), "")

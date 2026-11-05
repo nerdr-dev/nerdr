@@ -8,6 +8,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -29,7 +30,7 @@ const reviewerHeadRows = 3
 // in a pane of its own: one has to be in an agent's pane, as its work is
 // what is reviewed and its findings go back to it.
 func (m *Model) newReviewPane() tea.Cmd {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		return nil
 	}
@@ -37,57 +38,57 @@ func (m *Model) newReviewPane() tea.Cmd {
 		m.toast(why)
 		return nil
 	}
-	of := t.focused().agent()
+	of := t.Focused().Agent()
 	m.reviewerCursor = 0
-	cmds := []tea.Cmd{m.addPane(t, &paneTab{kind: paneReview, of: of}, false)}
+	cmds := []tea.Cmd{fromCore(m.AddPane(t, &core.PaneTab{Kind: core.PaneReview, Of: of}, false))}
 	for _, k := range m.reviewKinds(of) {
-		cmds = append(cmds, m.askModels(k))
+		cmds = append(cmds, fromCore(m.AskModels(k)))
 	}
 	return tea.Batch(cmds...)
 }
 
 // startReviewWith starts by reviewing of's work, or adds it to the
 // review going on.
-func (m *Model) startReviewWith(of *tab, by reviewer) tea.Cmd {
-	if of.review != nil {
+func (m *Model) startReviewWith(of *core.Tab, by core.Reviewer) tea.Cmd {
+	if of.Review != nil {
 		return tea.Batch(m.addReviewer(of, by), m.resize())
 	}
-	return m.lookAtTree(of, treeHand, by)
+	return fromCore(m.LookAtTree(of, core.TreeHand, by))
 }
 
 // reviewPaneFor is the pane reviewer r of of's work is shown in: the
 // pane it was picked in, or, for a review that started by itself, a new
 // one beside of's that leaves the keyboard where it is.
-func (m *Model) reviewPaneFor(of, r *tab) *paneTab {
-	o := of.owner()
-	for _, p := range o.panes() {
-		if p.kind == paneReview && p.of == of && p.a == nil {
-			p.a = r
+func (m *Model) reviewPaneFor(of, r *core.Tab) *core.PaneTab {
+	o := of.Owner()
+	for _, p := range o.Panes() {
+		if p.Kind == core.PaneReview && p.Of == of && p.A == nil {
+			p.A = r
 			return p
 		}
 	}
-	p := &paneTab{kind: paneReview, a: r, of: of}
-	ps := o.panes()
+	p := &core.PaneTab{Kind: core.PaneReview, A: r, Of: of}
+	ps := o.Panes()
 	at := len(ps) - 1
-	if op := of.paneOf(); op != nil {
+	if op := of.PaneOf(); op != nil {
 		at = slices.Index(ps, op)
 	}
-	o.paneList = slices.Insert(ps, at+1, p)
+	o.PaneList = slices.Insert(ps, at+1, p)
 	return p
 }
 
 // dropReviewPane takes reviewer r's pane away, once it is let go.
-func (m *Model) dropReviewPane(r *tab) {
-	if p := r.paneOf(); p != nil {
-		m.dropPane(r.owner(), p)
+func (m *Model) dropReviewPane(r *core.Tab) {
+	if p := r.PaneOf(); p != nil {
+		m.dropPane(r.Owner(), p)
 	}
 }
 
 // reviewPickKey handles a key in review pane p while it lists the agents
 // to review with.
-func (m *Model) reviewPickKey(t *tab, p *paneTab, msg tea.KeyMsg) tea.Cmd {
+func (m *Model) reviewPickKey(t *core.Tab, p *core.PaneTab, msg tea.KeyMsg) tea.Cmd {
 	k := msg.String()
-	of := p.of
+	of := p.Of
 	if m.reviewPick != nil {
 		return m.modelPickKey(of, msg)
 	}
@@ -111,13 +112,13 @@ func (m *Model) reviewPickKey(t *tab, p *paneTab, msg tea.KeyMsg) tea.Cmd {
 	case "down", "j":
 		m.reviewerCursor = min(m.reviewerCursor+1, len(kinds)-1)
 	case "enter":
-		return m.startReviewWith(of, reviewer{kind: kinds[m.reviewerCursor]})
+		return m.startReviewWith(of, core.Reviewer{Kind: kinds[m.reviewerCursor]})
 	case "m":
 		return m.openModelPick(kinds[m.reviewerCursor])
 	default:
 		if n, err := strconv.Atoi(k); err == nil && n >= 1 && n <= len(kinds) {
 			m.reviewerCursor = n - 1
-			return m.startReviewWith(of, reviewer{kind: kinds[n-1]})
+			return m.startReviewWith(of, core.Reviewer{Kind: kinds[n-1]})
 		}
 	}
 	return nil
@@ -125,11 +126,11 @@ func (m *Model) reviewPickKey(t *tab, p *paneTab, msg tea.KeyMsg) tea.Cmd {
 
 // reviewPaneLines draws review pane p of t's, w×h inside its frame: the
 // reviewer under how the review stands, or the agents to start one with.
-func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
-	of := p.of
-	if r := p.a; r != nil {
+func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
+	of := p.Of
+	if r := p.A; r != nil {
 		head := []string{
-			" " + ansi.Truncate(m.reviewLine(of), w-2, "…"),
+			" " + ansi.Truncate(m.ReviewLine(of), w-2, "…"),
 			" " + m.reviewerButtons(t, p),
 			dim(strings.Repeat("─", w)),
 		}
@@ -141,26 +142,26 @@ func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
 	}
 	var lines []string
 	switch {
-	case of.review != nil:
-		lines = append(lines, " "+ansi.Truncate(m.reviewLine(of), w-2, "…"), "",
-			" Review "+m.agentLabel(t, of)+"'s work beside "+m.reviewerNames(of)+" with:", "")
+	case of.Review != nil:
+		lines = append(lines, " "+ansi.Truncate(m.ReviewLine(of), w-2, "…"), "",
+			" Review "+m.AgentLabel(t, of)+"'s work beside "+m.ReviewerNames(of)+" with:", "")
 	default:
-		lines = append(lines, " Review "+m.agentLabel(t, of)+"'s work in this worktree with:", "")
+		lines = append(lines, " Review "+m.AgentLabel(t, of)+"'s work in this worktree with:", "")
 	}
 	kinds := m.reviewKinds(of)
 	if len(kinds) == 0 {
-		if of.sandboxed || m.sandboxedKind(of.Agent) {
+		if of.InSandbox || m.SandboxedKind(of.Agent) {
 			lines = append(lines, dim("   (no sandboxed reviewer is available to add)"))
 		} else {
 			lines = append(lines, dim("   (every agent installed is reviewing already)"))
 		}
 	}
 	m.reviewerCursor = min(max(m.reviewerCursor, 0), len(kinds)-1)
-	keys := m.focus == focusAgent && t == m.cur() && t.focused() == p
+	keys := m.focus == core.FocusAgent && t == m.Cur() && t.Focused() == p
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	for i, k := range kinds {
 		var notes []string
-		if i == 0 && k == m.reviewKind(of) {
+		if i == 0 && k == m.ReviewKind(of) {
 			notes = append(notes, "the config's choice")
 		}
 		if k == of.Agent {
@@ -178,19 +179,19 @@ func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
 		}
 		row := m.onClick(cursor+label, func(m *Model) tea.Cmd {
 			m.reviewerCursor = i
-			return tea.Batch(m.goToPane(t, p), m.startReviewWith(of, reviewer{kind: k}))
+			return tea.Batch(m.goToPane(t, p), m.startReviewWith(of, core.Reviewer{Kind: k}))
 		})
 		if agents.TakesModel(k) {
-			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.reviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
+			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.ReviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
 				m.reviewerCursor = i
 				return tea.Batch(m.goToPane(t, p), m.openModelPick(k))
 			})
 		}
 		lines = append(lines, row)
 	}
-	rounds := max(m.cfg.Review.Rounds, 1)
-	if of.review != nil {
-		rounds = of.review.rounds
+	rounds := max(m.Cfg.Review.Rounds, 1)
+	if of.Review != nil {
+		rounds = of.Review.Rounds
 	}
 	lines = append(lines, "",
 		" Rounds: "+m.onClick(buttonStyle.Render(" − "), func(m *Model) tea.Cmd { return m.setRounds(of, -1) })+
@@ -198,9 +199,9 @@ func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
 			m.onClick(buttonStyle.Render(" + "), func(m *Model) tea.Cmd { return m.setRounds(of, 1) })+
 			dim("  how many times the reviewer looks, with fixes between, before you decide"))
 	switch {
-	case m.cfg.Review.Auto && m.waitsForReady(of):
+	case m.Cfg.Review.Auto && m.WaitsForReady(of):
 		lines = append(lines, dim(" Auto: on · a review starts by itself when the agent says its work is ready for one"))
-	case m.cfg.Review.Auto:
+	case m.Cfg.Review.Auto:
 		lines = append(lines, dim(" Auto: on · a review starts by itself when the agent ends a turn that changed files"))
 	default:
 		lines = append(lines, dim(" Auto: off · a review starts only when you start one here (auto in [review] in the config)"))
@@ -212,17 +213,17 @@ func (m *Model) reviewPaneLines(t *tab, p *paneTab, w, h int) []string {
 
 // reviewerButtons are the buttons above the reviewer in review pane p:
 // stop it (or the review, when it is the only one), and add another.
-func (m *Model) reviewerButtons(t *tab, p *paneTab) string {
-	run, r := p.of.review, p.a
+func (m *Model) reviewerButtons(t *core.Tab, p *core.PaneTab) string {
+	run, r := p.Of.Review, p.A
 	if run == nil {
 		return ""
 	}
 	label := " stop " + string(r.Agent) + " "
-	if len(run.seats) == 1 {
+	if len(run.Seats) == 1 {
 		label = " stop the review "
 	}
-	s := m.onClick(buttonStyle.Render(label), func(m *Model) tea.Cmd { return m.closePane(t, p) })
-	if run.phase == reviewing {
+	s := m.onClick(buttonStyle.Render(label), func(m *Model) tea.Cmd { return fromCore(m.ClosePane(t, p)) })
+	if run.Phase == core.Reviewing {
 		s += " " + m.onClick(buttonStyle.Render(" + reviewer "), func(m *Model) tea.Cmd {
 			cmd := m.goToPane(t, p)
 			return tea.Batch(cmd, m.newReviewPane())
@@ -234,11 +235,11 @@ func (m *Model) reviewerButtons(t *tab, p *paneTab) string {
 // reviewOff says why the pane with the keyboard cannot be reviewed: only
 // an agent's work can.
 func (m *Model) reviewOff() string {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		return "no tab open"
 	}
-	if t.focused().agent() == nil {
+	if t.Focused().Agent() == nil {
 		return "a review is of an agent's work: go to the agent's pane first"
 	}
 	return ""
@@ -247,41 +248,28 @@ func (m *Model) reviewOff() string {
 // stopReview stops the review of the agent nearest the keyboard, when one
 // goes on.
 func (m *Model) stopReview() tea.Cmd {
-	a := m.curAgent()
-	if a == nil || a.review == nil {
+	a := m.CurAgent()
+	if a == nil || a.Review == nil {
 		return nil
 	}
-	m.endReview(a, "stopped", false)
+	m.EndReview(a, "stopped", false)
 	return m.resize()
 }
 
 // reviewKinds are the agents t's work can be reviewed by: the one the
 // config picks first, then the others installed. While a review goes on,
 // those reviewing are left out.
-func (m *Model) reviewKinds(t *tab) []agents.Kind {
+func (m *Model) reviewKinds(t *core.Tab) []agents.Kind {
 	var kinds []agents.Kind
-	for _, k := range append([]agents.Kind{m.reviewKind(t)}, agents.Available(m.cfg.Agents)...) {
-		if (t.sandboxed || m.sandboxedKind(t.Agent)) && !m.sandboxedKind(k) {
+	for _, k := range append([]agents.Kind{m.ReviewKind(t)}, agents.Available(m.Cfg.Agents)...) {
+		if (t.InSandbox || m.SandboxedKind(t.Agent)) && !m.SandboxedKind(k) {
 			continue
 		}
-		if !slices.Contains(kinds, k) && !t.reviewedBy(k) {
+		if !slices.Contains(kinds, k) && !t.ReviewedBy(k) {
 			kinds = append(kinds, k)
 		}
 	}
 	return kinds
-}
-
-// reviewedBy reports whether kind k is among t's reviewers.
-func (t *tab) reviewedBy(k agents.Kind) bool {
-	if t.review == nil {
-		return false
-	}
-	for _, s := range t.review.seats {
-		if s.r.Agent == k {
-			return true
-		}
-	}
-	return false
 }
 
 // maxRounds is the most rounds a review pane offers: past it, a review
@@ -291,16 +279,16 @@ const maxRounds = 9
 // setRounds changes how many rounds a review has by d, in the config so
 // it holds for the reviews to come, and for t's review when one goes on:
 // never below the round it is in.
-func (m *Model) setRounds(t *tab, d int) tea.Cmd {
-	n := min(max(max(m.cfg.Review.Rounds, 1)+d, 1), maxRounds)
-	if t != nil && t.review != nil {
-		n = min(max(t.review.rounds+d, t.review.round, 1), maxRounds)
-		t.review.rounds = n
+func (m *Model) setRounds(t *core.Tab, d int) tea.Cmd {
+	n := min(max(max(m.Cfg.Review.Rounds, 1)+d, 1), maxRounds)
+	if t != nil && t.Review != nil {
+		n = min(max(t.Review.Rounds+d, t.Review.Round, 1), maxRounds)
+		t.Review.Rounds = n
 	}
-	if n == m.cfg.Review.Rounds {
+	if n == m.Cfg.Review.Rounds {
 		return nil
 	}
-	m.cfg.Review.Rounds = n
+	m.Cfg.Review.Rounds = n
 	if err := config.SaveReviewRounds(n); err != nil {
 		m.toast("rounds: " + strconv.Itoa(n) + " for now; not saved: " + err.Error())
 	}

@@ -2,11 +2,10 @@ package app
 
 import (
 	"os"
-	"path/filepath"
 	"strconv"
-	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -22,9 +21,6 @@ import (
 // a new pane of the tab working in its worktree. The conversations are
 // read from claude's and codex's logs in the background (agents.Index),
 // once, and again only from a log that has changed.
-
-// searchLimit is the most conversations listed.
-const searchLimit = 200
 
 type searchDialog struct {
 	input   textinput.Model
@@ -48,23 +44,11 @@ func (m *Model) openSearch() tea.Cmd {
 	if m.convIndex == nil {
 		m.convIndex = &agents.Index{}
 	}
-	idx, roots := m.convIndex, m.searchRoots()
+	idx, roots := m.convIndex, m.SearchRoots()
 	return func() tea.Msg {
 		idx.Update(roots)
 		return searchReadMsg{d}
 	}
-}
-
-// searchRoots are the folders whose conversations are searched.
-func (m *Model) searchRoots() []string {
-	roots := []string{m.root, m.wtRoot}
-	for _, t := range m.tabs {
-		roots = append(roots, t.Dir)
-		for _, w := range t.Worktrees {
-			roots = append(roots, w.Path)
-		}
-	}
-	return roots
 }
 
 func (m *Model) onSearchRead(msg searchReadMsg) {
@@ -75,7 +59,7 @@ func (m *Model) onSearchRead(msg searchReadMsg) {
 // find searches again for what is typed.
 func (d *searchDialog) find(m *Model) {
 	d.words = agents.Words(d.input.Value())
-	d.hits = m.convIndex.Search(d.words, searchLimit)
+	d.hits = m.convIndex.Search(d.words, core.SearchLimit)
 	d.cursor, d.top = 0, 0
 }
 
@@ -115,15 +99,15 @@ func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // openConversation goes to the agent carrying on c, or carries it on in
 // a new pane of the tab working in its folder.
 func (m *Model) openConversation(c *agents.Conversation) tea.Cmd {
-	for _, a := range m.allAgents() {
-		if a.SessionID == c.ID && a.reviewOf == nil {
-			m.setFocus(focusAgent)
+	for _, a := range m.AllAgents() {
+		if a.SessionID == c.ID && a.ReviewOf == nil {
+			m.setFocus(core.FocusAgent)
 			return tea.Batch(m.goToAgent(a), m.resize())
 		}
 	}
-	t := m.tabOfDir(c.Dir)
+	t := m.TabOfDir(c.Dir)
 	if t == nil {
-		m.toast("no tab works in " + m.shortDir(c.Dir) + "; carry it on there with " + resumeHint(c))
+		m.toast("no tab works in " + m.ShortDir(c.Dir) + "; carry it on there with " + core.ResumeHint(c))
 		return nil
 	}
 	if !agentAvailable(m, c.Kind) {
@@ -131,58 +115,39 @@ func (m *Model) openConversation(c *agents.Conversation) tea.Cmd {
 		return nil
 	}
 	if st, err := os.Stat(c.Dir); err != nil || !st.IsDir() {
-		m.toast(m.shortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
+		m.toast(m.ShortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
 		return nil
 	}
-	m.setFocus(focusAgent)
+	m.setFocus(core.FocusAgent)
 	sel := m.selectTabCmd(t)
 	// In the folder the conversation was had in, which may be one of the
 	// tab's repositories rather than the tab's own folder: the agent finds
 	// its conversations by folder, and its paths are from there.
-	a := &tab{Tab: state.Tab{ID: newTabID(), Name: t.Name, Dir: c.Dir, Agent: c.Kind, Worktrees: t.Worktrees,
-		Num: t.nextNum(), SessionID: c.ID}, status: stStarting, partOf: t}
-	cmd := m.addPane(t, &paneTab{kind: paneAgent, a: a}, false)
-	start := m.start(a, true)
+	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: core.NewTabID(), Name: t.Name, Dir: c.Dir, Agent: c.Kind, Worktrees: t.Worktrees,
+		Num: t.NextNum(), SessionID: c.ID}, Light: core.StStarting}, PartOf: t}
+	cmd := m.AddPane(t, &core.PaneTab{Kind: core.PaneAgent, A: a}, false)
+	start := m.Start(a, true)
 	m.saveSession()
 	m.focusTerms(t)
-	m.toast(t.Name + ": " + m.agentLabel(t, a) + " carries on the conversation")
-	return tea.Batch(sel, cmd, start, m.resize())
+	m.toast(t.Name + ": " + m.AgentLabel(t, a) + " carries on the conversation")
+	return tea.Batch(sel, fromCore(cmd), fromCore(start), m.resize())
 }
 
 // selectTabCmd goes to t, if it is not the active tab.
-func (m *Model) selectTabCmd(t *tab) tea.Cmd {
-	if i := m.tabIndex(t); i >= 0 && t != m.cur() {
+func (m *Model) selectTabCmd(t *core.Tab) tea.Cmd {
+	if i := m.TabIndex(t); i >= 0 && t != m.Cur() {
 		return m.selectTab(i)
 	}
 	return nil
 }
 
 func agentAvailable(m *Model, k agents.Kind) bool {
-	for _, a := range agents.Available(m.cfg.Agents) {
+	for _, a := range agents.Available(m.Cfg.Agents) {
 		if a == k {
 			return true
 		}
 	}
 	return false
-}
-
-// resumeHint is the command that carries on c in a terminal.
-func resumeHint(c *agents.Conversation) string {
-	if c.Kind == agents.Codex {
-		return "codex resume " + c.ID
-	}
-	return "claude --resume " + c.ID
-}
-
-// shortDir is dir from the folder nerdr started in, when under it.
-func (m *Model) shortDir(dir string) string {
-	if rel, err := filepath.Rel(m.root, dir); err == nil && !strings.HasPrefix(rel, "..") {
-		if rel == "." {
-			return filepath.Base(dir)
-		}
-		return rel
-	}
-	return dir
 }
 
 func (d *searchDialog) view(m *Model, w, h int) string {
@@ -196,7 +161,7 @@ func (d *searchDialog) view(m *Model, w, h int) string {
 	case d.reading && n == 0:
 		lines = append(lines, dim("  reading the agents' conversations…"))
 	case len(d.words) == 0:
-		lines = append(lines, dim("  "+plural(n, "conversation")+" in these repositories and worktrees; type words to find"))
+		lines = append(lines, dim("  "+core.Plural(n, "conversation")+" in these repositories and worktrees; type words to find"))
 	case len(d.hits) == 0:
 		lines = append(lines, dim("  no conversation has all of these words"))
 	}
@@ -214,8 +179,8 @@ func (d *searchDialog) view(m *Model, w, h int) string {
 	for i := d.top; i < min(len(d.hits), d.top+room); i++ {
 		hit := d.hits[i]
 		c := hit.Conv
-		where := m.shortDir(c.Dir)
-		if t := m.tabOfDir(c.Dir); t != nil {
+		where := m.ShortDir(c.Dir)
+		if t := m.TabOfDir(c.Dir); t != nil {
 			where = t.Name
 		}
 		head := c.Modified.Format("Jan 2 15:04") + "  " + where + dim("  "+string(c.Kind))

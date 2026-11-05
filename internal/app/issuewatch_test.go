@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -16,10 +17,10 @@ import (
 
 // issueLook is a look at the issues assigned to you as fetchMyIssues makes
 // it: entries are those here, others those in repositories not here.
-func issueLook(others []string, entries ...issueEntry) issueWatchMsg {
-	msg := issueWatchMsg{entries: entries, keys: others}
+func issueLook(others []string, entries ...core.IssueEntry) core.IssueWatchMsg {
+	msg := core.IssueWatchMsg{Entries: entries, Keys: others}
 	for _, e := range entries {
-		msg.keys = append(msg.keys, issueKey(e.issue.Repo, e.issue.Number))
+		msg.Keys = append(msg.Keys, core.IssueKey(e.Issue.Repo, e.Issue.Number))
 	}
 	return msg
 }
@@ -32,20 +33,20 @@ func issueLook(others []string, entries ...issueEntry) issueWatchMsg {
 func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.cfg.IssueNotify = &yes
+	m.Cfg.IssueNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	old := issueEntry{repo: app, issue: github.Issue{Number: 3, Title: "Old", Repo: "me/app"}}
-	fresh := issueEntry{repo: app, issue: github.Issue{Number: 9, Title: "Login fails", Repo: "me/app"}}
+	old := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "Old", Repo: "me/app"}}
+	fresh := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "Login fails", Repo: "me/app"}}
 
 	m.onIssueWatch(issueLook([]string{"me/far#1"}, old))
-	if len(m.issueWatch.news) != 0 || m.issueBadge() != "" {
-		t.Fatalf("the first look should only learn: %+v", m.issueWatch.news)
+	if len(m.IssueWatch.News) != 0 || m.issueBadge() != "" {
+		t.Fatalf("the first look should only learn: %+v", m.IssueWatch.News)
 	}
 
-	m.onIssueWatch(issueWatchMsg{err: "could not connect"})
+	m.onIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
 	m.onIssueWatch(issueLook([]string{"me/far#1", "me/far#2"}, old, fresh))
-	if len(m.issueWatch.news) != 1 || m.issueWatch.news[0].Number != 9 {
-		t.Fatalf("news = %+v", m.issueWatch.news)
+	if len(m.IssueWatch.News) != 1 || m.IssueWatch.News[0].Number != 9 {
+		t.Fatalf("news = %+v", m.IssueWatch.News)
 	}
 	if !strings.Contains(m.toastText, "app #9 assigned to you: Login fails") {
 		t.Fatalf("toast = %q", m.toastText)
@@ -55,8 +56,8 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	}
 
 	m2 := tabsModel(t)
-	m2.loadIssueWatch(m.savedIssueWatch())
-	if m2.issueBadge() == "" || !m2.issueWatch.known["me/far#2"] {
+	m2.LoadIssueWatch(m.SavedIssueWatch())
+	if m2.issueBadge() == "" || !m2.IssueWatch.Known["me/far#2"] {
 		t.Fatal("the session should keep the news and what is known")
 	}
 
@@ -73,20 +74,20 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 func TestIssueWatchDropsStaleNews(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.cfg.IssueNotify = &yes
+	m.Cfg.IssueNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	a := issueEntry{repo: app, issue: github.Issue{Number: 3, Title: "A", Repo: "me/app"}}
-	b := issueEntry{repo: app, issue: github.Issue{Number: 9, Title: "B", Repo: "me/app"}}
+	a := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "A", Repo: "me/app"}}
+	b := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "B", Repo: "me/app"}}
 
 	m.onIssueWatch(issueLook(nil))
 	m.onIssueWatch(issueLook(nil, a, b))
-	m.onIssueWatch(issueWatchMsg{err: "could not connect"})
-	if len(m.issueWatch.news) != 2 {
-		t.Fatalf("news = %+v", m.issueWatch.news)
+	m.onIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
+	if len(m.IssueWatch.News) != 2 {
+		t.Fatalf("news = %+v", m.IssueWatch.News)
 	}
 	m.onIssueWatch(issueLook(nil, b))
-	if len(m.issueWatch.news) != 1 || m.issueWatch.news[0].Number != 9 {
-		t.Fatalf("an issue no longer assigned should take its news away: %+v", m.issueWatch.news)
+	if len(m.IssueWatch.News) != 1 || m.IssueWatch.News[0].Number != 9 {
+		t.Fatalf("an issue no longer assigned should take its news away: %+v", m.IssueWatch.News)
 	}
 	m.onIssueWatch(issueLook(nil))
 	if m.issueBadge() != "" {
@@ -99,7 +100,7 @@ func TestIssueWatchDropsStaleNews(t *testing.T) {
 func TestIssueWatchOff(t *testing.T) {
 	m := tabsModel(t)
 	no := false
-	m.cfg.IssueNotify = &no
+	m.Cfg.IssueNotify = &no
 	if m.tickIssues(time.Now()) != nil {
 		t.Fatal("issues should not be asked for when not watched or shown")
 	}
@@ -112,9 +113,9 @@ func TestIssueListFilters(t *testing.T) {
 		Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/a", Branch: "x"}}})
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
-	m.issueWatch.mine = []issueEntry{{repo: app, issue: github.Issue{Number: 1}}, {repo: lib, issue: github.Issue{Number: 2}}}
-	m.issueWatch.all = map[string]repoIssues{
-		"/r/app": {entries: []issueEntry{{repo: app, issue: github.Issue{Number: 1}}, {repo: app, issue: github.Issue{Number: 5}}}, at: time.Now()},
+	m.IssueWatch.Mine = []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: lib, Issue: github.Issue{Number: 2}}}
+	m.IssueWatch.All = map[string]core.RepoIssues{
+		"/r/app": {Entries: []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: app, Issue: github.Issue{Number: 5}}}, At: time.Now()},
 	}
 	d := &issueList{scope: []workspace.Repo{app, lib}}
 	d.fill(m)
@@ -122,11 +123,11 @@ func TestIssueListFilters(t *testing.T) {
 		t.Fatalf("assigned to me, everywhere: %d", len(d.entries))
 	}
 	d.key(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
-	if !d.here || len(d.entries) != 1 || d.entries[0].issue.Number != 1 || !strings.Contains(d.title(), "in a") {
+	if !d.here || len(d.entries) != 1 || d.entries[0].Issue.Number != 1 || !strings.Contains(d.title(), "in a") {
 		t.Fatalf("assigned to me, in the tab: %+v %q", d.entries, d.title())
 	}
 	d.key(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("a")})
-	if len(d.entries) != 2 || d.entries[1].issue.Number != 5 {
+	if len(d.entries) != 2 || d.entries[1].Issue.Number != 5 {
 		t.Fatalf("all open, in the tab: %+v", d.entries)
 	}
 }
@@ -140,19 +141,19 @@ func TestPickingAnIssue(t *testing.T) {
 		state.Tab{ID: "b", Name: "b", Dir: "/w/b", Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/b", Branch: "12-login-fails"}}},
 	)
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	m.goToIssue(issueEntry{repo: app, issue: github.Issue{Number: 12, Title: "Login fails"}})
-	if m.dialog != nil || m.cur().ID != "b" {
-		t.Fatalf("an issue with a tab should go to it: dialog %T, tab %s", m.dialog, m.cur().ID)
+	m.goToIssue(core.IssueEntry{Repo: app, Issue: github.Issue{Number: 12, Title: "Login fails"}})
+	if m.dialog != nil || m.Cur().ID != "b" {
+		t.Fatalf("an issue with a tab should go to it: dialog %T, tab %s", m.dialog, m.Cur().ID)
 	}
 	if m.tabOnIssue("/r/app", 1) != nil {
 		t.Fatal("issue 1 is not issue 12")
 	}
 
-	here := filepath.Join(m.root, "app")
+	here := filepath.Join(m.Root, "app")
 	if out, err := exec.Command("git", "init", "-q", here).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
-	m.goToIssue(issueEntry{repo: workspace.Repo{Name: "app", Path: here}, issue: github.Issue{Number: 40, Title: "Crash on start"}})
+	m.goToIssue(core.IssueEntry{Repo: workspace.Repo{Name: "app", Path: here}, Issue: github.Issue{Number: 40, Title: "Crash on start"}})
 	w, ok := m.dialog.(*wizard)
 	if !ok || w.step != stepBranch {
 		t.Fatalf("should start the new-tab steps at the branch: %#v", m.dialog)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/prompts"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
@@ -34,7 +35,7 @@ type savedView struct {
 // promptEnterMsg presses enter after a saved prompt typed into t's pane;
 // not into another program started in t since.
 type promptEnterMsg struct {
-	t    *tab
+	t    *core.Tab
 	pane *term.Pane
 }
 
@@ -73,7 +74,7 @@ func (m *Model) findPrompt(i int, p prompts.Prompt) int {
 		}
 	}
 	if at < 0 {
-		m.toast(tildePath(prompts.Path(), homeDir()) + " has changed: see the list again, and try once more")
+		m.toast(core.TildePath(prompts.Path(), core.HomeDir()) + " has changed: see the list again, and try once more")
 	}
 	return at
 }
@@ -86,8 +87,8 @@ func (m *Model) savePrompts() {
 }
 
 // usePrompt types saved prompt p into agent a, and gives it the keyboard.
-func (m *Model) usePrompt(a *tab, p prompts.Prompt) tea.Cmd {
-	if a == nil || !m.typeIn(a, p.Text) {
+func (m *Model) usePrompt(a *core.Tab, p prompts.Prompt) tea.Cmd {
+	if a == nil || !m.TypeIn(a, p.Text) {
 		return nil
 	}
 	cmd := tea.Batch(m.goToAgent(a), m.resize())
@@ -96,20 +97,20 @@ func (m *Model) usePrompt(a *tab, p prompts.Prompt) tea.Cmd {
 		return cmd
 	}
 	// As in the queue, the agent takes the paste in as text before enter.
-	pane := a.pane
-	return tea.Batch(cmd, tea.Tick(enterAfter, func(time.Time) tea.Msg { return promptEnterMsg{t: a, pane: pane} }))
+	pane := a.Pane
+	return tea.Batch(cmd, tea.Tick(core.EnterAfter, func(time.Time) tea.Msg { return promptEnterMsg{t: a, pane: pane} }))
 }
 
 // promptEnter presses enter after a saved prompt, if the agent it was
 // typed into still runs in t: restarted or switched, the program there
 // now never had it.
-func (m *Model) promptEnter(t *tab, pane *term.Pane) {
-	if !m.live(t) || t.pane == nil || t.pane != pane {
+func (m *Model) promptEnter(t *core.Tab, pane *term.Pane) {
+	if !m.Live(t) || t.Pane == nil || t.Pane != pane {
 		return
 	}
-	t.pane.Input([]byte("\r"))
-	if t.typed != nil {
-		t.typed.feed([]byte("\r"))
+	t.Pane.Input([]byte("\r"))
+	if t.Typed != nil {
+		t.Typed.Feed([]byte("\r"))
 	}
 }
 
@@ -120,7 +121,7 @@ type promptPicker struct {
 	cursor int
 	// agent is who the prompt picked is typed into: the agent with the
 	// keyboard when the list was opened.
-	agent *tab
+	agent *core.Tab
 }
 
 func (m *Model) openPromptPicker() tea.Cmd {
@@ -129,7 +130,7 @@ func (m *Model) openPromptPicker() tea.Cmd {
 	in.Prompt = "prompt: "
 	in.Placeholder = "type to filter…"
 	in.Focus()
-	m.dialog = &promptPicker{input: in, agent: m.curAgent()}
+	m.dialog = &promptPicker{input: in, agent: m.CurAgent()}
 	return nil
 }
 
@@ -197,7 +198,7 @@ func (d *promptPicker) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // use types saved prompt i into the picker's agent.
 func (d *promptPicker) use(m *Model, i int) tea.Cmd {
 	m.dialog = nil
-	if d.agent == nil || !m.live(d.agent) {
+	if d.agent == nil || !m.Live(d.agent) {
 		m.toast("no agent to type it into")
 		return nil
 	}
@@ -215,7 +216,7 @@ func (d *promptPicker) view(m *Model, w, h int) string {
 	sel := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 	lines := []string{d.input.View(), ""}
 	if t := d.agent; t != nil {
-		lines = []string{"For " + t.owner().Name + " (" + m.agentLabel(t.owner(), t) + ").", "", d.input.View(), ""}
+		lines = []string{"For " + t.Owner().Name + " (" + m.AgentLabel(t.Owner(), t) + ").", "", d.input.View(), ""}
 	}
 	hits := d.matches(m)
 	switch {
@@ -316,7 +317,7 @@ func (d *promptDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			at = -1
 		}
 		if at < 0 {
-			d.err = "not saved: " + tildePath(prompts.Path(), homeDir()) + " does not read, or has changed"
+			d.err = "not saved: " + core.TildePath(prompts.Path(), core.HomeDir()) + " does not read, or has changed"
 			return nil
 		}
 		if at < len(m.saved.list) {
@@ -337,15 +338,15 @@ func (d *promptDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 
 func (d *promptDialog) view(m *Model, w, h int) string {
 	lines := []string{d.text.input.View(), "",
-		m.onClick(checkbox(d.enter)+" press enter after it, to send it", func(*Model) tea.Cmd {
+		m.onClick(core.Checkbox(d.enter)+" press enter after it, to send it", func(*Model) tea.Cmd {
 			d.enter = !d.enter
 			return nil
 		})}
 	if !d.enter {
 		lines = append(lines, dim("    else it is put in for you to change or send"))
 	}
-	lines = append(lines, "", dim("Kept in "+tildePath(prompts.Path(), homeDir())+", for every repository."), "",
-		m.keys("enter", "save", "", newLineHint, "tab", "enter on/off", "esc", "cancel"))
+	lines = append(lines, "", dim("Kept in "+core.TildePath(prompts.Path(), core.HomeDir())+", for every repository."), "",
+		m.keys("enter", "save", "", core.NewLineHint, "tab", "enter on/off", "esc", "cancel"))
 	if d.err != "" {
 		lines = append(lines, "", warn(d.err))
 	}
@@ -398,7 +399,7 @@ func (m *Model) savedKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "enter":
 		if has {
-			return m.usePrompt(m.curAgent(), s.list[i])
+			return m.usePrompt(m.CurAgent(), s.list[i])
 		}
 	case "e":
 		if has {
@@ -424,7 +425,7 @@ func (m *Model) savedKey(msg tea.KeyMsg) tea.Cmd {
 // prompts, with the keyboard.
 func backToSaved(m *Model) tea.Cmd {
 	m.loadPrompts()
-	m.setFocus(focusReview)
+	m.setFocus(core.FocusReview)
 	return nil
 }
 
@@ -447,7 +448,7 @@ func (m *Model) f3Views() string {
 		}
 		return m.onClick(label, func(m *Model) tea.Cmd {
 			m.showSaved(on)
-			m.setFocus(focusReview)
+			m.setFocus(core.FocusReview)
 			return nil
 		})
 	}
@@ -468,19 +469,19 @@ func (m *Model) savedBody(w, h int) []string {
 	}
 	s.cursor = min(max(s.cursor, 0), max(len(s.list)-1, 0))
 	foot := []string{"",
-		" " + dim("⏎ sent with enter   ✎ put in for you to send · "+tildePath(prompts.Path(), homeDir())),
+		" " + dim("⏎ sent with enter   ✎ put in for you to send · "+core.TildePath(prompts.Path(), core.HomeDir())),
 		" " + m.msgKeys("enter", "use", " ", "enter on/off", "n", "new", "e", "edit", "y", "copy", "d", "delete", "J/K", "move", "esc", "agent"),
 	}
 	room := max(h-len(foot), 1)
 	cursorAt, cursorRows := 0, 0
 	for i, p := range s.list {
-		rows := wrapRows(p.Text, textW, messageRows)
+		rows := wrapRows(p.Text, textW, core.MessageRows)
 		if i == s.cursor {
 			cursorAt = len(lines)
 			rows = wrapLines(p.Text, textW, room)
 			cursorRows = len(rows)
 		}
-		on := i == s.cursor && m.focus == focusReview
+		on := i == s.cursor && m.focus == core.FocusReview
 		mark := "  "
 		if on {
 			mark = sel.Render("❯ ")
@@ -495,7 +496,7 @@ func (m *Model) savedBody(w, h int) []string {
 			}
 			text := m.onClick(r, func(m *Model) tea.Cmd {
 				m.saved.cursor = i
-				m.setFocus(focusReview)
+				m.setFocus(core.FocusReview)
 				return nil
 			})
 			if j == 0 {

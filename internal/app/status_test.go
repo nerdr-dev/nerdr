@@ -4,13 +4,14 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // statusFrom sends `nerdr status` from agent a, and returns nerdr's answer.
-func statusFrom(m *Model, a *tab, text string, clear bool) hooks.Answer {
+func statusFrom(m *Model, a *core.Tab, text string, clear bool) hooks.Answer {
 	reply := make(chan hooks.Answer, 1)
-	m.onStatus(hooks.Report{Method: hooks.Status, Pane: a.hookKey(), Text: text, Clear: clear, Reply: reply})
+	m.OnStatus(hooks.Report{Method: hooks.Status, Pane: a.HookKey(), Text: text, Clear: clear, Reply: reply})
 	return <-reply
 }
 
@@ -18,7 +19,7 @@ func statusFrom(m *Model, a *tab, text string, clear bool) hooks.Answer {
 // asked, and cleared.
 func TestAgentSetsTheTabsStatus(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	statusFrom(m, tb, "found the cause; writing the fix", false)
 	if tb.Status != "found the cause; writing the fix" {
 		t.Fatalf("status %q", tb.Status)
@@ -28,12 +29,12 @@ func TestAgentSetsTheTabsStatus(t *testing.T) {
 	}
 	var shown bool
 	for _, r := range m.taskRows(tb, 100, 30) {
-		shown = shown || r.label == "status:" && strings.Contains(r.text, "found the cause")
+		shown = shown || r.Label == "status:" && strings.Contains(r.Text, "found the cause")
 	}
 	if !shown {
 		t.Error("not shown above the agent")
 	}
-	if j := m.tabsJSON(tb); j[0].Status != tb.Status {
+	if j := m.TabsJSON(tb); j[0].Status != tb.Status {
 		t.Errorf("nerdr tabs has %q", j[0].Status)
 	}
 	statusFrom(m, tb, "", true)

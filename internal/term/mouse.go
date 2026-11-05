@@ -41,17 +41,17 @@ var mouseModes = []ansi.DECMode{
 
 // setMouseMode records a mouse mode being turned on or off; it reports
 // whether m was one.
-func (p *Pane) setMouseMode(m ansi.Mode, on bool) bool {
+func (s *Screen) setMouseMode(m ansi.Mode, on bool) bool {
 	if m == ansi.ModeMouseExtSgr {
-		p.mouseSgr = on
+		s.mouseSgr = on
 		return true
 	}
 	for _, mm := range mouseModes {
 		if m == mm {
-			if p.mouseOn == nil {
-				p.mouseOn = map[ansi.DECMode]bool{}
+			if s.mouseOn == nil {
+				s.mouseOn = map[ansi.DECMode]bool{}
 			}
-			p.mouseOn[mm] = on
+			s.mouseOn[mm] = on
 			return true
 		}
 	}
@@ -60,10 +60,10 @@ func (p *Pane) setMouseMode(m ansi.Mode, on bool) bool {
 
 // mouseLevel is the most the program has asked to be told: an index into
 // mouseModes, or -1 when it has not asked for the mouse at all.
-func (p *Pane) mouseLevel() int {
+func (s *Screen) mouseLevel() int {
 	lvl := -1
 	for i, mm := range mouseModes {
-		if p.mouseOn[mm] {
+		if s.mouseOn[mm] {
 			lvl = i
 		}
 	}
@@ -71,19 +71,19 @@ func (p *Pane) mouseLevel() int {
 }
 
 // WantsMouse reports whether the program has turned mouse reporting on.
-func (p *Pane) WantsMouse() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return !p.exited && p.mouseLevel() >= 0
+func (s *Screen) WantsMouse() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.exited && s.mouseLevel() >= 0
 }
 
 // WantsAllMotion reports whether the program wants to hear about the
 // mouse moving with no button held, which nerdr only reports while
 // someone does.
-func (p *Pane) WantsAllMotion() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return !p.exited && p.mouseLevel() == 3
+func (s *Screen) WantsAllMotion() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return !s.exited && s.mouseLevel() == 3
 }
 
 // SendMouse passes a mouse event to the program, if it asked for events of
@@ -161,11 +161,11 @@ func (s Selection) contains(line, col int) bool {
 
 // PointAt is the cell at (x, y) on the pane as it is drawn scroll lines
 // back into the scrollback.
-func (p *Pane) PointAt(x, y, scroll int) Point {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	sb := p.emu.ScrollbackLen()
-	if p.emu.IsAltScreen() {
+func (s *Screen) PointAt(x, y, scroll int) Point {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sb := s.emu.ScrollbackLen()
+	if s.emu.IsAltScreen() {
 		sb, scroll = 0, 0
 	}
 	scroll = min(max(scroll, 0), sb)
@@ -173,39 +173,39 @@ func (p *Pane) PointAt(x, y, scroll int) Point {
 }
 
 // Select shows sel highlighted, or nothing when it is nil.
-func (p *Pane) Select(sel *Selection) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	p.sel = nil
+func (s *Screen) Select(sel *Selection) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.sel = nil
 	if sel != nil {
-		s := *sel // changed only through Select, so Render knows of it
-		p.sel = &s
+		c := *sel // changed only through Select, so Render knows of it
+		s.sel = &c
 	}
-	p.dirty = true
+	s.dirty = true
 }
 
 // SelectedText is the text of the selection, trailing blanks trimmed from
 // each line.
-func (p *Pane) SelectedText() string {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.sel == nil {
+func (s *Screen) SelectedText() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.sel == nil {
 		return ""
 	}
-	a, b := p.sel.ordered()
-	w := p.emu.Width()
-	sb := p.emu.ScrollbackLen()
-	if p.emu.IsAltScreen() {
+	a, b := s.sel.ordered()
+	w := s.emu.Width()
+	sb := s.emu.ScrollbackLen()
+	if s.emu.IsAltScreen() {
 		sb = 0
 	}
 	var lines []string
 	for line := a.Line; line <= b.Line; line++ {
 		var sbuf strings.Builder
 		for x := 0; x < w; x++ {
-			if !p.sel.contains(line, x) {
+			if !s.sel.contains(line, x) {
 				continue
 			}
-			c := p.cellAt(x, line, sb)
+			c := s.cellAt(x, line, sb)
 			if c == nil || c.Content == "" {
 				if c == nil || c.Width != 0 {
 					sbuf.WriteByte(' ')
@@ -221,8 +221,8 @@ func (p *Pane) SelectedText() string {
 
 // AltScreen reports whether the program is on the alternate screen, which
 // has no scrollback.
-func (p *Pane) AltScreen() bool {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.emu.IsAltScreen()
+func (s *Screen) AltScreen() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.emu.IsAltScreen()
 }

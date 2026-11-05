@@ -55,7 +55,7 @@ func TestSettingsDialog(t *testing.T) {
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, "--model claude-opus-5-5")
 	m.dialog.key(m, keyMsg("enter"))
-	l := agents.NewSession(m.cfg.Agents, agents.Claude)
+	l := agents.NewSession(m.Cfg.Agents, agents.Claude)
 	if !strings.Contains(strings.Join(l.Argv, " "), "claude --model claude-opus-5-5 --session-id") {
 		t.Fatalf("claude starts as %q (%s)", l.Argv, d.err)
 	}
@@ -70,7 +70,7 @@ func TestSettingsDialog(t *testing.T) {
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, "anthropic/claude-opus-5-5")
 	m.dialog.key(m, keyMsg("enter"))
-	if got := m.cfg.Agents[agents.OpenCode].ConfigModel; got != "anthropic/claude-opus-5-5" {
+	if got := m.Cfg.Agents[agents.OpenCode].ConfigModel; got != "anthropic/claude-opus-5-5" {
 		t.Fatalf("config_model %q", got)
 	}
 
@@ -79,7 +79,7 @@ func TestSettingsDialog(t *testing.T) {
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, `A=1 B="two words"`)
 	m.dialog.key(m, keyMsg("enter"))
-	if env := m.cfg.Agents[agents.Claude].Env; env["A"] != "1" || env["B"] != "two words" {
+	if env := m.Cfg.Agents[agents.Claude].Env; env["A"] != "1" || env["B"] != "two words" {
 		t.Fatalf("env %v (%s)", env, d.err)
 	}
 	if d.text(d.rows[d.cursor]) != `A=1 "B=two words"` {
@@ -89,12 +89,12 @@ func TestSettingsDialog(t *testing.T) {
 	// a choice, and back to the default.
 	pickSetting(t, d, "", "notify")
 	m.dialog.key(m, keyMsg("enter"))
-	if m.cfg.Notify != "off" {
-		t.Fatalf("notify %q", m.cfg.Notify)
+	if m.Cfg.Notify != "off" {
+		t.Fatalf("notify %q", m.Cfg.Notify)
 	}
 	m.dialog.key(m, keyMsg("d"))
-	if m.cfg.Notify != "all" {
-		t.Fatalf("notify by default %q", m.cfg.Notify)
+	if m.Cfg.Notify != "all" {
+		t.Fatalf("notify by default %q", m.Cfg.Notify)
 	}
 
 	// a number out of range is refused.
@@ -114,8 +114,8 @@ func TestSettingsDialog(t *testing.T) {
 	}
 	typeText(m, "ctrl+a")
 	m.dialog.key(m, keyMsg("enter"))
-	if m.cfg.Prefix != "ctrl+q" {
-		t.Fatalf("prefix now %q", m.cfg.Prefix)
+	if m.Cfg.Prefix != "ctrl+q" {
+		t.Fatalf("prefix now %q", m.Cfg.Prefix)
 	}
 
 	data, _ := os.ReadFile(config.Path())
@@ -203,8 +203,8 @@ func TestConfigFileEditedByHand(t *testing.T) {
 
 	write("prefix = \"ctrl+b\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\nnotify = \"done\"\n", now.Add(time.Second))
 	m.configCheck()
-	if m.cfg.Notify != "done" || m.cfg.Prefix != "ctrl+q" {
-		t.Fatalf("notify %q, prefix %q", m.cfg.Notify, m.cfg.Prefix)
+	if m.Cfg.Notify != "done" || m.Cfg.Prefix != "ctrl+q" {
+		t.Fatalf("notify %q, prefix %q", m.Cfg.Notify, m.Cfg.Prefix)
 	}
 	if m.toastText != "prefix changed: restart nerdr to use it" {
 		t.Fatalf("toast = %q", m.toastText)
@@ -212,14 +212,14 @@ func TestConfigFileEditedByHand(t *testing.T) {
 	m.toastText = ""
 	write("prefix = \"ctrl+b\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\nnotify = \"off\"\n", now.Add(2*time.Second))
 	m.configCheck()
-	if m.cfg.Notify != "off" || m.toastText != "" {
-		t.Fatalf("notify %q, toast %q", m.cfg.Notify, m.toastText)
+	if m.Cfg.Notify != "off" || m.toastText != "" {
+		t.Fatalf("notify %q, toast %q", m.Cfg.Notify, m.toastText)
 	}
 	// fps is only read at start: it keeps its value, and says so.
-	before := m.cfg.FPS
+	before := m.Cfg.FPS
 	write("prefix = \"ctrl+b\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\nnotify = \"off\"\nfps = 30\n", now.Add(3*time.Second))
 	m.configCheck()
-	if m.cfg.FPS != before || m.toastText != "fps changed: restart nerdr to use it" {
-		t.Fatalf("fps %d, toast %q", m.cfg.FPS, m.toastText)
+	if m.Cfg.FPS != before || m.toastText != "fps changed: restart nerdr to use it" {
+		t.Fatalf("fps %d, toast %q", m.Cfg.FPS, m.toastText)
 	}
 }

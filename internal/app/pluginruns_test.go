@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
@@ -18,9 +19,9 @@ import (
 
 // askRun asks nerdr to run plugin name for tb's agent with vals, as
 // nerdr plugin run does; the answer comes on the channel.
-func askRun(m *Model, tb *tab, name string, vals map[string]any) chan hooks.Answer {
+func askRun(m *Model, tb *core.Tab, name string, vals map[string]any) chan hooks.Answer {
 	reply := make(chan hooks.Answer, 1)
-	m.Update(hooks.Report{Method: hooks.Plugin, Pane: tb.hookKey(), Reply: reply, What: hooks.PluginRun,
+	m.Update(hooks.Report{Method: hooks.Plugin, Pane: tb.HookKey(), Reply: reply, What: hooks.PluginRun,
 		Name: name, Values: vals, Dir: tb.Dir})
 	return reply
 }
@@ -36,25 +37,25 @@ func answered(c chan hooks.Answer) string {
 }
 
 // started is the run nerdr started, as its answer on c says.
-func started(t *testing.T, m *Model, c chan hooks.Answer) *pluginRun {
+func started(t *testing.T, m *Model, c chan hooks.Answer) *core.PluginRun {
 	t.Helper()
 	a := answered(c)
 	id, ok := strings.CutPrefix(a, "started ")
-	if !ok || m.runByID(id) == nil {
+	if !ok || m.RunByID(id) == nil {
 		t.Fatalf("nerdr did not start the run: %q", a)
 	}
-	return m.runByID(id)
+	return m.RunByID(id)
 }
 
 // readRun reads what run printed until it ends, as nerdr plugin run does,
 // and its exit status.
-func readRun(t *testing.T, m *Model, tb *tab, run *pluginRun) (string, int) {
+func readRun(t *testing.T, m *Model, tb *core.Tab, run *core.PluginRun) (string, int) {
 	t.Helper()
 	var out strings.Builder
 	offset := 0
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); {
 		reply := make(chan hooks.Answer, 1)
-		m.Update(hooks.Report{Method: hooks.Plugin, Pane: tb.hookKey(), Reply: reply, What: hooks.PluginRead, Run: run.id, Offset: offset})
+		m.Update(hooks.Report{Method: hooks.Plugin, Pane: tb.HookKey(), Reply: reply, What: hooks.PluginRead, Run: run.Id, Offset: offset})
 		var got hooks.RunOutput
 		select {
 		case a := <-reply:
@@ -75,13 +76,13 @@ func readRun(t *testing.T, m *Model, tb *tab, run *pluginRun) (string, int) {
 }
 
 // pumped pumps the runs until run has ended.
-func pumped(t *testing.T, m *Model, run *pluginRun) {
+func pumped(t *testing.T, m *Model, run *core.PluginRun) {
 	t.Helper()
-	for deadline := time.Now().Add(10 * time.Second); run.running(); time.Sleep(10 * time.Millisecond) {
+	for deadline := time.Now().Add(10 * time.Second); run.Running(); time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatal("the run did not end")
 		}
-		m.pumpRuns(time.Now())
+		m.PumpRuns(time.Now())
 	}
 }
 
@@ -100,7 +101,7 @@ func allowedPlugin(t *testing.T, cfg, name, toml string) plugin.Plugin {
 	if err != nil || p.Err != "" {
 		t.Fatal(err, p.Err)
 	}
-	if err := plugin.Allow(pluginsAllowedFile(), p, key); err != nil {
+	if err := plugin.Allow(core.PluginsAllowedFile(), p, key); err != nil {
 		t.Fatal(err)
 	}
 	return p
@@ -114,7 +115,7 @@ func TestPluginRunShown(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	// As pwd prints it: on macOS the temporary folder is behind a symlink.
 	dir, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -133,7 +134,7 @@ func TestPluginRunShown(t *testing.T) {
 		"[[params]]\nname = \"repos\"\ntype = \"multi\"\n")
 
 	run := started(t, m, askRun(m, tb, "deploy", map[string]any{"repos": []any{"api", "web"}}))
-	if !m.panelPlugins() || m.focus == focusReview {
+	if !m.panelPlugins() || m.focus == core.FocusReview {
 		t.Fatalf("a run should open F5 and leave the keyboard where it was: plugins %v, focus %v", m.panelPlugins(), m.focus)
 	}
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "runs · ") {
@@ -162,7 +163,7 @@ func TestPluginRunShown(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(p.Dir, "run.sh"), []byte("changed"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if a := answered(askRun(m, tb, "deploy", nil)); a != runNotAllowed {
+	if a := answered(askRun(m, tb, "deploy", nil)); a != core.RunNotAllowed {
 		t.Fatalf("a plugin changed since it was allowed was answered %q", a)
 	}
 }
@@ -174,14 +175,14 @@ func TestPluginRunTellsTheScreen(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	p := allowedPlugin(t, cfg, "board", "description = \"Shows.\"\nrun = [\"sh\", \"-c\", \"sleep 0.3; echo done-it\"]\nui = [\"sh\", \"-c\", "+
 		"\"tail -f \\\"$NERDR_PLUGIN_EVENTS\\\" | grep --line-buffered -o 'event...[a-z]*\\\\|clean..true\\\\|done-it\\\\|exit..0'\"]\nshow = [\"ui\"]\n"+
 		"[[params]]\nname = \"clean\"\ntype = \"bool\"\n")
 	run := started(t, m, askRun(m, tb, "board", map[string]any{"clean": true}))
-	if !m.pluginUIOf(tb, p).running() {
+	if !m.pluginUIOf(tb, p).Running() {
 		t.Fatal("the plugin's screen was not started for the run")
 	}
 	if m.pluginUIPane() != nil {
@@ -198,7 +199,7 @@ func TestPluginRunTellsTheScreen(t *testing.T) {
 			t.Fatalf("the screen was not told of the run:\n%s", view)
 		}
 	}
-	events := m.pluginUIOf(tb, p).events.Name()
+	events := m.pluginUIOf(tb, p).Events.Name()
 	m.stopPluginUI(tb, p)
 	if _, err := os.Stat(events); !os.IsNotExist(err) {
 		t.Fatal("the events file outlives its screen")
@@ -228,7 +229,7 @@ func TestPluginRunOpenOff(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	p := allowedPlugin(t, cfg, "quiet", "description = \"Quiet.\"\nrun = [\"true\"]\nopen = false\n")
@@ -236,7 +237,7 @@ func TestPluginRunOpenOff(t *testing.T) {
 	if m.panelPlugins() {
 		t.Fatal("F5 opened for a plugin whose open is false")
 	}
-	if m.pluginRunOf(tb, p) == nil {
+	if m.PluginRunOf(tb, p) == nil {
 		t.Fatal("the run was not kept, for its light")
 	}
 }
@@ -247,7 +248,7 @@ func TestPluginRunConfirmed(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "free", "description = \"Free.\"\nrun = [\"true\"]\n[[params]]\nname = \"target\"\n")
@@ -268,12 +269,12 @@ func TestPluginRunConfirmed(t *testing.T) {
 	if a := answered(askRun(m, tb, "free", vals)); !strings.HasPrefix(a, "started ") {
 		t.Fatalf("a run not to be asked about, while another is, was answered %q", a)
 	}
-	m.cfg.ConfirmPluginRuns = true
-	if a := answered(askRun(m, tb, "free", vals)); a != runBusy {
+	m.Cfg.ConfirmPluginRuns = true
+	if a := answered(askRun(m, tb, "free", vals)); a != core.RunBusy {
 		t.Fatalf("a second question was answered %q", a)
 	}
 	m.Update(keyMsg("n"))
-	if a := answered(c); a != runDeclined {
+	if a := answered(c); a != core.RunDeclined {
 		t.Fatalf("no was answered %q", a)
 	}
 	c = askRun(m, tb, "free", vals)
@@ -284,7 +285,7 @@ func TestPluginRunConfirmed(t *testing.T) {
 	c = askRun(m, tb, "free", vals)
 	m.plugins.asking.until = time.Now().Add(-time.Second)
 	m.checkPluginUIs()
-	if a := answered(c); a != runUnanswered || m.dialog != nil {
+	if a := answered(c); a != core.RunUnanswered || m.dialog != nil {
 		t.Fatalf("a question not answered in time was answered %q, dialog %T", a, m.dialog)
 	}
 }
@@ -297,35 +298,35 @@ func TestPluginWatch(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "logwatch", "description = \"Watches the log.\"\nwatch = true\n"+
 		"run = [\"sh\", \"-c\", \"echo ERROR one; sleep 0.2; echo ERROR two; exec sleep 30\"]\n")
 	allowedPlugin(t, cfg, "slow", "description = \"Slow.\"\nrun = [\"sleep\", \"30\"]\n")
-	tb.status = stWorking // what it is told waits
+	tb.Light = core.StWorking // what it is told waits
 
 	run := started(t, m, askRun(m, tb, "logwatch", nil))
 	for deadline := time.Now().Add(5 * time.Second); len(tb.Messages) == 0 || !strings.Contains(tb.Messages[0].Text, "ERROR two"); time.Sleep(20 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Fatalf("what it printed did not come to the agent: %+v", tb.Messages)
 		}
-		m.pumpRuns(time.Now())
+		m.PumpRuns(time.Now())
 	}
 	if n := len(tb.Messages); n != 1 || !strings.Contains(tb.Messages[0].Text, "ERROR one\nERROR two") ||
 		!strings.Contains(tb.Messages[0].Text, "nerdr plugin stop logwatch") || !tb.Messages[0].Auto {
 		t.Fatalf("what it printed should wait for the agent in one message: %+v", tb.Messages)
 	}
-	if !m.watching(tb) {
+	if !m.Watching(tb) {
 		t.Fatal("the agent should be watching: it would be put to sleep")
 	}
 	// The command that started it has long returned: it goes on.
-	m.pumpRuns(time.Now().Add(time.Hour))
-	if !run.running() || run.stopBy != "" {
+	m.PumpRuns(time.Now().Add(time.Hour))
+	if !run.Running() || run.StopBy != "" {
 		t.Fatal("a watch stopped for want of a command reading it")
 	}
 	reply := make(chan hooks.Answer, 1)
-	m.Update(hooks.Report{Method: hooks.Plugin, Pane: tb.hookKey(), Reply: reply, What: hooks.PluginStop, Name: "logwatch"})
+	m.Update(hooks.Report{Method: hooks.Plugin, Pane: tb.HookKey(), Reply: reply, What: hooks.PluginStop, Name: "logwatch"})
 	if a := answered(reply); !strings.Contains(a, "Stopping logwatch") {
 		t.Fatalf("stop answered %q", a)
 	}
@@ -337,7 +338,7 @@ func TestPluginWatch(t *testing.T) {
 	// The user stops the next with s in F5; the agent is told.
 	tb.Messages = nil
 	run = started(t, m, askRun(m, tb, "logwatch", nil))
-	m.focus = focusReview
+	m.focus = core.FocusReview
 	m.pluginList(tb)
 	for i, q := range m.plugins.list {
 		if q.Name == "logwatch" {
@@ -357,10 +358,10 @@ func TestPluginWatch(t *testing.T) {
 
 	// A run its command no longer reads is stopped.
 	slow := started(t, m, askRun(m, tb, "slow", nil))
-	m.pumpRuns(time.Now().Add(time.Minute))
+	m.PumpRuns(time.Now().Add(time.Minute))
 	pumped(t, m, slow)
-	if !strings.Contains(slow.stopBy, "command") {
-		t.Fatalf("a run left unread was not stopped: %q", slow.stopBy)
+	if !strings.Contains(slow.StopBy, "command") {
+		t.Fatalf("a run left unread was not stopped: %q", slow.StopBy)
 	}
 }
 
@@ -370,7 +371,7 @@ func TestPluginOverlappingRunResults(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	p := allowedPlugin(t, cfg, "overlap", "description = \"Test.\"\nrun = [\"sh\", \"-c\", \"echo result-$NERDR_PARAM_NAME; exit 3\"]\nopen = false\n[[params]]\nname = \"name\"\n")
@@ -378,41 +379,41 @@ func TestPluginOverlappingRunResults(t *testing.T) {
 	second := started(t, m, askRun(m, tb, p.Name, map[string]any{"name": "second"}))
 	pumped(t, m, first)
 	pumped(t, m, second)
-	if got := m.pluginRunOf(tb, p); got != second {
+	if got := m.PluginRunOf(tb, p); got != second {
 		t.Fatal("F5 should show the latest run")
 	}
-	if m.runByID(first.id) != first {
+	if m.RunByID(first.Id) != first {
 		t.Fatal("older run disappeared before its result was read")
 	}
 	// Knowing its ID must not let another agent read the output.
 	reply := make(chan hooks.Answer, 1)
-	m.onReadRun(hooks.Report{Run: first.id, Reply: reply}, &tab{})
+	m.OnReadRun(hooks.Report{Run: first.Id, Reply: reply}, &core.Tab{})
 	if a := <-reply; a.Err == "" {
 		t.Fatal("another agent could read the result")
 	}
-	for _, r := range []*pluginRun{first, second} {
+	for _, r := range []*core.PluginRun{first, second} {
 		out, exit := readRun(t, m, tb, r)
-		if out != "result-"+r.values["name"].(string)+"\n" || exit != 3 {
+		if out != "result-"+r.Values["name"].(string)+"\n" || exit != 3 {
 			t.Fatalf("wrong result: %q, exit %d", out, exit)
 		}
 	}
 	// A repeated pump must not end the same run again.
-	ended := first.ended
-	m.pumpRuns(time.Now())
-	if !first.ended.Equal(ended) {
+	ended := first.Ended
+	m.PumpRuns(time.Now())
+	if !first.Ended.Equal(ended) {
 		t.Fatal("completed run was ended twice")
 	}
-	future := time.Now().Add(2 * keepRunResult)
-	first.readAt = future
-	m.pumpRuns(future)
-	if m.runByID(first.id) != first {
+	future := time.Now().Add(2 * core.KeepRunResult)
+	first.ReadAt = future
+	m.PumpRuns(future)
+	if m.RunByID(first.Id) != first {
 		t.Fatal("a result being read was expired")
 	}
-	m.pumpRuns(future.Add(keepRunResult + time.Second))
-	if len(m.plugins.finished) != 0 || m.runByID(first.id) != nil {
+	m.PumpRuns(future.Add(core.KeepRunResult + time.Second))
+	if len(m.PluginRuns.Finished) != 0 || m.RunByID(first.Id) != nil {
 		t.Fatal("abandoned results were not expired")
 	}
-	if m.pluginRunOf(tb, p) != second {
+	if m.PluginRunOf(tb, p) != second {
 		t.Fatal("expiry removed the latest F5 result")
 	}
 }
@@ -424,7 +425,7 @@ func TestPluginRunUsesThePluginsScript(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
@@ -446,7 +447,7 @@ func TestPluginRunUsesThePluginsScript(t *testing.T) {
 	if err != nil || p.Err != "" {
 		t.Fatal(err, p.Err)
 	}
-	if err := plugin.Allow(pluginsAllowedFile(), p, key); err != nil {
+	if err := plugin.Allow(core.PluginsAllowedFile(), p, key); err != nil {
 		t.Fatal(err)
 	}
 
@@ -460,24 +461,24 @@ func TestPluginRunUsesThePluginsScript(t *testing.T) {
 // A line, or the line not ended yet, is bounded: a progress bar or a
 // very long line must not grow the run's memory or its drawing for ever.
 func TestPluginRunOutputIsCapped(t *testing.T) {
-	r := &pluginRun{}
-	r.add("a" + strings.Repeat("x", 4*maxPartial) + "\n")
-	if len(r.out) != 1 || len(r.out[0]) > maxRunLine+4 {
-		t.Fatalf("a long line was kept as %d bytes", len(r.out[0]))
+	r := &core.PluginRun{}
+	r.Add("a" + strings.Repeat("x", 4*core.MaxPartial) + "\n")
+	if len(r.Out) != 1 || len(r.Out[0]) > core.MaxRunLine+4 {
+		t.Fatalf("a long line was kept as %d bytes", len(r.Out[0]))
 	}
-	r.add("b" + strings.Repeat("y", 4*maxPartial))
-	if len(r.partial) > maxPartial+4 {
-		t.Fatalf("the line not ended was kept as %d bytes", len(r.partial))
+	r.Add("b" + strings.Repeat("y", 4*core.MaxPartial))
+	if len(r.Partial) > core.MaxPartial+4 {
+		t.Fatalf("the line not ended was kept as %d bytes", len(r.Partial))
 	}
-	progress := &pluginRun{}
+	progress := &core.PluginRun{}
 	for i := 0; i < 5; i++ {
-		progress.add("\r" + strings.Repeat("z", 4*maxPartial))
+		progress.Add("\r" + strings.Repeat("z", 4*core.MaxPartial))
 	}
-	if len(progress.partial) > maxPartial+4 {
-		t.Fatalf("a progress bar grew to %d bytes", len(progress.partial))
+	if len(progress.Partial) > core.MaxPartial+4 {
+		t.Fatalf("a progress bar grew to %d bytes", len(progress.Partial))
 	}
-	for _, l := range progress.lines() {
-		if len(l) > maxRunLine+4 {
+	for _, l := range progress.Lines() {
+		if len(l) > core.MaxRunLine+4 {
 			t.Fatalf("a drawn line is %d bytes", len(l))
 		}
 	}
@@ -488,25 +489,25 @@ func TestPluginRunOutputIsCapped(t *testing.T) {
 func TestPluginRunLimit(t *testing.T) {
 	m := testModel(t)
 	defer m.Shutdown()
-	a := m.cur()
-	m.plugins.byID = map[string]*pluginRun{}
-	for i := 0; i < maxPluginRunsPerAgent; i++ {
+	a := m.Cur()
+	m.PluginRuns.ByID = map[string]*core.PluginRun{}
+	for i := 0; i < core.MaxPluginRunsPerAgent; i++ {
 		id := fmt.Sprintf("%016x", i)
-		m.plugins.byID[id] = &pluginRun{id: id, t: a, from: a}
+		m.PluginRuns.ByID[id] = &core.PluginRun{Id: id, T: a, From: a}
 	}
-	if why := m.runLimit(a); why == "" || !strings.Contains(why, "you already have") {
+	if why := m.RunLimit(a); why == "" || !strings.Contains(why, "you already have") {
 		t.Fatalf("an agent's limit was not reached: %q", why)
 	}
-	m.plugins.byID = map[string]*pluginRun{}
+	m.PluginRuns.ByID = map[string]*core.PluginRun{}
 
-	for i := 0; i < maxPluginRuns; i++ {
+	for i := 0; i < core.MaxPluginRuns; i++ {
 		id := fmt.Sprintf("%016x", i)
-		m.plugins.byID[id] = &pluginRun{id: id, t: a, from: &tab{}}
+		m.PluginRuns.ByID[id] = &core.PluginRun{Id: id, T: a, From: &core.Tab{}}
 	}
-	if why := m.runLimit(a); why == "" || !strings.Contains(why, "nerdr already runs") {
+	if why := m.RunLimit(a); why == "" || !strings.Contains(why, "nerdr already runs") {
 		t.Fatalf("nerdr's limit was not reached: %q", why)
 	}
-	m.plugins.byID = nil
+	m.PluginRuns.ByID = nil
 }
 
 // A watch that prints only blank lines does not send its agent a message.
@@ -514,19 +515,19 @@ func TestPluginWatchSkipsBlankLines(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "blank", "description = \"Blank.\"\nwatch = true\n"+
 		"run = [\"sh\", \"-c\", \"printf '\\\\n\\\\n'; sleep 30\"]\n")
 	run := started(t, m, askRun(m, tb, "blank", nil))
 	time.Sleep(100 * time.Millisecond)
-	m.pumpRuns(time.Now())
+	m.PumpRuns(time.Now())
 	if len(tb.Messages) != 0 {
 		t.Fatalf("blank output became messages: %+v", tb.Messages)
 	}
-	run.stopBy = "you"
-	run.proc.stop()
+	run.StopBy = "you"
+	run.Proc.Stop()
 	pumped(t, m, run)
 }
 
@@ -537,9 +538,9 @@ func TestPluginRunQuestionSaysTheSandbox(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
-	tb.sandboxed = true
+	tb.InSandbox = true
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "careful", "description = \"Careful.\"\nrun = [\"true\"]\n")
 	askRun(m, tb, "careful", nil)

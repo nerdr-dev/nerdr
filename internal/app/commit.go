@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -19,7 +20,7 @@ import (
 
 // commitDialog asks for the message, above the files it commits.
 type commitDialog struct {
-	t     *tab
+	t     *core.Tab
 	wts   []workspace.Worktree
 	input textarea.Model
 	// files are each worktree's changes, by its path, as git status lists
@@ -56,8 +57,8 @@ const commitFilesShown = 12
 
 // openCommit opens the dialog for committing t's changes, and looks them
 // up.
-func (m *Model) openCommit(t *tab) tea.Cmd {
-	m.markSandboxed(t)
+func (m *Model) openCommit(t *core.Tab) tea.Cmd {
+	m.MarkSandboxed(t)
 	in := newTextArea("what the change does", min(max(m.width-16, 30), 80))
 	in.SetHeight(4)
 	d := &commitDialog{t: t, wts: append([]workspace.Worktree(nil), t.Worktrees...), input: in}
@@ -129,8 +130,8 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 		}
 		t := d.t
-		m.markSandboxed(t)
-		hooks := !t.hasSandboxed()
+		m.MarkSandboxed(t)
+		hooks := !t.HasSandboxed()
 		p := m.curBranchPanel()
 		if p == nil || p.t != t {
 			p = &tabPanel{t: t}
@@ -160,7 +161,7 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
-func commitAll(t *tab, wts []workspace.Worktree, message string, hooks bool) prActionMsg {
+func commitAll(t *core.Tab, wts []workspace.Worktree, message string, hooks bool) prActionMsg {
 	var errs, done []string
 	skipped := false
 	for _, w := range wts {
@@ -196,7 +197,7 @@ func (d *commitDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "There is nothing to commit.")
 	default:
 		lines = append(lines, "Commits every change, new files too:")
-		if d.t.hasSandboxed() && d.worktreeHooks {
+		if d.t.HasSandboxed() && d.worktreeHooks {
 			lines = append(lines, dim("Worktree git hooks (core.hooksPath) will not run: an agent in this tab ran in a sandbox."))
 		}
 		for _, wt := range d.wts {
@@ -209,7 +210,7 @@ func (d *commitDialog) view(m *Model, w, h int) string {
 			}
 			for i, f := range fs {
 				if i == commitFilesShown {
-					lines = append(lines, dim("  … and "+plural(len(fs)-i, "more file")))
+					lines = append(lines, dim("  … and "+core.Plural(len(fs)-i, "more file")))
 					break
 				}
 				lines = append(lines, "  "+dim(f[:min(2, len(f))])+" "+f[min(3, len(f)):])
@@ -231,7 +232,7 @@ func (d *commitDialog) view(m *Model, w, h int) string {
 		}))
 	}
 	lines = append(lines, strings.Join(choices, "  "), "",
-		m.keys("enter", strings.ToLower(commitThen[d.then].label[:1])+commitThen[d.then].label[1:], "tab", "choose", "", newLineHint, "esc", "cancel"))
+		m.keys("enter", strings.ToLower(commitThen[d.then].label[:1])+commitThen[d.then].label[1:], "tab", "choose", "", core.NewLineHint, "esc", "cancel"))
 	if d.err != "" {
 		lines = append(lines, "", warn(d.err))
 	}

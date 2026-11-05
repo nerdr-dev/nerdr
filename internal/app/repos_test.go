@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -18,7 +19,7 @@ import (
 // anything is done.
 func TestReposDialog(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.Update(keyMsg("ctrl+q"))
 	m.Update(keyMsg("i"))
 	m.Update(keyMsg("r"))
@@ -63,7 +64,7 @@ func TestReposDialog(t *testing.T) {
 // uncommitted changes: y does not do it, Y does.
 func TestReposDirtyAsksAgain(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	d := &repoDialog{t: tb, picked: map[string]bool{}, change: &repoChange{remove: tb.Worktrees, dirty: []string{"login"}}}
 	m.dialog = d
 	if v := ansi.Strip(m.View()); !strings.Contains(v, "will be lost") || !strings.Contains(v, "Y go ahead anyway") {
@@ -79,28 +80,28 @@ func TestReposDirtyAsksAgain(t *testing.T) {
 // back: its group follows, and its agent is told each time.
 func TestReposChanged(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	app := workspace.Worktree{Repo: "/r/app", Path: "/w/login/app", Branch: "login"}
 	lib := workspace.Worktree{Repo: "/r/lib", Path: "/w/login/lib", Branch: "login"}
 
 	m.Update(reposChangedMsg{t: tb, wts: []workspace.Worktree{app, lib}, added: []workspace.Worktree{lib}, nested: &app})
-	if tb.group() != multiGroup || len(tb.Worktrees) != 2 {
-		t.Fatalf("group %q, worktrees %+v", tb.group(), tb.Worktrees)
+	if tb.GroupName() != core.MultiGroup || len(tb.Worktrees) != 2 {
+		t.Fatalf("group %q, worktrees %+v", tb.GroupName(), tb.Worktrees)
 	}
-	if n := len(m.groupTabs("app")); n != 1 {
+	if n := len(m.GroupTabs("app")); n != 1 {
 		t.Fatalf("app has %d tabs", n)
 	}
 	if len(tb.Messages) != 1 || !strings.Contains(tb.Messages[0].Text, "Added lib") ||
 		!strings.Contains(tb.Messages[0].Text, "moved to /w/login/app") {
 		t.Fatalf("messages = %+v", tb.Messages)
 	}
-	if !tb.info.stale {
+	if !tb.Info.Stale {
 		t.Fatal("the branches are not looked at again")
 	}
 
 	m.Update(reposChangedMsg{t: tb, wts: []workspace.Worktree{app}, removed: []workspace.Worktree{lib}})
-	if tb.group() != "app" || tb.Group != "" || tb.Dir != "/w/login" {
-		t.Fatalf("group %q (%q), dir %s", tb.group(), tb.Group, tb.Dir)
+	if tb.GroupName() != "app" || tb.Group != "" || tb.Dir != "/w/login" {
+		t.Fatalf("group %q (%q), dir %s", tb.GroupName(), tb.Group, tb.Dir)
 	}
 	if len(tb.Messages) != 2 || !strings.Contains(tb.Messages[1].Text, "Removed lib") {
 		t.Fatalf("messages = %+v", tb.Messages)
@@ -127,7 +128,7 @@ func gitRepo(t *testing.T, root, name string) workspace.Repo {
 // where nesting it put it.
 func TestReposReplaceTheOnlyOne(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	root := t.TempDir()
 	a, b := gitRepo(t, root, "a"), gitRepo(t, root, "b")
 	plan, err := workspace.MakePlan(filepath.Join(root, "worktrees"), "feat", []workspace.Repo{a})
@@ -144,7 +145,7 @@ func TestReposReplaceTheOnlyOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	cmd := m.changeRepos(tb, &repoChange{nest: true, add: add, remove: wts})
-	if !tb.reposBusy {
+	if !tb.ReposBusy {
 		t.Fatal("the tab is not held while its repositories change")
 	}
 	msg := cmd().(reposChangedMsg)
@@ -167,13 +168,13 @@ func TestReposReplaceTheOnlyOne(t *testing.T) {
 // both are told, and both have the worktrees as they are now.
 func TestReposTellEveryAgent(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	other := &tab{Tab: state.Tab{ID: "x", Name: tb.Name, Dir: tb.Dir, Agent: "codex", Worktrees: tb.Worktrees, Num: 2}, partOf: tb}
-	tb.paneList = append(tb.panes(), &paneTab{kind: paneAgent, a: other})
+	tb := m.Cur()
+	other := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "x", Name: tb.Name, Dir: tb.Dir, Agent: "codex", Worktrees: tb.Worktrees, Num: 2}}, PartOf: tb}
+	tb.PaneList = append(tb.Panes(), &core.PaneTab{Kind: core.PaneAgent, A: other})
 	lib := workspace.Worktree{Repo: "/r/lib", Path: "/w/login/lib", Branch: "login"}
 	wts := []workspace.Worktree{tb.Worktrees[0], lib}
 	m.Update(reposChangedMsg{t: tb, wts: wts, added: []workspace.Worktree{lib}})
-	for _, a := range []*tab{tb, other} {
+	for _, a := range []*core.Tab{tb, other} {
 		if len(a.Messages) != 1 || !strings.Contains(a.Messages[0].Text, "Added lib") || len(a.Worktrees) != 2 {
 			t.Fatalf("agent %d: messages %+v, worktrees %+v", a.Num, a.Messages, a.Worktrees)
 		}
@@ -184,7 +185,7 @@ func TestReposTellEveryAgent(t *testing.T) {
 // runs: refused, as is closing the tab, until the first is done.
 func TestReposOneChangeAtATime(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	if m.changeRepos(tb, &repoChange{remove: tb.Worktrees}) == nil {
 		t.Fatal("the change did not start")
 	}
@@ -198,11 +199,11 @@ func TestReposOneChangeAtATime(t *testing.T) {
 		t.Fatalf("the dialog opened while the change ran: %T", m.dialog)
 	}
 	m.closeTab(tb, true, false, nil)
-	if m.tabIndex(tb) < 0 {
+	if m.TabIndex(tb) < 0 {
 		t.Fatal("the tab closed while its repositories changed")
 	}
 	m.Update(reposChangedMsg{t: tb, wts: tb.Worktrees})
-	if tb.reposBusy {
+	if tb.ReposBusy {
 		t.Fatal("still held once the change was done")
 	}
 	m.Update(keyMsg("ctrl+q"))

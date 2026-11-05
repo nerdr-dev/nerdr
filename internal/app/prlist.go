@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/review"
@@ -76,7 +77,7 @@ const prListLimit = 50
 // again when that is old or there is none.
 func (m *Model) showPRs() tea.Cmd {
 	m.applyPRs()
-	if time.Since(m.prWatch.at) < m.githubEvery(prWatchEvery) {
+	if time.Since(m.prWatch.at) < m.GithubEvery(core.PrWatchEvery) {
 		return nil
 	}
 	return m.refreshPRs()
@@ -118,7 +119,7 @@ func (d *prList) apply(entries []prEntry, errs []string) {
 
 // pointAt has the cursor go to t's pull request, now or once the list
 // has it.
-func (d *prList) pointAt(t *tab) {
+func (d *prList) pointAt(t *core.Tab) {
 	d.want = nil
 	if t == nil {
 		return
@@ -189,8 +190,8 @@ func (d *prTitleDialog) view(m *Model, w, h int) string {
 func (m *Model) goToPR(e prEntry) tea.Cmd {
 	if t := m.tabOnBranch(e.repo.Path, e.branch()); t != nil {
 		m.dialog = nil
-		m.setFocus(focusAgent)
-		return tea.Batch(m.selectTab(m.tabIndex(t)), m.resize())
+		m.setFocus(core.FocusAgent)
+		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
 	}
 	e.wt = checkedOut(e)
 	if e.wt != "" {
@@ -206,14 +207,14 @@ func (m *Model) goToPR(e prEntry) tea.Cmd {
 	}
 	lines := []string{
 		"No worktree has " + e.branch() + " checked out.",
-		"Make one in " + m.wtRoot + ", and a tab for it?",
+		"Make one in " + m.WtRoot + ", and a tab for it?",
 	}
 	if e.pr.Fork != "" {
 		// Its branch is not on origin: a branch of its name made here
 		// would start from main, and not be the pull request at all.
 		lines = []string{
 			"#" + fmt.Sprint(e.pr.Number) + " is from " + e.pr.Fork + "'s fork, not a branch on origin.",
-			"Fetch it as " + e.branch() + ", and make a worktree in " + m.wtRoot + " and a tab for it?",
+			"Fetch it as " + e.branch() + ", and make a worktree in " + m.WtRoot + " and a tab for it?",
 			"nerdr will not push it: the branch is in the fork.",
 		}
 	}
@@ -290,8 +291,8 @@ func checkedOut(e prEntry) string {
 }
 
 // tabOnBranch is the tab with a worktree of repo on branch, or nil.
-func (m *Model) tabOnBranch(repo, branch string) *tab {
-	for _, t := range m.tabs {
+func (m *Model) tabOnBranch(repo, branch string) *core.Tab {
+	for _, t := range m.Tabs {
 		for _, w := range t.Worktrees {
 			if filepath.Clean(w.Repo) == filepath.Clean(repo) && w.Branch == branch {
 				return t
@@ -306,11 +307,11 @@ func (m *Model) tabOnBranch(repo, branch string) *tab {
 // spans several, or the worktree alone when nerdr did not make it.
 func (m *Model) worktreeGroup(e prEntry) workspace.Group {
 	open := map[string]bool{}
-	for _, t := range m.tabs {
+	for _, t := range m.Tabs {
 		open[t.Dir] = true
 	}
-	repos, _ := workspace.ScanAll(m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs)
-	for _, g := range workspace.Existing(m.wtRoot, repos, open) {
+	repos, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
+	for _, g := range workspace.Existing(m.WtRoot, repos, open) {
 		for _, w := range g.Worktrees {
 			if filepath.Clean(w.Path) == filepath.Clean(e.wt) {
 				return g
@@ -394,7 +395,7 @@ func (d *prList) table(m *Model, inner, rows int) []string {
 			}
 		}
 		title := term.PrintableLine(e.pr.Title)
-		if news := d.news[prKey(e.repo.Path, e.pr.Number)]; len(news) > 0 {
+		if news := d.news[core.PrKey(e.repo.Path, e.pr.Number)]; len(news) > 0 {
 			// Before the title, so a long one is what gets cut. An approval
 			// is the review column's ✓, with who in its tip.
 			var said []string

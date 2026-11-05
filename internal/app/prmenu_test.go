@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -28,7 +29,7 @@ func TestPullRequestNeedsCommits(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tb := &tab{Tab: state.Tab{Name: "feat"}}
+	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Name: "feat"}}}
 	wts := []workspace.Worktree{{Repo: dir, Path: dir, Branch: "feat"}}
 	msg := createPRs(tb, wts, nil, true)
 	if !strings.Contains(msg.err, "no commits ahead of main") ||

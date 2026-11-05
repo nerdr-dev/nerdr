@@ -15,9 +15,9 @@ import (
 
 // noAgents makes every agent nerdr knows missing from the PATH.
 func noAgents(m *Model) {
-	m.cfg.Agents = map[agents.Kind]agents.Spec{}
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{}
 	for _, k := range agents.All {
-		m.cfg.Agents[k] = agents.Spec{Command: []string{"nerdr-test-no-such-agent"}}
+		m.Cfg.Agents[k] = agents.Spec{Command: []string{"nerdr-test-no-such-agent"}}
 	}
 }
 
@@ -50,7 +50,7 @@ func TestWizardMakesARepository(t *testing.T) {
 	if w.step != stepRepos || w.err != "" {
 		t.Fatalf("step %d err %q", w.step, w.err)
 	}
-	p := filepath.Join(m.root, "fresh")
+	p := filepath.Join(m.Root, "fresh")
 	if picked := w.pickedRepos(); len(picked) != 1 || picked[0].Path != p {
 		t.Fatalf("picked %+v, want %s", picked, p)
 	}
@@ -73,7 +73,7 @@ func TestWizardMakesARepository(t *testing.T) {
 func TestWizardWithoutAgents(t *testing.T) {
 	m := tabsModel(t)
 	noAgents(m)
-	if err := exec.Command("git", "init", "-q", filepath.Join(m.root, "app")).Run(); err != nil {
+	if err := exec.Command("git", "init", "-q", filepath.Join(m.Root, "app")).Run(); err != nil {
 		t.Fatal(err)
 	}
 	m.openWizard()

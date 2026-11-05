@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,7 +21,7 @@ func (m *Model) panelIssues() bool { return m.reviewOpen && m.review.Issues() }
 // what is known, asking GitHub when that is old; issues newly assigned
 // are seen there.
 func (m *Model) syncIssuePanel() tea.Cmd {
-	m.review.SetIssueNews(len(m.issueWatch.news) > 0)
+	m.review.SetIssueNews(len(m.IssueWatch.News) > 0)
 	shown := m.panelIssues()
 	entered := shown && !m.issuePanelShown
 	m.issuePanelShown = shown
@@ -34,11 +35,11 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	if entered {
 		d.news = nil
 	}
-	if len(m.issueWatch.news) > 0 {
+	if len(m.IssueWatch.News) > 0 {
 		if d.news == nil {
 			d.news = map[string]bool{}
 		}
-		for k := range m.takeIssueNews() {
+		for k := range m.TakeIssueNews() {
 			d.news[k] = true
 		}
 		m.review.SetIssueNews(false)
@@ -48,7 +49,7 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	}
 	d.setScope(m)
 	d.fill(m)
-	if time.Since(m.issueWatch.at) < m.githubEvery(issueAllEvery) {
+	if time.Since(m.IssueWatch.At) < m.GithubEvery(core.IssueAllEvery) {
 		return m.refreshAllIssues(false)
 	}
 	return tea.Batch(m.refreshIssues(), m.refreshAllIssues(false))
@@ -60,7 +61,7 @@ func (m *Model) showIssues() tea.Cmd {
 	m.dialog = nil
 	m.reviewOpen = true
 	cmd := m.review.ShowPRView(review.ViewIssues)
-	m.setFocus(focusReview)
+	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())
 }
 
@@ -69,7 +70,7 @@ func (m *Model) issuesKey(msg tea.KeyMsg) tea.Cmd {
 	d := m.issuePanel
 	switch msg.String() {
 	case "esc", "q":
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return m.resize()
 	case "tab":
 		return m.review.NextPRView(1)
@@ -111,7 +112,7 @@ func (m *Model) issuesBody(w, h int) []string {
 		hereKey = "all repos"
 	}
 	pairs := []string{"↑↓", "pick", "enter", "start or go to tab", "a", allKey}
-	if m.cur() != nil {
+	if m.Cur() != nil {
 		pairs = append(pairs, "t", hereKey)
 	}
 	pairs = append(pairs, "o", "browser", "r", "reload", "tab", "next", "esc", "agent")

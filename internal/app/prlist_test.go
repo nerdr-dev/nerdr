@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -36,8 +37,8 @@ func TestPickingAPRGoesWhereItsBranchIs(t *testing.T) {
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
 
 	m.goToPR(prEntry{repo: repo, pr: github.PR{Number: 3, Branch: "fix/login"}, wt: "/w/b"})
-	if m.dialog != nil || m.cur().ID != "b" {
-		t.Fatalf("a PR with a tab should go to it: dialog %T, tab %s", m.dialog, m.cur().ID)
+	if m.dialog != nil || m.Cur().ID != "b" {
+		t.Fatalf("a PR with a tab should go to it: dialog %T, tab %s", m.dialog, m.Cur().ID)
 	}
 
 	m.goToPR(prEntry{repo: repo, pr: github.PR{Number: 4, Branch: "feat/x"}, wt: "/elsewhere/x"})
@@ -111,14 +112,14 @@ func TestAgentRequestOpensAMessageForTheTab(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected the message dialog, got %T", m.dialog)
 	}
-	if m.cur().ID != "b" || !d.picked["b"] || d.input.Value() != "About `x` in a.go:3: why?" {
-		t.Fatalf("tab %s picked %v text %q", m.cur().ID, d.picked, d.input.Value())
+	if m.Cur().ID != "b" || !d.picked["b"] || d.input.Value() != "About `x` in a.go:3: why?" {
+		t.Fatalf("tab %s picked %v text %q", m.Cur().ID, d.picked, d.input.Value())
 	}
-	if len(m.tabs[1].Messages) != 0 {
+	if len(m.Tabs[1].Messages) != 0 {
 		t.Fatal("nothing may be queued before the user sends it")
 	}
 	d.key(m, keyMsg("enter"))
-	if q := m.tabs[1].Messages; len(q) != 1 || !q[0].Auto || !strings.Contains(q[0].Text, "why?") {
+	if q := m.Tabs[1].Messages; len(q) != 1 || !q[0].Auto || !strings.Contains(q[0].Text, "why?") {
 		t.Fatalf("enter should queue it for the tab: %v", q)
 	}
 }
@@ -163,10 +164,10 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 	f2 := m.review.Screen()
 
 	// Opened as addTab does: active first, then selected.
-	c := &tab{Tab: state.Tab{ID: "c", Name: "c", Dir: "/w/c"}}
-	m.tabs = append(m.tabs, c)
-	m.active = len(m.tabs) - 1
-	m.selectTab(m.active)
+	c := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "c", Name: "c", Dir: "/w/c"}}}
+	m.Tabs = append(m.Tabs, c)
+	m.Active = len(m.Tabs) - 1
+	m.selectTab(m.Active)
 	if m.review.Screen() != (review.Screen{}) {
 		t.Fatalf("a new tab should start on F1, got %+v", m.review.Screen())
 	}
@@ -174,8 +175,8 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 
 	// Closing c lands on b, which was never given a screen.
 	m.closeTab(c, false, false, nil)
-	if m.cur().Name != "b" || m.review.Screen() != (review.Screen{}) {
-		t.Fatalf("b should be on F1 after c closed, got %s on %+v", m.cur().Name, m.review.Screen())
+	if m.Cur().Name != "b" || m.review.Screen() != (review.Screen{}) {
+		t.Fatalf("b should be on F1 after c closed, got %s on %+v", m.Cur().Name, m.review.Screen())
 	}
 	m.selectTab(0)
 	if m.review.Screen() != f2 {
@@ -204,7 +205,7 @@ func TestPRListPointsAtTheTabsPR(t *testing.T) {
 		{repo: repo, pr: github.PR{Number: 3, Branch: "more"}},
 	}
 	d := &prList{}
-	d.pointAt(m.cur())
+	d.pointAt(m.Cur())
 	d.apply(entries, nil)
 	if d.cursor != 1 {
 		t.Fatalf("the cursor should be on the tab's PR once the list comes, is on %d", d.cursor)
@@ -214,8 +215,40 @@ func TestPRListPointsAtTheTabsPR(t *testing.T) {
 	if d.cursor != 2 {
 		t.Fatalf("a refresh should leave the cursor where it was moved, is on %d", d.cursor)
 	}
-	d.pointAt(m.cur())
+	d.pointAt(m.Cur())
 	if d.cursor != 1 {
 		t.Fatalf("coming back should point at the tab's PR again, is on %d", d.cursor)
+	}
+}
+
+// TestClosedTabLeavesNothingBehind: what the TUI keeps per tab goes with the
+// tab, active or not, and moving the panel off it does not put it back.
+func TestClosedTabLeavesNothingBehind(t *testing.T) {
+	m := testModel(t)
+	for range 2 {
+		for i := range m.Tabs {
+			m.Active = i
+			m.pinReview()
+		}
+	}
+	active, other := m.Tabs[len(m.Tabs)-1], m.Tabs[0]
+	m.paneBars = map[*core.Tab]*barRow{active: {}, other: {}}
+	_, hasActive := m.panelScreens[active]
+	_, hasOther := m.panelScreens[other]
+	if !hasActive || !hasOther {
+		t.Fatal("no screens kept to begin with")
+	}
+	for _, closed := range []*core.Tab{active, other} {
+		m.closeTab(closed, false, false, nil)
+		m.pinReview()
+		if _, ok := m.panelScreens[closed]; ok {
+			t.Errorf("%s: its screen is kept", closed.Name)
+		}
+		if _, ok := m.paneBars[closed]; ok {
+			t.Errorf("%s: its row is kept", closed.Name)
+		}
+		if m.screenTab == closed {
+			t.Errorf("%s: the panel is still on it", closed.Name)
+		}
 	}
 }

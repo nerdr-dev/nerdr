@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -19,10 +20,10 @@ import (
 
 func TestSpinoffEscSkipsTheRest(t *testing.T) {
 	m := testModel(t)
-	for _, x := range m.tabs {
-		x.status = stExited // as detect finds a tab with no agent running
+	for _, x := range m.Tabs {
+		x.Light = core.StExited // as detect finds a tab with no agent running
 	}
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{
 		{Branch: "fix-a", Summary: "A.", Prompt: "Do A."},
 		{Branch: "fix-b", Summary: "B.", Prompt: "Do B."},
@@ -49,32 +50,32 @@ func TestSpinoffEscSkipsTheRest(t *testing.T) {
 // still starting for one whose prompt was lost.
 func TestSpinoffReportWaitsForTheNewAgents(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	nt := &tab{}
+	tb := m.Cur()
+	nt := &core.Tab{}
 	nt.ID, nt.Name = "new-a", "fix-a"
-	m.tabs = append(m.tabs, nt)
+	m.Tabs = append(m.Tabs, nt)
 	tb.SpinoffReport = []spinoff.Outcome{
 		{Part: spinoff.Part{Branch: "fix-a"}, Branch: "fix-a", Dir: "/w/a", Tab: nt.ID},
 		{Part: spinoff.Part{Branch: "fix-b"}, Skipped: true},
 	}
 	now := time.Now()
 
-	m.reportWhenBegun(tb, now)
+	m.ReportWhenBegun(tb, now)
 	if len(tb.Messages) != 0 || len(tb.SpinoffReport) != 2 {
 		t.Fatalf("told before fix-a's agent started: %+v", tb.Messages)
 	}
-	nt.begun = true
-	m.reportWhenBegun(tb, now.Add(time.Second))
+	nt.Begun = true
+	m.ReportWhenBegun(tb, now.Add(time.Second))
 	if len(tb.Messages) != 1 || !strings.Contains(tb.Messages[0].Text, "has started on it") || tb.SpinoffReport != nil {
 		t.Fatalf("not told once it started: %+v", tb.Messages)
 	}
 
 	tb.Messages = nil
-	nt.begun = false
+	nt.Begun = false
 	tb.SpinoffReport = []spinoff.Outcome{{Part: spinoff.Part{Branch: "fix-a"}, Branch: "fix-a", Tab: nt.ID}}
-	tb.spinoffSince = time.Time{}
-	m.reportWhenBegun(tb, now)
-	m.reportWhenBegun(tb, now.Add(spinoffStartWait))
+	tb.SpinoffSince = time.Time{}
+	m.ReportWhenBegun(tb, now)
+	m.ReportWhenBegun(tb, now.Add(core.SpinoffStartWait))
 	if len(tb.Messages) != 1 || !strings.Contains(tb.Messages[0].Text, "not been seen starting") {
 		t.Fatalf("not told once waited long enough: %+v", tb.Messages)
 	}
@@ -93,13 +94,13 @@ func TestSpinoffPromptStartsCopilot(t *testing.T) {
 	if err := os.WriteFile(fake, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m.cfg.Agents = map[agents.Kind]agents.Spec{
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{
 		agents.Copilot: {Command: []string{fake}},
 		agents.Claude:  {Command: []string{"cat"}},
 	}
 
-	nt, _ := m.addTabBeside("fix-a", dir, "", nil, agents.Copilot, "Do A.")
-	defer nt.pane.Close()
+	nt, _ := m.AddTabBeside("fix-a", dir, "", nil, agents.Copilot, "Do A.")
+	defer nt.Pane.Close()
 	if len(nt.Messages) != 0 || nt.Goal != "Do A." {
 		t.Fatalf("the prompt is still queued: %+v, goal %q", nt.Messages, nt.Goal)
 	}
@@ -115,8 +116,8 @@ func TestSpinoffPromptStartsCopilot(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 
-	ct, _ := m.addTabBeside("fix-b", dir, "", nil, agents.Claude, "Do B.")
-	defer ct.pane.Close()
+	ct, _ := m.AddTabBeside("fix-b", dir, "", nil, agents.Claude, "Do B.")
+	defer ct.Pane.Close()
 	if len(ct.Messages) != 1 || ct.Messages[0].Text != "Do B." || !ct.Messages[0].Auto {
 		t.Fatalf("claude's prompt is to be typed in: %+v", ct.Messages)
 	}
@@ -146,7 +147,7 @@ func TestSpinoffPicksTheRepositories(t *testing.T) {
 
 	m := testModel(t)
 	fakeAgent(m, agents.Claude) // CI has no agent on the PATH
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Worktrees = wts
 	ticked := func(pt spinoff.Part) []bool {
 		tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{pt}}
@@ -209,9 +210,9 @@ func TestSpinoffInAnotherRepository(t *testing.T) {
 		}
 	}
 	m := testModel(t)
-	m.root = root
+	m.Root = root
 	fakeAgent(m, agents.Claude)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Worktrees = []workspace.Worktree{{Repo: filepath.Join(root, "api"), Path: "/w/fix", Branch: "fix"}}
 	open := func(pt spinoff.Part) *spinoffDialog {
 		tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{pt}}
@@ -246,7 +247,7 @@ func TestSpinoffInAnotherRepository(t *testing.T) {
 	}
 
 	part.Sandboxed = true
-	m.cfg.Agents[agents.Claude] = agents.Spec{Command: []string{"cat"}, Sandboxed: true}
+	m.Cfg.Agents[agents.Claude] = agents.Spec{Command: []string{"cat"}, Sandboxed: true}
 	d = open(part)
 	if v := ansi.Strip(d.view(m, 120, 50)); len(d.repos) != 1 || !strings.Contains(v, "named docs: ctrl+r to tick it yourself") {
 		t.Fatalf("from a sandbox, the tab's alone, and a word on it with no list:\n%s", v)
@@ -289,15 +290,15 @@ func TestSpinoffPicksInTheTabsRepositoriesAlone(t *testing.T) {
 	git(fork, "switch", "-q", "main")
 
 	m := testModel(t)
-	m.wtRoot = filepath.Join(root, "worktrees")
-	tb := m.cur()
+	m.WtRoot = filepath.Join(root, "worktrees")
+	tb := m.Cur()
 	pt := spinoff.Part{Branch: "split", Summary: "A.", Prompt: "Do A.", Commits: []string{c}}
 	repos := []workspace.Repo{{Name: "api", Path: api}, {Name: "fork", Path: fork}}
-	res := m.spinoffCreate(tb, pt, agents.Claude, "split", true, false, "", repos, map[string]bool{api: true})().(spinoffMsg)
-	if res.err != nil || len(res.wts) != 2 || res.outcome.PickFailed != "" {
+	res := m.SpinoffCreate(tb, pt, agents.Claude, "split", true, false, "", repos, map[string]bool{api: true})().(core.SpinoffMsg)
+	if res.Err != nil || len(res.Wts) != 2 || res.Outcome.PickFailed != "" {
 		t.Fatalf("made: %+v", res)
 	}
-	for _, w := range res.wts {
+	for _, w := range res.Wts {
 		_, err := os.Stat(filepath.Join(w.Path, "a.txt"))
 		if mine := w.Repo == api; mine != (err == nil) {
 			t.Errorf("%s: picked %v, want %v", w.Repo, err == nil, mine)
@@ -309,7 +310,7 @@ func TestSpinoffPicksInTheTabsRepositoriesAlone(t *testing.T) {
 // parts: the rest are left out, and the agent is told.
 func TestSpinoffPartsWaitingAreBounded(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	parts := func() []spinoff.Part {
 		var out []spinoff.Part
 		for i := range 15 {
@@ -319,7 +320,7 @@ func TestSpinoffPartsWaitingAreBounded(t *testing.T) {
 	}
 	m.dialog = &closeTab{t: tb} // the dialog waits; the parts are kept
 	for range 2 {
-		m.onSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.hookKey(), Spinoff: parts()})
+		m.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.HookKey(), Spinoff: parts()})
 	}
 	if n := len(tb.Spinoff.Next); n != spinoff.MaxParts {
 		t.Fatalf("%d parts wait, want %d", n, spinoff.MaxParts)

@@ -2,6 +2,7 @@ package app
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // The split: two tabs side by side, the active one, which has the
@@ -14,11 +15,11 @@ import (
 // splitTab is the tab beside the active one, or nil when there is none.
 // Only tabs of one repository share the screen: going to a tab of another
 // ends the split.
-func (m *Model) splitTab() *tab {
-	if m.split == nil || m.split == m.cur() || m.split.group() != m.curGroup() {
+func (m *Model) splitTab() *core.Tab {
+	if m.split == nil || m.split == m.Cur() || m.split.GroupName() != m.CurGroup() {
 		return nil
 	}
-	if m.tabIndex(m.split) < 0 {
+	if m.TabIndex(m.split) < 0 {
 		return nil
 	}
 	return m.split
@@ -31,14 +32,14 @@ func (m *Model) splitShown() bool {
 
 // sides are the tabs on the left and the right while the split is shown;
 // otherwise the active tab and nil.
-func (m *Model) sides() (left, right *tab) {
+func (m *Model) sides() (left, right *core.Tab) {
 	if !m.splitShown() {
-		return m.cur(), nil
+		return m.Cur(), nil
 	}
 	if m.splitLeft {
-		return m.split, m.cur()
+		return m.split, m.Cur()
 	}
-	return m.cur(), m.split
+	return m.Cur(), m.split
 }
 
 // splitWidths are the columns of the left and the right tab, either side
@@ -50,7 +51,7 @@ func (m *Model) splitWidths() (int, int) {
 
 // tabSize is the area agent t draws in: its pane, less the panel above
 // it.
-func (m *Model) tabSize(t *tab) (int, int) {
+func (m *Model) tabSize(t *core.Tab) (int, int) {
 	return m.paneSize(t)
 }
 
@@ -70,14 +71,14 @@ func (m *Model) toggleSplit() tea.Cmd {
 	if s := m.splitTab(); s != nil {
 		if !m.splitShown() {
 			m.reviewOpen, m.reviewZoom = false, false
-			m.setFocus(focusAgent)
+			m.setFocus(core.FocusAgent)
 			return m.resize()
 		}
 		m.split = nil
 		m.saveSession()
 		return m.resize()
 	}
-	t := m.cur()
+	t := m.Cur()
 	other := m.neighbour(t)
 	if other == nil {
 		m.toast(m.commandOff("z v"))
@@ -87,13 +88,13 @@ func (m *Model) toggleSplit() tea.Cmd {
 }
 
 // splitWith shows left and right side by side, the keyboard on the left.
-func (m *Model) splitWith(left, right *tab) tea.Cmd {
+func (m *Model) splitWith(left, right *core.Tab) tea.Cmd {
 	m.split, m.splitLeft = right, false
 	m.reviewOpen, m.reviewZoom = false, false
-	m.setFocus(focusAgent)
-	cmd := m.selectTab(m.tabIndex(left))
+	m.setFocus(core.FocusAgent)
+	cmd := m.selectTab(m.TabIndex(left))
 	m.saveSession()
-	return tea.Batch(cmd, m.wakeTab(right), m.resize())
+	return tea.Batch(cmd, fromCore(m.WakeTab(right)), m.resize())
 }
 
 // swapSides moves the two tabs of the split to each other's side.
@@ -108,20 +109,20 @@ func (m *Model) swapSides() tea.Cmd {
 
 // neighbour is the tab to put beside t: the one before it in its group,
 // or after; nil when t is alone in its repository.
-func (m *Model) neighbour(t *tab) *tab {
+func (m *Model) neighbour(t *core.Tab) *core.Tab {
 	if t == nil {
 		return nil
 	}
-	idx := m.groupTabs(t.group())
+	idx := m.GroupTabs(t.GroupName())
 	for pos, i := range idx {
-		if m.tabs[i] != t {
+		if m.Tabs[i] != t {
 			continue
 		}
 		if pos > 0 {
-			return m.tabs[idx[pos-1]]
+			return m.Tabs[idx[pos-1]]
 		}
 		if pos+1 < len(idx) {
-			return m.tabs[idx[pos+1]]
+			return m.Tabs[idx[pos+1]]
 		}
 	}
 	return nil

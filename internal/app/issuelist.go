@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,7 +28,7 @@ type issueList struct {
 	tabName string
 
 	loading bool
-	entries []issueEntry
+	entries []core.IssueEntry
 	errs    []string
 	cursor  int
 	// news is the issues newly assigned to you since you last looked, by
@@ -38,7 +39,7 @@ type issueList struct {
 // setScope finds the repositories the list is of.
 func (d *issueList) setScope(m *Model) {
 	d.scope, d.tabName = nil, ""
-	if t := m.cur(); d.here && t != nil {
+	if t := m.Cur(); d.here && t != nil {
 		d.tabName = t.Name
 		for _, w := range t.Worktrees {
 			d.scope = append(d.scope, workspace.Repo{Name: filepath.Base(w.Repo), Path: w.Repo})
@@ -46,7 +47,7 @@ func (d *issueList) setScope(m *Model) {
 		return
 	}
 	d.here = false
-	repos, err := workspace.ScanAll(m.root, m.cfg.WorktreesDir, m.cfg.RepoDirs)
+	repos, err := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
 	if err != nil {
 		d.errs = []string{err.Error()}
 	}
@@ -59,38 +60,38 @@ func (d *issueList) fill(m *Model) {
 	var cur string
 	if d.cursor < len(d.entries) {
 		e := d.entries[d.cursor]
-		cur = issueKey(e.repo.Path, e.issue.Number)
+		cur = core.IssueKey(e.Repo.Path, e.Issue.Number)
 	}
-	w := &m.issueWatch
+	w := &m.IssueWatch
 	in := map[string]bool{}
 	for _, r := range d.scope {
 		in[filepath.Clean(r.Path)] = true
 	}
 	d.entries, d.errs = nil, nil
 	if d.all {
-		d.loading = w.allBusy
+		d.loading = w.AllBusy
 		for _, r := range d.scope {
-			got := w.all[r.Path]
-			d.entries = append(d.entries, got.entries...)
-			if got.err != "" {
-				d.errs = append(d.errs, got.err)
+			got := w.All[r.Path]
+			d.entries = append(d.entries, got.Entries...)
+			if got.Err != "" {
+				d.errs = append(d.errs, got.Err)
 			}
 		}
 	} else {
-		d.loading = w.busy
-		for _, e := range w.mine {
-			if in[filepath.Clean(e.repo.Path)] {
+		d.loading = w.Busy
+		for _, e := range w.Mine {
+			if in[filepath.Clean(e.Repo.Path)] {
 				d.entries = append(d.entries, e)
 			}
 		}
-		if w.mineErr != "" {
-			d.errs = []string{w.mineErr}
+		if w.MineErr != "" {
+			d.errs = []string{w.MineErr}
 		}
 	}
-	sortIssueEntries(d.entries)
+	core.SortIssueEntries(d.entries)
 	d.cursor = min(d.cursor, max(len(d.entries)-1, 0))
 	for i, e := range d.entries {
-		if issueKey(e.repo.Path, e.issue.Number) == cur {
+		if core.IssueKey(e.Repo.Path, e.Issue.Number) == cur {
 			d.cursor = i
 		}
 	}
@@ -112,7 +113,7 @@ func (d *issueList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		d.fill(m)
 		return m.refreshAllIssues(false)
 	case "t":
-		if m.cur() == nil {
+		if m.Cur() == nil {
 			return nil
 		}
 		d.here = !d.here
@@ -121,7 +122,7 @@ func (d *issueList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return m.refreshAllIssues(false)
 	case "o":
 		if d.cursor < len(d.entries) {
-			m.openURL(d.entries[d.cursor].issue.URL)
+			m.openURL(d.entries[d.cursor].Issue.URL)
 		}
 	case "enter":
 		if d.cursor < len(d.entries) {
@@ -134,13 +135,13 @@ func (d *issueList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // goToIssue goes to the tab working on the issue; with none, it starts the
 // new-tab steps in the issue's repository, the branch and the task filled
 // in from the issue as typing #<number> as the branch does.
-func (m *Model) goToIssue(e issueEntry) tea.Cmd {
-	if t := m.tabOnIssue(e.repo.Path, e.issue.Number); t != nil {
+func (m *Model) goToIssue(e core.IssueEntry) tea.Cmd {
+	if t := m.tabOnIssue(e.Repo.Path, e.Issue.Number); t != nil {
 		m.dialog = nil
-		m.setFocus(focusAgent)
-		return tea.Batch(m.selectTab(m.tabIndex(t)), m.resize())
+		m.setFocus(core.FocusAgent)
+		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
 	}
-	cmd := m.openWizardFor(e.repo.Path)
+	cmd := m.openWizardFor(e.Repo.Path)
 	w, ok := m.dialog.(*wizard)
 	if !ok {
 		return cmd
@@ -148,19 +149,19 @@ func (m *Model) goToIssue(e issueEntry) tea.Cmd {
 	if w.step != stepBranch {
 		// The repository is not among those the wizard lists: #<number>
 		// looks the issue up once one is picked.
-		w.branch.SetValue("#" + strconv.Itoa(e.issue.Number))
+		w.branch.SetValue("#" + strconv.Itoa(e.Issue.Number))
 		return cmd
 	}
-	w.branch.SetValue(e.issue.BranchName())
+	w.branch.SetValue(e.Issue.BranchName())
 	w.branch.CursorEnd()
-	return tea.Batch(cmd, w.lookUpIssue(e.repo.Path, e.issue.Number))
+	return tea.Batch(cmd, w.lookUpIssue(e.Repo.Path, e.Issue.Number))
 }
 
 // tabOnIssue is a tab with a worktree of repo on a branch for issue
 // number, as BranchName names them ("123-…"), or nil.
-func (m *Model) tabOnIssue(repo string, number int) *tab {
+func (m *Model) tabOnIssue(repo string, number int) *core.Tab {
 	n := strconv.Itoa(number)
-	for _, t := range m.tabs {
+	for _, t := range m.Tabs {
 		for _, w := range t.Worktrees {
 			if filepath.Clean(w.Repo) == filepath.Clean(repo) && (w.Branch == n || strings.HasPrefix(w.Branch, n+"-")) {
 				return t
@@ -208,24 +209,24 @@ func (d *issueList) table(m *Model, inner, rows int) []string {
 	for i := top; i < len(d.entries) && i < top+rows; i++ {
 		e := d.entries[i]
 		where := dim("·")
-		if m.tabOnIssue(e.repo.Path, e.issue.Number) != nil {
+		if m.tabOnIssue(e.Repo.Path, e.Issue.Number) != nil {
 			where = lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("tab")
 		}
-		row := padTo(ansi.Truncate(e.repo.Name, issueColRepo-1, "…"), issueColRepo) +
-			padTo(fmt.Sprintf("#%d", e.issue.Number), issueColNum) + padTo(where, issueColWhere)
+		row := padTo(ansi.Truncate(e.Repo.Name, issueColRepo-1, "…"), issueColRepo) +
+			padTo(fmt.Sprintf("#%d", e.Issue.Number), issueColNum) + padTo(where, issueColWhere)
 		if wide {
 			when := ""
-			if !e.issue.UpdatedAt.IsZero() {
-				when = dim(e.issue.UpdatedAt.Format("2006-01-02"))
+			if !e.Issue.UpdatedAt.IsZero() {
+				when = dim(e.Issue.UpdatedAt.Format("2006-01-02"))
 			}
-			row += padTo(when, issueColDate) + padTo(dim(ansi.Truncate(e.issue.Author, issueColAuthor-1, "…")), issueColAuthor)
+			row += padTo(when, issueColDate) + padTo(dim(ansi.Truncate(e.Issue.Author, issueColAuthor-1, "…")), issueColAuthor)
 		}
-		title := e.issue.Title
-		if d.news[issueKey(e.issue.Repo, e.issue.Number)] {
+		title := e.Issue.Title
+		if d.news[core.IssueKey(e.Issue.Repo, e.Issue.Number)] {
 			title = warn("◆ new") + "  " + title
 		}
-		if len(e.issue.Labels) > 0 {
-			title += "  " + dim("["+strings.Join(e.issue.Labels, ", ")+"]")
+		if len(e.Issue.Labels) > 0 {
+			title += "  " + dim("["+strings.Join(e.Issue.Labels, ", ")+"]")
 		}
 		row = ansi.Truncate(cursorLine(i == d.cursor, row+title, sel), inner, "…")
 		lines = append(lines, m.onClick(row, func(m *Model) tea.Cmd {

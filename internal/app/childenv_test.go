@@ -3,6 +3,8 @@ package app
 import (
 	"slices"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // A tab's agent does not inherit what names the agent or terminal nerdr
@@ -14,7 +16,7 @@ func TestChildEnvLeavesOutTheHost(t *testing.T) {
 	t.Setenv("KITTY_WINDOW_ID", "3")
 	t.Setenv("TERM_PROGRAM", "ghostty")
 	t.Setenv("NERDR_TEST_KEPT", "yes")
-	env := childEnv(&tab{})
+	env := core.ChildEnv(&core.Tab{})
 	for _, kv := range []string{"CLAUDECODE=1", "CLAUDE_CODE_SESSION_ID=abc",
 		"TMUX=/tmp/tmux-1000/default,1,0", "KITTY_WINDOW_ID=3", "TERM_PROGRAM=ghostty"} {
 		if slices.Contains(env, kv) {

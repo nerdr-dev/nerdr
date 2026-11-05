@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -132,7 +133,7 @@ func (c *confirm) view(m *Model, w, h int) string {
 
 // closeTab asks whether closing a tab should also delete its worktrees.
 type closeTab struct {
-	t           *tab
+	t           *core.Tab
 	dirty       []string
 	unpushed    []string
 	mergedHeads map[string]string
@@ -165,7 +166,7 @@ const closeWait = 500 * time.Millisecond
 
 // closeInfoMsg is what git says about a tab's worktrees before closing it.
 type closeInfoMsg struct {
-	t               *tab
+	t               *core.Tab
 	dirty, unpushed []string
 	mergedHeads     map[string]string
 	heads           map[string]string
@@ -175,12 +176,12 @@ type closeInfoMsg struct {
 type closeShowMsg struct{ c *closeTab }
 
 func (m *Model) openClose() tea.Cmd {
-	return m.openCloseFor(m.cur())
+	return m.openCloseFor(m.Cur())
 }
 
 // openCloseFor asks about closing t.
-func (m *Model) openCloseFor(t *tab) tea.Cmd {
-	if t == nil || m.tabIndex(t) < 0 || m.reposHold(t) {
+func (m *Model) openCloseFor(t *core.Tab) tea.Cmd {
+	if t == nil || m.TabIndex(t) < 0 || m.ReposHold(t) {
 		return nil
 	}
 	c := &closeTab{t: t}
@@ -391,26 +392,28 @@ type tabClosedMsg struct{ err, note string }
 // closeTab removes t from the row, stops its agent and, if asked, deletes
 // its worktrees once the agent is gone. With branchHeads, it deletes the
 // branches too, each only if it still points at its head there, by path.
-func (m *Model) closeTab(t *tab, remove, force bool, branchHeads map[string]string) tea.Cmd {
-	i := m.tabIndex(t)
-	if i < 0 || m.reposHold(t) {
+func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string]string) tea.Cmd {
+	i := m.TabIndex(t)
+	if i < 0 || m.ReposHold(t) {
 		return nil
 	}
-	group := t.group()
-	beside, wasActive, cur := m.splitTab(), i == m.active, m.cur()
-	m.tabs = append(m.tabs[:i], m.tabs[i+1:]...)
+	group := t.GroupName()
+	beside, wasActive, cur := m.splitTab(), i == m.Active, m.Cur()
+	m.Tabs = append(m.Tabs[:i], m.Tabs[i+1:]...)
+	delete(m.panelScreens, t)
+	delete(m.paneBars, t)
 	if !wasActive {
 		// Another tab closed (from the inbox, say): you stay where you are.
-		m.active = max(m.tabIndex(cur), 0)
+		m.Active = max(m.TabIndex(cur), 0)
 	} else {
-		m.active = min(max(m.active, 0), max(len(m.tabs)-1, 0))
+		m.Active = min(max(m.Active, 0), max(len(m.Tabs)-1, 0))
 		// Stay in the group while it has tabs: the one after the closed
 		// tab, or the one before when it was the last.
-		if idx := m.groupTabs(group); len(idx) > 0 {
-			m.active = idx[len(idx)-1]
+		if idx := m.GroupTabs(group); len(idx) > 0 {
+			m.Active = idx[len(idx)-1]
 			for _, j := range idx {
 				if j >= i {
-					m.active = j
+					m.Active = j
 					break
 				}
 			}
@@ -418,13 +421,13 @@ func (m *Model) closeTab(t *tab, remove, force bool, branchHeads map[string]stri
 	}
 	if beside != nil && wasActive {
 		// The split's other tab has the window to itself.
-		m.active, m.split = m.tabIndex(beside), nil
+		m.Active, m.split = m.TabIndex(beside), nil
 	}
 	if t == m.split {
 		m.split = nil
 	}
 	if remove {
-		delete(m.groupNames, t.Dir)
+		delete(m.GroupNames, t.Dir)
 	}
 	m.forgetTabPRNews(t.Name)
 	m.resizePanes()
@@ -432,14 +435,14 @@ func (m *Model) closeTab(t *tab, remove, force bool, branchHeads map[string]stri
 	m.saveSession()
 	m.findOverlaps() // the other tabs no longer share files with this one
 	tracked := m.track()
-	for _, a := range append([]*tab{t}, t.extraAgents()...) {
-		if a.review != nil {
-			m.endReview(a, "stopped", false)
+	for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
+		if a.Review != nil {
+			m.EndReview(a, "stopped", false)
 		}
 	}
 	var progs []*term.Pane
-	for _, p := range t.panes() {
-		if tp := p.term(); tp != nil {
+	for _, p := range t.Panes() {
+		if tp := p.Term(); tp != nil {
 			progs = append(progs, tp)
 		}
 	}
@@ -486,13 +489,13 @@ func (m *Model) closeTab(t *tab, remove, force bool, branchHeads map[string]stri
 		}
 		return tabClosedMsg{note: "closed " + name + " and deleted its worktree" + pluralS(len(wts))}
 	}}
-	if len(m.tabs) == 0 {
-		m.setFocus(focusAgent)
+	if len(m.Tabs) == 0 {
+		m.setFocus(core.FocusAgent)
 		cmds = append(cmds, m.openWizard())
-	} else if m.tabs[m.active].pane != nil {
-		m.tabs[m.active].pane.Focus(true)
+	} else if m.Tabs[m.Active].Pane != nil {
+		m.Tabs[m.Active].Pane.Focus(true)
 	}
-	m.reportHerdr()
+	m.ReportHerdr()
 	return tea.Batch(cmds...)
 }
 
@@ -503,9 +506,9 @@ func (m *Model) quit() tea.Cmd {
 	m.toast("stopping agents…")
 	var panes []*term.Pane
 	m.shutdown.Do(func() { panes = m.stopping() })
-	h := m.herdr
+	h := m.Herdr
 	return func() tea.Msg {
-		stopPanes(panes, h)
+		core.StopPanes(panes, h)
 		return quitReadyMsg{}
 	}
 }

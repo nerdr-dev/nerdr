@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
@@ -19,13 +20,13 @@ func TestPluginStopKillsDescendants(t *testing.T) {
 	heartbeat := filepath.Join(t.TempDir(), "heartbeat")
 	cmd := exec.Command(os.Args[0], "-test.run=^TestPluginProcessHelper$")
 	cmd.Env = append(os.Environ(), "NERDR_PLUGIN_TEST_PROCESS=parent", "NERDR_PLUGIN_TEST_HEARTBEAT="+heartbeat)
-	p, err := startProc(cmd, func() {})
+	p, err := core.StartProc(cmd, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		out, _, _, _ := p.since(0)
+		out, _, _, _ := p.Since(0)
 		if strings.Contains(out, "child ready") {
 			break
 		}
@@ -33,11 +34,11 @@ func TestPluginStopKillsDescendants(t *testing.T) {
 			t.Fatalf("child did not start: %s", out)
 		}
 	}
-	p.stop()
+	p.Stop()
 	// Repeated stops must not schedule more signals after the group is gone.
-	p.stop()
+	p.Stop()
 	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		_, _, done, _ := p.since(0)
+		_, _, done, _ := p.Since(0)
 		if done {
 			break
 		}
@@ -58,7 +59,7 @@ func TestPluginStopKillsDescendants(t *testing.T) {
 		t.Fatal("child did not survive its leader to exercise escalation")
 	}
 	select {
-	case <-p.stopped:
+	case <-p.Stopped:
 	case <-time.After(6 * time.Second):
 		t.Fatal("stop did not finish")
 	}
@@ -106,21 +107,21 @@ func TestPluginProcessHelper(t *testing.T) {
 // Reads that waited in vain, as a run that prints nothing is read every
 // few seconds, are let go once answered, not kept for its whole run.
 func TestReadsThatTimeOutAreLetGo(t *testing.T) {
-	p := &runProc{notify: func() {}}
+	p := &core.RunProc{Notify: func() {}}
 	replies := make(chan struct{}, 3)
 	for range 3 {
-		p.read(0, func(hooks.Answer) { replies <- struct{}{} })
+		p.Read(0, func(hooks.Answer) { replies <- struct{}{} })
 	}
 	for range 3 {
 		select {
 		case <-replies:
-		case <-time.After(readWait + time.Second):
+		case <-time.After(core.ReadWait + time.Second):
 			t.Fatal("a read was not answered")
 		}
 	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if len(p.waiting) != 0 {
-		t.Errorf("%d reads kept", len(p.waiting))
+	p.Mu.Lock()
+	defer p.Mu.Unlock()
+	if len(p.Waiting) != 0 {
+		t.Errorf("%d reads kept", len(p.Waiting))
 	}
 }

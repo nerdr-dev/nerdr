@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -92,17 +93,17 @@ func TestTabRowScrollsToTheActiveTab(t *testing.T) {
 
 func TestHiddenMarkerShowsTheKeenestLight(t *testing.T) {
 	m := manyTabs(t, 120)
-	m.tabs[8].status = stBlocked
-	m.tabs[6].status = stWorking
+	m.Tabs[8].Light = core.StBlocked
+	m.Tabs[6].Light = core.StWorking
 	m.View()
-	row := m.tabRows[m.curGroup()]
+	row := m.tabRows[m.CurGroup()]
 	if row.hidden == 0 {
 		t.Fatal("no tabs hidden at 120 columns")
 	}
 	// The marker's tip names what the light is; a click goes to that tab.
 	clickOn(t, m, "▸", tea.MouseButtonLeft)
-	if m.active != 8 {
-		t.Fatalf("a click on the right marker went to tab %d, want the blocked one, 8", m.active)
+	if m.Active != 8 {
+		t.Fatalf("a click on the right marker went to tab %d, want the blocked one, 8", m.Active)
 	}
 	if !strings.Contains(tabRowText(m), "9:branch-number-9 ") {
 		t.Fatalf("the tab gone to is in view: %q", tabRowText(m))
@@ -123,8 +124,8 @@ func TestFullBarOffersToCloseMergedTabs(t *testing.T) {
 	}
 
 	m.dialog = nil
-	m.tabs[3].info = tabInfo{wts: []wtInfo{{hasPR: true}}}
-	m.tabs[3].info.wts[0].pr.State = "MERGED"
+	m.Tabs[3].Info = core.TabInfo{Wts: []core.WtInfo{{HasPR: true}}}
+	m.Tabs[3].Info.Wts[0].Pr.State = "MERGED"
 	m.openWizard()
 	mu, ok := m.dialog.(*menu)
 	if !ok {
@@ -145,8 +146,8 @@ func TestFullBarOffersToCloseMergedTabs(t *testing.T) {
 
 func TestRoomyBarDoesNotAsk(t *testing.T) {
 	m := testModel(t)
-	m.tabs[0].info = tabInfo{wts: []wtInfo{{hasPR: true}}}
-	m.tabs[0].info.wts[0].pr.State = "MERGED"
+	m.Tabs[0].Info = core.TabInfo{Wts: []core.WtInfo{{HasPR: true}}}
+	m.Tabs[0].Info.Wts[0].Pr.State = "MERGED"
 	m.View()
 	if m.barsFull() {
 		t.Fatal("three short tabs at 120 columns fill the bar")

@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"fmt"
@@ -17,7 +17,8 @@ var debugLog = struct {
 	path string
 }{path: os.Getenv("NERDR_DEBUG_LOG")}
 
-func debugf(format string, args ...any) {
+// Debugf appends a line to the debug log, if there is one.
+func Debugf(format string, args ...any) {
 	if debugLog.path == "" {
 		return
 	}

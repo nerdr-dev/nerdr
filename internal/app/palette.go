@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // palette lists every command with its keys and what it does, and finds
@@ -21,7 +22,7 @@ type palette struct {
 
 // paletteEntry is a command as the palette lists it, with its group.
 type paletteEntry struct {
-	commandEntry
+	core.CommandEntry
 	group string
 }
 
@@ -43,16 +44,16 @@ func (p *palette) matches() []paletteEntry {
 		score int
 	}
 	var hits []hit
-	for _, g := range allCommands() {
-		for _, e := range g.entries {
-			if e.run == "?" {
+	for _, g := range core.AllCommands() {
+		for _, e := range g.Entries {
+			if e.Run == "?" {
 				continue // the palette itself
 			}
-			score, ok := fuzzy(q, strings.ToLower(e.label+" "+g.title+" "+e.desc))
+			score, ok := fuzzy(q, strings.ToLower(e.Label+" "+g.Title+" "+e.Desc))
 			if !ok {
 				continue
 			}
-			hits = append(hits, hit{paletteEntry{e, g.title}, score})
+			hits = append(hits, hit{paletteEntry{e, g.Title}, score})
 		}
 	}
 	sort.SliceStable(hits, func(a, b int) bool { return hits[a].score > hits[b].score })
@@ -78,7 +79,7 @@ func (p *palette) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		m.dialog = nil
 		if p.cursor < len(hits) {
-			return m.runCommand(hits[p.cursor].run)
+			return m.runCommand(hits[p.cursor].Run)
 		}
 		return nil
 	}
@@ -144,15 +145,15 @@ func (p *palette) view(m *Model, w, h int) string {
 	rows := p.rows(hits)
 	p.scroll(rows, room)
 	keysOf := func(e paletteEntry) string {
-		if panelKey(e.run) {
-			return e.key // no prefix
+		if panelKey(e.Run) {
+			return e.Key // no prefix
 		}
-		return m.pk(e.key)
+		return m.pk(e.Key)
 	}
 	// Name and keys in columns, so the descriptions line up after them.
 	labelW, keysW := 0, 0
 	for _, e := range hits {
-		labelW = max(labelW, ansi.StringWidth(e.label))
+		labelW = max(labelW, ansi.StringWidth(e.Label))
 		keysW = max(keysW, ansi.StringWidth(keysOf(e)))
 	}
 	lineW := max(w-12, 30)
@@ -174,9 +175,9 @@ func (p *palette) view(m *Model, w, h int) string {
 		}
 		n := r.n
 		e := hits[n]
-		line := padTo(e.label, labelW) + "  " + keyHint(padTo(keysOf(e), keysW)) + "  " + dim(e.desc)
-		if why := m.commandOff(e.run); why != "" {
-			line = dim(padTo(e.label, labelW)+"  "+padTo(keysOf(e), keysW)+"  ") + warn(why)
+		line := padTo(e.Label, labelW) + "  " + keyHint(padTo(keysOf(e), keysW)) + "  " + dim(e.Desc)
+		if why := m.commandOff(e.Run); why != "" {
+			line = dim(padTo(e.Label, labelW)+"  "+padTo(keysOf(e), keysW)+"  ") + warn(why)
 		}
 		line = ansi.Truncate(line, lineW, "…")
 		lines = append(lines, m.onClick(cursorLine(n == p.cursor, line, sel), func(m *Model) tea.Cmd {

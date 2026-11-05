@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/input"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -57,7 +58,7 @@ func runIDs(t *testing.T) map[string]bool {
 func TestPrefixCommandKnowsEveryCommand(t *testing.T) {
 	for k := range runIDs(t) {
 		if g, k2, ok := strings.Cut(k, " "); ok && g != "" {
-			if run, found := groupCommand(g, k2); !found || run != k {
+			if run, found := core.GroupCommand(g, k2); !found || run != k {
 				t.Errorf("%q is not in group %q", k, g)
 			}
 			if !prefixCommand(g) {
@@ -74,17 +75,17 @@ func TestPrefixCommandKnowsEveryCommand(t *testing.T) {
 // Every command the hint, the menu and the palette offer runs something.
 func TestEveryListedCommandRuns(t *testing.T) {
 	ids := runIDs(t)
-	for _, g := range allCommands() {
-		for _, e := range g.entries {
-			if !ids[e.run] && !panelKey(e.run) {
-				t.Errorf("%s: %q (%s) runs nothing", g.title, e.key, e.run)
+	for _, g := range core.AllCommands() {
+		for _, e := range g.Entries {
+			if !ids[e.Run] && !panelKey(e.Run) {
+				t.Errorf("%s: %q (%s) runs nothing", g.Title, e.Key, e.Run)
 			}
 		}
 	}
-	for _, g := range commandGroups() {
-		for _, e := range g.entries {
-			if !ids[e.run] && !isGroup(e.run) && !panelKey(e.run) {
-				t.Errorf("%s: %q runs nothing", g.title, e.key)
+	for _, g := range core.CommandGroups() {
+		for _, e := range g.Entries {
+			if !ids[e.Run] && !core.IsGroup(e.Run) && !panelKey(e.Run) {
+				t.Errorf("%s: %q runs nothing", g.Title, e.Key)
 			}
 		}
 	}
@@ -95,7 +96,7 @@ func TestEveryListedCommandRuns(t *testing.T) {
 // two belong together.
 func TestKeysDoNotCollide(t *testing.T) {
 	ids := runIDs(t)
-	for g := range keyGroups() {
+	for g := range core.KeyGroups() {
 		if ids[g] || navKey(g) {
 			t.Errorf("group key %q is also a command", g)
 		}
@@ -106,7 +107,7 @@ func TestKeysDoNotCollide(t *testing.T) {
 			continue
 		}
 		low := strings.ToLower(k)
-		if (ids[low] || isGroup(low)) && !paired[low] {
+		if (ids[low] || core.IsGroup(low)) && !paired[low] {
 			t.Errorf("%q and %q are different commands", low, k)
 		}
 	}
@@ -116,15 +117,15 @@ func TestKeysDoNotCollide(t *testing.T) {
 // leaves it running.
 func TestRestartAsksWhileWorking(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	tb.status = stWorking
+	tb := m.Cur()
+	tb.Light = core.StWorking
 	m.runCommand("a r")
 	if _, ok := m.dialog.(*confirm); !ok {
 		t.Fatalf("restarting a working agent should ask first, got %T", m.dialog)
 	}
 	m.handleKey(keyMsg("n"))
-	if m.dialog != nil || tb.status != stWorking {
-		t.Fatalf("no should leave the agent alone: dialog %T, status %v", m.dialog, tb.status)
+	if m.dialog != nil || tb.Light != core.StWorking {
+		t.Fatalf("no should leave the agent alone: dialog %T, status %v", m.dialog, tb.Light)
 	}
 }
 
@@ -163,10 +164,10 @@ func TestCommandReplacesDialog(t *testing.T) {
 
 // The palette is the only help, so every command in it says what it does.
 func TestEveryCommandHasADescription(t *testing.T) {
-	for _, g := range allCommands() {
-		for _, e := range g.entries {
-			if strings.TrimSpace(e.desc) == "" {
-				t.Errorf("%s: %q (%s) has no description", g.title, e.label, e.key)
+	for _, g := range core.AllCommands() {
+		for _, e := range g.Entries {
+			if strings.TrimSpace(e.Desc) == "" {
+				t.Errorf("%s: %q (%s) has no description", g.Title, e.Label, e.Key)
 			}
 		}
 	}
@@ -176,7 +177,7 @@ func TestEveryCommandHasADescription(t *testing.T) {
 // with ctrl+r, r twice quits and q renames, and every list of keys says so.
 func TestPrefixLetterSwapsWithQ(t *testing.T) {
 	m := testModel(t)
-	m.cfg.Prefix = "ctrl+r"
+	m.Cfg.Prefix = "ctrl+r"
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlR})
 	m.handleKey(keyMsg("q"))
 	if _, ok := m.dialog.(*renamer); !ok {
@@ -214,7 +215,7 @@ func TestPrefixLetterSwapsWithQ(t *testing.T) {
 	}
 
 	// A letter no command has changes nothing.
-	m.cfg.Prefix = "ctrl+y"
+	m.Cfg.Prefix = "ctrl+y"
 	if m.pk("q") != "ctrl+y q" || m.pk("r") != "ctrl+y r" {
 		t.Errorf("ctrl+y: %q %q", m.pk("q"), m.pk("r"))
 	}
@@ -228,13 +229,13 @@ func TestScreensBehindThePrefix(t *testing.T) {
 	m.handleKey(prefix)
 	m.handleKey(keyMsg("e"))
 	m.handleKey(keyMsg("3"))
-	if !m.panelMessages() || m.focus != focusReview {
+	if !m.panelMessages() || m.focus != core.FocusReview {
 		t.Fatalf("e 3 should show F3 with the keyboard: tasks %v, focus %v", m.panelMessages(), m.focus)
 	}
 	m.handleKey(prefix)
 	m.handleKey(keyMsg("e"))
 	m.handleKey(keyMsg("e"))
-	if m.panelMessages() || !m.reviewOpen || m.focus != focusReview {
+	if m.panelMessages() || !m.reviewOpen || m.focus != core.FocusReview {
 		t.Fatalf("e e should show F1 with the keyboard: tasks %v, open %v, focus %v", m.panelMessages(), m.reviewOpen, m.focus)
 	}
 	m.handleKey(prefix)
@@ -252,7 +253,7 @@ func TestFunctionKeysOff(t *testing.T) {
 		t.Fatalf("F-keys by default, got %q", m.screenKey(3))
 	}
 	off := false
-	m.cfg.FunctionKeys = &off
+	m.Cfg.FunctionKeys = &off
 	m.review = m.review.SetScreenKeys(m.screenMenuKeys())
 	m.reviewOpen = true
 	m.resize()
@@ -274,18 +275,18 @@ func TestFunctionKeysOff(t *testing.T) {
 // the review panel, and the prefix stays on for more.
 func TestBracketsStepRepositories(t *testing.T) {
 	m := testModel(t)
-	if len(m.groups()) < 2 {
+	if len(m.Groups()) < 2 {
 		t.Skip("needs two repositories")
 	}
-	g := m.curGroup()
+	g := m.CurGroup()
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m.handleKey(keyMsg("]"))
-	if m.curGroup() == g || !m.prefix {
-		t.Fatalf("] should go to the next repository with the prefix kept: %q, prefix %v", m.curGroup(), m.prefix)
+	if m.CurGroup() == g || !m.prefix {
+		t.Fatalf("] should go to the next repository with the prefix kept: %q, prefix %v", m.CurGroup(), m.prefix)
 	}
 	m.handleKey(keyMsg("["))
-	if m.curGroup() != g {
-		t.Fatalf("[ should come back to %q, got %q", g, m.curGroup())
+	if m.CurGroup() != g {
+		t.Fatalf("[ should come back to %q, got %q", g, m.CurGroup())
 	}
 }
 
@@ -293,17 +294,17 @@ func TestBracketsStepRepositories(t *testing.T) {
 // tab and keeps its worktree.
 func TestCloseDialogNoIsNo(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.openCloseFor(tb)
 	m.Update(closeInfoMsg{t: tb})
 	m.Update(keyMsg("n"))
-	if m.dialog != nil || m.tabIndex(tb) < 0 {
-		t.Fatalf("n should cancel: dialog %T, tab at %d", m.dialog, m.tabIndex(tb))
+	if m.dialog != nil || m.TabIndex(tb) < 0 {
+		t.Fatalf("n should cancel: dialog %T, tab at %d", m.dialog, m.TabIndex(tb))
 	}
 	m.openCloseFor(tb)
 	m.Update(closeInfoMsg{t: tb})
 	m.Update(keyMsg("k"))
-	if m.tabIndex(tb) >= 0 {
+	if m.TabIndex(tb) >= 0 {
 		t.Fatal("k should close the tab, keeping the worktree")
 	}
 }
@@ -333,7 +334,7 @@ func TestPushAsksFirst(t *testing.T) {
 // to the pane, not taken for a command that is not there.
 func TestTypingAfterSteppingPanes(t *testing.T) {
 	m := paneModel(t)
-	m.newShell()
+	m.NewShell()
 	m.Update(input.PrefixMsg{})
 	m.Update(keyMsg("t"))
 	m.Update(tea.KeyMsg{Type: tea.KeyLeft})

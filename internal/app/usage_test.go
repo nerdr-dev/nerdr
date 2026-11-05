@@ -18,23 +18,23 @@ import (
 func TestUsageFromTheStatusLine(t *testing.T) {
 	m := testModel(t)
 	yes := true
-	m.cfg.ClaudeStatusLine = &yes
-	tb := m.cur()
+	m.Cfg.ClaudeStatusLine = &yes
+	tb := m.Cur()
 	ctx := 34.0
 	reset := time.Now().Add(2 * time.Hour).Unix()
-	m.Update(hooks.Report{Method: hooks.Usage, Pane: tb.hookKey(), Limits: &usage.Report{
+	m.Update(hooks.Report{Method: hooks.Usage, Pane: tb.HookKey(), Limits: &usage.Report{
 		Session: &usage.Window{Used: 23, ResetsAt: reset}, Weekly: &usage.Window{Used: 41},
 		Context: &ctx, Model: "Opus 5.5",
 	}})
-	if tb.usage == nil || m.claudeLimits == nil || m.claudeLimits.Session.Used != 23 {
-		t.Fatalf("kept: %+v %+v", tb.usage, m.claudeLimits)
+	if tb.Usage == nil || m.ClaudeLimits == nil || m.ClaudeLimits.Session.Used != 23 {
+		t.Fatalf("kept: %+v %+v", tb.Usage, m.ClaudeLimits)
 	}
 	if s, ok := usage.LoadClaude(state.Dir()); !ok || s.Weekly.Used != 41 {
 		t.Fatalf("saved: %+v %v", s, ok)
 	}
-	m.claudeLimits = nil
+	m.ClaudeLimits = nil
 	m.openUsage()
-	if m.claudeLimits == nil {
+	if m.ClaudeLimits == nil {
 		t.Fatal("the saved limits should be read when none is known")
 	}
 	v := ansi.Strip(m.dialog.view(m, 120, 30))

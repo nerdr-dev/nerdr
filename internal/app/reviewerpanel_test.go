@@ -10,6 +10,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -23,10 +24,10 @@ import (
 // esc closes it, the keyboard back with the agent.
 func TestReviewPaneOffersAgents(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t r")
-	p := tb.focused()
-	if p.kind != paneReview || p.of != tb || m.focus != focusAgent {
+	p := tb.Focused()
+	if p.Kind != core.PaneReview || p.Of != tb || m.focus != core.FocusAgent {
 		t.Fatalf("t r should open a review pane with the keyboard: %+v", p)
 	}
 	view := ansi.Strip(m.View())
@@ -38,7 +39,7 @@ func TestReviewPaneOffersAgents(t *testing.T) {
 		t.Fatal("1 should start a review with the first agent")
 	}
 	m.handleKey(keyMsg("esc"))
-	if len(tb.panes()) != 1 || tb.focused().a != tb {
+	if len(tb.Panes()) != 1 || tb.Focused().A != tb {
 		t.Fatal("esc should close the pane, the keyboard back with the agent")
 	}
 }
@@ -47,11 +48,11 @@ func TestReviewPaneOffersAgents(t *testing.T) {
 // terminal there is none to review.
 func TestReviewPaneNeedsAnAgent(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	m.addPane(tb, &paneTab{kind: paneShell}, false)
+	tb := m.Cur()
+	m.AddPane(tb, &core.PaneTab{Kind: core.PaneShell}, false)
 	m.runCommand("t r")
-	if len(tb.panes()) != 2 || !strings.Contains(m.toastText, "agent's pane") {
-		t.Fatalf("no review pane from a terminal: %d panes, toast %q", len(tb.panes()), m.toastText)
+	if len(tb.Panes()) != 2 || !strings.Contains(m.toastText, "agent's pane") {
+		t.Fatalf("no review pane from a terminal: %d panes, toast %q", len(tb.Panes()), m.toastText)
 	}
 }
 
@@ -61,15 +62,15 @@ func TestReviewPaneNeedsAnAgent(t *testing.T) {
 // stops the review.
 func TestReviewPaneShowsTheReviewer(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	pane, err := term.Start([]string{"sh", "-c", "echo looking-at-the-diff; cat"}, t.TempDir(), nil, 40, 10, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := &tab{Tab: state.Tab{ID: tb.ID + "-review", Name: tb.Name + " · review", Agent: "codex"}, reviewOf: tb, pane: pane}
-	tb.review = &reviewRun{seats: []*seat{{r: r}}, round: 1, rounds: 2}
+	r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: tb.ID + "-review", Name: tb.Name + " · review", Agent: "codex"}, Pane: pane}, ReviewOf: tb}
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 2}
 	p := m.reviewPaneFor(tb, r)
-	if tb.focused() == p {
+	if tb.Focused() == p {
 		t.Fatal("a review that started by itself should leave the keyboard where it was")
 	}
 	m.goToPane(tb, p)
@@ -97,8 +98,8 @@ func TestReviewPaneShowsTheReviewer(t *testing.T) {
 		t.Fatal("esc should go back to the reviewer")
 	}
 	clickOn(t, m, "stop the review", tea.MouseButtonLeft)
-	if tb.review != nil || len(tb.panes()) != 1 {
-		t.Fatalf("the button should stop the review and close its pane: %d panes", len(tb.panes()))
+	if tb.Review != nil || len(tb.Panes()) != 1 {
+		t.Fatalf("the button should stop the review and close its pane: %d panes", len(tb.Panes()))
 	}
 }
 
@@ -107,51 +108,51 @@ func TestReviewPaneShowsTheReviewer(t *testing.T) {
 // one that approved is let go, and the other looks again at the fixes.
 func TestReviewersSideBySide(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	reviewer := func(k agents.Kind) *tab {
-		r := &tab{Tab: state.Tab{ID: tb.ID + "-review-" + string(k), Agent: k}, reviewOf: tb}
-		r.hookKey()
+	tb := m.Cur()
+	reviewer := func(k agents.Kind) *core.Tab {
+		r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: tb.ID + "-review-" + string(k), Agent: k}}, ReviewOf: tb}
+		r.HookKey()
 		return r
 	}
 	codex, gemini := reviewer("codex"), reviewer("gemini")
-	tb.review = &reviewRun{seats: []*seat{{r: codex}, {r: gemini}}, round: 1, rounds: 2, tree: "t1"}
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: codex}, {R: gemini}}, Round: 1, Rounds: 2, Tree: "t1"}
 	held := len(tb.Messages)
 
-	m.onReview(hooks.Report{Pane: codex.hookID, Review: &codereview.Result{Verdict: codereview.Changes, Summary: "c",
+	m.OnReview(hooks.Report{Pane: codex.HookID, Review: &codereview.Result{Verdict: codereview.Changes, Summary: "c",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "wrong"}}}})
-	if tb.review.phase != reviewing || len(tb.Messages) != held {
+	if tb.Review.Phase != core.Reviewing || len(tb.Messages) != held {
 		t.Fatal("the round should wait for gemini's review")
 	}
-	if line := m.reviewLine(tb); !strings.Contains(line, "codex: 1 finding") || !strings.Contains(line, "gemini") {
+	if line := m.ReviewLine(tb); !strings.Contains(line, "codex: 1 finding") || !strings.Contains(line, "gemini") {
 		t.Fatalf("the line should say how each stands: %s", line)
 	}
 	queued := tb.Messages
 	tb.Messages = nil
-	if line := m.reviewLine(tb); strings.Contains(line, "wait for the review") {
+	if line := m.ReviewLine(tb); strings.Contains(line, "wait for the review") {
 		t.Fatalf("with no messages, none wait: %s", line)
 	}
 	tb.Messages = []state.Message{{Text: "later"}}
-	if line := m.reviewLine(tb); !strings.Contains(line, "messages in "+m.screenKey(3)+" wait for the review") {
+	if line := m.ReviewLine(tb); !strings.Contains(line, "messages in "+m.screenKey(3)+" wait for the review") {
 		t.Fatalf("the line should say the messages wait for the review: %s", line)
 	}
 	tb.Messages = queued
 
-	m.onReview(hooks.Report{Pane: gemini.hookID, Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
-	run := tb.review
-	if run == nil || run.phase != fixing || len(run.seats) != 1 || run.seats[0].r != codex {
+	m.OnReview(hooks.Report{Pane: gemini.HookID, Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
+	run := tb.Review
+	if run == nil || run.Phase != core.Fixing || len(run.Seats) != 1 || run.Seats[0].R != codex {
 		t.Fatalf("codex's findings should be with the agent, and gemini let go: %+v", run)
 	}
 	if len(tb.Messages) != held+1 || !strings.Contains(tb.Messages[0].Text, "codex reviewed your change") {
 		t.Fatalf("one message with codex's findings should go to the agent: %+v", tb.Messages)
 	}
-	if line := m.reviewLine(tb); !strings.Contains(line, "gemini: approved") {
+	if line := m.ReviewLine(tb); !strings.Contains(line, "gemini: approved") {
 		t.Fatalf("the line should keep gemini's approval: %s", line)
 	}
 
 	tb.Messages = tb.Messages[1:] // sent
-	m.onTree(treeMsg{t: tb, why: treeFixed, tree: "t2"})
-	if run.round != 2 || run.phase != reviewing || len(codex.Messages) != 1 || len(gemini.Messages) != 0 {
-		t.Fatalf("only codex should review again, in round 2: round %d, %d, %d", run.round, len(codex.Messages), len(gemini.Messages))
+	m.onTree(core.TreeMsg{T: tb, Why: core.TreeFixed, Tree: "t2"})
+	if run.Round != 2 || run.Phase != core.Reviewing || len(codex.Messages) != 1 || len(gemini.Messages) != 0 {
+		t.Fatalf("only codex should review again, in round 2: round %d, %d, %d", run.Round, len(codex.Messages), len(gemini.Messages))
 	}
 }
 
@@ -159,14 +160,14 @@ func TestReviewersSideBySide(t *testing.T) {
 // review leaves the others to end the round.
 func TestReviewerLeavesTheRound(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	codex := &tab{Tab: state.Tab{ID: "x-codex", Agent: "codex"}, reviewOf: tb}
-	gemini := &tab{Tab: state.Tab{ID: "x-gemini", Agent: "gemini"}, reviewOf: tb}
+	tb := m.Cur()
+	codex := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "x-codex", Agent: "codex"}}, ReviewOf: tb}
+	gemini := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "x-gemini", Agent: "gemini"}}, ReviewOf: tb}
 	ok := &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}
-	tb.review = &reviewRun{seats: []*seat{{r: codex, res: ok}, {r: gemini}}, round: 1, rounds: 2}
-	m.dropReviewer(tb, gemini, "gemini stopped", false)
-	if tb.review != nil || !strings.Contains(tb.ReviewBrief, "codex: approved") {
-		t.Fatalf("with gemini gone codex's approval should end the review: %+v, %q", tb.review, tb.ReviewBrief)
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: codex, Res: ok}, {R: gemini}}, Round: 1, Rounds: 2}
+	m.DropReviewer(tb, gemini, "gemini stopped", false)
+	if tb.Review != nil || !strings.Contains(tb.ReviewBrief, "codex: approved") {
+		t.Fatalf("with gemini gone codex's approval should end the review: %+v, %q", tb.Review, tb.ReviewBrief)
 	}
 }
 
@@ -176,13 +177,13 @@ func TestReviewerLeavesTheRound(t *testing.T) {
 func TestRoundsInAReviewPane(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := testModel(t)
-	m.cfg.Review.Rounds = 2
-	tb := m.cur()
+	m.Cfg.Review.Rounds = 2
+	tb := m.Cur()
 	m.runCommand("t r")
-	p := tb.focused()
+	p := tb.Focused()
 	m.handleKey(keyMsg("+"))
-	if m.cfg.Review.Rounds != 3 {
-		t.Fatalf("+ gives %d rounds", m.cfg.Review.Rounds)
+	if m.Cfg.Review.Rounds != 3 {
+		t.Fatalf("+ gives %d rounds", m.Cfg.Review.Rounds)
 	}
 	if c, err := config.Load(); err != nil || c.Review.Rounds != 3 {
 		t.Fatalf("saved %d rounds (%v)", c.Review.Rounds, err)
@@ -193,21 +194,21 @@ func TestRoundsInAReviewPane(t *testing.T) {
 	for range 20 {
 		m.handleKey(keyMsg("-"))
 	}
-	if m.cfg.Review.Rounds != 1 {
-		t.Fatalf("down to %d rounds", m.cfg.Review.Rounds)
+	if m.Cfg.Review.Rounds != 1 {
+		t.Fatalf("down to %d rounds", m.Cfg.Review.Rounds)
 	}
 	for range 20 {
 		m.handleKey(keyMsg("right"))
 	}
-	if m.cfg.Review.Rounds != maxRounds {
-		t.Fatalf("up to %d rounds", m.cfg.Review.Rounds)
+	if m.Cfg.Review.Rounds != maxRounds {
+		t.Fatalf("up to %d rounds", m.Cfg.Review.Rounds)
 	}
 
-	tb.review = &reviewRun{round: 2, rounds: 3}
+	tb.Review = &core.ReviewRun{Round: 2, Rounds: 3}
 	m.setRounds(tb, -1)
 	m.setRounds(tb, -1)
-	if tb.review.rounds != 2 {
-		t.Fatalf("a review in round 2 has %d rounds", tb.review.rounds)
+	if tb.Review.Rounds != 2 {
+		t.Fatalf("a review in round 2 has %d rounds", tb.Review.Rounds)
 	}
 }
 
@@ -217,22 +218,22 @@ func TestRoundsInAReviewPane(t *testing.T) {
 // it.
 func TestReviewDoneAsks(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	other := &tab{Tab: state.Tab{ID: "other", Name: "other", Agent: agents.Claude}}
-	m.tabs = append(m.tabs, other)
-	codex := &tab{Tab: state.Tab{ID: tb.ID + "-review-codex", Agent: "codex"}, reviewOf: tb}
-	codex.hookKey()
+	tb := m.Cur()
+	other := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "other", Name: "other", Agent: agents.Claude}}}
+	m.Tabs = append(m.Tabs, other)
+	codex := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: tb.ID + "-review-codex", Agent: "codex"}}, ReviewOf: tb}
+	codex.HookKey()
 	changes := &codereview.Result{Verdict: codereview.Changes, Summary: "c",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "wrong"}}}
 
-	m.active = m.tabIndex(other)
-	tb.review = &reviewRun{seats: []*seat{{r: codex}}, round: 1, rounds: 2, tree: "t1"}
-	m.onReview(hooks.Report{Pane: codex.hookID, Review: changes})
+	m.Active = m.TabIndex(other)
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: codex}}, Round: 1, Rounds: 2, Tree: "t1"}
+	m.OnReview(hooks.Report{Pane: codex.HookID, Review: changes})
 	m.askReviewDone()
 	if m.dialog != nil {
 		t.Fatal("the review of a tab not shown should not ask yet")
 	}
-	m.active = m.tabIndex(tb)
+	m.Active = m.TabIndex(tb)
 	m.askReviewDone()
 	rd, ok := m.dialog.(*reviewDoneDialog)
 	if !ok || !rd.asks() {
@@ -242,11 +243,11 @@ func TestReviewDoneAsks(t *testing.T) {
 		t.Fatalf("the dialog should say what the reviewer found:\n%s", v)
 	}
 	rd.key(m, keyMsg("1"))
-	run := tb.review
-	if i := tb.findMessage(run.fixMsg); i < 0 || !tb.Messages[i].Auto {
+	run := tb.Review
+	if i := tb.FindMessage(run.FixMsg); i < 0 || !tb.Messages[i].Auto {
 		t.Fatalf("1 should send the findings, as the review still knows them: %+v", tb.Messages)
 	}
-	if line := m.reviewLine(tb); !strings.Contains(line, "is on it") {
+	if line := m.ReviewLine(tb); !strings.Contains(line, "is on it") {
 		t.Fatalf("the line should say the agent has them: %s", line)
 	}
 	m.dialog = nil
@@ -258,9 +259,9 @@ func TestReviewDoneAsks(t *testing.T) {
 	// The last round's findings wait in F3 with the review over; the brief
 	// it leaves does not say they are there, since they will not stay.
 	tb.Messages = nil
-	m.onTree(treeMsg{t: tb, why: treeFixed, tree: "t2"})
-	m.onReview(hooks.Report{Pane: codex.hookID, Review: changes})
-	if tb.review != nil || strings.Contains(tb.ReviewBrief, "F3") {
+	m.onTree(core.TreeMsg{T: tb, Why: core.TreeFixed, Tree: "t2"})
+	m.OnReview(hooks.Report{Pane: codex.HookID, Review: changes})
+	if tb.Review != nil || strings.Contains(tb.ReviewBrief, "F3") {
 		t.Fatalf("the review should be over, its brief not pointing at F3: %q", tb.ReviewBrief)
 	}
 	m.askReviewDone()
@@ -280,28 +281,28 @@ func TestReviewDoneAsks(t *testing.T) {
 // the walk is over. The review of a tab's second agent asks too.
 func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
-	other := &tab{Tab: tb.Tab} // in the same repository, so a number walks to tb
+	tb := m.Cur()
+	other := &core.Tab{AgentState: core.Agent{Tab: tb.Tab}} // in the same repository, so a number walks to tb
 	other.ID, other.Name, other.Messages = "other", "other", nil
-	m.tabs = append(m.tabs, other)
-	codex := &tab{Tab: state.Tab{ID: tb.ID + "-review-codex", Agent: "codex"}, reviewOf: tb}
-	codex.hookKey()
+	m.Tabs = append(m.Tabs, other)
+	codex := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: tb.ID + "-review-codex", Agent: "codex"}}, ReviewOf: tb}
+	codex.HookKey()
 	remarks := &codereview.Result{Verdict: codereview.Approve, Summary: "ok",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.Low, Text: "nit"}}}
 
-	m.active = m.tabIndex(other)
-	tb.review = &reviewRun{seats: []*seat{{r: codex}}, round: 1, rounds: 1, tree: "t1"}
-	m.onReview(hooks.Report{Pane: codex.hookID, Review: remarks})
-	if tb.review != nil || tb.ReviewDone == nil {
+	m.Active = m.TabIndex(other)
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: codex}}, Round: 1, Rounds: 1, Tree: "t1"}
+	m.OnReview(hooks.Report{Pane: codex.HookID, Review: remarks})
+	if tb.Review != nil || tb.ReviewDone == nil {
 		t.Fatalf("approval with remarks should end the review and leave them to ask about")
 	}
-	m.active = m.tabIndex(tb)
-	n := slices.Index(m.groupTabs(m.curGroup()), m.active) + 1
-	m.active = m.tabIndex(other)
+	m.Active = m.TabIndex(tb)
+	n := slices.Index(m.GroupTabs(m.CurGroup()), m.Active) + 1
+	m.Active = m.TabIndex(other)
 	m.startPrefix()
 	m.Update(keyMsg(strconv.Itoa(n)))
-	if m.cur() != tb || !m.prefix {
-		t.Fatalf("walked to tab %d, prefix %v", m.active, m.prefix)
+	if m.Cur() != tb || !m.prefix {
+		t.Fatalf("walked to tab %d, prefix %v", m.Active, m.prefix)
 	}
 	if m.dialog != nil {
 		t.Fatal("asked while walking")
@@ -332,14 +333,14 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 	}
 
 	m.dialog = nil
-	second := &tab{Tab: state.Tab{ID: "second", Name: tb.Name, Agent: "codex"}}
-	tb.paneList = append(tb.panes(), &paneTab{kind: paneAgent, a: second})
+	second := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "second", Name: tb.Name, Agent: "codex"}}}
+	tb.PaneList = append(tb.Panes(), &core.PaneTab{Kind: core.PaneAgent, A: second})
 	second.ReviewDone = &state.ReviewDone{Brief: "b", Msg: state.Message{Text: "fix"}}
 	second.Messages = []state.Message{{Text: "fix"}}
 	// The first agent's review, its findings gone from F3, does not hide
 	// the second's.
 	tb.ReviewDone = &state.ReviewDone{Brief: "a", Msg: state.Message{Text: "gone"}}
-	if a, _ := tb.reviewToTell(); a != second || !strings.Contains(ansi.Strip(m.tabBar()), "⚑") {
+	if a, _ := tb.ReviewToTell(); a != second || !strings.Contains(ansi.Strip(m.tabBar()), "⚑") {
 		t.Fatalf("the second agent's review should be shown and marked, not %v", a)
 	}
 	m.askReviewDone()
@@ -356,15 +357,15 @@ func TestReviewDoneWaitsForTheWalk(t *testing.T) {
 // older nerdr that says so included.
 func TestReviewLineSaysF4WhileTheFindingsWait(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.ReviewBrief = "codex: 3 findings after 2 rounds · findings in F3"
 	fix := codereview.FixPrompt([]codereview.Review{{Agent: "codex", Result: codereview.Result{Summary: "s"}}}, 2, 2)
 	tb.Messages = []state.Message{{Text: fix}}
-	if line := m.reviewLine(tb); !strings.Contains(line, "findings in") || strings.Count(line, "findings in") != 1 {
+	if line := m.ReviewLine(tb); !strings.Contains(line, "findings in") || strings.Count(line, "findings in") != 1 {
 		t.Fatalf("the findings wait: %q", line)
 	}
 	tb.Messages = nil // sent before nerdr kept that it was
-	if line := m.reviewLine(tb); line != "codex: 3 findings after 2 rounds" {
+	if line := m.ReviewLine(tb); line != "codex: 3 findings after 2 rounds" {
 		t.Fatalf("the findings are sent: %q", line)
 	}
 }
@@ -373,23 +374,23 @@ func TestReviewLineSaysF4WhileTheFindingsWait(t *testing.T) {
 // said to be, and the brief goes once the agent's turn on them ends.
 func TestReviewLineGoesWhenTheFindingsAreDone(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.ReviewBrief = "codex: 3 findings after 1 round"
 	fix := codereview.FixPrompt([]codereview.Review{{Agent: "codex", Result: codereview.Result{Summary: "s"}}}, 1, 1)
 	tb.Messages = []state.Message{{Text: fix, Auto: true}}
-	if line := m.reviewLine(tb); line != "codex: 3 findings after 1 round · sent to claude" {
+	if line := m.ReviewLine(tb); line != "codex: 3 findings after 1 round · sent to claude" {
 		t.Fatalf("set to go: %q", line)
 	}
-	m.findingsDone(tb)
+	m.FindingsDone(tb)
 	if tb.ReviewBrief == "" {
 		t.Fatal("the brief stays while the findings have not gone in")
 	}
 	tb.Messages, tb.FindingsSent = nil, true // typed in: see deliverQueue
-	if line := m.reviewLine(tb); !strings.HasSuffix(line, " · sent to claude") {
+	if line := m.ReviewLine(tb); !strings.HasSuffix(line, " · sent to claude") {
 		t.Fatalf("being worked on: %q", line)
 	}
-	m.findingsDone(tb)
-	if tb.ReviewBrief != "" || tb.FindingsSent || m.reviewLine(tb) != "" {
+	m.FindingsDone(tb)
+	if tb.ReviewBrief != "" || tb.FindingsSent || m.ReviewLine(tb) != "" {
 		t.Fatalf("after the turn on them: %q, sent %v", tb.ReviewBrief, tb.FindingsSent)
 	}
 }
@@ -397,34 +398,34 @@ func TestReviewLineGoesWhenTheFindingsAreDone(t *testing.T) {
 // TestTabLightCountsItsReviewers: a tab's light in the bars is its
 // agent's raised by its reviewers': red over yellow over green.
 func TestTabLightCountsItsReviewers(t *testing.T) {
-	tb := &tab{status: stDone}
-	a, b := &tab{status: stIdle, reviewOf: tb}, &tab{status: stIdle, reviewOf: tb}
-	tb.review = &reviewRun{seats: []*seat{{r: a}, {r: b}}}
+	tb := &core.Tab{AgentState: core.Agent{Light: core.StDone}}
+	a, b := &core.Tab{AgentState: core.Agent{Light: core.StIdle}, ReviewOf: tb}, &core.Tab{AgentState: core.Agent{Light: core.StIdle}, ReviewOf: tb}
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: a}, {R: b}}}
 	for _, c := range []struct {
-		own, a, b, want status
+		own, a, b, want core.Status
 	}{
-		{stDone, stIdle, stIdle, stDone},
-		{stDone, stWorking, stIdle, stWorking},
-		{stIdle, stIdle, stWorking, stWorking},
-		{stWorking, stBlocked, stIdle, stBlocked},
-		{stBlocked, stWorking, stIdle, stBlocked},
-		{stDone, stBackground, stIdle, stBackground},
-		{stIdle, stIdle, stBackground, stBackground},
-		{stBackground, stIdle, stIdle, stBackground},
-		{stWorking, stBackground, stIdle, stWorking},
-		{stIdle, stWorking, stBackground, stWorking},
-		{stIdle, stBackground, stWorking, stWorking},
-		{stBackground, stBlocked, stIdle, stBlocked},
-		{stIdle, stBackground, stBlocked, stBlocked},
-		{stBlocked, stBackground, stIdle, stBlocked},
+		{core.StDone, core.StIdle, core.StIdle, core.StDone},
+		{core.StDone, core.StWorking, core.StIdle, core.StWorking},
+		{core.StIdle, core.StIdle, core.StWorking, core.StWorking},
+		{core.StWorking, core.StBlocked, core.StIdle, core.StBlocked},
+		{core.StBlocked, core.StWorking, core.StIdle, core.StBlocked},
+		{core.StDone, core.StBackground, core.StIdle, core.StBackground},
+		{core.StIdle, core.StIdle, core.StBackground, core.StBackground},
+		{core.StBackground, core.StIdle, core.StIdle, core.StBackground},
+		{core.StWorking, core.StBackground, core.StIdle, core.StWorking},
+		{core.StIdle, core.StWorking, core.StBackground, core.StWorking},
+		{core.StIdle, core.StBackground, core.StWorking, core.StWorking},
+		{core.StBackground, core.StBlocked, core.StIdle, core.StBlocked},
+		{core.StIdle, core.StBackground, core.StBlocked, core.StBlocked},
+		{core.StBlocked, core.StBackground, core.StIdle, core.StBlocked},
 	} {
-		tb.status, a.status, b.status = c.own, c.a, c.b
-		if got := tb.lit(); got != c.want {
-			t.Errorf("agent %s, reviewers %s and %s: light %s, want %s", c.own.label(), c.a.label(), c.b.label(), got.label(), c.want.label())
+		tb.Light, a.Light, b.Light = c.own, c.a, c.b
+		if got := tb.Lit(); got != c.want {
+			t.Errorf("agent %s, reviewers %s and %s: light %s, want %s", c.own.Label(), c.a.Label(), c.b.Label(), got.Label(), c.want.Label())
 		}
 	}
-	tb.review = nil
-	if tb.status = stDone; tb.lit() != stDone {
+	tb.Review = nil
+	if tb.Light = core.StDone; tb.Lit() != core.StDone {
 		t.Error("with no review the light is the agent's")
 	}
 }
@@ -434,12 +435,12 @@ func TestTabLightCountsItsReviewers(t *testing.T) {
 // for words of the task and stops at once.
 func TestCodexHooksGoBeforeItsPrompt(t *testing.T) {
 	argv := append([]string{"codex", "--no-daemon"}, agents.StartPrompt(agents.Codex, "review this")...)
-	got := beforePrompt(argv, hooks.CodexArgs(), 1)
+	got := core.BeforePrompt(argv, hooks.CodexArgs(), 1)
 	dash := slices.Index(got, "--")
 	if dash < 0 || slices.Index(got, "-c") > dash || !slices.Equal(got[dash:], []string{"--", "review this"}) {
 		t.Fatalf("hooks after the prompt: %q", got)
 	}
-	if got := beforePrompt([]string{"codex"}, []string{"-c", "x"}, 1); !slices.Equal(got, []string{"codex", "-c", "x"}) {
+	if got := core.BeforePrompt([]string{"codex"}, []string{"-c", "x"}, 1); !slices.Equal(got, []string{"codex", "-c", "x"}) {
 		t.Fatalf("no prompt: %q", got)
 	}
 }
@@ -453,7 +454,7 @@ func TestCodexHooksStayInsideWrapper(t *testing.T) {
 		{"--no-daemon", "--", "--"},
 	} {
 		argv := slices.Concat(command, tail)
-		got := beforePrompt(argv, []string{"-c", "hooks=true"}, len(command))
+		got := core.BeforePrompt(argv, []string{"-c", "hooks=true"}, len(command))
 		at := slices.Index(tail, "--")
 		if at < 0 {
 			at = len(tail)

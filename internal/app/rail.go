@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -38,7 +39,7 @@ func (m *Model) panelRailW() int {
 
 // panelLabels reports whether the menu's column names its screens beside
 // their F-keys.
-func (m *Model) panelLabels() bool { return m.cfg.PanelLabels == nil || *m.cfg.PanelLabels }
+func (m *Model) panelLabels() bool { return m.Cfg.PanelLabels == nil || *m.Cfg.PanelLabels }
 
 // railShown reports whether the menu's column is on screen: whenever the
 // window has room for it beside the agent, and the panel has no menu row
@@ -76,7 +77,7 @@ func (m *Model) railCols() int {
 func (m *Model) railLines(h int) []string {
 	rw := m.panelRailW()
 	bs := lipgloss.NewStyle().Foreground(frameColor)
-	if m.focus == focusReview {
+	if m.focus == core.FocusReview {
 		bs = lipgloss.NewStyle().Foreground(accent)
 	}
 	inner := rw - 2
@@ -131,7 +132,7 @@ func (m *Model) railLines(h int) []string {
 func (m *Model) railClick(n int) tea.Cmd {
 	if (m.reviewOpen || m.reviewZoom) && m.review.ScreenIndex() == n-1 {
 		m.reviewOpen, m.reviewZoom = false, false
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return m.resize()
 	}
 	return m.handleKey(keyMsg("f" + strconv.Itoa(n)))
@@ -162,7 +163,7 @@ func (m *Model) togglePanelSmall() tea.Cmd {
 	}
 	m.panelSmall, m.panelAuto, m.panelKept = true, false, false
 	m.reviewOpen, m.reviewZoom = false, false
-	m.setFocus(focusAgent)
+	m.setFocus(core.FocusAgent)
 	return m.resize()
 }
 
@@ -171,19 +172,19 @@ func (m *Model) togglePanelSmall() tea.Cmd {
 // beside it at pane_min_width, and opens again once they would. One
 // opened by hand all the same stays, until they fit.
 func (m *Model) fitPanel() {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil || m.splitShown() || m.reviewZoom {
 		return
 	}
 	n := 0
-	for _, p := range t.panes() {
-		if !p.small {
+	for _, p := range t.Panes() {
+		if !p.Small {
 			n++
 		}
 	}
 	rw, _ := m.reviewArea()
 	w := max(m.mainW()-rw-1, 12)
-	fits := n <= max((w+1)/(m.paneMinW()+1), 1)
+	fits := n <= max((w+1)/(m.PaneMinW()+1), 1)
 	switch {
 	case fits:
 		m.panelKept = false
@@ -192,6 +193,6 @@ func (m *Model) fitPanel() {
 		}
 	case m.reviewOpen && !m.panelSmall && !m.panelKept:
 		m.panelAuto, m.panelSmall = true, true
-		m.reviewOpen = m.focus == focusReview
+		m.reviewOpen = m.focus == core.FocusReview
 	}
 }

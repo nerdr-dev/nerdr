@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	"github.com/charmbracelet/lipgloss"
@@ -27,7 +28,7 @@ func (m *Model) panelLines(w, h int) []string {
 		return append([]string{strings.Repeat(" ", w)}, body...)
 	}
 	bs := lipgloss.NewStyle().Foreground(frameColor)
-	if m.focus == focusReview && m.review.TopFocused() {
+	if m.focus == core.FocusReview && m.review.TopFocused() {
 		bs = lipgloss.NewStyle().Foreground(accent)
 	}
 	out := []string{bs.Render("╭" + strings.Repeat("─", w-2) + "╮")}
@@ -85,7 +86,7 @@ func (m *Model) panelBody(w, h int) []string {
 		menu, h = lines[:1], h-1
 	}
 	iw, ih := w-2, h-2
-	active := m.focus == focusReview
+	active := m.focus == core.FocusReview
 	var title string
 	var body []string
 	switch {
@@ -93,13 +94,13 @@ func (m *Model) panelBody(w, h int) []string {
 		title, body = "saved prompts", m.savedBody(iw, ih)
 	case m.review.Messages():
 		title, body = "tasks", []string{"", "  No tab open."}
-		if a := m.curAgent(); a != nil {
-			body = m.messagesBody(a.owner(), iw, ih)
+		if a := m.CurAgent(); a != nil {
+			body = m.messagesBody(a.Owner(), iw, ih)
 		}
 	case m.review.Skills():
-		title, body = "skills", m.skillsBody(m.cur(), iw, ih)
+		title, body = "skills", m.skillsBody(m.Cur(), iw, ih)
 	case m.review.Plugins():
-		title, body = m.pluginsTitle(m.cur()), m.pluginsBody(m.cur(), iw, ih)
+		title, body = m.pluginsTitle(m.Cur()), m.pluginsBody(m.Cur(), iw, ih)
 	case m.review.AllPRs():
 		title = "my pull requests …"
 		if d := m.prPanel; d != nil && d.all {

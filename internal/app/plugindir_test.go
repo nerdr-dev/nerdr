@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -14,8 +15,8 @@ import (
 
 // Test binaries need the same internal child entry point as cmd/nerdr.
 func init() {
-	if len(os.Args) > 1 && os.Args[1] == PluginExecArg {
-		os.Exit(ExecPlugin(os.Args[2:]))
+	if len(os.Args) > 1 && os.Args[1] == core.PluginExecArg {
+		os.Exit(core.ExecPlugin(os.Args[2:]))
 	}
 }
 
@@ -34,7 +35,7 @@ func TestPluginRunDirectory(t *testing.T) {
 	if err := os.WriteFile(regular, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	tb := &tab{}
+	tb := &core.Tab{}
 	tb.Dir = root
 	tb.Worktrees = []workspace.Worktree{{Path: worktree}}
 	for _, tc := range []struct{ name, dir, want string }{
@@ -47,7 +48,7 @@ func TestPluginRunDirectory(t *testing.T) {
 		{"file", regular, ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			f, err := runDir(tb, tc.dir)
+			f, err := core.RunDir(tb, tc.dir)
 			if tc.want == "" {
 				if err == nil {
 					f.Close()
@@ -78,7 +79,7 @@ func TestPluginRunDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	tb.Dir = alias
-	f, err := runDir(tb, inside)
+	f, err := core.RunDir(tb, inside)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,9 +104,9 @@ func TestPluginDirectoryPinnedThroughStart(t *testing.T) {
 			if err := os.Symlink(inside, link); err != nil {
 				t.Fatal(err)
 			}
-			tb := &tab{}
+			tb := &core.Tab{}
 			tb.Dir = root
-			f, err := runDir(tb, link)
+			f, err := core.RunDir(tb, link)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -128,7 +129,7 @@ func TestPluginDirectoryPinnedThroughStart(t *testing.T) {
 				}
 			}
 			cmd := exec.Command("sh", "-c", `cat marker; printf '\n%s\n' "$PWD"`)
-			if err := pluginCommandIn(cmd, f, "", ""); err != nil {
+			if err := core.PluginCommandIn(cmd, f, "", ""); err != nil {
 				t.Fatal(err)
 			}
 			out, err := cmd.CombinedOutput()
@@ -150,7 +151,7 @@ func TestPluginRunRejectsOutsideDirectory(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "dircheck", "description = \"Test.\"\nrun = [\"true\"]\nopen = false\n")
@@ -160,11 +161,11 @@ func TestPluginRunRejectsOutsideDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := make(chan hooks.Answer, 1)
-	m.Update(hooks.Report{Method: hooks.Plugin, What: hooks.PluginRun, Pane: tb.hookKey(), Name: "dircheck", Dir: link, Reply: reply})
+	m.Update(hooks.Report{Method: hooks.Plugin, What: hooks.PluginRun, Pane: tb.HookKey(), Name: "dircheck", Dir: link, Reply: reply})
 	if a := <-reply; !strings.Contains(a.Err, "within this tab") {
 		t.Fatalf("outside directory not refused: %+v", a)
 	}
-	if len(m.plugins.byID) != 0 {
+	if len(m.PluginRuns.ByID) != 0 {
 		t.Fatal("a plugin was started")
 	}
 }
@@ -210,14 +211,14 @@ func TestPluginDirectoryConcurrentSwap(t *testing.T) {
 			t.Error(err)
 		}
 	}()
-	tb := &tab{}
+	tb := &core.Tab{}
 	tb.Dir = root
 	expected, err := os.Stat(inside)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < 300; i++ {
-		f, err := runDir(tb, link)
+		f, err := core.RunDir(tb, link)
 		if err != nil {
 			continue
 		}
@@ -236,7 +237,7 @@ func TestPluginDirectoryHeldWhileConfirming(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "dircheck", "description = \"Test.\"\nrun = [\"sh\", \"-c\", \"cat marker\"]\nconfirm = true\nopen = false\n")
@@ -248,7 +249,7 @@ func TestPluginDirectoryHeldWhileConfirming(t *testing.T) {
 		t.Fatal(err)
 	}
 	reply := make(chan hooks.Answer, 1)
-	m.Update(hooks.Report{Method: hooks.Plugin, What: hooks.PluginRun, Pane: tb.hookKey(), Name: "dircheck", Dir: inside, Reply: reply})
+	m.Update(hooks.Report{Method: hooks.Plugin, What: hooks.PluginRun, Pane: tb.HookKey(), Name: "dircheck", Dir: inside, Reply: reply})
 	if m.plugins.asking == nil {
 		t.Fatal("run did not ask for confirmation")
 	}
@@ -289,7 +290,7 @@ func TestPluginChangedBeforeExecIsRefused(t *testing.T) {
 	defer f.Close()
 	marker := filepath.Join(t.TempDir(), "ran")
 	cmd := exec.Command("sh", "-c", "touch "+marker)
-	if err := pluginCommandIn(cmd, f, dir, key); err != nil {
+	if err := core.PluginCommandIn(cmd, f, dir, key); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(script, []byte("#!/bin/sh\ntouch "+marker+"\n"), 0o755); err != nil {
@@ -301,7 +302,7 @@ func TestPluginChangedBeforeExecIsRefused(t *testing.T) {
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("the changed program ran")
 	}
-	if err := checkPluginKey(dir, key); err == nil {
+	if err := core.CheckPluginKey(dir, key); err == nil {
 		t.Fatal("the changed folder still matches its key")
 	}
 }
@@ -309,13 +310,13 @@ func TestPluginChangedBeforeExecIsRefused(t *testing.T) {
 // A check with only one of the folder and the key is a caller's mistake,
 // not a check that passes; both empty is the internal "no check".
 func TestCheckPluginKeyIncomplete(t *testing.T) {
-	if err := checkPluginKey("", ""); err != nil {
+	if err := core.CheckPluginKey("", ""); err != nil {
 		t.Fatalf("no check: %v", err)
 	}
-	if err := checkPluginKey(t.TempDir(), ""); err == nil {
+	if err := core.CheckPluginKey(t.TempDir(), ""); err == nil {
 		t.Fatal("a missing key passed")
 	}
-	if err := checkPluginKey("", "key"); err == nil {
+	if err := core.CheckPluginKey("", "key"); err == nil {
 		t.Fatal("a missing folder passed")
 	}
 }

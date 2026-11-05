@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // switcher finds a tab by typing part of its name, across all groups. With
@@ -18,7 +19,7 @@ type switcher struct {
 }
 
 func (m *Model) openSwitcher() tea.Cmd {
-	if len(m.tabs) == 0 {
+	if len(m.Tabs) == 0 {
 		return nil
 	}
 	in := textinput.New()
@@ -34,20 +35,20 @@ func (s *switcher) matches(m *Model) []int {
 	q := strings.ToLower(strings.TrimSpace(s.input.Value()))
 	type hit struct{ i, score int }
 	var hits []hit
-	for i, t := range m.tabs {
-		score, ok := fuzzy(q, strings.ToLower(t.Name+" "+t.group()+" "+string(t.Agent)))
+	for i, t := range m.Tabs {
+		score, ok := fuzzy(q, strings.ToLower(t.Name+" "+t.GroupName()+" "+string(t.Agent)))
 		if !ok {
 			continue
 		}
 		hits = append(hits, hit{i, score})
 	}
 	sort.SliceStable(hits, func(a, b int) bool {
-		ta, tb := m.tabs[hits[a].i], m.tabs[hits[b].i]
+		ta, tb := m.Tabs[hits[a].i], m.Tabs[hits[b].i]
 		if hits[a].score != hits[b].score {
 			return hits[a].score > hits[b].score
 		}
-		if ta.attention() != tb.attention() {
-			return ta.attention() > tb.attention()
+		if ta.Attention() != tb.Attention() {
+			return ta.Attention() > tb.Attention()
 		}
 		return hits[a].i < hits[b].i
 	})
@@ -103,7 +104,7 @@ func (s *switcher) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		m.dialog = nil
 		if s.cursor < len(hits) {
-			m.setFocus(focusAgent)
+			m.setFocus(core.FocusAgent)
 			return tea.Batch(m.selectTab(hits[s.cursor]), m.resize())
 		}
 		return nil
@@ -126,9 +127,9 @@ func (s *switcher) view(m *Model, w, h int) string {
 			lines = append(lines, dim("  …"))
 			break
 		}
-		t := m.tabs[i]
-		line := light(t.lit()) + " " + t.Name + dim("  "+t.group()+" · "+string(t.Agent)+" · "+t.lit().label())
-		if i == m.active {
+		t := m.Tabs[i]
+		line := light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName()+" · "+string(t.Agent)+" · "+t.Lit().Label())
+		if i == m.Active {
 			line += dim("  (here)")
 		}
 		lines = append(lines, m.onClick(cursorLine(n == s.cursor, line, sel), func(m *Model) tea.Cmd {
@@ -142,12 +143,12 @@ func (s *switcher) view(m *Model, w, h int) string {
 
 // renamer gives the active tab a name of its own.
 type renamer struct {
-	t     *tab
+	t     *core.Tab
 	input textinput.Model
 }
 
 func (m *Model) openRename() tea.Cmd {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		return nil
 	}
@@ -168,10 +169,10 @@ func (r *renamer) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "enter":
 		m.dialog = nil
-		if name := strings.TrimSpace(r.input.Value()); name != "" && m.tabIndex(r.t) >= 0 {
+		if name := strings.TrimSpace(r.input.Value()); name != "" && m.TabIndex(r.t) >= 0 {
 			r.t.Name = name
 			m.saveSession()
-			m.reportHerdr()
+			m.ReportHerdr()
 		}
 		return nil
 	}
@@ -195,8 +196,8 @@ type groupRenamer struct {
 func (m *Model) openGroupRename(g string) tea.Cmd {
 	in := textinput.New()
 	in.Prompt = "group: "
-	in.Placeholder = multiGroup
-	if g != multiGroup {
+	in.Placeholder = core.MultiGroup
+	if g != core.MultiGroup {
 		in.SetValue(g)
 	}
 	in.CharLimit = 40
@@ -224,27 +225,27 @@ func (r *groupRenamer) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 func (r *groupRenamer) view(m *Model, w, h int) string {
 	return box("Rename group", []string{r.input.View(), "",
 		dim("For its tabs spanning several repositories, and their worktrees"),
-		dim("opened again later; empty for " + multiGroup + "."), "",
+		dim("opened again later; empty for " + core.MultiGroup + "."), "",
 		m.keys("enter", "save", "esc", "cancel")}, w)
 }
 
 // renameGroup moves the tabs of group g that span several repositories
 // into the group named name, multi when it is empty.
 func (m *Model) renameGroup(g, name string) {
-	if name == multiGroup {
+	if name == core.MultiGroup {
 		name = ""
 	}
 	moved := false
-	for _, i := range m.groupTabs(g) {
-		t := m.tabs[i]
+	for _, i := range m.GroupTabs(g) {
+		t := m.Tabs[i]
 		if len(t.Worktrees) < 2 {
 			continue
 		}
 		t.Group, moved = name, true
 		if name == "" {
-			delete(m.groupNames, t.Dir)
+			delete(m.GroupNames, t.Dir)
 		} else {
-			m.rememberGroup(t.Dir, name, t.Worktrees)
+			m.RememberGroup(t.Dir, name, t.Worktrees)
 		}
 	}
 	if !moved {
@@ -252,7 +253,7 @@ func (m *Model) renameGroup(g, name string) {
 	}
 	to := name
 	if to == "" {
-		to = multiGroup
+		to = core.MultiGroup
 	}
 	if id, ok := m.lastInGroup[g]; ok && m.lastInGroup[to] == "" {
 		m.lastInGroup[to] = id
@@ -260,7 +261,7 @@ func (m *Model) renameGroup(g, name string) {
 	m.saveSession()
 }
 
-func branchOf(t *tab) string {
+func branchOf(t *core.Tab) string {
 	if len(t.Worktrees) > 0 && t.Worktrees[0].Branch != "" {
 		return t.Worktrees[0].Branch
 	}
@@ -270,9 +271,9 @@ func branchOf(t *tab) string {
 // moveTab moves the active tab one place left (-1) or right (1) among the
 // tabs of its group.
 func (m *Model) moveTab(delta int) tea.Cmd {
-	idx := m.groupTabs(m.curGroup())
+	idx := m.GroupTabs(m.CurGroup())
 	for pos, i := range idx {
-		if i != m.active {
+		if i != m.Active {
 			continue
 		}
 		to := pos + delta
@@ -280,8 +281,8 @@ func (m *Model) moveTab(delta int) tea.Cmd {
 			return nil
 		}
 		j := idx[to]
-		m.tabs[i], m.tabs[j] = m.tabs[j], m.tabs[i]
-		m.active = j
+		m.Tabs[i], m.Tabs[j] = m.Tabs[j], m.Tabs[i]
+		m.Active = j
 		m.saveSession()
 		return nil
 	}
