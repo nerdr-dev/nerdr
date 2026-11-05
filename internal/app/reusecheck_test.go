@@ -82,3 +82,37 @@ func TestReviewReuseAfterCoreChanged(t *testing.T) {
 		}()
 	}
 }
+
+// Core changes the panel between Update and View, on its own goroutine: the
+// reuse Update allowed is not taken.
+func TestReviewReuseCheckedWhereDrawn(t *testing.T) {
+	m := testModel(t)
+	m.reviewOpen = true
+	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+	m.View()
+	m.Update(core.FrameMsg{}) // reuse allowed
+	m.Mu.Lock()
+	rm, _ := m.review.Update(keyMsg("f3"))
+	m.review = rm.(review.Model)
+	m.Gen++ // as the loop does
+	m.Mu.Unlock()
+	m.View() // panics if the panel drawn at the Update is reused
+}
+
+// Core moving the focus off the panel, as an agent switch does from the
+// detection, is drawn: it counts as a change.
+func TestCoreChangingTheClientCounts(t *testing.T) {
+	m := testModel(t)
+	m.reviewOpen = true
+	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
+	m.Update(keyMsg("f1"))
+	m.setFocus(core.FocusReview)
+	m.View()
+	before := m.Gen
+	m.SetFocus(core.FocusAgent) // core's way, through Client
+	if m.Gen == before {
+		t.Fatal("core changing the focus did not count")
+	}
+	m.Update(core.RedrawMsg{})
+	m.View() // panics if the panel with the old focus is reused
+}

@@ -84,9 +84,10 @@ type Core struct {
 	Mu sync.Mutex
 	// Quitting is set once the program is on its way out.
 	Quitting bool
-	// Gen counts the events the loop has handled as core's: a client that
-	// drew something from core's state at one Gen need not again while it
-	// is the same.
+	// Gen counts the changes that can change what a client draws: the
+	// events the loop handles as core's, and the client's own state changed
+	// by core through Client. A client that drew something at one Gen need
+	// not draw it again while Gen is the same.
 	Gen uint64
 
 	// Client is told what the user is to see; see Client.

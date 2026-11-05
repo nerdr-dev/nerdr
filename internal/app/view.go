@@ -129,11 +129,12 @@ func statusTip(s core.Status) string {
 func (m *Model) View() string {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
-	if m.sameFrame && m.frame != "" {
+	if m.sameFrame && m.frame != "" && m.frameGen == m.Gen {
 		m.sameFrame = false
 		return m.frame
 	}
 	m.sameFrame = false
+	m.frameGen = m.Gen
 	term.NextFrame()
 	m.zoneFns, m.zoneTips = m.zoneFns[:0], m.zoneTips[:0]
 	m.dialogZones, m.hintZones = noZones, noZones

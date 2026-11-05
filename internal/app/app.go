@@ -162,8 +162,10 @@ type Model struct {
 	// going, which the terminal reports for every cell it crosses.
 	frame     string
 	sameFrame bool
-	mouse     mouseMode
-	drag      dragKind
+	// frameGen is core's Gen when the frame was drawn.
+	frameGen uint64
+	mouse    mouseMode
+	drag     dragKind
 	// dragTab and dragDiv are, while a divider between panes is dragged,
 	// its tab and which divider: the one after its dragDiv'th pane shown.
 	dragTab *core.Tab
