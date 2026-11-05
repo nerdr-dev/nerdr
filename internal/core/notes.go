@@ -142,7 +142,7 @@ func (m *Core) AgentNote(t *Tab) string {
 		return ""
 	}
 	var notes []string
-	if m.Client.SkillOn(t, "nerdr-spinoff") {
+	if m.SkillOn(t, "nerdr-spinoff") {
 		notes = append(notes, WorktreeNote)
 	}
 	if m.Cfg.Review.Auto && m.WaitsForReady(t) && t.ReviewOf == nil {

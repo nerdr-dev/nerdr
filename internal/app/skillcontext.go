@@ -26,7 +26,7 @@ func (m *Model) contextItems(t *core.Tab) []core.ContextRow {
 		return nil
 	}
 	key := t.ID + "/" + string(t.Agent) + "/" + t.Dir
-	if key == v.Key && time.Since(v.At) < skillsCheckEvery {
+	if key == v.Key && time.Since(v.At) < core.SkillsCheckEvery {
 		return v.Rows
 	}
 	v.Key, v.At, v.Shown = key, time.Now(), ""

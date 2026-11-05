@@ -35,13 +35,13 @@ func (m *Model) skillTotals(t *core.Tab) map[string]*core.SkillTotal {
 // can find (File is set), and those used in the tab or tabs shown, as the
 // agents' own built-in and plugin skills are in no folder nerdr looks in.
 func (m *Model) otherSkills(t *core.Tab, tot map[string]*core.SkillTotal) []skills.Local {
-	m.skillStates(t)
+	m.SkillStates(t)
 	seen := map[string]bool{}
 	for _, s := range skills.All() {
 		seen[s.Name] = true
 	}
 	var out []skills.Local
-	for _, l := range m.skills.others {
+	for _, l := range m.SkillLook.Others {
 		seen[l.Name] = true
 		out = append(out, l)
 	}

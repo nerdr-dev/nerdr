@@ -282,7 +282,7 @@ func (m *Model) askClosePane() tea.Cmd {
 		return fromCore(m.ClosePane(t, p))
 	}
 	m.dialog = &confirm{
-		title: "Stop " + m.paneName(t, p) + "?",
+		title: "Stop " + m.PaneName(t, p) + "?",
 		lines: []string{closeLine(p.A)},
 		yes: func(m *Model) tea.Cmd {
 			if m.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
@@ -315,42 +315,6 @@ func (m *Model) openNewAgent() tea.Cmd {
 	return nil
 }
 
-// paneName is what p is called in its frame and in the row.
-func (m *Model) paneName(t *core.Tab, p *core.PaneTab) string {
-	switch p.Kind {
-	case core.PaneShell:
-		name := "terminal"
-		if p.N > 1 {
-			name += " " + strconv.Itoa(p.N)
-		}
-		if p.Shell != nil {
-			if title := core.ShellTitle(p.Shell.Title(), t.Dir); title != "" {
-				name += ": " + ansi.Truncate(title, 24, "…")
-			}
-		}
-		return name
-	case core.PaneReview:
-		if p.A == nil {
-			return "review of " + m.AgentLabel(t, p.Of) + "…"
-		}
-		return string(p.A.Agent) + " reviews " + m.AgentLabel(t, p.Of)
-	}
-	return m.AgentLabel(t, p.A)
-}
-
-// agentName is how a notification names agent a: its tab's name, and
-// which of its agents it is when not the tab's own.
-func (m *Model) agentName(a *core.Tab) string {
-	o := a.Owner()
-	if o == a {
-		return a.Name
-	}
-	if p := a.PaneOf(); p != nil {
-		return o.Name + " · " + m.paneName(o, p)
-	}
-	return o.Name + " · " + string(a.Agent)
-}
-
 // paneRow is the row over t's panes, w wide: the minimised ones, each
 // with its light, to be brought back; and the buttons for new panes on
 // the right. The panes shown are named in their frames.
@@ -368,7 +332,7 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 	for _, p := range small {
 		bg := tabBarBg
 		st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("245"))
-		tip := m.paneName(t, p) + " · minimised"
+		tip := m.PaneName(t, p) + " · minimised"
 		part := st.Render(" ")
 		s, ok := p.Status()
 		switch {
@@ -377,7 +341,7 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 		case p.Kind == core.PaneShell:
 			part += lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("114")).Render("$") + st.Render(" ")
 		}
-		part += st.Render("▸" + m.paneName(t, p) + " ")
+		part += st.Render("▸" + m.PaneName(t, p) + " ")
 		part = m.tip(part, tip+" · click: go there · right-click: more · middle-click: close")
 		items = append(items, barItem{st: s, s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.paneMouse(t, p, ev) })})
 	}
@@ -466,7 +430,7 @@ func (m *Model) openPaneMenu(t *core.Tab, p *core.PaneTab, x, y int) {
 		small = "Show"
 	}
 	items := []menuItem{
-		{label: m.paneName(t, p)},
+		{label: m.PaneName(t, p)},
 		{label: small, key: "t m", run: func(m *Model) tea.Cmd { return m.minimisePane(t, p) }},
 		{label: "Close", key: "t x", run: func(m *Model) tea.Cmd { return m.askClosePane() }},
 		{label: "New panes"},
@@ -535,7 +499,7 @@ func (m *Model) tabLines(t *core.Tab, w, h int) []string {
 func (m *Model) paneColumn(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	title := ""
 	if one := len(t.Panes()) == 1; !one || m.splitShown() {
-		title = m.paneName(t, p)
+		title = m.PaneName(t, p)
 		if s, ok := p.Status(); ok {
 			title = m.tip(light(s), statusTip(s)) + " " + title
 		}
@@ -610,7 +574,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 		note := " scrollback " + strconv.Itoa(t.Scroll) + "/" + strconv.Itoa(n) + " · ↑↓ pgup pgdn g G wheel · q or click here: back "
 		if tp.AltScreen() {
 			// It keeps no scrollback for nerdr: the keys scroll it.
-			note = " scrolling " + m.paneName(t, p) + "'s own screen · ↑↓ pgup pgdn wheel · q or click here: back "
+			note = " scrolling " + m.PaneName(t, p) + "'s own screen · ↑↓ pgup pgdn wheel · q or click here: back "
 		}
 		lines[0] = m.onClick(lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).
 			Render(padTo(ansi.Truncate(note, w, "…"), w)), func(m *Model) tea.Cmd {

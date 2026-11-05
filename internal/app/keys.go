@@ -500,7 +500,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		// Restarting cuts the turn short: what the agent has not written to
 		// its log yet is lost.
 		m.dialog = &confirm{
-			title: "Restart " + m.agentName(t) + "?",
+			title: "Restart " + m.AgentName(t) + "?",
 			lines: restartLines(t),
 			yes: func(m *Model) tea.Cmd {
 				if !m.Live(t) {

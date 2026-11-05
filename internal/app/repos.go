@@ -367,7 +367,7 @@ func (m *Model) onReposChanged(msg reposChangedMsg) tea.Cmd {
 	if p := m.branchPanel; p != nil && p.t == t && p.busy == "" {
 		m.branchPanel = nil
 	}
-	m.skills.key = ""
+	m.SkillLook.Key = ""
 	m.InstallProjectSkills(t)
 	if note := msg.note(t); note != "" {
 		for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {

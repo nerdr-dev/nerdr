@@ -278,6 +278,6 @@ func (m *Core) HookSession(r hooks.Report) *Tab {
 func (m *Core) TellCutOff(t *Tab) {
 	if why := m.CutOff(t); why != "" && !t.ToldCutOff {
 		t.ToldCutOff = true
-		m.Client.Notice(m.Client.AgentName(t) + ": " + why)
+		m.Client.Notice(m.AgentName(t) + ": " + why)
 	}
 }

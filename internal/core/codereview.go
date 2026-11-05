@@ -180,7 +180,7 @@ func (m *Core) AfterTurn(t *Tab) Cmd {
 // skill that tells it how is not waited for: its turns are reviewed as
 // with when = "turn".
 func (m *Core) WaitsForReady(t *Tab) bool {
-	return m.Cfg.Review.When == config.WhenReady && m.Client.SkillOn(t, "nerdr-request-review")
+	return m.Cfg.Review.When == config.WhenReady && m.SkillOn(t, "nerdr-request-review")
 }
 
 // onReady takes an agent's word that its work is ready for a review: one
@@ -208,7 +208,7 @@ func (m *Core) OnReady(rep hooks.Report) Cmd {
 		}
 	}
 	t.ReviewAsk = ask
-	Debugf("review %s: ready, agent %s", m.Client.AgentName(t), t.Light.Label())
+	Debugf("review %s: ready, agent %s", m.AgentName(t), t.Light.Label())
 	if t.Light == StIdle || t.Light == StDone {
 		return m.AfterTurn(t) // said between turns: no turn end to wait for
 	}
@@ -239,7 +239,7 @@ func (m *Core) OnReview(rep hooks.Report) Cmd {
 	}
 	res := *rep.Review
 	t.SeatOf(r).Res = &res
-	Debugf("review %s: %s sent its review", m.Client.AgentName(t), r.Agent)
+	Debugf("review %s: %s sent its review", m.AgentName(t), r.Agent)
 	branch := ""
 	worktree := t.Dir
 	if len(t.Worktrees) > 0 {

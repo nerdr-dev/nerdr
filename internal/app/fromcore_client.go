@@ -9,8 +9,6 @@ import (
 
 // What core asks of the TUI; see core.Client.
 
-func (m *Model) AgentName(a *core.Tab) string { return m.agentName(a) }
-
 func (m *Model) AgentVisible(a *core.Tab) bool { return m.agentVisible(a) }
 
 func (m *Model) Detect() core.Cmd { return toCore(m.detect()) }
@@ -56,8 +54,6 @@ func (m *Model) ShareOverlaps() { m.Gen++; m.shareOverlaps() }
 
 func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.shellSize(t, p) }
 
-func (m *Model) SkillOn(t *core.Tab, skill string) bool { return m.skillOn(t, skill) }
-
 func (m *Model) StopScrolling() { m.Gen++; m.stopScrolling() }
 
 func (m *Model) TabSize(t *core.Tab) (int, int) { return m.tabSize(t) }
@@ -73,8 +69,6 @@ func (m *Model) OpenSwitchAgent() core.Cmd {
 	m.Gen++
 	return toCore(m.openSwitchAgent())
 }
-
-func (m *Model) PaneName(t *core.Tab, p *core.PaneTab) string { return m.paneName(t, p) }
 
 func (m *Model) AskPluginRun(a *core.Tab, p plugin.Plugin, vals map[string]any, dir string, confined bool, decide func(answer string) core.Cmd) {
 	m.Gen++
