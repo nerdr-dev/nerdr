@@ -17,10 +17,11 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
-// CurAgent is the agent the keyboard is with, or the one it is nearest
-// to: the active tab's focused pane's agent, its own otherwise.
-func (m *Core) CurAgent() *Tab {
-	t := m.Cur()
+// FrontAgent is the agent the keyboard is with, or the one it is nearest
+// to: the front tab's focused pane's agent, its own otherwise. Nil with no
+// tab in front.
+func (m *Core) FrontAgent() *Tab {
+	t := m.Front()
 	if t == nil {
 		return nil
 	}

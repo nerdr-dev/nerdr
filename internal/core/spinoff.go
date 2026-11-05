@@ -250,7 +250,7 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 	}
 	m.SaveSession()
 	cmd := m.Client.Detect() // the light turns red at once
-	if t == m.Cur() && m.Client.DialogClosed() {
+	if t == m.Front() && m.Client.DialogClosed() {
 		return Batch(cmd, m.Client.OpenSpinoff(t))
 	}
 	return cmd

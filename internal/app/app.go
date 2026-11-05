@@ -24,6 +24,9 @@ import (
 // panes' goroutines hold on to it (notify), so it must not be copied.
 type Model struct {
 	core.Core
+	// Active is the index in Tabs of the tab in front, the client's own:
+	// core knows only what Front says.
+	Active int
 	// Loop runs core on its own goroutine, once the program has started; nil
 	// in tests that drive Update by hand.
 	Loop       *core.Loop

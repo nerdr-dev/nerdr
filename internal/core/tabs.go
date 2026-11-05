@@ -360,7 +360,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	t.Err = ""
 	t.Scroll = 0
 	t.Changed = time.Now()
-	if o := t.Owner(); o == m.Cur() && o.Focused() == t.PaneOf() {
+	if o := t.Owner(); o == m.Front() && o.Focused() == t.PaneOf() {
 		p.Focus(true)
 	}
 	return nil

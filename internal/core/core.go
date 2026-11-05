@@ -32,6 +32,8 @@ type Client interface {
 	OpenSpinoff(t *Tab) Cmd
 	OpenSwitchAgent() Cmd
 
+	// Front is the tab in front of the user, nil when there is none.
+	Front() *Tab
 	// AgentVisible reports whether agent a is on screen and being looked at:
 	// only then does its work count as seen.
 	AgentVisible(a *Tab) bool
@@ -110,7 +112,6 @@ type Core struct {
 	Root        string // the folder nerdr was started in
 	Herdr       *herdr.Client
 	Tabs        []*Tab
-	Active      int
 	AgentModels map[agents.Kind]ModelList
 	// IssueWatch is the watching of the issues assigned to you; see
 	// issuewatch.go.
@@ -150,6 +151,7 @@ type NoClient struct{}
 func (NoClient) Toast(_ string)                           {}
 func (NoClient) Notice(_ string)                          {}
 func (NoClient) AgentVisible(_ *Tab) bool                 { return false }
+func (NoClient) Front() *Tab                              { return nil }
 func (NoClient) Detect() Cmd                              { return nil }
 func (NoClient) DropPane(_ *Tab, _ *PaneTab)              {}
 func (NoClient) DropReviewPane(_ *Tab)                    {}

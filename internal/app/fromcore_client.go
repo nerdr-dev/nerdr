@@ -11,6 +11,8 @@ import (
 
 func (m *Model) AgentVisible(a *core.Tab) bool { return m.agentVisible(a) }
 
+func (m *Model) Front() *core.Tab { return m.Cur() }
+
 func (m *Model) Detect() core.Cmd { return toCore(m.detect()) }
 
 func (m *Model) DropPane(t *core.Tab, p *core.PaneTab) { m.Gen++; m.dropPane(t, p) }
