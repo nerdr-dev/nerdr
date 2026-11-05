@@ -107,3 +107,14 @@ func TestReportsAreCheckedBeforeTheyAreRouted(t *testing.T) {
 		t.Fatalf("taken from a stranger: %+v", a)
 	}
 }
+
+// TestBackgroundWorkGoesOnWithNoClient: the look at the branches, and the
+// rest of InfoTick, is core's, and runs with nobody looking.
+func TestBackgroundWorkGoesOnWithNoClient(t *testing.T) {
+	tb := &Tab{AgentState: Agent{Tab: state.Tab{ID: "a", Dir: t.TempDir()}}}
+	tb.Info.Stale = true
+	core := &Core{Client: NoClient{}, Tabs: []*Tab{tb}}
+	if core.InfoTick(time.Now()) == nil || !core.InfoBusy {
+		t.Fatal("the tab's branches were not looked at with no client")
+	}
+}

@@ -339,7 +339,7 @@ func (m *Model) Init() tea.Cmd {
 	// A title of its own, which a terminal that names its tab after the
 	// program running in it can show in place of the one running last
 	// under nerdr: its shells and git.
-	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init(), fromCore(core.InfoTick())}
+	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init()}
 	if m.Cfg.Install == "" {
 		// The first start: where the worktrees, the skills and plugins and the notes
 		// go, before anything else. The new-tab dialog follows when there
@@ -478,8 +478,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case core.InfoTickMsg:
 		m.toastDenied()
-		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), fromCore(m.TickPRs(time.Now())), fromCore(m.TickIssues(time.Now())), m.syncPRPanel(),
-			fromCore(m.SleepIdle(time.Now())), fromCore(core.InfoTick()))
+		// Core has looked at what goes on in the background; see core.InfoTick.
+		return tea.Batch(m.configCheck(), m.syncPRPanel())
 
 	case sentMsg:
 		m.onSent(msg)
