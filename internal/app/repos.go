@@ -374,7 +374,7 @@ func (m *Model) onReposChanged(msg reposChangedMsg) tea.Cmd {
 			m.AddMessage(a, note, true)
 		}
 	}
-	m.saveSession()
+	m.SaveSession()
 	m.findOverlaps()
 	m.resizePanes()
 	m.ReportHerdr() // its group may have changed

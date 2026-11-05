@@ -54,8 +54,8 @@ type Client interface {
 	PluginEvent(t *Tab, dir string, ev map[string]any)
 	ShowPluginRun(t *Tab, p plugin.Plugin, run *PluginRun) Cmd
 
-	// SaveSession saves the tabs, with how they are laid out.
-	SaveSession()
+	// Layout is how the client lays out the tabs, for the session.
+	Layout() Layout
 
 	// The layout: where a pane goes and what size a program gets.
 	Resize() Cmd
@@ -161,7 +161,7 @@ func (NoClient) PinReview() Cmd                           { return nil }
 func (NoClient) KeyName(_ string) string                  { return "" }
 func (NoClient) Resize() Cmd                              { return nil }
 func (NoClient) ResizePanes()                             {}
-func (NoClient) SaveSession()                             {}
+func (NoClient) Layout() Layout                           { return Layout{} }
 func (NoClient) ScreenKey(_ int) string                   { return "" }
 func (NoClient) SetFocus(_ FocusArea)                     {}
 func (NoClient) ShareOverlaps()                           {}

@@ -169,7 +169,7 @@ func (m *Core) OnExit(t *Tab) Cmd {
 		cmd := m.Start(t, false)
 		if t.Pane != nil && t.Pane != old {
 			m.Toast(t.Name + ": could not resume, started a new conversation")
-			m.Client.SaveSession()
+			m.SaveSession()
 		}
 		return cmd
 	}

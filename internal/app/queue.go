@@ -233,7 +233,7 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			if i := core.IndexOf(*from, *d.editing); i >= 0 {
 				if len(ts) == 1 && ts[0] == d.from {
 					(*from)[i] = state.Message{Text: strings.TrimSpace(d.input.Value()), Auto: d.auto}
-					m.saveSession()
+					m.SaveSession()
 					return m.openMessages()
 				}
 				// For another agent now: it goes to the end of its list.

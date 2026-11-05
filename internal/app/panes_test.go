@@ -191,7 +191,7 @@ func TestAgentBesideTheTab(t *testing.T) {
 	}
 
 	a.SessionID = "s-codex"
-	m.saveSession()
+	m.SaveSession()
 	sess, err := state.Load(m.Root)
 	if err != nil || len(sess.Tabs) == 0 {
 		t.Fatalf("no session: %v", err)
@@ -797,7 +797,7 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 		t.Fatalf("e gives it to the agent picked: %+v %+v", tb.Inactive, again.Messages)
 	}
 
-	m.saveSession()
+	m.SaveSession()
 	sess, err := state.Load(m.Root)
 	if err != nil {
 		t.Fatal(err)

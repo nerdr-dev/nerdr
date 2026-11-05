@@ -203,7 +203,7 @@ func (m *Core) DeliverQueue(t *Tab, now time.Time) Cmd {
 	}
 	m.SetGoal(t, msg) // when it is the first the agent is asked
 	m.SetLast(t, msg)
-	m.Client.SaveSession()
+	m.SaveSession()
 	enter := t.TypeMessage(msg, now)
 	t.NoteSaid(msg)
 	if t.Owner() != m.Cur() {
@@ -232,7 +232,7 @@ func (m *Core) AddMessageFrom(t *Tab, msg string, auto, sandboxed bool) {
 		return
 	}
 	t.Messages = append(t.Messages, state.Message{Text: msg, Auto: auto, Sandboxed: sandboxed})
-	m.Client.SaveSession()
+	m.SaveSession()
 }
 
 // FindMessage is the index of the first of t's messages equal to msg, or

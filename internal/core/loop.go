@@ -318,7 +318,7 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		if ev.Handoff != "" {
 			// First, ahead of what was waiting for the agent before.
 			ev.T.Messages = append([]state.Message{{Text: ev.Handoff, Auto: true, Sandboxed: ev.Sandboxed}}, ev.T.Messages...)
-			m.Client.SaveSession()
+			m.SaveSession()
 		}
 		return m.Spawn(ev.T, ev.L, ev.Resume), true
 	case SendEnter:

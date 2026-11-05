@@ -174,7 +174,7 @@ func (m *Core) HoldSandboxed(t *Tab) {
 		}
 	}
 	if held > 0 {
-		m.Client.SaveSession()
+		m.SaveSession()
 		m.Toast(fmt.Sprintf("%s: %d message(s) from an agent in a sandbox wait in F3, %s not being in one",
 			t.Name, held, t.Agent))
 	}

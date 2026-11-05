@@ -192,7 +192,7 @@ func (d *noteDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		m.dialog = nil
 		if m.TabIndex(d.t) >= 0 {
 			d.t.Note = strings.TrimSpace(d.input.Value())
-			m.saveSession()
+			m.SaveSession()
 			m.resizePanes() // the panel above the agent may have changed height
 		}
 		return nil

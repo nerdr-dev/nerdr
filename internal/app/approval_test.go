@@ -186,7 +186,7 @@ func TestReviewDoneOutlivesARestart(t *testing.T) {
 		m.Active = 1
 		done(m, tb, findings)
 		tb.Messages[0].Auto = true // space in F3
-		m.saveSession()
+		m.SaveSession()
 
 		m = restart(t, m)
 		m.Active = 0

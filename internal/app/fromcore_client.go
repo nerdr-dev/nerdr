@@ -44,7 +44,7 @@ func (m *Model) Resize() core.Cmd {
 
 func (m *Model) ResizePanes() { m.Gen++; m.resizePanes() }
 
-func (m *Model) SaveSession() { m.saveSession() }
+func (m *Model) Layout() core.Layout { return m.layout() }
 
 func (m *Model) ScreenKey(screen int) string { return m.screenKey(screen) }
 

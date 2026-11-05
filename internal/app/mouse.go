@@ -163,7 +163,7 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 		case tea.MouseButtonRight:
 			// Back to as wide as the names need.
 			m.sideWidth = 0
-			m.saveSession()
+			m.SaveSession()
 			return m.resize()
 		}
 		return nil
@@ -324,7 +324,7 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 	case dragSide:
 		if release {
 			m.drag = dragNone
-			m.saveSession()
+			m.SaveSession()
 			return nil
 		}
 		return m.dragSideTo(ev.X)

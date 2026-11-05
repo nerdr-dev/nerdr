@@ -127,7 +127,7 @@ func (m *Model) openConversation(c *agents.Conversation) tea.Cmd {
 		Num: t.NextNum(), SessionID: c.ID}, Light: core.StStarting}, PartOf: t}
 	cmd := m.AddPane(t, &core.PaneTab{Kind: core.PaneAgent, A: a}, false)
 	start := m.Start(a, true)
-	m.saveSession()
+	m.SaveSession()
 	m.focusTerms(t)
 	m.toast(t.Name + ": " + m.AgentLabel(t, a) + " carries on the conversation")
 	return tea.Batch(sel, fromCore(cmd), fromCore(start), m.resize())

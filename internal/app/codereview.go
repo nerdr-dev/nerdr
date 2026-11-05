@@ -206,12 +206,12 @@ func (m *Model) askReviewDone() {
 	t, d := cur.ReviewToTell()
 	if t == nil {
 		if dropped {
-			m.saveSession()
+			m.SaveSession()
 		}
 		return
 	}
 	t.ReviewDone = nil
-	m.saveSession()
+	m.SaveSession()
 	m.dialog = &reviewDoneDialog{t: t, d: d}
 }
 

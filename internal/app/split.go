@@ -75,7 +75,7 @@ func (m *Model) toggleSplit() tea.Cmd {
 			return m.resize()
 		}
 		m.split = nil
-		m.saveSession()
+		m.SaveSession()
 		return m.resize()
 	}
 	t := m.Cur()
@@ -93,7 +93,7 @@ func (m *Model) splitWith(left, right *core.Tab) tea.Cmd {
 	m.reviewOpen, m.reviewZoom = false, false
 	m.setFocus(core.FocusAgent)
 	cmd := m.selectTab(m.TabIndex(left))
-	m.saveSession()
+	m.SaveSession()
 	return tea.Batch(cmd, fromCore(m.WakeTab(right)), m.resize())
 }
 
@@ -103,7 +103,7 @@ func (m *Model) swapSides() tea.Cmd {
 		return nil
 	}
 	m.splitLeft = !m.splitLeft
-	m.saveSession()
+	m.SaveSession()
 	return m.resize()
 }
 

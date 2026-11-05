@@ -345,7 +345,7 @@ func (m *Core) TakeReply(t, from *Tab, n int) hooks.Answer {
 		// One an agent in a sandbox wrote is not handed to one outside.
 		if msg.Auto && msg.From == n && (!msg.Sandboxed || from.InSandbox) {
 			from.DropMessage(i)
-			m.Client.SaveSession()
+			m.SaveSession()
 			m.Client.ResizePanes()
 			return hooks.Answer{Text: msg.Text}
 		}
@@ -371,7 +371,7 @@ func (m *Core) OnStatus(r hooks.Report) {
 	switch {
 	case r.Clear:
 		o.Status, o.StatusBy, o.StatusAt = "", 0, time.Time{}
-		m.Client.SaveSession()
+		m.SaveSession()
 		reply(hooks.Answer{Text: "The status is cleared."})
 		return
 	case r.Text != "":
@@ -379,7 +379,7 @@ func (m *Core) OnStatus(r hooks.Report) {
 		if from != o {
 			o.StatusBy = from.Num
 		}
-		m.Client.SaveSession()
+		m.SaveSession()
 		reply(hooks.Answer{Text: "The status is set; the user sees it above the agent."})
 		return
 	}

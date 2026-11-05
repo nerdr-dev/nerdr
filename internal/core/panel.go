@@ -103,7 +103,7 @@ func (m *Core) SetLast(t *Tab, msg string) {
 		t.Last = msg
 		t.AddPrompt(msg, t.LastAt)
 	}
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes() // the panel may have changed height
 }
 
@@ -157,7 +157,7 @@ func (m *Core) SetLatest(t *Tab, l agents.Latest) {
 		changed = true
 	}
 	if changed {
-		m.Client.SaveSession()
+		m.SaveSession()
 		m.Client.ResizePanes()
 	}
 }
@@ -167,7 +167,7 @@ func (m *Core) SetGoal(t *Tab, goal string) {
 		return
 	}
 	t.Goal = strings.TrimSpace(clean.Text(goal))
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes() // the panel takes rows above the agent
 }
 

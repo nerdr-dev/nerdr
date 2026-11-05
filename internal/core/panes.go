@@ -257,7 +257,7 @@ func (m *Core) MovePane(d int) Cmd {
 		return nil
 	}
 	ps[i], ps[j] = ps[j], ps[i]
-	m.Client.SaveSession()
+	m.SaveSession()
 	return m.Client.Resize()
 }
 
@@ -354,7 +354,7 @@ func (m *Core) NewAgentWith(t *Tab, k agents.Kind, model, task string, quiet, sa
 	if a.Pane == nil && a.Err != "" {
 		m.Toast(t.Name + ": " + a.Err)
 	}
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.FocusTerms(t)
 	return a, Batch(cmd, start)
 }
@@ -403,7 +403,7 @@ func (m *Core) OnMessage(r hooks.Report) Cmd {
 		from.Num, from.Agent, r.Text, from.Num)
 	m.AddMessageFrom(to, text, true, m.Confined(r, from))
 	to.Messages[len(to.Messages)-1].From = from.Num // for nerdr send --wait
-	m.Client.SaveSession()
+	m.SaveSession()
 	m.Client.ResizePanes()
 	m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " → " + m.AgentLabel(o, to) + ": a message, sent when it is idle")
 	when := "now"
@@ -754,7 +754,7 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 		name := m.PaneName(t, p)
 		kept := t.KeepTasks(a)
 		m.Client.DropPane(t, p)
-		m.Client.SaveSession()
+		m.SaveSession()
 		note := t.Name + ": stopped " + name + "; its conversation is kept by " + string(a.Agent)
 		if kept > 0 {
 			note += " · " + Plural(kept, "task") + " for it wait in " + m.Client.ScreenKey(3) + ", inactive"

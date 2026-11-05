@@ -395,7 +395,7 @@ func (m *Model) spinoffNext(t *core.Tab, o spinoff.Outcome, shown bool) tea.Cmd 
 	p.Done = append(p.Done, o)
 	p.Next = p.Next[1:]
 	if len(p.Next) > 0 {
-		m.saveSession()
+		m.SaveSession()
 		if d, ok := m.dialog.(*spinoffDialog); ok && d.t == t {
 			if !d.reset(m) {
 				return m.spinoffNoAgent(t)
@@ -412,7 +412,7 @@ func (m *Model) spinoffNext(t *core.Tab, o spinoff.Outcome, shown bool) tea.Cmd 
 	}
 	t.Spinoff = nil
 	t.SpinoffReport, t.SpinoffSince = append(t.SpinoffReport, p.Done...), time.Time{}
-	m.saveSession()
+	m.SaveSession()
 	return m.detect() // the light is the agent's again, and the report may go
 }
 

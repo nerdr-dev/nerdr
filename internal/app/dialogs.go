@@ -432,7 +432,7 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	m.forgetTabPRNews(t.Name)
 	m.resizePanes()
 	m.scrolling = false
-	m.saveSession()
+	m.SaveSession()
 	m.findOverlaps() // the other tabs no longer share files with this one
 	tracked := m.track()
 	for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
