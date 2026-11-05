@@ -51,30 +51,9 @@ func (m *Model) newReviewPane() tea.Cmd {
 // review going on.
 func (m *Model) startReviewWith(of *core.Tab, by core.Reviewer) tea.Cmd {
 	if of.Review != nil {
-		return tea.Batch(m.addReviewer(of, by), m.resize())
+		return tea.Batch(fromCore(m.AddReviewer(of, by)), m.resize())
 	}
 	return fromCore(m.LookAtTree(of, core.TreeHand, by))
-}
-
-// reviewPaneFor is the pane reviewer r of of's work is shown in: the
-// pane it was picked in, or, for a review that started by itself, a new
-// one beside of's that leaves the keyboard where it is.
-func (m *Model) reviewPaneFor(of, r *core.Tab) *core.PaneTab {
-	o := of.Owner()
-	for _, p := range o.Panes() {
-		if p.Kind == core.PaneReview && p.Of == of && p.A == nil {
-			p.A = r
-			return p
-		}
-	}
-	p := &core.PaneTab{Kind: core.PaneReview, A: r, Of: of}
-	ps := o.Panes()
-	at := len(ps) - 1
-	if op := of.PaneOf(); op != nil {
-		at = slices.Index(ps, op)
-	}
-	o.PaneList = slices.Insert(ps, at+1, p)
-	return p
 }
 
 // reviewPickKey handles a key in review pane p while it lists the agents

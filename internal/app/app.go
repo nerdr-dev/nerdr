@@ -470,9 +470,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.onSearchRead(msg)
 		return nil
 
-	case core.TreeMsg:
-		return m.onTree(msg)
-
 	case core.FocusFilesMsg:
 		m.focusFiles(msg)
 		return nil

@@ -237,7 +237,7 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 		t.Fatalf("the review should be of the agent whose pane had the keyboard: %+v", p)
 	}
 	tb.Light, a.Light = core.StIdle, core.StIdle
-	m.onTree(core.TreeMsg{T: a, Why: core.TreeHand, Changed: true, Tree: "t1", By: core.Reviewer{Kind: agents.Gemini}})
+	m.OnTree(core.TreeMsg{T: a, Why: core.TreeHand, Changed: true, Tree: "t1", By: core.Reviewer{Kind: agents.Gemini}})
 	if a.Review == nil || len(a.Review.Seats) != 1 || p.A != a.Review.Seats[0].R {
 		t.Fatal("the reviewer should start in the pane it was picked in")
 	}

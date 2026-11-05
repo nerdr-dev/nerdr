@@ -69,7 +69,7 @@ func TestReviewPaneShowsTheReviewer(t *testing.T) {
 	}
 	r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: tb.ID + "-review", Name: tb.Name + " · review", Agent: "codex"}, Pane: pane}, ReviewOf: tb}
 	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 2}
-	p := m.reviewPaneFor(tb, r)
+	p := m.ReviewPaneFor(tb, r)
 	if tb.Focused() == p {
 		t.Fatal("a review that started by itself should leave the keyboard where it was")
 	}
@@ -150,7 +150,7 @@ func TestReviewersSideBySide(t *testing.T) {
 	}
 
 	tb.Messages = tb.Messages[1:] // sent
-	m.onTree(core.TreeMsg{T: tb, Why: core.TreeFixed, Tree: "t2"})
+	m.OnTree(core.TreeMsg{T: tb, Why: core.TreeFixed, Tree: "t2"})
 	if run.Round != 2 || run.Phase != core.Reviewing || len(codex.Messages) != 1 || len(gemini.Messages) != 0 {
 		t.Fatalf("only codex should review again, in round 2: round %d, %d, %d", run.Round, len(codex.Messages), len(gemini.Messages))
 	}
@@ -259,7 +259,7 @@ func TestReviewDoneAsks(t *testing.T) {
 	// The last round's findings wait in F3 with the review over; the brief
 	// it leaves does not say they are there, since they will not stay.
 	tb.Messages = nil
-	m.onTree(core.TreeMsg{T: tb, Why: core.TreeFixed, Tree: "t2"})
+	m.OnTree(core.TreeMsg{T: tb, Why: core.TreeFixed, Tree: "t2"})
 	m.OnReview(hooks.Report{Pane: codex.HookID, Review: changes})
 	if tb.Review != nil || strings.Contains(tb.ReviewBrief, "F3") {
 		t.Fatalf("the review should be over, its brief not pointing at F3: %q", tb.ReviewBrief)
