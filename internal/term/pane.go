@@ -378,37 +378,42 @@ func (p *Pane) Pid() int {
 	return p.cmd.Process.Pid
 }
 
-// Stop asks the program, and what it started, to exit (SIGHUP, as a
-// closing terminal would), and kills what is left of them if they have not
-// gone within the grace period.
-//
-// pty.Start makes the child a session leader, so its pid is also its
-// process group, and the group is what is waited for, not the program: it
-// may have exited, at the hangup or before, leaving a child that ignores
-// it, which would go on writing to the worktree after the tab is closed
-// and its worktree deleted. The group's id is not given to another while
-// any of it is left; once it is all gone the number may be reused, as in
-// runProc.stop, which a hangup and a kill could then reach.
+// Stop hangs up the program's process group and the terminal's foreground
+// job, then kills what remains after grace. Interactive shells put jobs in
+// their own group, so stopping only the shell's group can leave a server alive.
+// Once a group disappears, forget it: its id could be reused.
 func (p *Pane) Stop(grace time.Duration) {
 	if p.cmd.Process == nil {
 		return
 	}
-	pid := p.cmd.Process.Pid
-	if syscall.Kill(-pid, syscall.SIGHUP) == syscall.ESRCH {
-		return // nothing of it is left
+	groups := []int{p.cmd.Process.Pid}
+	if pg, ok := p.foreground(); ok && pg > 0 && pg != groups[0] {
+		groups = append(groups, pg)
+	}
+	alive := groups[:0]
+	for _, pg := range groups {
+		if syscall.Kill(-pg, syscall.SIGHUP) != syscall.ESRCH {
+			alive = append(alive, pg)
+		}
 	}
 	deadline := time.NewTimer(grace)
 	defer deadline.Stop()
 	tick := time.NewTicker(20 * time.Millisecond)
 	defer tick.Stop()
-	for {
+	for len(alive) > 0 {
 		select {
 		case <-tick.C:
-			if syscall.Kill(-pid, 0) == syscall.ESRCH {
-				return
+			remaining := alive[:0]
+			for _, pg := range alive {
+				if syscall.Kill(-pg, 0) != syscall.ESRCH {
+					remaining = append(remaining, pg)
+				}
 			}
+			alive = remaining
 		case <-deadline.C:
-			_ = syscall.Kill(-pid, syscall.SIGKILL)
+			for _, pg := range alive {
+				_ = syscall.Kill(-pg, syscall.SIGKILL)
+			}
 			return
 		}
 	}
