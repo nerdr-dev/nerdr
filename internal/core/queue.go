@@ -206,7 +206,7 @@ func (m *Core) DeliverQueue(t *Tab, now time.Time) Cmd {
 	m.SaveSession()
 	enter := t.TypeMessage(msg, now)
 	t.NoteSaid(msg)
-	if t.Owner() != m.Cur() {
+	if t.Owner() != m.Front() {
 		t.Owner().Away.Sent++
 	}
 	return enter

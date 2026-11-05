@@ -732,3 +732,24 @@ type paneCol struct {
 	P    *core.PaneTab
 	X, W int
 }
+
+// Cur is the active tab, or nil when there are none.
+func (m *Model) Cur() *core.Tab {
+	if m.Active < 0 || m.Active >= len(m.Tabs) {
+		return nil
+	}
+	return m.Tabs[m.Active]
+}
+
+// CurAgent is the agent the keyboard is with, or the one it is nearest
+// to: the active tab's focused pane's agent, its own otherwise.
+func (m *Model) CurAgent() *core.Tab {
+	t := m.Cur()
+	if t == nil {
+		return nil
+	}
+	if a := t.Focused().Agent(); a != nil {
+		return a
+	}
+	return t
+}

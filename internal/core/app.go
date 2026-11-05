@@ -56,12 +56,12 @@ type DetectMsg struct{}
 // DetectEvery is how often the agents are looked at.
 const DetectEvery = 300 * time.Millisecond
 
-// Cur is the active tab, or nil when there are none.
-func (m *Core) Cur() *Tab {
-	if m.Active < 0 || m.Active >= len(m.Tabs) {
+// Front is the tab in front of the user, as the client says; nil with none.
+func (m *Core) Front() *Tab {
+	if m.Client == nil {
 		return nil
 	}
-	return m.Tabs[m.Active]
+	return m.Client.Front()
 }
 
 // SeenAfter is how long a tab must be the active one before it counts as
