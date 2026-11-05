@@ -7,6 +7,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
@@ -77,7 +78,7 @@ func (m *Model) needAllMotion() bool {
 	return p != nil && p.WantsAllMotion()
 }
 
-func (m *Model) mouseOn() bool { return m.cfg.Mouse != nil && *m.cfg.Mouse }
+func (m *Model) mouseOn() bool { return m.Cfg.Mouse != nil && *m.Cfg.Mouse }
 
 // syncMouse asks the terminal for the reports wantMouse says, if that has
 // changed.
@@ -198,8 +199,8 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 			// hears the button let go wherever that is.
 			m.drag = dragReview
 		}
-		if press && m.focus != focusReview {
-			m.setFocus(focusReview)
+		if press && m.focus != core.FocusReview {
+			m.setFocus(core.FocusReview)
 			cmd = m.resize()
 		}
 		rm, rcmd := m.review.Update(ev)
@@ -217,7 +218,7 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 //
 // On a pane's frame, or the panel above its agent, a click only gives the
 // pane the keyboard.
-func (m *Model) sideMouse(t *tab, ev tea.MouseMsg, x, y int) tea.Cmd {
+func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 	if t == nil {
 		return nil
 	}
@@ -227,8 +228,8 @@ func (m *Model) sideMouse(t *tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 			m.drag, m.dragTab, m.dragDiv = dragPanes, t, i
 		case tea.MouseButtonRight:
 			// Back to sharing the room evenly.
-			for _, p := range t.panes() {
-				p.weight = 0
+			for _, p := range t.Panes() {
+				p.Weight = 0
 			}
 			m.resizePanes()
 		}
@@ -239,19 +240,19 @@ func (m *Model) sideMouse(t *tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 		return nil
 	}
 	var cmd tea.Cmd
-	if t != m.cur() || p != t.focused() || m.focus != focusAgent {
+	if t != m.Cur() || p != t.Focused() || m.focus != core.FocusAgent {
 		if ev.Action != tea.MouseActionPress {
 			return nil
 		}
-		if t != m.cur() {
-			cmd = m.selectTab(m.tabIndex(t))
+		if t != m.Cur() {
+			cmd = m.selectTab(m.TabIndex(t))
 		}
 		cmd = tea.Batch(cmd, m.focusPane(t, p))
 		if !isWheel(ev) || !inside {
 			return cmd
 		}
 	}
-	if !inside || p.term() == nil {
+	if !inside || p.Term() == nil {
 		return cmd
 	}
 	return tea.Batch(cmd, m.agentMouse(ev, px, py))
@@ -340,11 +341,11 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 		if release {
 			m.drag = dragNone
 		}
-		if t := m.cur(); t != nil && t.screen() != nil {
-			rx, ry, rw, rh := m.paneRect(t, t.focused())
+		if t := m.Cur(); t != nil && t.Screen() != nil {
+			rx, ry, rw, rh := m.paneRect(t, t.Focused())
 			x := min(max(ev.X-rx, 0), rw-1)
 			y := min(max(ev.Y-ry, 0), rh-1)
-			t.screen().SendMouse(paneMouse(ev, x, y))
+			t.Screen().SendMouse(paneMouse(ev, x, y))
 		}
 		return nil
 
@@ -366,20 +367,20 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 		return nil
 
 	case dragSelect:
-		t := m.cur()
-		if t == nil || t.screen() == nil || t.screen() != m.selPane {
+		t := m.Cur()
+		if t == nil || t.Screen() == nil || t.Screen() != m.selPane {
 			m.drag = dragNone
 			return nil
 		}
-		p := t.screen()
-		rx, ry, aw, ah := m.paneRect(t, t.focused())
+		p := t.Screen()
+		rx, ry, aw, ah := m.paneRect(t, t.Focused())
 		x := min(max(ev.X-rx, 0), aw-1)
 		y := ev.Y - ry
 		// Dragging past the top or bottom scrolls on.
 		if y < 0 && m.scrolling {
-			t.scroll = min(t.scroll+1, p.ScrollbackLen())
+			t.Scroll = min(t.Scroll+1, p.ScrollbackLen())
 		} else if y >= ah && m.scrolling {
-			t.scroll = max(t.scroll-1, 0)
+			t.Scroll = max(t.Scroll-1, 0)
 		}
 		y = min(max(y, 0), ah-1)
 		m.sel.To = p.PointAt(x, y, m.shownScroll(t))
@@ -397,17 +398,17 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 // agentMouse handles the mouse over the agent (or its shell), at (x, y)
 // in the pane.
 func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
-	t := m.cur()
+	t := m.Cur()
 	press := ev.Action == tea.MouseActionPress && !isWheel(ev)
 	var cmd tea.Cmd
-	if press && m.focus != focusAgent {
-		m.setFocus(focusAgent)
+	if press && m.focus != core.FocusAgent {
+		m.setFocus(core.FocusAgent)
 		cmd = m.resize()
 	}
-	if t == nil || t.screen() == nil {
+	if t == nil || t.Screen() == nil {
 		return cmd
 	}
-	p := t.screen()
+	p := t.Screen()
 	if press {
 		p.Select(nil)
 	}
@@ -439,8 +440,8 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 // wheelScroll scrolls the tab's output by n lines (up when positive). A
 // program on the alternate screen has no scrollback: it gets the arrow
 // keys, as terminals do for the wheel there.
-func (m *Model) wheelScroll(t *tab, n int) {
-	p := t.screen()
+func (m *Model) wheelScroll(t *core.Tab, n int) {
+	p := t.Screen()
 	sb := p.ScrollbackLen()
 	if sb == 0 {
 		if p.AltScreen() {
@@ -454,14 +455,14 @@ func (m *Model) wheelScroll(t *tab, n int) {
 		}
 		return
 	}
-	t.scroll = min(max(t.scroll+n, 0), sb)
-	m.scrolling = t.scroll > 0
+	t.Scroll = min(max(t.Scroll+n, 0), sb)
+	m.scrolling = t.Scroll > 0
 }
 
 // shownScroll is how far back the tab is shown.
-func (m *Model) shownScroll(t *tab) int {
-	if m.scrolling && t == m.cur() {
-		return t.scroll
+func (m *Model) shownScroll(t *core.Tab) int {
+	if m.scrolling && t == m.Cur() {
+		return t.Scroll
 	}
 	return 0
 }
@@ -481,7 +482,7 @@ func (m *Model) copyText(text string) {
 	if text == "" {
 		return
 	}
-	n := plural(utf8.RuneCountInString(text), "character")
+	n := core.Plural(utf8.RuneCountInString(text), "character")
 	if toClipboard(text) {
 		m.toast("copied " + n)
 		return
@@ -507,17 +508,17 @@ func (m *Model) checkCopied() {
 	if m.editor != nil {
 		from = append(from, m.editor)
 	} else {
-		for _, t := range []*tab{m.cur(), m.splitTab()} {
+		for _, t := range []*core.Tab{m.Cur(), m.splitTab()} {
 			if t != nil {
-				from = append(from, t.screen())
+				from = append(from, t.Screen())
 			}
 		}
 	}
 	recent := m.router != nil && time.Since(m.router.LastInput()) < copyWindow
 	panes := []*term.Pane{m.editor}
-	for _, t := range m.tabs {
-		for _, p := range t.panes() {
-			panes = append(panes, p.term())
+	for _, t := range m.Tabs {
+		for _, p := range t.Panes() {
+			panes = append(panes, p.Term())
 		}
 	}
 	for _, p := range panes {
@@ -530,7 +531,7 @@ func (m *Model) checkCopied() {
 		case recent && slices.Contains(from, p):
 			m.copyText(text)
 		default:
-			debugf("osc 52: %d bytes from a program not in use, not put on the clipboard", len(text))
+			core.Debugf("osc 52: %d bytes from a program not in use, not put on the clipboard", len(text))
 		}
 	}
 }

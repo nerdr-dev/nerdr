@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
@@ -79,61 +80,61 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			m.reviewOpen = true
 		}
 		cmd := m.reviewKey(msg)
-		m.setFocus(focusReview)
+		m.setFocus(core.FocusReview)
 		return tea.Batch(cmd, m.resize())
 	}
 	if m.scrolling {
 		m.scrollKey(msg)
 		return nil
 	}
-	if m.focus == focusReview && msg.String() == "?" &&
+	if m.focus == core.FocusReview && msg.String() == "?" &&
 		(m.panelMessages() || m.panelSkills() || m.panelPlugins() || m.panelAllPRs() || m.panelIssues()) {
 		// ? is help, as in the rest of the panel.
 		return m.openPalette()
 	}
-	if m.focus == focusReview && m.panelMessages() {
+	if m.focus == core.FocusReview && m.panelMessages() {
 		return m.messagesKey(msg)
 	}
-	if m.focus == focusReview && m.panelSkills() {
+	if m.focus == core.FocusReview && m.panelSkills() {
 		return m.skillsKey(msg)
 	}
-	if m.focus == focusReview && m.panelPlugins() {
+	if m.focus == core.FocusReview && m.panelPlugins() {
 		return m.pluginsKey(msg)
 	}
-	if m.focus == focusReview && m.panelAllPRs() {
+	if m.focus == core.FocusReview && m.panelAllPRs() {
 		return tea.Batch(m.allPRsKey(msg), m.syncPRPanel())
 	}
-	if m.focus == focusReview && m.panelIssues() {
+	if m.focus == core.FocusReview && m.panelIssues() {
 		return tea.Batch(m.issuesKey(msg), m.syncPRPanel())
 	}
-	if m.focus == focusReview && m.panelBranchPR() {
+	if m.focus == core.FocusReview && m.panelBranchPR() {
 		cmd, done := m.branchKey(msg.String())
 		if done {
 			return cmd
 		}
 		return tea.Batch(cmd, m.reviewKey(msg))
 	}
-	if m.focus == focusReview {
+	if m.focus == core.FocusReview {
 		return m.reviewKey(msg)
 	}
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		if msg.String() == "enter" || msg.String() == "c" {
 			return m.openWizard()
 		}
 		return nil
 	}
-	f := t.focused()
-	if f.kind == paneReview && f.a == nil {
+	f := t.Focused()
+	if f.Kind == core.PaneReview && f.A == nil {
 		return m.reviewPickKey(t, f, msg)
 	}
-	if a := f.a; f.kind != paneShell && a != nil && (a.status == stExited || a.pane == nil) {
+	if a := f.A; f.Kind != core.PaneShell && a != nil && (a.Light == core.StExited || a.Pane == nil) {
 		if msg.String() == "enter" || msg.String() == "r" {
 			return m.restart(a)
 		}
 		return nil
 	}
-	if p := f.term(); p != nil {
+	if p := f.Term(); p != nil {
 		// Keys reach here while the router is switching over.
 		if b := keyBytes(msg); len(b) > 0 {
 			p.Input(b)
@@ -161,7 +162,7 @@ func panelKey(k string) bool {
 
 // functionKeys is whether hints name the panel's screens F1 to F5.
 func (m *Model) functionKeys() bool {
-	return m.cfg.FunctionKeys == nil || *m.cfg.FunctionKeys
+	return m.Cfg.FunctionKeys == nil || *m.Cfg.FunctionKeys
 }
 
 // screenKey is how a hint names the review panel's screen n (1 to 4):
@@ -199,11 +200,11 @@ func (m *Model) screenMenuKeys() ([]string, string) {
 // keyPane is the program that has the keyboard: the one in the active
 // tab's pane with it; nil when the review panel has it, or none does.
 func (m *Model) keyPane() *term.Pane {
-	t := m.cur()
-	if t == nil || m.focus == focusReview {
+	t := m.Cur()
+	if t == nil || m.focus == core.FocusReview {
 		return nil
 	}
-	return t.screen()
+	return t.Screen()
 }
 
 // startPrefix turns the prefix on for a new command. The arrows start on
@@ -215,7 +216,7 @@ func (m *Model) startPrefix() {
 	// The arrows start on the tab row, among the repository's own tabs —
 	// unless it has only the one, when ← → can only mean the next
 	// repository.
-	m.onGroups = len(m.groups()) > 1 && len(m.groupTabs(m.curGroup())) < 2
+	m.onGroups = len(m.Groups()) > 1 && len(m.GroupTabs(m.CurGroup())) < 2
 }
 
 // navKey is whether k, after the prefix, goes to another tab or moves this
@@ -240,7 +241,7 @@ func prefixCommand(k string) bool {
 		"m", "M", "l", "w", "n", "f", " ", "r", "h", "p", "g", "u", "/":
 		return true
 	}
-	return isGroup(k)
+	return core.IsGroup(k)
 }
 
 // groupKey runs the key pressed in group g. esc goes back to the prefix's
@@ -275,7 +276,7 @@ func (m *Model) groupKey(g string, msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 	}
-	run, ok := groupCommand(g, k)
+	run, ok := core.GroupCommand(g, k)
 	if !ok && walking {
 		// Typed to the pane walked to: the walk is over.
 		return m.handleKey(msg)
@@ -305,7 +306,7 @@ func (m *Model) runCommand(run string) tea.Cmd {
 // letter twice quits, as ctrl+q q does. "" when the prefix's letter is no
 // command's.
 func (m *Model) swappedKey() string {
-	l, ok := strings.CutPrefix(m.cfg.PrefixKey(), "ctrl+")
+	l, ok := strings.CutPrefix(m.Cfg.PrefixKey(), "ctrl+")
 	if !ok || len(l) != 1 || l < "a" || l > "z" || l == "q" {
 		return ""
 	}
@@ -348,11 +349,11 @@ func (m *Model) shownKeys(keys string) string {
 
 // pk is the prefix and the keys after it, as they are pressed, for hints.
 func (m *Model) pk(keys string) string {
-	return m.cfg.Prefix + " " + m.shownKeys(keys)
+	return m.Cfg.Prefix + " " + m.shownKeys(keys)
 }
 
 func (m *Model) isPrefix(msg tea.KeyMsg) bool {
-	return strings.EqualFold(msg.String(), m.cfg.PrefixKey())
+	return strings.EqualFold(msg.String(), m.Cfg.PrefixKey())
 }
 
 // command runs the key pressed after the prefix.
@@ -369,7 +370,7 @@ func (m *Model) command(msg tea.KeyMsg) tea.Cmd {
 		m.dialog = nil
 		return nil
 	}
-	if isGroup(k) {
+	if core.IsGroup(k) {
 		// The group's own keys next, in the hint line.
 		m.prefix, m.keyGroup, m.prefixPage = true, k, 0
 		return nil
@@ -402,7 +403,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		if k == "left" {
 			delta = -1
 		}
-		if !m.onGroups && len(m.groupTabs(m.curGroup())) < 2 && len(m.groups()) > 1 {
+		if !m.onGroups && len(m.GroupTabs(m.CurGroup())) < 2 && len(m.Groups()) > 1 {
 			m.onGroups = true // a tab alone in its repository has no neighbour to go to
 		}
 		if m.onGroups {
@@ -421,7 +422,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			}
 			return m.stepInGroup(delta)
 		}
-		m.onGroups = k == "up" && len(m.groups()) > 1
+		m.onGroups = k == "up" && len(m.Groups()) > 1
 		return nil
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		return m.selectInGroup(int(k[0] - '1'))
@@ -434,7 +435,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "tab":
 		return m.cycleFocus()
 	case "a a", "esc":
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return m.resize()
 	case "z k":
 		return m.togglePanelSmall()
@@ -442,7 +443,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		m.reviewOpen = !m.reviewOpen
 		if !m.reviewOpen {
 			m.reviewZoom = false
-			m.setFocus(focusAgent)
+			m.setFocus(core.FocusAgent)
 		}
 		return m.resize()
 	case "e 1", "e 2", "e 3", "e 4", "e 5":
@@ -457,7 +458,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		m.reviewZoom, m.sideZoom = !m.reviewZoom, false
 		if m.reviewZoom {
 			m.reviewOpen = true
-			m.setFocus(focusReview)
+			m.setFocus(core.FocusReview)
 		}
 		return m.resize()
 	case "<", ",", ">", ".":
@@ -480,20 +481,20 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "z s":
 		return m.swapSides()
 	case "b", "pgup":
-		if t := m.cur(); t != nil && t.screen() != nil {
+		if t := m.Cur(); t != nil && t.Screen() != nil {
 			m.scrolling = true
-			t.scroll = 0
+			t.Scroll = 0
 			if k == "pgup" {
 				m.scrollKey(msg)
 			}
 		}
 		return nil
 	case "a r":
-		t := m.curAgent()
+		t := m.CurAgent()
 		if t == nil {
 			return nil
 		}
-		if !t.status.atWork() {
+		if !t.Light.AtWork() {
 			return m.restart(t)
 		}
 		// Restarting cuts the turn short: what the agent has not written to
@@ -502,7 +503,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			title: "Restart " + m.agentName(t) + "?",
 			lines: restartLines(t),
 			yes: func(m *Model) tea.Cmd {
-				if !m.live(t) {
+				if !m.Live(t) {
 					return nil
 				}
 				return m.restart(t)
@@ -512,7 +513,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "p":
 		// Send the prefix key itself to the agent (or the shell).
 		if p := m.keyPane(); p != nil {
-			if b, err := m.cfg.PrefixByte(); err == nil {
+			if b, err := m.Cfg.PrefixByte(); err == nil {
 				p.Write([]byte{b})
 			}
 		}
@@ -522,13 +523,13 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			title: "Quit nerdr?",
 			lines: []string{
 				"The agents are stopped. Their tabs and conversations are",
-				"restored the next time you start nerdr in " + m.root + ".",
+				"restored the next time you start nerdr in " + m.Root + ".",
 			},
 			yes: func(m *Model) tea.Cmd { return m.quit() },
 		}
 		return nil
 	case "t t":
-		return m.newShell()
+		return fromCore(m.NewShell())
 	case "t a":
 		return m.openNewAgent()
 	case "t r", "a c":
@@ -536,18 +537,18 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "t x":
 		return m.askClosePane()
 	case "t m":
-		if t := m.cur(); t != nil {
-			return m.minimisePane(t, t.focused())
+		if t := m.Cur(); t != nil {
+			return m.minimisePane(t, t.Focused())
 		}
 		return nil
 	case "t ←":
-		return m.stepPane(-1)
+		return fromCore(m.StepPane(-1))
 	case "t →":
-		return m.stepPane(1)
+		return fromCore(m.StepPane(1))
 	case "t ⇧←":
-		return m.movePane(-1)
+		return fromCore(m.MovePane(-1))
 	case "t ⇧→":
-		return m.movePane(1)
+		return fromCore(m.MovePane(1))
 	case "a s":
 		return m.openSwitchAgent()
 	case "a x":
@@ -601,7 +602,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.hideGroups = !m.hideGroups
-		if len(m.groups()) < 2 {
+		if len(m.Groups()) < 2 {
 			m.toast("Only one repository: its row shows once there are two")
 		}
 		return nil
@@ -610,7 +611,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "n":
 		return m.nextWaiting()
 	case "a n":
-		return m.openNote(m.cur())
+		return m.openNote(m.Cur())
 	case "a h":
 		return m.openSent()
 	case "h":
@@ -625,36 +626,36 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 
 // scrollKey moves through the active tab's scrollback.
 func (m *Model) scrollKey(msg tea.KeyMsg) {
-	t := m.cur()
-	if t == nil || t.screen() == nil {
+	t := m.Cur()
+	if t == nil || t.Screen() == nil {
 		m.scrolling = false
 		return
 	}
 	w, h := m.tabSize(t)
-	if p := t.screen(); p.AltScreen() {
+	if p := t.Screen(); p.AltScreen() {
 		m.altScrollKey(p, msg, w, h)
 		return
 	}
-	n := t.screen().ScrollbackLen()
+	n := t.Screen().ScrollbackLen()
 	switch msg.String() {
 	case "up", "k":
-		t.scroll++
+		t.Scroll++
 	case "down", "j":
-		t.scroll--
+		t.Scroll--
 	case "pgup", "b", "ctrl+u", "u":
-		t.scroll += h - 2
+		t.Scroll += h - 2
 	case "pgdown", "f", "ctrl+d", "d", " ":
-		t.scroll -= h - 2
+		t.Scroll -= h - 2
 	case "g", "home":
-		t.scroll = n
+		t.Scroll = n
 	case "G", "end":
-		t.scroll = 0
+		t.Scroll = 0
 	case "q", "esc", "enter":
-		t.scroll = 0
+		t.Scroll = 0
 		m.scrolling = false
 		return
 	}
-	t.scroll = min(max(t.scroll, 0), n)
+	t.Scroll = min(max(t.Scroll, 0), n)
 }
 
 // altScrollKey is scrollKey for a program on the alternate screen, which
@@ -684,17 +685,17 @@ func (m *Model) altScrollKey(p *term.Pane, msg tea.KeyMsg, w, h int) {
 }
 
 // restart starts the tab's agent again, continuing its conversation.
-func (m *Model) restart(t *tab) tea.Cmd {
-	if m.reposHold(t) {
+func (m *Model) restart(t *core.Tab) tea.Cmd {
+	if m.ReposHold(t) {
 		return nil
 	}
-	if t.pane != nil {
-		old := t.pane
+	if t.Pane != nil {
+		old := t.Pane
 		go old.Close()
 	}
-	t.fallbackTried = false
+	t.FallbackTried = false
 	m.scrolling = false
-	return m.start(t, true)
+	return fromCore(m.Start(t, true))
 }
 
 // keyBytes encodes a key the way a terminal would have sent it. It is
@@ -751,8 +752,8 @@ func keyBytes(msg tea.KeyMsg) []byte {
 }
 
 // restartLines is what a restart of t, at work, costs.
-func restartLines(t *tab) []string {
-	if t.status == stBackground {
+func restartLines(t *core.Tab) []string {
+	if t.Light == core.StBackground {
 		return []string{
 			string(t.Agent) + " has a process running in the background.",
 			"The conversation continues, but restarting stops the process.",

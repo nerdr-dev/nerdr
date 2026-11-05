@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/skills"
 )
 
@@ -18,12 +19,12 @@ import (
 func TestSkillsAlternativesWithoutInstallation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := testModel(t)
-	m.cfg.Install = config.InstallOff
-	m.cfg.EnabledSkills = []string{}
+	m.Cfg.Install = config.InstallOff
+	m.Cfg.EnabledSkills = []string{}
 	for i, sk := range skills.All() {
 		t.Run(sk.Name, func(t *testing.T) {
 			m.skills.cursor, m.skills.scroll = i, 0
-			body := ansi.Strip(strings.Join(m.skillsBody(m.cur(), 80, 250), "\n"))
+			body := ansi.Strip(strings.Join(m.skillsBody(m.Cur(), 80, 250), "\n"))
 			for _, want := range []string{"Without this skill", "CLI:", "Tokens and usage", "not token costs", "Skill instructions"} {
 				if !strings.Contains(body, want) {
 					t.Errorf("missing %q", want)
@@ -35,14 +36,14 @@ func TestSkillsAlternativesWithoutInstallation(t *testing.T) {
 			m.skills.scroll = 0
 			var pages strings.Builder
 			for range 100 {
-				lines := m.skillsBody(m.cur(), 42, 24)
+				lines := m.skillsBody(m.Cur(), 42, 24)
 				if len(lines) != 24 {
 					t.Fatalf("panel height: %d", len(lines))
 				}
 				pages.WriteString(ansi.Strip(strings.Join(lines, "\n")))
 				before := m.skills.scroll
 				m.skillsKey(keyMsg("pgdown"))
-				m.skillsBody(m.cur(), 42, 24)
+				m.skillsBody(m.Cur(), 42, 24)
 				if m.skills.scroll == before {
 					break
 				}
@@ -72,12 +73,12 @@ func TestSkillsOtherListAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := testModel(t)
-	cur := m.cur()
-	u := loadSkillUse()
+	cur := m.Cur()
+	u := core.LoadSkillUse()
 	now := time.Now()
-	u.set("claude:here", "claude", cur.ID, "", map[string]int{"alpha": 1}, now)
-	u.set("claude:there", "claude", "elsewhere", "", map[string]int{"alpha": 2, "beta": 4, "nerdr-send": 3}, now)
-	if err := u.save(); err != nil {
+	u.Set("claude:here", "claude", cur.ID, "", map[string]int{"alpha": 1}, now)
+	u.Set("claude:there", "claude", "elsewhere", "", map[string]int{"alpha": 2, "beta": 4, "nerdr-send": 3}, now)
+	if err := u.Save(); err != nil {
 		t.Fatal(err)
 	}
 	draw := func() string { return ansi.Strip(strings.Join(m.skillsBody(cur, 90, 40), "\n")) }
@@ -104,9 +105,9 @@ func TestSkillsOtherListAndScope(t *testing.T) {
 	if !strings.Contains(body, "~/.claude/skills/Zebra/SKILL.md") || !strings.Contains(body, "Stripes and more") || !strings.Contains(body, "The body.") {
 		t.Fatalf("the skill picked:\n%s", body)
 	}
-	before := m.cfg.EnabledSkills
+	before := m.Cfg.EnabledSkills
 	m.skillsKey(keyMsg(" "))
-	if len(m.cfg.EnabledSkills) != len(before) {
+	if len(m.Cfg.EnabledSkills) != len(before) {
 		t.Fatal("space changed nerdr's skills from the other list")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
@@ -127,7 +128,7 @@ func TestSkillsContextList(t *testing.T) {
 	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := testModel(t)
-	cur := m.cur()
+	cur := m.Cur()
 	cur.Dir = t.TempDir()
 	if err := os.WriteFile(filepath.Join(cur.Dir, "CLAUDE.md"), []byte("Use tabs.\x1b[31m\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -148,9 +149,9 @@ func TestSkillsContextList(t *testing.T) {
 	if strings.Contains(body, "hunter2") {
 		t.Fatalf("an MCP server's settings shown:\n%s", body)
 	}
-	before := len(m.cfg.EnabledSkills)
+	before := len(m.Cfg.EnabledSkills)
 	m.skillsKey(keyMsg(" "))
-	if len(m.cfg.EnabledSkills) != before {
+	if len(m.Cfg.EnabledSkills) != before {
 		t.Fatal("space changed skills from the context list")
 	}
 }
@@ -171,12 +172,12 @@ func TestSkillsLongListKeepsThePickVisible(t *testing.T) {
 		}
 	}
 	m := testModel(t)
-	m.setFocus(focusReview)
+	m.setFocus(core.FocusReview)
 	m.skills.list = listOther
 	for range 30 {
 		m.skillsKey(keyMsg("j"))
 	}
-	body := ansi.Strip(strings.Join(m.skillsBody(m.cur(), 80, 30), "\n"))
+	body := ansi.Strip(strings.Join(m.skillsBody(m.Cur(), 80, 30), "\n"))
 	for _, want := range []string{"❯ skill-30", "About number 30"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("lacks %q:\n%s", want, body)

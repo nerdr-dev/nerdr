@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
@@ -72,12 +73,12 @@ func TestLayoutPickerArrows(t *testing.T) {
 			t.Fatalf("right: layout %q, want %q", got, want)
 		}
 	}
-	active := m.cur()
+	active := m.Cur()
 	m.Update(keyMsg("esc"))
-	if m.dialog != nil || m.currentLayout() != "=" || m.split != nil || m.focus != focusAgent {
+	if m.dialog != nil || m.currentLayout() != "=" || m.split != nil || m.focus != core.FocusAgent {
 		t.Fatalf("esc: dialog %T, layout %q, split %v, focus %v", m.dialog, m.currentLayout(), m.split, m.focus)
 	}
-	if m.cur() == active {
+	if m.Cur() == active {
 		t.Fatal("esc left the keyboard on the tab two agents moved it to")
 	}
 

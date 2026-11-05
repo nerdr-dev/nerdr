@@ -9,6 +9,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,7 +22,7 @@ import (
 func argvAgent(t *testing.T, m *Model) string {
 	t.Helper()
 	out := filepath.Join(t.TempDir(), "argv")
-	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {
 		Command: []string{"sh", "-c", `printf '%s\n' "$@" -- >> "` + out + `"; exec cat`, "sh"},
 	}}
 	return out
@@ -44,13 +45,13 @@ func startedWith(t *testing.T, out string) string {
 }
 
 // reviewOn makes tb's worktree a repository with a change to review.
-func reviewOn(t *testing.T, m *Model) *tab {
+func reviewOn(t *testing.T, m *Model) *core.Tab {
 	t.Helper()
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Dir = testRepo(t)
 	tb.Worktrees = nil
 	writeRepoFile(t, tb.Dir, "a.txt", "two\n")
-	tb.status = stIdle
+	tb.Light = core.StIdle
 	return tb
 }
 
@@ -60,14 +61,14 @@ func TestReadyNamesTheReviewer(t *testing.T) {
 	m := testModel(t)
 	out := argvAgent(t, m)
 	tb := reviewOn(t, m)
-	cmd := m.onReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Kind: "codex", Model: "gpt-6-astra"})
+	cmd := m.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Kind: "codex", Model: "gpt-6-astra"})
 	if cmd == nil {
 		t.Fatal("ready between turns looks at the worktree")
 	}
-	m.onTree(cmd().(treeMsg))
-	t.Cleanup(func() { m.endReview(tb, "done", false) })
-	if tb.review == nil || tb.review.seats[0].r.Agent != agents.Codex || tb.review.seats[0].r.Model != "gpt-6-astra" {
-		t.Fatalf("review %+v", tb.review)
+	m.onTree(cmd().(core.TreeMsg))
+	t.Cleanup(func() { m.EndReview(tb, "done", false) })
+	if tb.Review == nil || tb.Review.Seats[0].R.Agent != agents.Codex || tb.Review.Seats[0].R.Model != "gpt-6-astra" {
+		t.Fatalf("review %+v", tb.Review)
 	}
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-astra\n") {
 		t.Fatalf("started with %q", argv)
@@ -79,10 +80,10 @@ func TestReadyNamesTheReviewer(t *testing.T) {
 func TestReviewModelFromTheConfig(t *testing.T) {
 	m := testModel(t)
 	out := argvAgent(t, m)
-	m.cfg.Review.Models = map[agents.Kind]string{agents.Codex: "gpt-6-sol"}
+	m.Cfg.Review.Models = map[agents.Kind]string{agents.Codex: "gpt-6-sol"}
 	tb := reviewOn(t, m)
-	m.onTree(m.onReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.hookKey(), Kind: "codex"})().(treeMsg))
-	t.Cleanup(func() { m.endReview(tb, "done", false) })
+	m.onTree(m.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Kind: "codex"})().(core.TreeMsg))
+	t.Cleanup(func() { m.EndReview(tb, "done", false) })
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-sol\n") {
 		t.Fatalf("started with %q", argv)
 	}
@@ -96,7 +97,7 @@ func TestReviewPanePicksAModel(t *testing.T) {
 	out := argvAgent(t, m)
 	tb := reviewOn(t, m)
 	m.runCommand("t r")
-	p := tb.focused()
+	p := tb.Focused()
 	for i, k := range m.reviewKinds(tb) {
 		if k == agents.Codex {
 			m.reviewerCursor = i
@@ -106,7 +107,7 @@ func TestReviewPanePicksAModel(t *testing.T) {
 	if m.reviewPick == nil || m.reviewPick.kind != agents.Codex {
 		t.Fatal("m picks codex's model")
 	}
-	m.onModels(modelsMsg{kind: agents.Codex, models: []agents.AgentModel{{ID: "gpt-6-luna", Name: "GPT-6-Luna"}, {ID: "gpt-6-astra", Name: "GPT-6-Astra"}}})
+	m.OnModels(core.ModelsMsg{Kind: agents.Codex, Models: []agents.AgentModel{{ID: "gpt-6-luna", Name: "GPT-6-Luna"}, {ID: "gpt-6-astra", Name: "GPT-6-Astra"}}})
 	for _, r := range "astra" {
 		m.handleKey(keyMsg(string(r)))
 	}
@@ -118,8 +119,8 @@ func TestReviewPanePicksAModel(t *testing.T) {
 	if look == nil || m.reviewPick != nil {
 		t.Fatal("enter starts the review")
 	}
-	m.onTree(m.lookAtTree(tb, treeHand, reviewer{kind: agents.Codex, model: "gpt-6-astra"})().(treeMsg))
-	t.Cleanup(func() { m.endReview(tb, "done", false) })
+	m.onTree(m.LookAtTree(tb, core.TreeHand, core.Reviewer{Kind: agents.Codex, Model: "gpt-6-astra"})().(core.TreeMsg))
+	t.Cleanup(func() { m.EndReview(tb, "done", false) })
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-astra\n") {
 		t.Fatalf("started with %q", argv)
 	}
@@ -131,12 +132,12 @@ func TestReviewPanePicksAModel(t *testing.T) {
 func TestModelMatchesWordByWord(t *testing.T) {
 	am := agents.AgentModel{ID: "claude-sonnet-5.5"}
 	for _, typed := range []string{"", "sonnet", "sonnet 5.5", "Sonnet-5.5", "claude 5.5"} {
-		if !modelMatches(am, typed) {
+		if !core.ModelMatches(am, typed) {
 			t.Errorf("%q should find %s", typed, am.ID)
 		}
 	}
 	for _, typed := range []string{"opus", "sonnet 4"} {
-		if modelMatches(am, typed) {
+		if core.ModelMatches(am, typed) {
 			t.Errorf("%q should not find %s", typed, am.ID)
 		}
 	}
@@ -150,18 +151,18 @@ func TestReviewPaneModelButton(t *testing.T) {
 	argvAgent(t, m)
 	tb := reviewOn(t, m)
 	m.runCommand("t r")
-	m.onModels(modelsMsg{kind: agents.Codex, own: "gpt-6-luna", models: []agents.AgentModel{{ID: "gpt-6-luna"}, {ID: "gpt-6-astra"}}})
+	m.OnModels(core.ModelsMsg{Kind: agents.Codex, Own: "gpt-6-luna", Models: []agents.AgentModel{{ID: "gpt-6-luna"}, {ID: "gpt-6-astra"}}})
 	clickOn(t, m, "gpt-6-luna ▾", tea.MouseButtonLeft)
 	if m.reviewPick == nil || m.reviewPick.kind != agents.Codex {
 		t.Fatal("the button picks codex's model")
 	}
 	clickOn(t, m, "gpt-6-astra", tea.MouseButtonLeft)
-	if m.reviewPick != nil || m.cfg.Review.Models[agents.Codex] != "gpt-6-astra" {
-		t.Fatalf("picked %q", m.cfg.Review.Models[agents.Codex])
+	if m.reviewPick != nil || m.Cfg.Review.Models[agents.Codex] != "gpt-6-astra" {
+		t.Fatalf("picked %q", m.Cfg.Review.Models[agents.Codex])
 	}
 	t.Cleanup(func() {
-		if tb.review != nil {
-			m.endReview(tb, "done", false)
+		if tb.Review != nil {
+			m.EndReview(tb, "done", false)
 		}
 	})
 	cfg, err := config.Load()
@@ -175,14 +176,14 @@ func TestReviewPaneModelButton(t *testing.T) {
 // is where the pick starts.
 func TestPickOffersModelsUsedBefore(t *testing.T) {
 	m := testModel(t)
-	m.cfg.Review.Models = map[agents.Kind]string{agents.Gemini: "gemini-picked"}
-	m.cur().Agent, m.cur().Model = agents.Gemini, "gemini-ran"
-	m.onModels(modelsMsg{kind: agents.Gemini, again: true})
+	m.Cfg.Review.Models = map[agents.Kind]string{agents.Gemini: "gemini-picked"}
+	m.Cur().Agent, m.Cur().Model = agents.Gemini, "gemini-ran"
+	m.OnModels(core.ModelsMsg{Kind: agents.Gemini, Again: true})
 	m.openModelPick(agents.Gemini)
 	cs := m.choices(m.reviewPick)
 	var got []string
 	for _, c := range cs {
-		got = append(got, c.model)
+		got = append(got, c.Model)
 	}
 	if strings.Join(got, ",") != ",gemini-picked,gemini-ran" {
 		t.Fatalf("choices %q", got)
@@ -197,13 +198,13 @@ func TestPickOffersModelsUsedBefore(t *testing.T) {
 // again.
 func TestModelsAskedAgainWhenNone(t *testing.T) {
 	m := testModel(t)
-	if m.onModels(modelsMsg{kind: agents.OpenCode}) == nil || !m.agentModels[agents.OpenCode].asking {
+	if m.OnModels(core.ModelsMsg{Kind: agents.OpenCode}) == nil || !m.AgentModels[agents.OpenCode].Asking {
 		t.Fatal("none listed: asked again")
 	}
-	if m.onModels(modelsMsg{kind: agents.OpenCode, again: true}) != nil {
+	if m.OnModels(core.ModelsMsg{Kind: agents.OpenCode, Again: true}) != nil {
 		t.Fatal("none listed the second time: left until next time")
 	}
-	if m.onModels(modelsMsg{kind: agents.OpenCode, models: []agents.AgentModel{{ID: "a/b"}}}) != nil {
+	if m.OnModels(core.ModelsMsg{Kind: agents.OpenCode, Models: []agents.AgentModel{{ID: "a/b"}}}) != nil {
 		t.Fatal("listed: kept")
 	}
 }

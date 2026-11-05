@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/proc"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -15,7 +16,7 @@ import (
 // ran in, and the rest as elsewhere.
 func TestCallsDialog(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/a", Path: "/w/zz-a", Branch: "x"}}
 	before, _ := proc.Counts()
 	proc.Detach(exec.Command("git", "-C", "/w/zz-a/sub", "status"))
@@ -28,13 +29,13 @@ func TestCallsDialog(t *testing.T) {
 	for c, n := range before {
 		calls[c] -= n
 	}
-	var mine callRow
-	for _, r := range m.callRows(calls) {
-		if r.name == tb.Name {
+	var mine core.CallRow
+	for _, r := range m.CallRows(calls) {
+		if r.Name == tb.Name {
 			mine = r
 		}
 	}
-	if mine.git != 2 || mine.gh != 1 {
+	if mine.Git != 2 || mine.Gh != 1 {
 		t.Fatalf("the tab's calls: %+v", mine)
 	}
 	m.run("g", keyMsg("g"))

@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,7 +14,7 @@ import (
 // sideNames are the names of the tabs on the left and right, "" for none.
 func sideNames(m *Model) (string, string) {
 	l, r := m.sides()
-	name := func(t *tab) string {
+	name := func(t *core.Tab) string {
 		if t == nil {
 			return ""
 		}
@@ -30,8 +31,8 @@ func bodyRow(m *Model) string {
 func wantSides(t *testing.T, m *Model, left, right, active string) {
 	t.Helper()
 	l, r := sideNames(m)
-	if l != left || r != right || m.cur().Name != active {
-		t.Fatalf("sides %q | %q, active %q; want %q | %q, active %q", l, r, m.cur().Name, left, right, active)
+	if l != left || r != right || m.Cur().Name != active {
+		t.Fatalf("sides %q | %q, active %q; want %q | %q, active %q", l, r, m.Cur().Name, left, right, active)
 	}
 }
 
@@ -101,7 +102,7 @@ func TestSplit(t *testing.T) {
 
 func TestSplitNeedsTwoTabs(t *testing.T) {
 	m := testModel(t)
-	m.tabs = m.tabs[:1]
+	m.Tabs = m.Tabs[:1]
 	m.runCommand("z v")
 	if m.splitShown() {
 		t.Fatal("split with one tab")
@@ -113,16 +114,16 @@ func TestSplitCloseAndRestore(t *testing.T) {
 	m.runCommand("z v") // login on the right, logout on the left
 	wantSides(t, m, "logout", "login", "logout")
 
-	s, err := state.Load(m.root)
+	s, err := state.Load(m.Root)
 	if err != nil || s.Split != "1" || s.SplitLeft {
 		t.Fatalf("saved split %q left %v (%v)", s.Split, s.SplitLeft, err)
 	}
-	r := New(m.cfg, m.root, nil, s)
+	r := New(m.Cfg, m.Root, nil, s)
 	r.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	wantSides(t, r, "logout", "login", "logout")
 
 	// Closing the tab with the keyboard leaves the other one the window.
-	m.closeTab(m.cur(), false, false, nil)
+	m.closeTab(m.Cur(), false, false, nil)
 	wantSides(t, m, "login", "", "login")
 	if m.split != nil {
 		t.Fatal("split kept after closing a side")
@@ -135,8 +136,8 @@ func TestSplitCloseAndRestore(t *testing.T) {
 func TestClosingAnotherTabKeepsYouWhereYouAre(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
 	m.selectTab(2)
-	m.closeTab(m.tabs[0], false, false, nil)
-	if c := m.cur(); c == nil || c.Name != "parse" || m.entered != c {
+	m.closeTab(m.Tabs[0], false, false, nil)
+	if c := m.Cur(); c == nil || c.Name != "parse" || m.entered != c {
 		t.Fatalf("on %v after closing login from elsewhere", c)
 	}
 }
@@ -167,12 +168,12 @@ func TestSplitEndedByAnotherRepositoryResizesTheAgent(t *testing.T) {
 	if !m.splitShown() {
 		t.Fatal("no split")
 	}
-	if w, _ := parse.pane.Size(); w >= m.width-2 {
+	if w, _ := parse.Pane.Size(); w >= m.width-2 {
 		t.Fatalf("parse is %d wide in the split, want a side's width", w)
 	}
 	m.selectTab(2)
 	want, wantH := m.tabSize(parse)
-	if w, h := parse.pane.Size(); w != want || h != wantH || w < m.mainW()-4 {
+	if w, h := parse.Pane.Size(); w != want || h != wantH || w < m.mainW()-4 {
 		t.Fatalf("parse's terminal is %dx%d after the split ended, want %dx%d", w, h, want, wantH)
 	}
 }

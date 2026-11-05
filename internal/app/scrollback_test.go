@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,13 +17,13 @@ import (
 // wheel and the page keys there, rather than doing nothing.
 func TestScrollbackOfAFullScreenAgent(t *testing.T) {
 	m := testModel(t)
-	login := m.cur()
+	login := m.Cur()
 	pane, err := term.Start([]string{"sh", "-c", `printf '\033[?1049h'; stty raw -echo; cat -v`}, t.TempDir(), nil, 60, 10, func() {})
 	if err != nil {
 		t.Skip(err)
 	}
 	defer pane.Close()
-	login.pane, login.status = pane, stIdle
+	login.Pane, login.Light = pane, core.StIdle
 	for deadline := time.Now().Add(2 * time.Second); !pane.AltScreen(); time.Sleep(10 * time.Millisecond) {
 		if time.Now().After(deadline) {
 			t.Skip("the program did not go to the alternate screen")

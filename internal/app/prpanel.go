@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
@@ -32,7 +33,7 @@ func (m *Model) panelBranchPR() bool { return m.reviewOpen && m.review.BranchPR(
 
 // curBranchPanel is the tab panel's state for the active tab in F2.
 func (m *Model) curBranchPanel() *tabPanel {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		return nil
 	}
@@ -76,8 +77,8 @@ func (m *Model) branchRows(w int) []string {
 			return tea.Batch(cmd, m.reviewKey(keyMsg(k)))
 		})
 	}
-	canPush, canOpen := p.t.info.canPush(), p.t.info.canOpenPR()
-	keys := []string{key("c", "commit", p.t.info.canCommit()), key("p", "push", canPush), key("P", "push + open PR", canOpen)}
+	canPush, canOpen := p.t.Info.CanPush(), p.t.Info.CanOpenPR()
+	keys := []string{key("c", "commit", p.t.Info.CanCommit()), key("p", "push", canPush), key("P", "push + open PR", canOpen)}
 	if m.review.HasPR() {
 		// The panel's own keys for the PR below, as all your PRs have them.
 		keys = append(keys, key("f", "fix ci", m.review.CanFix()), key("a", "reply to selected", m.review.CanReply()),
@@ -155,7 +156,7 @@ func (m *Model) branchKey(k string) (tea.Cmd, bool) {
 		return nil, true
 	case "r":
 		// The panel reloads the PR too: the key goes on to it.
-		p.t.lookAgain(true)
+		p.t.LookAgain(true)
 		return m.refreshInfo(), false
 	}
 	return nil, false
@@ -172,8 +173,8 @@ func (m *Model) syncPRPanel() tea.Cmd {
 	var look tea.Cmd
 	branch := m.panelBranchPR()
 	if branch && !m.branchShown {
-		if t := m.cur(); t != nil {
-			t.lookAgain(false)
+		if t := m.Cur(); t != nil {
+			t.LookAgain(false)
 			look = m.refreshInfo()
 		}
 	}
@@ -196,7 +197,7 @@ func (m *Model) syncAllPRs() tea.Cmd {
 	d := m.prPanel
 	if entered {
 		d.news = nil
-		d.pointAt(m.cur())
+		d.pointAt(m.Cur())
 	}
 	if len(m.prWatch.news) > 0 {
 		if d.news == nil {
@@ -222,7 +223,7 @@ func (m *Model) showAllPRs() tea.Cmd {
 	m.dialog = nil
 	m.reviewOpen = true
 	cmd := m.review.ShowPRView(review.ViewMyPRs)
-	m.setFocus(focusReview)
+	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())
 }
 
@@ -230,7 +231,7 @@ func (m *Model) showAllPRs() tea.Cmd {
 func (m *Model) allPRsKey(msg tea.KeyMsg) tea.Cmd {
 	switch msg.String() {
 	case "esc", "q":
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return m.resize()
 	case "tab":
 		return m.review.NextPRView(1)
@@ -275,12 +276,12 @@ func (m *Model) prScope(all bool) string {
 		whose, n = "Everyone's", len(m.prAll.repos)
 	}
 	home, _ := os.UserHomeDir()
-	where := []string{tildePath(m.root, home)}
-	for _, d := range m.cfg.RepoDirs {
+	where := []string{core.TildePath(m.Root, home)}
+	for _, d := range m.Cfg.RepoDirs {
 		if !filepath.IsAbs(d) {
-			d = filepath.Join(m.root, d)
+			d = filepath.Join(m.Root, d)
 		}
-		where = append(where, tildePath(d, home))
+		where = append(where, core.TildePath(d, home))
 	}
 	in := "the repositories"
 	switch {
@@ -298,7 +299,7 @@ func (m *Model) prScope(all bool) string {
 func (m *Model) prViewsLine(shown review.PRView) string {
 	var out string
 	prNews := len(m.prWatch.news) > 0 && shown != review.ViewMyPRs
-	issueNews := len(m.issueWatch.news) > 0 && shown != review.ViewIssues
+	issueNews := len(m.IssueWatch.News) > 0 && shown != review.ViewIssues
 	for i, l := range review.PRViews(shown, prNews, issueNews) {
 		v := review.PRView(i)
 		if v == shown {
@@ -344,14 +345,14 @@ func (m *Model) openPRInPanel(e prEntry) tea.Cmd {
 	cmd := m.goToPR(e)
 	// After going to the tab, which brings back the screen it was left on.
 	shown := m.review.ShowBranchPR()
-	m.setFocus(focusReview)
+	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, shown, m.syncPRPanel(), m.resize())
 }
 
 // prAskMsg is a message for the agent of the tab on a PR's branch, made in
 // the background: the PR fetched afresh, a build log read.
 type prAskMsg struct {
-	t    *tab
+	t    *core.Tab
 	key  string
 	what string // what the message asks, for the bar
 	text string
@@ -374,7 +375,7 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		m.toast("no tab works on " + e.branch() + ": enter opens one")
 		return nil
 	}
-	key := prKey(e.repo.Path, e.pr.Number)
+	key := core.PrKey(e.repo.Path, e.pr.Number)
 	if m.prAsking[key] {
 		return nil
 	}
@@ -416,10 +417,10 @@ func (m *Model) onPRAsk(msg prAskMsg) {
 	switch {
 	case msg.err != nil:
 		m.toast(msg.err.Error())
-	case m.tabIndex(msg.t) < 0:
+	case m.TabIndex(msg.t) < 0:
 		m.toast(msg.t.Name + " was closed")
 	default:
-		m.addMessage(msg.t, msg.text, false)
+		m.AddMessage(msg.t, msg.text, false)
 		m.toast("in " + msg.t.Name + "'s " + m.screenKey(3) + ": a message to " + msg.what + " — read it there, then send it")
 	}
 }

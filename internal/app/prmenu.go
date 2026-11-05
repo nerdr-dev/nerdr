@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/browser"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -20,7 +21,7 @@ import (
 // pull request, with what to do about them: push, open a pull request. It
 // also lists the other tabs that change the same files as this one.
 type tabPanel struct {
-	t    *tab
+	t    *core.Tab
 	busy string
 	// result is how the last push or pull request went, kept in the
 	// panel: a toast is gone before a reason for doing nothing is read.
@@ -29,7 +30,7 @@ type tabPanel struct {
 }
 
 type prActionMsg struct {
-	t    *tab
+	t    *core.Tab
 	note string
 	err  string
 }
@@ -37,13 +38,13 @@ type prActionMsg struct {
 // showBranchPR is F2 on the tab's branches and its pull request, with the
 // keyboard: where ctrl+q i i takes you.
 func (m *Model) showBranchPR() tea.Cmd {
-	if m.cur() == nil {
+	if m.Cur() == nil {
 		return nil
 	}
 	m.dialog = nil
 	m.reviewOpen = true
 	cmd := m.review.ShowBranchPR()
-	m.setFocus(focusReview)
+	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())
 }
 
@@ -63,15 +64,15 @@ func (p *tabPanel) act(k string) (tea.Cmd, bool) {
 func (p *tabPanel) job(k string) (func() prActionMsg, string) {
 	t := p.t
 	wts := append([]workspace.Worktree(nil), t.Worktrees...)
-	hooks := !t.hasSandboxed()
+	hooks := !t.HasSandboxed()
 	switch k {
 	case "p":
 		return func() prActionMsg { return pushAll(t, wts, hooks) }, "pushing…"
 	case "P":
 		have := map[string]bool{}
-		for _, w := range t.info.wts {
-			if w.hasPR && w.pr.State == "OPEN" {
-				have[w.repo] = true
+		for _, w := range t.Info.Wts {
+			if w.HasPR && w.Pr.State == "OPEN" {
+				have[w.Repo] = true
 			}
 		}
 		return func() prActionMsg { return createPRs(t, wts, have, hooks) }, "pushing and opening the pull request…"
@@ -93,15 +94,15 @@ func (m *Model) prDone(msg prActionMsg) tea.Cmd {
 	} else if msg.note != "" {
 		m.toast(msg.note)
 	}
-	msg.t.lookAgain(true)
+	msg.t.LookAgain(true)
 	var pr tea.Cmd
-	if msg.t == m.cur() {
+	if msg.t == m.Cur() {
 		pr = m.review.ReloadPR() // F2 shows the new PR at once
 	}
 	return tea.Batch(m.refreshInfo(), pr)
 }
 
-func pushAll(t *tab, wts []workspace.Worktree, hooks bool) prActionMsg {
+func pushAll(t *core.Tab, wts []workspace.Worktree, hooks bool) prActionMsg {
 	var errs []string
 	skipped := false
 	for _, w := range wts {
@@ -122,7 +123,7 @@ func pushAll(t *tab, wts []workspace.Worktree, hooks bool) prActionMsg {
 	return prActionMsg{t: t, note: note}
 }
 
-func createPRs(t *tab, wts []workspace.Worktree, have map[string]bool, hooks bool) prActionMsg {
+func createPRs(t *core.Tab, wts []workspace.Worktree, have map[string]bool, hooks bool) prActionMsg {
 	var urls, errs []string
 	skipped := false
 	for _, w := range wts {
@@ -135,7 +136,7 @@ func createPRs(t *tab, wts []workspace.Worktree, have map[string]bool, hooks boo
 		if s, err := workspace.BranchStats(w); err == nil && s.Ahead == 0 {
 			why := name + ": no commits ahead of " + s.Base + " to open a pull request with"
 			if n := workspace.Uncommitted(w); n > 0 {
-				why += " — " + plural(n, "file") + " changed but not committed: commit them first"
+				why += " — " + core.Plural(n, "file") + " changed but not committed: commit them first"
 			}
 			errs = append(errs, why)
 			continue
@@ -181,11 +182,11 @@ func (m *Model) openURL(url string) {
 // openTabPRs opens the active tab's pull requests in the browser, one for
 // each branch that has one.
 func (m *Model) openTabPRs() {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		return
 	}
-	prs := t.info.prs()
+	prs := t.Info.Prs()
 	if len(prs) == 0 {
 		m.toast(t.Name + " has no pull request")
 		return
@@ -214,32 +215,32 @@ func (p *tabPanel) outcome() []string {
 func (p *tabPanel) branchLines(m *Model, shown string) []string {
 	t := p.t
 	var lines []string
-	if !t.info.known() {
+	if !t.Info.Known() {
 		lines = append(lines, dim("looking at the branches…"))
 	}
-	for i, wi := range t.info.wts {
+	for i, wi := range t.Info.Wts {
 		if i >= len(t.Worktrees) {
 			break
 		}
 		wt := t.Worktrees[i]
 		head := filepath.Base(wt.Repo) + "  " + keyHint(wt.Branch)
 		lines = append(lines, head)
-		if wi.err != "" {
-			lines = append(lines, "  "+warn(wi.err))
+		if wi.Err != "" {
+			lines = append(lines, "  "+warn(wi.Err))
 			continue
 		}
-		s := wi.stats
-		lines = append(lines, "  "+plural(len(s.Changed), "file")+" changed, +"+strconv.Itoa(wi.add)+" −"+strconv.Itoa(wi.del)+
+		s := wi.Stats
+		lines = append(lines, "  "+core.Plural(len(s.Changed), "file")+" changed, +"+strconv.Itoa(wi.Add)+" −"+strconv.Itoa(wi.Del)+
 			" · "+strconv.Itoa(s.Ahead)+" ahead, "+strconv.Itoa(s.Behind)+" behind "+s.Base)
 		switch {
 		case shown != "" && filepath.Clean(wt.Path) == filepath.Clean(shown):
 			// F2 draws this one's PR below.
-		case wi.hasPR:
-			line := "  PR #" + strconv.Itoa(wi.pr.Number) + " " + prState(wi.pr)
-			if wi.pr.CI != "" {
-				line += " · CI " + wi.pr.CI
+		case wi.HasPR:
+			line := "  PR #" + strconv.Itoa(wi.Pr.Number) + " " + core.PrState(wi.Pr)
+			if wi.Pr.CI != "" {
+				line += " · CI " + wi.Pr.CI
 			}
-			url := wi.pr.URL
+			url := wi.Pr.URL
 			lines = append(lines, line, "  "+m.onClick(dim(url), func(*Model) tea.Cmd {
 				m.openURL(url)
 				return nil
@@ -259,7 +260,7 @@ func (p *tabPanel) branchLines(m *Model, shown string) []string {
 func (p *tabPanel) branchList(m *Model, shown string) []string {
 	t := p.t
 	var lines []string
-	if !t.info.known() {
+	if !t.Info.Known() {
 		lines = append(lines, dim("looking at the branches…"))
 	}
 	repoW, branchW := 0, 0
@@ -274,19 +275,19 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 			mark, branch = keyHint("▸ "), keyHint(branch)
 		}
 		row := mark + padTo(term.PrintableLine(filepath.Base(wt.Repo)), repoW+2) + padTo(branch, branchW+2)
-		if i < len(t.info.wts) {
-			wi := t.info.wts[i]
+		if i < len(t.Info.Wts) {
+			wi := t.Info.Wts[i]
 			switch {
-			case wi.err != "":
-				row += warn(wi.err)
+			case wi.Err != "":
+				row += warn(wi.Err)
 			default:
-				row += dim("+"+strconv.Itoa(wi.add)+" −"+strconv.Itoa(wi.del)+
-					" · "+strconv.Itoa(wi.stats.Ahead)+" ahead, "+strconv.Itoa(wi.stats.Behind)+" behind") + "  "
+				row += dim("+"+strconv.Itoa(wi.Add)+" −"+strconv.Itoa(wi.Del)+
+					" · "+strconv.Itoa(wi.Stats.Ahead)+" ahead, "+strconv.Itoa(wi.Stats.Behind)+" behind") + "  "
 				switch {
-				case wi.hasPR:
-					pr := "#" + strconv.Itoa(wi.pr.Number) + " " + prState(wi.pr)
-					if wi.pr.CI != "" {
-						pr += " · CI " + wi.pr.CI
+				case wi.HasPR:
+					pr := "#" + strconv.Itoa(wi.Pr.Number) + " " + core.PrState(wi.Pr)
+					if wi.Pr.CI != "" {
+						pr += " · CI " + wi.Pr.CI
 					}
 					row += pr
 				case github.Available():
@@ -294,7 +295,7 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 				}
 			}
 		}
-		if sel && m.review.OnRepoList() && m.focus == focusReview {
+		if sel && m.review.OnRepoList() && m.focus == core.FocusReview {
 			// The cursor is on the list: ↑ ↓ move it, as on any list.
 			row = lipgloss.NewStyle().Background(navActiveBg).Render(ansi.Strip(row))
 		}
@@ -306,8 +307,8 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 // branchOf is the branch the tab's i-th worktree has checked out now, or
 // the one it was made on until that is known.
 func (p *tabPanel) branchOf(i int) string {
-	if i < len(p.t.info.wts) && p.t.info.wts[i].branch != "" {
-		return p.t.info.wts[i].branch
+	if i < len(p.t.Info.Wts) && p.t.Info.Wts[i].Branch != "" {
+		return p.t.Info.Wts[i].Branch
 	}
 	return p.t.Worktrees[i].Branch
 }
@@ -317,7 +318,7 @@ func (p *tabPanel) branchOf(i int) string {
 func (p *tabPanel) tabNotes(m *Model) []string {
 	t := p.t
 	var lines []string
-	if t.info.merged() {
+	if t.Info.Merged() {
 		lines = append(lines, "", keyHint("merged")+" — closing the tab ("+m.pk("x")+") can delete the branch too.")
 	}
 	if ov := m.overlaps[t.ID]; len(ov) > 0 {
@@ -325,7 +326,7 @@ func (p *tabPanel) tabNotes(m *Model) []string {
 		// The branches are enough to know what to merge with what; the
 		// files would fill the screen.
 		for _, o := range ov {
-			lines = append(lines, "  "+keyHint(strings.Join(o.branches(), ", "))+dim("  "+o.with.Name+" · "+plural(len(o.files), "file")))
+			lines = append(lines, "  "+keyHint(strings.Join(o.Branches(), ", "))+dim("  "+o.With.Name+" · "+core.Plural(len(o.Files), "file")))
 		}
 	}
 	return lines

@@ -1,12 +1,10 @@
 package app
 
 import (
-	"slices"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/agents"
-
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // Agents asleep. An agent that is done, and has been seen, holds a process
@@ -23,77 +21,38 @@ import (
 // Terminals are left running: what runs in them (a dev server, a watch)
 // is not the agent's to stop.
 
-// startSpacing is how far apart the agents of the tabs restored at start
-// are started, the tab shown first: twenty agents starting at once, each
-// reading its conversation and its config, slow the machine down and the
-// tab you are looking at with it.
-const startSpacing = 100 * time.Millisecond
-
-// startLater is cmd run after d, as the agents are started at start.
-func startLater(d time.Duration, cmd tea.Cmd) tea.Cmd {
-	if cmd == nil || d <= 0 {
-		return cmd
-	}
-	return func() tea.Msg {
-		time.Sleep(d)
-		return cmd()
-	}
-}
-
 // restoreStarts starts the agents of the tabs restored at start, spaced
 // startSpacing apart, the tab shown first; those of tabs gone cold sleep
 // until visited.
 func (m *Model) restoreStarts() []tea.Cmd {
 	now := time.Now()
-	order := make([]*tab, 0, len(m.tabs))
-	if t := m.cur(); t != nil {
+	order := make([]*core.Tab, 0, len(m.Tabs))
+	if t := m.Cur(); t != nil {
 		order = append(order, t)
 	}
-	for _, t := range m.tabs {
-		if t != m.cur() {
+	for _, t := range m.Tabs {
+		if t != m.Cur() {
 			order = append(order, t)
 		}
 	}
 	var cmds []tea.Cmd
 	n := 0
 	for _, t := range order {
-		if t != m.cur() && t != m.splitTab() && m.cold(t, now) && !tabHasAuto(t) {
-			for _, a := range append([]*tab{t}, t.extraAgents()...) {
-				a.status = stAsleep
+		if t != m.Cur() && t != m.splitTab() && m.Cold(t, now) && !core.TabHasAuto(t) {
+			for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
+				a.Light = core.StAsleep
 			}
-			cmds = append(cmds, m.lookUpGoal(t), m.countSkills(t))
+			cmds = append(cmds, fromCore(m.LookUpGoal(t)), fromCore(m.CountSkills(t)))
 			continue
 		}
-		cmds = append(cmds, startLater(time.Duration(n)*startSpacing, m.start(t, true)), m.lookUpGoal(t), m.countSkills(t))
+		cmds = append(cmds, fromCore(core.StartLater(time.Duration(n)*core.StartSpacing, toCore(fromCore(m.Start(t, true))))), fromCore(m.LookUpGoal(t)), fromCore(m.CountSkills(t)))
 		n++
-		for _, a := range t.extraAgents() {
-			cmds = append(cmds, startLater(time.Duration(n)*startSpacing, m.start(a, true)), m.lookUpGoal(a))
+		for _, a := range t.ExtraAgents() {
+			cmds = append(cmds, fromCore(core.StartLater(time.Duration(n)*core.StartSpacing, toCore(fromCore(m.Start(a, true))))), fromCore(m.LookUpGoal(a)))
 			n++
 		}
 	}
 	return cmds
-}
-
-// hasAuto says whether agent t has a message waiting to be typed in by
-// itself, which an agent asleep would never be given.
-func hasAuto(t *tab) bool {
-	for _, msg := range t.Messages {
-		if msg.Auto {
-			return true
-		}
-	}
-	return false
-}
-
-// tabHasAuto is hasAuto for any agent of tab t, which sleep together.
-func tabHasAuto(t *tab) bool {
-	return slices.ContainsFunc(append([]*tab{t}, t.extraAgents()...), hasAuto)
-}
-
-// sleepAfter is how long an agent done and seen is left running out of
-// sight; 0 for ever.
-func (m *Model) sleepAfter() time.Duration {
-	return time.Duration(m.cfg.SleepAfter) * time.Minute
 }
 
 // sleepIdle puts to sleep the agents of the tabs that have been done, seen
@@ -101,13 +60,13 @@ func (m *Model) sleepAfter() time.Duration {
 // given something to do since.
 func (m *Model) sleepIdle(now time.Time) tea.Cmd {
 	var cmds []tea.Cmd
-	for _, t := range m.tabs {
+	for _, t := range m.Tabs {
 		switch {
-		case t.status == stAsleep && (tabHasAuto(t) || t == m.cur() || t == m.splitTab()):
+		case t.Light == core.StAsleep && (core.TabHasAuto(t) || t == m.Cur() || t == m.splitTab()):
 			// Given a task since, or on screen by a way track missed.
-			cmds = append(cmds, m.wakeTab(t))
+			cmds = append(cmds, fromCore(m.WakeTab(t)))
 		case m.canSleep(t, now):
-			m.sleepTab(t, now)
+			m.SleepTab(t, now)
 		}
 	}
 	return tea.Batch(cmds...)
@@ -115,76 +74,19 @@ func (m *Model) sleepIdle(now time.Time) tea.Cmd {
 
 // canSleep says whether t's agents can be put to sleep now: each done,
 // seen and idle for sleep_after, and the tab out of sight as long.
-func (m *Model) canSleep(t *tab, now time.Time) bool {
-	d := m.sleepAfter()
-	if d == 0 || t == m.cur() || t == m.splitTab() || now.Sub(t.LastActive) < d || now.Sub(t.shownAt) < d {
+func (m *Model) canSleep(t *core.Tab, now time.Time) bool {
+	d := m.SleepAfter()
+	if d == 0 || t == m.Cur() || t == m.splitTab() || now.Sub(t.LastActive) < d || now.Sub(t.ShownAt) < d {
 		return false
 	}
-	for _, a := range append([]*tab{t}, t.extraAgents()...) {
-		if a.pane == nil || a.status != stIdle || now.Sub(a.changed) < d || !m.canCarryOn(a) ||
-			a.review != nil || a.Spinoff != nil || hasAuto(a) || m.watching(a) {
+	for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
+		if a.Pane == nil || a.Light != core.StIdle || now.Sub(a.Changed) < d || !m.CanCarryOn(a) ||
+			a.Review != nil || a.Spinoff != nil || core.HasAuto(a) || m.Watching(a) {
 			return false
 		}
-		if exited, _, _ := a.pane.Exited(); exited {
+		if exited, _, _ := a.Pane.Exited(); exited {
 			return false
 		}
 	}
 	return true
-}
-
-// canCarryOn says whether agent a, started again, carries on the
-// conversation it is in rather than starting afresh: see start.
-func (m *Model) canCarryOn(a *tab) bool {
-	if !slices.Contains(agents.All, a.Agent) {
-		// nerdr resumes an agent it does not know only with the command
-		// its integration reported, or the config's resume_args: a
-		// conversation id alone it has no way to pass on.
-		if !a.sandboxed && !m.sandboxedKind(a.Agent) {
-			if _, ok := agents.ResumeReported(m.specsFor(a), a.Agent, a.ResumeArgv); ok {
-				return true
-			}
-		}
-		return len(m.cfg.Agents[a.Agent].ResumeArgs) > 0 && a.partOf == nil && !m.sharesKind(a)
-	}
-	if a.SessionID != "" {
-		return true
-	}
-	if a.partOf != nil || m.sharesKind(a) {
-		return false
-	}
-	switch a.Agent {
-	case agents.Codex, agents.Claude, agents.OpenCode, agents.Cursor, agents.Gemini, agents.Antigravity:
-		// Each carries on the worktree's latest conversation; copilot
-		// would start afresh.
-		return true
-	}
-	return false // copilot would start afresh
-}
-
-// sleepTab stops the agents of t, to be started again when t is visited.
-func (m *Model) sleepTab(t *tab, now time.Time) {
-	for _, a := range append([]*tab{t}, t.extraAgents()...) {
-		if old := a.pane; old != nil {
-			a.pane = nil
-			go old.Close()
-		}
-		a.status, a.changed = stAsleep, now
-	}
-	debugf("tab %s: agents asleep", t.Name)
-}
-
-// wakeTab starts again the agents of t that are asleep, carrying their
-// conversations on.
-func (m *Model) wakeTab(t *tab) tea.Cmd {
-	if t == nil {
-		return nil
-	}
-	var cmds []tea.Cmd
-	for _, a := range append([]*tab{t}, t.extraAgents()...) {
-		if a.status == stAsleep {
-			a.fallbackTried = false
-			cmds = append(cmds, m.start(a, true))
-		}
-	}
-	return tea.Batch(cmds...)
 }

@@ -14,9 +14,8 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
 	"github.com/nerdr-dev/nerdr/internal/config"
-	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
-	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,10 +32,6 @@ import (
 // and is drawn only on F5. While it has the keyboard every key goes to it
 // but F1-F5 and the prefix: F5 goes back to the list, and from the list to
 // the screen again.
-
-// pluginsCheckEvery is how long a look at the plugins' folders is
-// trusted: the screen is drawn on every frame.
-const pluginsCheckEvery = 2 * time.Second
 
 // pluginsView is the F5 screen's state.
 type pluginsView struct {
@@ -57,13 +52,7 @@ type pluginsView struct {
 	allowed map[string]bool
 
 	// uis are the plugins' screens started, by pluginUIKey.
-	uis map[string]*pluginUI
-	// runs are the last run of each plugin agents ran, by pluginUIKey,
-	// and byID those running, by their id: see pluginruns.go.
-	runs, byID map[string]*pluginRun
-	// finished holds ended foreground runs until their clients have had
-	// time to read them, even when a newer run occupies runs.
-	finished map[string]*pluginRun
+	uis map[string]*core.PluginUI
 	// asking is the question whether an agent may run a plugin, while it
 	// is asked.
 	asking *runQuestion
@@ -76,50 +65,25 @@ type pluginsView struct {
 	missing map[string]time.Time
 }
 
-// pluginUI is a plugin's screen, started in tab t.
-type pluginUI struct {
-	t    *tab
-	pane *term.Pane
-	// events is where it is told of agents' runs of the plugin.
-	events *os.File
-	// dir is the plugin's folder, and key the content it was started from.
-	dir, key string
-}
-
-// close stops u's program, and takes its events file away.
-func (u *pluginUI) close() {
-	if u.events != nil {
-		_ = u.events.Close()
-		_ = os.Remove(u.events.Name())
-	}
-	go u.pane.Close()
-}
-
-// pluginUIKey is the key of plugin p's screen in tab t.
-func pluginUIKey(t *tab, p plugin.Plugin) string { return t.ID + "\x00" + p.Dir }
-
-// pluginsAllowedFile is where the plugins the user allowed are kept.
-func pluginsAllowedFile() string { return plugin.AllowedFile(state.Dir()) }
-
 // panelPlugins reports whether the review panel shows the plugins.
 func (m *Model) panelPlugins() bool { return m.reviewOpen && m.review.Plugins() }
 
 // pluginList is the plugins for t, looked for again when the last look is
 // old or was for another tab.
-func (m *Model) pluginList(t *tab) []plugin.Plugin {
+func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 	v := &m.plugins
 	key := ""
 	if t != nil {
 		key = t.ID
 	}
-	if key == v.key && time.Since(v.at) < pluginsCheckEvery {
+	if key == v.key && time.Since(v.at) < core.PluginsCheckEvery {
 		return v.list
 	}
 	v.key, v.at = key, time.Now()
 	v.list = plugin.Find(plugin.UserDir(config.Path()))
 	v.allowed = map[string]bool{}
 	for _, p := range v.list {
-		v.allowed[p.Dir] = plugin.Allowed(pluginsAllowedFile(), p)
+		v.allowed[p.Dir] = plugin.Allowed(core.PluginsAllowedFile(), p)
 	}
 	v.repick()
 	return v.list
@@ -130,41 +94,36 @@ func (m *Model) pluginList(t *tab) []plugin.Plugin {
 func (m *Model) pluginGone(dir string) {
 	delete(m.plugins.missing, dir)
 	for k, u := range m.plugins.uis {
-		if u.dir != dir {
+		if u.Dir != dir {
 			continue
 		}
 		delete(m.plugins.uis, k)
 		if m.plugins.uiFocus == k {
 			m.plugins.uiFocus = ""
 		}
-		u.close()
+		u.Close()
 	}
-	for _, r := range m.plugins.byID {
-		if r.dir != dir {
+	for _, r := range m.PluginRuns.ByID {
+		if r.Dir != dir {
 			continue
 		}
-		if r.running() && r.stopBy == "" {
-			r.stopBy = "the plugin is gone"
-			r.proc.stop()
+		if r.Running() && r.StopBy == "" {
+			r.StopBy = "the plugin is gone"
+			r.Proc.Stop()
 		}
 	}
-	for k, r := range m.plugins.runs {
-		if r.dir == dir {
-			delete(m.plugins.runs, k)
+	for k, r := range m.PluginRuns.Runs {
+		if r.Dir == dir {
+			delete(m.PluginRuns.Runs, k)
 		}
 	}
 }
-
-// pluginGoneAfter is how long a plugin's folder may be there without its
-// plugin.toml before its screens and runs are taken to be orphaned: an
-// editor writes plugin.toml by rename.
-const pluginGoneAfter = 5 * time.Second
 
 // checkPluginsGone stops screens and runs whose plugin folder is gone, or
 // has had no plugin.toml for a while. It looks every few seconds, so a
 // watch does not outlive its plugin just because F5 is not open.
 func (m *Model) checkPluginsGone(now time.Time) {
-	if now.Sub(m.plugins.goneAt) < pluginsCheckEvery {
+	if now.Sub(m.plugins.goneAt) < core.PluginsCheckEvery {
 		return
 	}
 	m.plugins.goneAt = now
@@ -173,13 +132,13 @@ func (m *Model) checkPluginsGone(now time.Time) {
 	}
 	dirs := map[string]bool{}
 	for _, u := range m.plugins.uis {
-		dirs[u.dir] = true
+		dirs[u.Dir] = true
 	}
-	for _, r := range m.plugins.byID {
-		dirs[r.dir] = true
+	for _, r := range m.PluginRuns.ByID {
+		dirs[r.Dir] = true
 	}
-	for _, r := range m.plugins.runs {
-		dirs[r.dir] = true
+	for _, r := range m.PluginRuns.Runs {
+		dirs[r.Dir] = true
 	}
 	if len(dirs) == 0 {
 		for dir := range m.plugins.missing {
@@ -205,7 +164,7 @@ func (m *Model) checkPluginsGone(now time.Time) {
 			m.plugins.missing[dir] = now
 			continue
 		}
-		if now.Sub(since) >= pluginGoneAfter {
+		if now.Sub(since) >= core.PluginGoneAfter {
 			m.pluginGone(dir)
 		}
 	}
@@ -240,7 +199,7 @@ func (v *pluginsView) pick(i int) {
 }
 
 // pickedPlugin is the plugin picked in F5 for t, if there is one.
-func (m *Model) pickedPlugin(t *tab) (plugin.Plugin, bool) {
+func (m *Model) pickedPlugin(t *core.Tab) (plugin.Plugin, bool) {
 	list := m.pluginList(t)
 	if len(list) == 0 {
 		return plugin.Plugin{}, false
@@ -249,35 +208,26 @@ func (m *Model) pickedPlugin(t *tab) (plugin.Plugin, bool) {
 }
 
 // pluginUIOf is p's screen in t, if one was started.
-func (m *Model) pluginUIOf(t *tab, p plugin.Plugin) *pluginUI {
+func (m *Model) pluginUIOf(t *core.Tab, p plugin.Plugin) *core.PluginUI {
 	if t == nil {
 		return nil
 	}
-	return m.plugins.uis[pluginUIKey(t, p)]
-}
-
-// running reports whether u's program still runs.
-func (u *pluginUI) running() bool {
-	if u == nil || u.pane == nil {
-		return false
-	}
-	exited, _, _ := u.pane.Exited()
-	return !exited
+	return m.plugins.uis[core.PluginUIKey(t, p)]
 }
 
 // pluginUIPane is the plugin screen with the keyboard, if one has it: the
 // input router passes keys straight to it.
 func (m *Model) pluginUIPane() *term.Pane {
-	if m.focus != focusReview || !m.panelPlugins() || m.plugins.uiFocus == "" {
+	if m.focus != core.FocusReview || !m.panelPlugins() || m.plugins.uiFocus == "" {
 		return nil
 	}
-	t := m.cur()
+	t := m.Cur()
 	p, ok := m.pickedPlugin(t)
-	if !ok || pluginUIKey(t, p) != m.plugins.uiFocus {
+	if !ok || core.PluginUIKey(t, p) != m.plugins.uiFocus {
 		return nil
 	}
-	if u := m.pluginUIOf(t, p); u.running() {
-		return u.pane
+	if u := m.pluginUIOf(t, p); u.Running() {
+		return u.Pane
 	}
 	return nil
 }
@@ -292,13 +242,13 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	t := m.cur()
+	t := m.Cur()
 	list := m.pluginList(t)
 	v := &m.plugins
 	switch msg.String() {
 	case "esc", "q":
 		v.uiFocus = ""
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return m.resize()
 	case "up", "k":
 		v.pick(v.cursor - 1)
@@ -316,7 +266,7 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "s":
 		if p, ok := m.pickedPlugin(t); ok {
-			m.stopPickedRun(t, p)
+			m.StopPickedRun(t, p)
 		}
 	case "a":
 		if p, ok := m.pickedPlugin(t); ok {
@@ -333,15 +283,15 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 // togglePluginUI is F5 pressed on F5: from the list to the picked
 // plugin's screen when it runs, and back. It reports whether it did.
 func (m *Model) togglePluginUI() bool {
-	if m.focus != focusReview || !m.panelPlugins() {
+	if m.focus != core.FocusReview || !m.panelPlugins() {
 		return false
 	}
-	t := m.cur()
+	t := m.Cur()
 	p, ok := m.pickedPlugin(t)
-	if !ok || !m.pluginUIOf(t, p).running() {
+	if !ok || !m.pluginUIOf(t, p).Running() {
 		return false
 	}
-	key := pluginUIKey(t, p)
+	key := core.PluginUIKey(t, p)
 	if m.plugins.uiFocus == key {
 		m.plugins.uiFocus = ""
 	} else {
@@ -352,7 +302,7 @@ func (m *Model) togglePluginUI() bool {
 
 // openPluginUI gives plugin p's screen in t the keyboard, starting it when
 // it does not run, once the user has allowed the plugin.
-func (m *Model) openPluginUI(t *tab, p plugin.Plugin) tea.Cmd {
+func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 	switch {
 	case t == nil:
 		m.toast("open a tab first: a plugin's screen runs in a tab's folder")
@@ -375,12 +325,12 @@ func (m *Model) openPluginUI(t *tab, p plugin.Plugin) tea.Cmd {
 		m.toast(clean.Line(p.Name) + " changed and has no screen to start now")
 		return nil
 	}
-	if u := m.pluginUIOf(t, p); u.running() && u.key == key {
-		m.plugins.uiFocus = pluginUIKey(t, p)
-		m.setFocus(focusReview)
+	if u := m.pluginUIOf(t, p); u.Running() && u.Key == key {
+		m.plugins.uiFocus = core.PluginUIKey(t, p)
+		m.setFocus(core.FocusReview)
 		return nil
 	}
-	if plugin.AllowedKey(pluginsAllowedFile(), key) {
+	if plugin.AllowedKey(core.PluginsAllowedFile(), key) {
 		return m.startPluginUI(t, p, true, key)
 	}
 	return m.askAllowPlugin(p, key, func(m *Model) tea.Cmd { return m.openPluginUI(t, p) },
@@ -398,7 +348,7 @@ func (m *Model) allowPlugin(p plugin.Plugin) tea.Cmd {
 	case p.Err != "":
 		m.toast(clean.Line(p.Name) + " is broken: " + clean.Line(p.Err))
 		return nil
-	case plugin.AllowedKey(pluginsAllowedFile(), key):
+	case plugin.AllowedKey(core.PluginsAllowedFile(), key):
 		m.toast(clean.Line(p.Name) + " is allowed as it is")
 		return nil
 	}
@@ -411,7 +361,7 @@ func (m *Model) allowPlugin(p plugin.Plugin) tea.Cmd {
 
 // disallowPlugin takes the user's allowance of p as it is now away.
 func (m *Model) disallowPlugin(p plugin.Plugin) tea.Cmd {
-	file := pluginsAllowedFile()
+	file := core.PluginsAllowedFile()
 	key := ""
 	if _, k, err := plugin.Fresh(p); err == nil {
 		key = k
@@ -450,7 +400,7 @@ func (m *Model) disallowPlugin(p plugin.Plugin) tea.Cmd {
 // and keeps that they allow it, before then. A change to the folder while
 // they read it is not allowed by their yes: again asks anew.
 func (m *Model) askAllowPlugin(p plugin.Plugin, key string, again, then func(m *Model) tea.Cmd) tea.Cmd {
-	file := pluginsAllowedFile()
+	file := core.PluginsAllowedFile()
 	lines := []string{
 		"A plugin runs as you, outside every agent's sandbox: its screen when",
 		"you start it, its run whenever an agent asks, with the parameters the",
@@ -474,11 +424,11 @@ func (m *Model) askAllowPlugin(p plugin.Plugin, key string, again, then func(m *
 				". Check the plugin uses it with care: quoted, never run as code."))
 		}
 	}
-	lines = append(lines, dim("in "+clean.Line(tildePath(p.Dir, homeDir()))), "")
+	lines = append(lines, dim("in "+clean.Line(core.TildePath(p.Dir, core.HomeDir()))), "")
 	m.dialog = &confirm{
 		title:  "Allow " + clean.Line(p.Name) + "?",
 		lines:  lines,
-		scroll: pluginPreview(p.Dir, maxPreviewLines, max(boxInner(m.width)-2, 20)),
+		scroll: pluginPreview(p.Dir, core.MaxPreviewLines, max(boxInner(m.width)-2, 20)),
 		after:  []string{"", keyHint("y") + dim(" allows it until something in its folder changes · ") + keyHint("n") + dim(" does not")},
 		yes: func(m *Model) tea.Cmd {
 			if now, err := p.Key(); err != nil || now != key {
@@ -495,14 +445,6 @@ func (m *Model) askAllowPlugin(p plugin.Plugin, key string, again, then func(m *
 	}
 	return nil
 }
-
-// maxPreviewLines is the most of a plugin's folder the user is shown to
-// scroll through; one with more says to read the rest in the folder.
-const maxPreviewLines = 5000
-
-// maxPreviewFile is the most of one file the question reads to show: a
-// large one is read in its folder instead.
-const maxPreviewFile = 1 << 20
 
 // pluginPreview is what is in the plugin folder dir, for the user to read
 // before allowing it: each file's name and, for text, its lines, at most
@@ -530,9 +472,9 @@ func pluginPreview(dir string, n, w int) []string {
 			out = append(out, head+dim("  not a regular file"))
 			return nil
 		}
-		if info.Size() > maxPreviewFile {
+		if info.Size() > core.MaxPreviewFile {
 			out = append(out, head+dim(fmt.Sprintf("  %d bytes, too large to show: read it in %s",
-				info.Size(), clean.Line(tildePath(dir, homeDir())))))
+				info.Size(), clean.Line(core.TildePath(dir, core.HomeDir())))))
 			return nil
 		}
 		b, err := os.ReadFile(path)
@@ -556,31 +498,26 @@ func pluginPreview(dir string, n, w int) []string {
 		return nil
 	})
 	if more > 0 {
-		out = append(out, warn(fmt.Sprintf("… and %d more lines: read them in %s before you allow it", more, tildePath(dir, homeDir()))))
+		out = append(out, warn(fmt.Sprintf("… and %d more lines: read them in %s before you allow it", more, core.TildePath(dir, core.HomeDir()))))
 	}
 	return out
-}
-
-func homeDir() string {
-	home, _ := os.UserHomeDir()
-	return home
 }
 
 // startPluginUI starts plugin p's screen in t, in place of one that ended,
 // and gives it the keyboard when focus is set. It is told of a run of the
 // plugin going on.
-func (m *Model) startPluginUI(t *tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
+func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
 	if len(p.UI) == 0 {
 		m.toast(clean.Line(p.Name) + " has no screen of its own")
 		return nil
 	}
-	hadFocus := m.plugins.uiFocus == pluginUIKey(t, p)
+	hadFocus := m.plugins.uiFocus == core.PluginUIKey(t, p)
 	m.stopPluginUI(t, p)
 	w, h := m.plugins.uiW, m.plugins.uiH
 	if w <= 0 || h <= 0 {
 		w, h = 60, 20
 	}
-	events, err := pluginEventsFile(p)
+	events, err := core.PluginEventsFile(p)
 	if err != nil {
 		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
 		return nil
@@ -589,23 +526,23 @@ func (m *Model) startPluginUI(t *tab, p plugin.Plugin, focus bool, key string) t
 		_ = events.Close()
 		_ = os.Remove(events.Name())
 	}
-	env := append(append(childEnv(t), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
+	env := append(append(core.ChildEnv(t), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
 	argv := p.Command(p.UI)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
-	dir, err := runDir(t, t.Dir)
+	dir, err := core.RunDir(t, t.Dir)
 	if err != nil {
 		dropEvents()
 		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
 		return nil
 	}
-	if err := pluginCommandIn(cmd, dir, p.Dir, key); err != nil {
+	if err := core.PluginCommandIn(cmd, dir, p.Dir, key); err != nil {
 		dir.Close()
 		dropEvents()
 		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
 		return nil
 	}
-	pane, err := term.StartCmd(cmd, w, h, m.notify)
+	pane, err := term.StartCmd(cmd, w, h, m.Notify)
 	dir.Close()
 	if err != nil {
 		dropEvents()
@@ -613,34 +550,34 @@ func (m *Model) startPluginUI(t *tab, p plugin.Plugin, focus bool, key string) t
 		return nil
 	}
 	if m.plugins.uis == nil {
-		m.plugins.uis = map[string]*pluginUI{}
+		m.plugins.uis = map[string]*core.PluginUI{}
 	}
-	m.plugins.uis[pluginUIKey(t, p)] = &pluginUI{t: t, pane: pane, events: events, dir: p.Dir, key: key}
-	if run := m.pluginRunOf(t, p); run.running() {
-		m.pluginEvent(t, p.Dir, run.startEvent())
-		if text := strings.Join(run.lines(), "\n"); text != "" {
-			m.pluginEvent(t, p.Dir, map[string]any{"event": "output", "run": run.id, "text": text + "\n"})
+	m.plugins.uis[core.PluginUIKey(t, p)] = &core.PluginUI{T: t, Pane: pane, Events: events, Dir: p.Dir, Key: key}
+	if run := m.PluginRunOf(t, p); run.Running() {
+		m.pluginEvent(t, p.Dir, run.StartEvent())
+		if text := strings.Join(run.Lines(), "\n"); text != "" {
+			m.pluginEvent(t, p.Dir, map[string]any{"event": "output", "run": run.Id, "text": text + "\n"})
 		}
 	}
 	if focus || hadFocus {
-		uiKey := pluginUIKey(t, p)
+		uiKey := core.PluginUIKey(t, p)
 		m.plugins.uiFocus = uiKey
-		if t == m.cur() && m.focus == focusReview && m.panelPlugins() {
-			m.setFocus(focusReview)
+		if t == m.Cur() && m.focus == core.FocusReview && m.panelPlugins() {
+			m.setFocus(core.FocusReview)
 		}
 	}
 	return nil
 }
 
 // stopPluginUI stops plugin p's screen in t, if it was started.
-func (m *Model) stopPluginUI(t *tab, p plugin.Plugin) {
-	key := pluginUIKey(t, p)
+func (m *Model) stopPluginUI(t *core.Tab, p plugin.Plugin) {
+	key := core.PluginUIKey(t, p)
 	if u := m.pluginUIOf(t, p); u != nil {
 		delete(m.plugins.uis, key)
 		if m.plugins.uiFocus == key {
 			m.plugins.uiFocus = ""
 		}
-		u.close()
+		u.Close()
 	}
 }
 
@@ -648,27 +585,27 @@ func (m *Model) stopPluginUI(t *tab, p plugin.Plugin) {
 // runs.
 func (m *Model) checkPluginUIs() {
 	for k, u := range m.plugins.uis {
-		if !slices.Contains(m.tabs, u.t) {
+		if !slices.Contains(m.Tabs, u.T) {
 			delete(m.plugins.uis, k)
 			if m.plugins.uiFocus == k {
 				m.plugins.uiFocus = ""
 			}
-			u.close()
+			u.Close()
 		}
 	}
 	now := time.Now()
 	m.checkPluginsGone(now)
-	m.pumpRuns(now)
+	m.PumpRuns(now)
 	if q := m.plugins.asking; q != nil && now.After(q.until) {
-		q.answer(m, runUnanswered)
+		q.answer(m, core.RunUnanswered)
 		m.toast(q.agent + "'s run of " + q.name + " was not answered in time, and did not run")
 	}
-	for k, r := range m.plugins.runs {
-		if !slices.Contains(m.tabs, r.t) {
-			if r.running() {
-				r.proc.stop()
+	for k, r := range m.PluginRuns.Runs {
+		if !slices.Contains(m.Tabs, r.T) {
+			if r.Running() {
+				r.Proc.Stop()
 			}
-			delete(m.plugins.runs, k)
+			delete(m.PluginRuns.Runs, k)
 			// Leave it in byID until endRun, so a client still reads
 			// its result and stopRuns waits for its stop at quitting.
 		}
@@ -678,48 +615,26 @@ func (m *Model) checkPluginUIs() {
 // pluginUIPanes are the plugins' screens, to stop when nerdr quits; the
 // agents' runs are stopped there and then.
 func (m *Model) pluginUIPanes() []*term.Pane {
-	m.stopRuns()
+	m.StopRuns()
 	var out []*term.Pane
 	for _, u := range m.plugins.uis {
-		out = append(out, u.pane)
-		if u.events != nil {
-			_ = os.Remove(u.events.Name())
+		out = append(out, u.Pane)
+		if u.Events != nil {
+			_ = os.Remove(u.Events.Name())
 		}
 	}
 	return out
 }
 
-// onPlugin answers an agent's `nerdr plugin`: whether a plugin is
-// allowed (list), running one (run), what a run printed (read), and a
-// stop.
-func (m *Model) onPlugin(r hooks.Report) tea.Cmd {
-	from := m.agentByHook(r.Pane)
-	if from == nil {
-		answerer(r)(hooks.Answer{Err: "this agent is not in a nerdr tab nerdr knows"})
-		return nil
-	}
-	switch r.What {
-	case hooks.PluginRun:
-		return m.onRunPlugin(r, from)
-	case hooks.PluginRead:
-		m.onReadRun(r, from)
-	case hooks.PluginStop:
-		m.stopAgentRuns(r, from)
-	default:
-		answerer(r)(hooks.Answer{Text: onOff(plugin.AllowedKey(pluginsAllowedFile(), r.Text), "allowed", runNotAllowed)})
-	}
-	return nil
-}
-
 // pluginsBody draws the plugins for t, w×h, for the panel's frame.
-func (m *Model) pluginsBody(t *tab, w, h int) []string {
+func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	list := m.pluginList(t)
 	v := &m.plugins
 	textW := max(w-2, 10)
 	keys := m.pluginKeys("↑↓", "pick", "enter", "open", "a", "allow", "d", "disallow", "esc", "agent")
 	if len(list) == 0 {
 		lines := []string{""}
-		for _, l := range wrapLines("No plugins. Put your own in "+tildePath(plugin.UserDir(config.Path()), homeDir())+
+		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(config.Path()), core.HomeDir())+
 			"/NAME, each a folder with a "+plugin.File+
 			". See https://nerdr.app/configure/plugins/.", textW, 20) {
 			lines = append(lines, " "+l)
@@ -728,7 +643,7 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 	}
 	p := list[v.cursor]
 	u := m.pluginUIOf(t, p)
-	run := m.pluginRunOf(t, p)
+	run := m.PluginRunOf(t, p)
 	// What the run printed, when the plugin shows it: below the rest, or
 	// above its screen, a few rows of it.
 	output := func(top []string, rows int) []string {
@@ -737,8 +652,8 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 		}
 		return append(append(top, ""), m.runOutput(run, w, rows-1)...)
 	}
-	focused := m.focus == focusReview
-	inUI := focused && v.uiFocus == pluginUIKey(t, p) && u.running()
+	focused := m.focus == core.FocusReview
+	inUI := focused && v.uiFocus == core.PluginUIKey(t, p) && u.Running()
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 
 	rows := min(len(list), max(h/3, 3))
@@ -760,21 +675,21 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 		switch {
 		case q.Err != "":
 			mark = warn("!")
-		case len(q.UI) > 0 && m.pluginUIOf(t, q).running():
+		case len(q.UI) > 0 && m.pluginUIOf(t, q).Running():
 			mark = lipgloss.NewStyle().Foreground(lipgloss.Color("71")).Render("▣")
 		case len(q.UI) > 0:
 			mark = "▣"
 		}
 		cursor := "  "
 		if i == v.cursor && focused && !inUI {
-			cursor, name = sel.Render("❯ "), sel.Render(clean.Line(q.Name))+onOff(title != "", dim(" · "+title), "")
+			cursor, name = sel.Render("❯ "), sel.Render(clean.Line(q.Name))+core.OnOff(title != "", dim(" · "+title), "")
 		} else if i == v.cursor {
-			name = lipgloss.NewStyle().Bold(true).Render(clean.Line(q.Name)) + onOff(title != "", dim(" · "+title), "")
+			name = lipgloss.NewStyle().Bold(true).Render(clean.Line(q.Name)) + core.OnOff(title != "", dim(" · "+title), "")
 		}
 		if q.Err == "" && !v.allowed[q.Dir] {
 			name += warn("  not allowed")
 		}
-		if run := m.pluginRunOf(t, q); run != nil {
+		if run := m.PluginRunOf(t, q); run != nil {
 			lt, what := m.runState(run)
 			name += "  " + lt + " " + dim(what)
 		}
@@ -783,7 +698,7 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 				m.plugins.pick(i)
 			}
 			m.plugins.uiFocus = ""
-			m.setFocus(focusReview)
+			m.setFocus(core.FocusReview)
 			return nil
 		}))
 	}
@@ -791,7 +706,7 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 	var info []string
 	pname := clean.Line(p.Name)
 	info = append(info, dim("── "+pname+" "+strings.Repeat("─", max(textW-lipgloss.Width(pname)-4, 0))))
-	info = append(info, dim(" "+ansi.Truncate(clean.Line(tildePath(p.Dir, homeDir())), textW, "…")))
+	info = append(info, dim(" "+ansi.Truncate(clean.Line(core.TildePath(p.Dir, core.HomeDir())), textW, "…")))
 	if p.Err != "" {
 		for _, l := range wrapRows("broken: "+clean.Text(p.Err), textW, 6) {
 			info = append(info, warn(" "+l))
@@ -855,7 +770,7 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 	switch {
 	case inUI:
 		state = "has the keyboard · " + m.screenKey(5) + " list"
-	case u.running():
+	case u.Running():
 		state = "runs · enter or " + m.screenKey(5) + " uses it · x stops it"
 	case u != nil:
 		state = "ended · enter starts it again"
@@ -871,7 +786,7 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 	label := "─ screen: " + state + " "
 	rule := m.onClick(ruleStyle.Render(ansi.Truncate(label+strings.Repeat("─", max(w-lipgloss.Width(label), 0)), w, "…")),
 		func(m *Model) tea.Cmd {
-			m.setFocus(focusReview)
+			m.setFocus(core.FocusReview)
 			return m.openPluginUI(t, p)
 		})
 	out := append(top, rule)
@@ -879,10 +794,10 @@ func (m *Model) pluginsBody(t *tab, w, h int) []string {
 	if u == nil {
 		return fitLines(out, w, h)
 	}
-	if pw, ph := u.pane.Size(); pw != v.uiW || ph != v.uiH {
-		u.pane.Resize(v.uiW, v.uiH)
+	if pw, ph := u.Pane.Size(); pw != v.uiW || ph != v.uiH {
+		u.Pane.Resize(v.uiW, v.uiH)
 	}
-	return fitLines(append(out, u.pane.Render(0, inUI)...), w, h)
+	return fitLines(append(out, u.Pane.Render(0, inUI)...), w, h)
 }
 
 // pluginKeys is the F5 screen's row of keys, each one a button.
@@ -903,7 +818,7 @@ func (m *Model) pluginKeys(pairs ...string) string {
 }
 
 // pluginsTitle is the F5 frame's title.
-func (m *Model) pluginsTitle(t *tab) string {
+func (m *Model) pluginsTitle(t *core.Tab) string {
 	n := len(m.pluginList(t))
 	if n == 0 {
 		return "plugins"

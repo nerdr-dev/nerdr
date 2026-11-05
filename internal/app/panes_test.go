@@ -10,6 +10,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 
@@ -22,9 +23,9 @@ import (
 func paneModel(t *testing.T) *Model {
 	t.Helper()
 	m := testModel(t)
-	m.cfg.Shell = "cat"
-	m.cfg.PaneMinWidth = 50
-	m.cur().Dir = t.TempDir()
+	m.Cfg.Shell = "cat"
+	m.Cfg.PaneMinWidth = 50
+	m.Cur().Dir = t.TempDir()
 	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
 	t.Cleanup(m.Shutdown)
 	return m
@@ -34,7 +35,7 @@ func paneModel(t *testing.T) *Model {
 // the buttons for new panes in the agent's frame.
 func TestOneAgentHasNoRow(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	if m.rowShown(tb) {
 		t.Fatal("no row over a lone agent")
 	}
@@ -51,17 +52,17 @@ func TestOneAgentHasNoRow(t *testing.T) {
 // the row, and the one with the keyboard is always shown.
 func TestPanesFoldTheOldestWhenNarrow(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t t")
-	if m.rowShown(tb) || len(tb.panes()) != 2 || tb.focused().kind != paneShell {
+	if m.rowShown(tb) || len(tb.Panes()) != 2 || tb.Focused().Kind != core.PaneShell {
 		t.Fatal("t t should open a terminal beside the agent, with the keyboard, and no row while none is minimised")
 	}
-	agent := tb.panes()[0]
+	agent := tb.Panes()[0]
 	if !m.paneShown(tb, agent) {
 		t.Fatal("two panes fit side by side")
 	}
 	m.runCommand("t t")
-	first, second := tb.panes()[1], tb.panes()[2]
+	first, second := tb.Panes()[1], tb.Panes()[2]
 	if m.paneShown(tb, agent) || !m.paneShown(tb, first) || !m.paneShown(tb, second) {
 		t.Fatal("the agent, used longest ago, should be minimised; the two terminals shown")
 	}
@@ -85,27 +86,27 @@ func TestPanesFoldTheOldestWhenNarrow(t *testing.T) {
 // agent cannot be closed that way.
 func TestMinimiseAndClose(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t t")
-	sh := tb.focused()
+	sh := tb.Focused()
 	m.runCommand("t m")
-	if !sh.small || tb.focused() == sh || m.paneShown(tb, sh) {
+	if !sh.Small || tb.Focused() == sh || m.paneShown(tb, sh) {
 		t.Fatal("t m should minimise the terminal, the keyboard going to the agent")
 	}
 	m.runCommand("t m")
-	if tb.panes()[0].small {
+	if tb.Panes()[0].Small {
 		t.Fatal("the last pane shown stays")
 	}
 	clickOn(t, m, "▸terminal", tea.MouseButtonLeft)
-	if sh.small || tb.focused() != sh {
+	if sh.Small || tb.Focused() != sh {
 		t.Fatal("a click on it in the row should bring it back, with the keyboard")
 	}
 	m.runCommand("t x")
-	if len(tb.panes()) != 1 || m.rowShown(tb) || tb.focused().a != tb {
+	if len(tb.Panes()) != 1 || m.rowShown(tb) || tb.Focused().A != tb {
 		t.Fatal("t x should close the terminal, the keyboard back with the agent")
 	}
 	m.runCommand("t x")
-	if len(tb.panes()) != 1 || !strings.Contains(m.toastText, "stays as long as the tab") {
+	if len(tb.Panes()) != 1 || !strings.Contains(m.toastText, "stays as long as the tab") {
 		t.Fatalf("a tab keeps an agent: %q", m.toastText)
 	}
 }
@@ -114,42 +115,42 @@ func TestMinimiseAndClose(t *testing.T) {
 // then to the review panel while it is open, and back.
 func TestTabCyclesThePanes(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t t")
-	m.goToPane(tb, tb.panes()[0])
+	m.goToPane(tb, tb.Panes()[0])
 	m.runCommand("tab")
-	if tb.focused() != tb.panes()[1] || m.focus != focusAgent {
+	if tb.Focused() != tb.Panes()[1] || m.focus != core.FocusAgent {
 		t.Fatal("tab should go to the terminal")
 	}
 	m.runCommand("tab")
-	if tb.focused() != tb.panes()[0] || m.focus != focusAgent {
+	if tb.Focused() != tb.Panes()[0] || m.focus != core.FocusAgent {
 		t.Fatal("with the panel closed, tab from the last pane goes round to the first")
 	}
 	m.runCommand("tab")
 	m.reviewOpen = true
-	m.cfg.PaneMinWidth = 20
+	m.Cfg.PaneMinWidth = 20
 	m.resize()
 	m.runCommand("tab")
-	if m.focus != focusReview {
+	if m.focus != core.FocusReview {
 		t.Fatal("tab from the last pane should go to the review panel")
 	}
 	m.runCommand("tab")
-	if m.focus != focusAgent || tb.focused() != tb.panes()[0] {
+	if m.focus != core.FocusAgent || tb.Focused() != tb.Panes()[0] {
 		t.Fatal("tab from the panel should go back to the first pane")
 	}
 	m.runCommand("t →")
 	m.runCommand("t →")
-	if tb.focused() != tb.panes()[0] {
+	if tb.Focused() != tb.Panes()[0] {
 		t.Fatal("t → goes round the row")
 	}
 }
 
 // fakeAgent makes kind k start as cat, so a test can run it.
 func fakeAgent(m *Model, k agents.Kind) {
-	if m.cfg.Agents == nil {
-		m.cfg.Agents = map[agents.Kind]agents.Spec{}
+	if m.Cfg.Agents == nil {
+		m.Cfg.Agents = map[agents.Kind]agents.Spec{}
 	}
-	m.cfg.Agents[k] = agents.Spec{Command: []string{"cat"}}
+	m.Cfg.Agents[k] = agents.Spec{Command: []string{"cat"}}
 }
 
 // TestAgentBesideTheTab: another agent starts in the tab's worktree, in a
@@ -159,27 +160,27 @@ func fakeAgent(m *Model, k agents.Kind) {
 func TestAgentBesideTheTab(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	tb.status = stIdle
-	m.newAgent(tb, agents.Codex)
-	if len(tb.extraAgents()) != 1 {
+	tb := m.Cur()
+	tb.Light = core.StIdle
+	m.NewAgent(tb, agents.Codex)
+	if len(tb.ExtraAgents()) != 1 {
 		t.Fatal("no agent beside the tab's")
 	}
-	a := tb.extraAgents()[0]
-	if a.partOf != tb || a.Dir != tb.Dir || a.pane == nil || tb.focused().a != a {
+	a := tb.ExtraAgents()[0]
+	if a.PartOf != tb || a.Dir != tb.Dir || a.Pane == nil || tb.Focused().A != a {
 		t.Fatalf("the agent should run in the tab's worktree, with the keyboard: %+v", a.Tab)
 	}
-	if got := m.agentByHook(a.hookKey()); got != a {
+	if got := m.AgentByHook(a.HookKey()); got != a {
 		t.Fatal("it should report as itself")
 	}
-	if m.curAgent() != a {
+	if m.CurAgent() != a {
 		t.Fatal("its pane has the keyboard: the agent keys are for it")
 	}
-	a.status = stBlocked
-	if tb.lit() != stBlocked {
-		t.Fatalf("the tab's light should be its most urgent agent's: %s", tb.lit().label())
+	a.Light = core.StBlocked
+	if tb.Lit() != core.StBlocked {
+		t.Fatalf("the tab's light should be its most urgent agent's: %s", tb.Lit().Label())
 	}
-	a.status = stIdle
+	a.Light = core.StIdle
 
 	m.openMessage(false)
 	d := m.dialog.(*messageDialog)
@@ -191,7 +192,7 @@ func TestAgentBesideTheTab(t *testing.T) {
 
 	a.SessionID = "s-codex"
 	m.saveSession()
-	sess, err := state.Load(m.root)
+	sess, err := state.Load(m.Root)
 	if err != nil || len(sess.Tabs) == 0 {
 		t.Fatalf("no session: %v", err)
 	}
@@ -204,19 +205,19 @@ func TestAgentBesideTheTab(t *testing.T) {
 	if kept == nil || len(kept.Agents) != 1 || kept.Agents[0].SessionID != "s-codex" || kept.Agents[0].Agent != agents.Codex {
 		t.Fatalf("the agent should be kept with its tab: %+v", kept)
 	}
-	m2 := New(m.cfg, m.root, nil, sess)
-	var back *tab
-	for _, x := range m2.tabs {
+	m2 := New(m.Cfg, m.Root, nil, sess)
+	var back *core.Tab
+	for _, x := range m2.Tabs {
 		if x.ID == tb.ID {
 			back = x
 		}
 	}
-	if back == nil || len(back.extraAgents()) != 1 || back.extraAgents()[0].SessionID != "s-codex" || back.extraAgents()[0].partOf != back {
+	if back == nil || len(back.ExtraAgents()) != 1 || back.ExtraAgents()[0].SessionID != "s-codex" || back.ExtraAgents()[0].PartOf != back {
 		t.Fatal("a restart should put the agent back in its pane")
 	}
 
-	m.closePane(tb, a.paneOf())
-	if len(tb.panes()) != 1 || m.live(a) {
+	m.ClosePane(tb, a.PaneOf())
+	if len(tb.Panes()) != 1 || m.Live(a) {
 		t.Fatal("closing its pane should stop the agent")
 	}
 }
@@ -227,24 +228,24 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	fakeAgent(m, agents.Gemini)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	a := tb.extraAgents()[0]
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	a := tb.ExtraAgents()[0]
 	m.runCommand("t r")
-	p := tb.focused()
-	if p.kind != paneReview || p.of != a {
+	p := tb.Focused()
+	if p.Kind != core.PaneReview || p.Of != a {
 		t.Fatalf("the review should be of the agent whose pane had the keyboard: %+v", p)
 	}
-	tb.status, a.status = stIdle, stIdle
-	m.onTree(treeMsg{t: a, why: treeHand, changed: true, tree: "t1", by: reviewer{kind: agents.Gemini}})
-	if a.review == nil || len(a.review.seats) != 1 || p.a != a.review.seats[0].r {
+	tb.Light, a.Light = core.StIdle, core.StIdle
+	m.onTree(core.TreeMsg{T: a, Why: core.TreeHand, Changed: true, Tree: "t1", By: core.Reviewer{Kind: agents.Gemini}})
+	if a.Review == nil || len(a.Review.Seats) != 1 || p.A != a.Review.Seats[0].R {
 		t.Fatal("the reviewer should start in the pane it was picked in")
 	}
-	r := p.a
-	if r.reviewOf != a || r.owner() != tb {
+	r := p.A
+	if r.ReviewOf != a || r.Owner() != tb {
 		t.Fatal("the reviewer reviews the agent beside, in its tab")
 	}
-	m.onReview(hooks.Report{Pane: r.hookKey(), Review: &codereview.Result{Verdict: codereview.Changes, Summary: "s",
+	m.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Changes, Summary: "s",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "wrong"}}}})
 	if len(a.Messages) != 1 || len(tb.Messages) != 0 {
 		t.Fatalf("the findings should go to the agent reviewed: %d, %d", len(a.Messages), len(tb.Messages))
@@ -255,21 +256,21 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 // terminal window does, the others staying.
 func TestExitClosesTheTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.cfg.Shell = "sh"
-	tb := m.cur()
+	m.Cfg.Shell = "sh"
+	tb := m.Cur()
 	m.runCommand("t t")
 	m.runCommand("t t")
-	second := tb.focused()
-	second.shell.Input([]byte("exit\r"))
+	second := tb.Focused()
+	second.Shell.Input([]byte("exit\r"))
 	deadline := time.Now().Add(3 * time.Second)
-	for len(tb.panes()) == 3 {
+	for len(tb.Panes()) == 3 {
 		if time.Now().After(deadline) {
 			t.Fatal("the terminal did not close")
 		}
 		time.Sleep(20 * time.Millisecond)
-		m.Update(frameMsg{})
+		m.Update(core.FrameMsg{})
 	}
-	if len(tb.panes()) != 2 || tb.panes()[1].kind != paneShell || tb.focused() != tb.panes()[1] {
+	if len(tb.Panes()) != 2 || tb.Panes()[1].Kind != core.PaneShell || tb.Focused() != tb.Panes()[1] {
 		t.Fatal("the other terminal should stay, with the keyboard")
 	}
 }
@@ -279,19 +280,19 @@ func TestExitClosesTheTerminal(t *testing.T) {
 func TestAgentsAreNumbered(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	m.newAgent(tb, agents.Codex)
-	two, three := tb.extraAgents()[0], tb.extraAgents()[1]
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	m.NewAgent(tb, agents.Codex)
+	two, three := tb.ExtraAgents()[0], tb.ExtraAgents()[1]
 	if tb.Num != 1 || two.Num != 2 || three.Num != 3 {
 		t.Fatalf("numbers %d, %d, %d", tb.Num, two.Num, three.Num)
 	}
 	if v := ansi.Strip(m.View()); !strings.Contains(v, "1:claude") || !strings.Contains(v, "3:codex") {
 		t.Fatalf("the row should number the agents:\n%s", v)
 	}
-	m.closePane(tb, two.paneOf())
-	m.newAgent(tb, agents.Codex)
-	if three.Num != 3 || tb.extraAgents()[1].Num != 2 {
+	m.ClosePane(tb, two.PaneOf())
+	m.NewAgent(tb, agents.Codex)
+	if three.Num != 3 || tb.ExtraAgents()[1].Num != 2 {
 		t.Fatal("numbers stay; a new agent gets the lowest free one")
 	}
 }
@@ -302,12 +303,12 @@ func TestAgentsAreNumbered(t *testing.T) {
 func TestAgentsSendEachOtherMessages(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
-	send := func(from *tab, to int, text string) hooks.Answer {
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
+	send := func(from *core.Tab, to int, text string) hooks.Answer {
 		reply := make(chan hooks.Answer, 1)
-		m.Update(hooks.Report{Method: hooks.Message, Pane: from.hookKey(), To: to, Text: text, Reply: reply})
+		m.Update(hooks.Report{Method: hooks.Message, Pane: from.HookKey(), To: to, Text: text, Reply: reply})
 		return <-reply
 	}
 	if a := send(tb, 2, "review parse.go"); a.Err != "" || !strings.Contains(a.Text, "Sent to agent 2") {
@@ -333,12 +334,12 @@ func TestAgentsSendEachOtherMessages(t *testing.T) {
 func TestTheFirstAgentStays(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	m.goToPane(tb, tb.panes()[0])
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	m.goToPane(tb, tb.Panes()[0])
 	m.runCommand("t x")
-	if len(tb.panes()) != 2 || tb.Agent != agents.Claude || !strings.Contains(m.toastText, "stays as long as the tab") {
-		t.Fatalf("the first agent stays: %d panes, %q", len(tb.panes()), m.toastText)
+	if len(tb.Panes()) != 2 || tb.Agent != agents.Claude || !strings.Contains(m.toastText, "stays as long as the tab") {
+		t.Fatalf("the first agent stays: %d panes, %q", len(tb.Panes()), m.toastText)
 	}
 }
 
@@ -347,21 +348,21 @@ func TestTheFirstAgentStays(t *testing.T) {
 func TestOwnConversationsOnly(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.SessionID = "s-one"
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
 	two.SessionID = "s-two"
 	two.Sessions = map[agents.Kind]string{agents.Claude: "s-two-claude"}
-	skip := m.othersSessions(tb)
+	skip := m.OthersSessions(tb)
 	if !skip["s-two"] || !skip["s-two-claude"] || skip["s-one"] {
 		t.Fatalf("the tab's agent passes over the other's conversations, not its own: %v", skip)
 	}
-	if m.sharesKind(tb) || !m.sharesKind(two) && two.Agent == tb.Agent {
+	if m.SharesKind(tb) || !m.SharesKind(two) && two.Agent == tb.Agent {
 		t.Fatal("sharesKind")
 	}
-	m.newAgent(tb, agents.Codex)
-	if !m.sharesKind(two) {
+	m.NewAgent(tb, agents.Codex)
+	if !m.SharesKind(two) {
 		t.Fatal("two codex agents share their kind")
 	}
 }
@@ -372,11 +373,11 @@ func TestSwitchTheAgentBeside(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	fakeAgent(m, agents.Gemini)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
-	two.status = stIdle
-	m.switchAgent(two, agents.Gemini, "")
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
+	two.Light = core.StIdle
+	m.SwitchAgent(two, agents.Gemini, "")
 	if two.Agent != agents.Gemini || tb.Agent != agents.Claude || two.Sessions == nil {
 		t.Fatalf("the agent beside should switch: %s, %s", two.Agent, tb.Agent)
 	}
@@ -391,19 +392,19 @@ func TestSwitchTheAgentBeside(t *testing.T) {
 func TestClaimedConversation(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
+	tb := m.Cur()
 	tb.SessionID = "s-one"
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
-	if two.SessionID != "" || m.claimSession(two) == nil {
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
+	if two.SessionID != "" || m.ClaimSession(two) == nil {
 		t.Fatal("codex has no id from nerdr: it is looked for after a turn")
 	}
-	m.Update(claimMsg{t: two, id: "s-one", pid: two.pane})
+	m.Update(core.ClaimMsg{T: two, Id: "s-one", Pid: two.Pane})
 	if two.SessionID != "" {
 		t.Fatal("another agent's conversation is never claimed")
 	}
-	m.Update(claimMsg{t: two, id: "s-two", pid: two.pane})
-	if two.SessionID != "s-two" || m.claimSession(two) != nil {
+	m.Update(core.ClaimMsg{T: two, Id: "s-two", Pid: two.Pane})
+	if two.SessionID != "s-two" || m.ClaimSession(two) != nil {
 		t.Fatalf("its own is kept: %q", two.SessionID)
 	}
 }
@@ -414,27 +415,27 @@ func TestClaimedConversation(t *testing.T) {
 func TestGivenConversationChecked(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
-	two.SessionID, two.sessionUnsure = "ses_given", true
-	if m.claimSession(two) == nil {
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
+	two.SessionID, two.SessionUnsure = "ses_given", true
+	if m.ClaimSession(two) == nil {
 		t.Fatal("an unsure id is checked")
 	}
-	m.Update(claimMsg{t: two, id: "ses_given", pid: two.pane, sure: true})
-	if two.sessionUnsure || two.SessionID != "ses_given" || m.claimSession(two) != nil {
+	m.Update(core.ClaimMsg{T: two, Id: "ses_given", Pid: two.Pane, Sure: true})
+	if two.SessionUnsure || two.SessionID != "ses_given" || m.ClaimSession(two) != nil {
 		t.Fatal("found, it is sure")
 	}
-	two.sessionUnsure = true
-	m.Update(claimMsg{t: two, id: "ses_real", pid: two.pane})
-	if two.sessionUnsure || two.SessionID != "ses_real" {
+	two.SessionUnsure = true
+	m.Update(core.ClaimMsg{T: two, Id: "ses_real", Pid: two.Pane})
+	if two.SessionUnsure || two.SessionID != "ses_real" {
 		t.Fatalf("not taken, the one it is in replaces it: %q", two.SessionID)
 	}
 	two.Messages = []state.Message{{Text: "fix the parser"}}
-	two.status = stIdle
+	two.Light = core.StIdle
 	m.putIn(two, 0)
-	if len(two.said) != 1 || two.said[0] != "fix the parser" {
-		t.Fatalf("what was typed in is noted: %q", two.said)
+	if len(two.Said) != 1 || two.Said[0] != "fix the parser" {
+		t.Fatalf("what was typed in is noted: %q", two.Said)
 	}
 }
 
@@ -445,24 +446,24 @@ func TestSwitchBackToCodexBesideAnother(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	fakeAgent(m, agents.Gemini)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
 	two.SessionID = "codex-two"
-	two.status = stIdle
-	l := launched(t, m.switchAgent(two, agents.Gemini, "summary"))
+	two.Light = core.StIdle
+	l := launched(t, fromCore(m.SwitchAgent(two, agents.Gemini, "summary")))
 	m.Update(l)
-	two.status = stIdle
-	l = launched(t, m.switchAgent(two, agents.Codex, "summary"))
-	if !l.resume || l.l.SessionID != "codex-two" || !slices.Contains(l.l.Argv, "codex-two") {
-		t.Fatalf("its own codex conversation should be carried on: %+v", l.l)
+	two.Light = core.StIdle
+	l = launched(t, fromCore(m.SwitchAgent(two, agents.Codex, "summary")))
+	if !l.Resume || l.L.SessionID != "codex-two" || !slices.Contains(l.L.Argv, "codex-two") {
+		t.Fatalf("its own codex conversation should be carried on: %+v", l.L)
 	}
 
-	three := tb.extraAgents()[1]
+	three := tb.ExtraAgents()[1]
 	three.SessionID = "stale"
-	m.spawn(three, agents.NewSession(m.cfg.Agents, agents.Codex), false)
-	if three.SessionID != "" || m.claimSession(three) == nil {
+	m.Spawn(three, agents.NewSession(m.Cfg.Agents, agents.Codex), false)
+	if three.SessionID != "" || m.ClaimSession(three) == nil {
 		t.Fatalf("a new codex conversation leaves no old id, and is looked for: %q", three.SessionID)
 	}
 }
@@ -471,17 +472,17 @@ func TestSwitchBackToCodexBesideAnother(t *testing.T) {
 // the keyboard goes to the agent it is for, and so does the keyboard.
 func TestPutInGoesToTheAgent(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
-	tb.pane = runningTab(t, m).pane
-	tb.status = stIdle
+	tb := m.Cur()
+	tb.Pane = runningTab(t, m).Pane
+	tb.Light = core.StIdle
 	m.runCommand("t r")
-	if tb.focused().kind != paneReview {
+	if tb.Focused().Kind != core.PaneReview {
 		t.Fatal("the review pane should have the keyboard")
 	}
 	tb.Messages = []state.Message{{Text: "fix it"}}
 	m.handleKey(keyMsg("f3"))
 	m.putIn(tb, 0)
-	if tb.focused() != tb.panes()[0] || m.focus != focusAgent || m.keyPane() != tb.pane {
+	if tb.Focused() != tb.Panes()[0] || m.focus != core.FocusAgent || m.keyPane() != tb.Pane {
 		t.Fatal("the keyboard should go to the agent the task was put in")
 	}
 }
@@ -493,15 +494,15 @@ func TestPutInGoesToTheAgent(t *testing.T) {
 func TestNewPanesGoLastAndMove(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	tb.status = stIdle
-	m.newAgent(tb, agents.Codex)
+	tb := m.Cur()
+	tb.Light = core.StIdle
+	m.NewAgent(tb, agents.Codex)
 	m.runCommand("t t")
-	sh := tb.focused()
-	m.goToPane(tb, tb.ownPane())
-	m.newAgent(tb, agents.Codex)
-	ps := slices.Clone(tb.panes())
-	if len(ps) != 4 || ps[2] != sh || ps[3] != tb.focused() || ps[3].a.Num != 3 {
+	sh := tb.Focused()
+	m.goToPane(tb, tb.OwnPane())
+	m.NewAgent(tb, agents.Codex)
+	ps := slices.Clone(tb.Panes())
+	if len(ps) != 4 || ps[2] != sh || ps[3] != tb.Focused() || ps[3].A.Num != 3 {
 		t.Fatal("the new agent should go last, after the terminal")
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
@@ -510,15 +511,15 @@ func TestNewPanesGoLastAndMove(t *testing.T) {
 		m.handleKey(keyMsg("shift+left"))
 	}
 	m.handleKey(keyMsg("enter"))
-	if !slices.Equal(tb.panes(), []*paneTab{ps[0], ps[3], ps[1], ps[2]}) || m.prefix {
+	if !slices.Equal(tb.Panes(), []*core.PaneTab{ps[0], ps[3], ps[1], ps[2]}) || m.prefix {
 		t.Fatal("t ⇧← ⇧← ⇧← should move the agent to second, after the tab's own, and enter end it")
 	}
-	if tb.focused() != ps[3] {
+	if tb.Focused() != ps[3] {
 		t.Fatal("moving changes the order, not the keyboard")
 	}
 	m.goToPane(tb, ps[0])
 	m.runCommand("t ⇧→")
-	if tb.panes()[0] != ps[0] || !strings.Contains(m.toastText, "stays first") {
+	if tb.Panes()[0] != ps[0] || !strings.Contains(m.toastText, "stays first") {
 		t.Fatal("the tab's own agent stays first")
 	}
 }
@@ -527,7 +528,7 @@ func TestNewPanesGoLastAndMove(t *testing.T) {
 // own, and the row over them is there only for the minimised ones.
 func TestFramesNameThePanes(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t t")
 	v := ansi.Strip(m.View())
 	if m.rowShown(tb) || !strings.Contains(v, "╭─ ") || !strings.Contains(v, "terminal") || strings.Contains(v, "▸") {
@@ -554,7 +555,7 @@ func TestShellTitle(t *testing.T) {
 		{"htop: 3 tasks", "htop: 3 tasks"},
 		{"", ""},
 	} {
-		if got := shellTitle(c.title, wt); got != c.want {
+		if got := core.ShellTitle(c.title, wt); got != c.want {
 			t.Errorf("shellTitle(%q) = %q, want %q", c.title, got, c.want)
 		}
 	}
@@ -565,7 +566,7 @@ func TestShellTitle(t *testing.T) {
 // would, and stays when opened by hand all the same.
 func TestPanelMakesRoomForPanes(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.setLayout("=")
 	if !m.reviewOpen || m.panelSmall {
 		t.Fatal("the panel should start open")
@@ -573,14 +574,14 @@ func TestPanelMakesRoomForPanes(t *testing.T) {
 	for i := 0; i < 4 && !m.panelAuto; i++ {
 		m.runCommand("t t")
 	}
-	if !m.panelAuto || !m.panelSmall || m.reviewOpen || len(m.paneCols(tb, 1000)) < 2 {
+	if !m.panelAuto || !m.panelSmall || m.reviewOpen || len(m.PaneCols(tb, 1000)) < 2 {
 		t.Fatal("with more panes than fit beside it, the panel should be made small")
 	}
 	m.handleKey(keyMsg("f1"))
-	if !m.reviewOpen || m.focus != focusReview {
+	if !m.reviewOpen || m.focus != core.FocusReview {
 		t.Fatal("an F-key still opens it, for a look")
 	}
-	m.goToPane(tb, tb.focused())
+	m.goToPane(tb, tb.Focused())
 	if m.reviewOpen {
 		t.Fatal("back at the panes, it folds again")
 	}
@@ -590,10 +591,10 @@ func TestPanelMakesRoomForPanes(t *testing.T) {
 	}
 	m.togglePanelSmall()
 	m.togglePanelSmall()
-	m.goToPane(tb, tb.panes()[len(tb.panes())-1])
+	m.goToPane(tb, tb.Panes()[len(tb.Panes())-1])
 	m.runCommand("t x")
-	for len(tb.panes()) > 2 {
-		m.goToPane(tb, tb.panes()[len(tb.panes())-1])
+	for len(tb.Panes()) > 2 {
+		m.goToPane(tb, tb.Panes()[len(tb.Panes())-1])
 		m.runCommand("t x")
 	}
 	if !m.reviewOpen || m.panelSmall || m.panelAuto || m.panelKept {
@@ -618,26 +619,26 @@ func TestPanelMakesRoomForPanes(t *testing.T) {
 func TestAgentStartsAnotherAgent(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	start := func(from *tab, kind, text string) hooks.Answer {
+	tb := m.Cur()
+	start := func(from *core.Tab, kind, text string) hooks.Answer {
 		reply := make(chan hooks.Answer, 1)
-		m.Update(hooks.Report{Method: hooks.NewAgent, Pane: from.hookKey(), Kind: kind, Text: text, Reply: reply})
+		m.Update(hooks.Report{Method: hooks.NewAgent, Pane: from.HookKey(), Kind: kind, Text: text, Reply: reply})
 		return <-reply
 	}
 	a := start(tb, "codex", "write the tests for parse.go")
 	if a.Err != "" || !strings.Contains(a.Text, "Started agent 2 (codex)") {
 		t.Fatalf("answer %+v", a)
 	}
-	if len(tb.extraAgents()) != 1 {
-		t.Fatalf("agents beside: %d", len(tb.extraAgents()))
+	if len(tb.ExtraAgents()) != 1 {
+		t.Fatalf("agents beside: %d", len(tb.ExtraAgents()))
 	}
-	two := tb.extraAgents()[0]
-	if tb.focused().a != tb {
+	two := tb.ExtraAgents()[0]
+	if tb.Focused().A != tb {
 		t.Fatal("the keyboard should stay with the agent it was with")
 	}
 	// The task is waiting for it, already typed in, or given at its start
 	// (agents.StartPrompt), and then its goal.
-	said := strings.Join(two.said, "\n") + "\n" + two.Goal
+	said := strings.Join(two.Said, "\n") + "\n" + two.Goal
 	for _, msg := range two.Messages {
 		said += "\n" + msg.Text
 	}
@@ -658,21 +659,21 @@ func TestAgentStartsAnotherAgent(t *testing.T) {
 func TestAgentStartsAnotherWithAModel(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
+	tb := m.Cur()
 	reply := make(chan hooks.Answer, 1)
-	m.Update(hooks.Report{Method: hooks.NewAgent, Pane: tb.hookKey(), Kind: "codex", Model: "gpt-5.5-mini", Text: "look", Reply: reply})
+	m.Update(hooks.Report{Method: hooks.NewAgent, Pane: tb.HookKey(), Kind: "codex", Model: "gpt-5.5-mini", Text: "look", Reply: reply})
 	if a := <-reply; a.Err != "" || !strings.Contains(a.Text, "model gpt-5.5-mini") {
 		t.Fatalf("answer %+v", a)
 	}
-	two := tb.extraAgents()[0]
+	two := tb.ExtraAgents()[0]
 	if two.Model != "gpt-5.5-mini" {
 		t.Fatalf("model %q", two.Model)
 	}
-	args := m.specsFor(two)[agents.Codex].Args
+	args := m.SpecsFor(two)[agents.Codex].Args
 	if strings.Join(args, " ") != "--model gpt-5.5-mini" {
 		t.Fatalf("it starts with %q", args)
 	}
-	if m.specsFor(tb)[agents.Claude].Args != nil {
+	if m.SpecsFor(tb)[agents.Claude].Args != nil {
 		t.Fatal("the tab's own agent keeps the config's")
 	}
 }
@@ -682,14 +683,14 @@ func TestAgentStartsAnotherWithAModel(t *testing.T) {
 // against the frame.
 func TestTerminalLeavesAColumn(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t t")
-	p := tb.focused()
-	if p.kind != paneShell || p.shell == nil {
+	p := tb.Focused()
+	if p.Kind != core.PaneShell || p.Shell == nil {
 		t.Fatal("t t should open a terminal")
 	}
 	_, _, w, _ := m.paneRect(tb, p)
-	if got, _ := p.shell.Size(); got != w-shellMargin {
+	if got, _ := p.Shell.Size(); got != w-core.ShellMargin {
 		t.Fatalf("the terminal is %d columns in a pane of %d", got, w)
 	}
 }
@@ -699,14 +700,14 @@ func TestTerminalLeavesAColumn(t *testing.T) {
 // resized to it; a right-click on it shares it evenly again.
 func TestDragTheDividerBetweenPanes(t *testing.T) {
 	m := paneModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.runCommand("t t")
 	ax, aw, _ := m.tabArea(tb)
-	cols := m.paneCols(tb, aw)
+	cols := m.PaneCols(tb, aw)
 	if len(cols) != 2 {
 		t.Fatalf("want the agent and the terminal side by side, got %d panes", len(cols))
 	}
-	gap := ax + cols[0].x + cols[0].w
+	gap := ax + cols[0].X + cols[0].W
 	y := m.barRows() + m.rowH(tb) + 3
 	mouse := func(x int, b tea.MouseButton, a tea.MouseAction) {
 		m.Update(tea.MouseMsg{X: x, Y: y, Button: b, Action: a})
@@ -715,18 +716,18 @@ func TestDragTheDividerBetweenPanes(t *testing.T) {
 	mouse(gap-20, tea.MouseButtonLeft, tea.MouseActionMotion)
 	mouse(gap-20, tea.MouseButtonLeft, tea.MouseActionRelease)
 
-	after := m.paneCols(tb, aw)
-	if after[0].w != cols[0].w-20 || after[1].w != cols[1].w+20 {
-		t.Fatalf("widths %d and %d, want %d and %d", after[0].w, after[1].w, cols[0].w-20, cols[1].w+20)
+	after := m.PaneCols(tb, aw)
+	if after[0].W != cols[0].W-20 || after[1].W != cols[1].W+20 {
+		t.Fatalf("widths %d and %d, want %d and %d", after[0].W, after[1].W, cols[0].W-20, cols[1].W+20)
 	}
-	shell := tb.panes()[1]
-	if w, _ := shell.shell.Size(); w != after[1].w-2-shellMargin {
-		t.Fatalf("the terminal is %d columns in a pane of %d", w, after[1].w)
+	shell := tb.Panes()[1]
+	if w, _ := shell.Shell.Size(); w != after[1].W-2-core.ShellMargin {
+		t.Fatalf("the terminal is %d columns in a pane of %d", w, after[1].W)
 	}
 
-	mouse(ax+after[0].x+after[0].w, tea.MouseButtonRight, tea.MouseActionPress)
-	if again := m.paneCols(tb, aw); again[0].w != cols[0].w {
-		t.Fatalf("a right-click should share the room evenly: %d, want %d", again[0].w, cols[0].w)
+	mouse(ax+after[0].X+after[0].W, tea.MouseButtonRight, tea.MouseActionPress)
+	if again := m.PaneCols(tb, aw); again[0].W != cols[0].W {
+		t.Fatalf("a right-click should share the room evenly: %d, want %d", again[0].W, cols[0].W)
 	}
 }
 
@@ -737,8 +738,8 @@ func TestDragTheDividerBetweenPanes(t *testing.T) {
 func TestTasksForTheTabsAgents(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	tb.status = stIdle
+	tb := m.Cur()
+	tb.Light = core.StIdle
 
 	m.openMessage(false)
 	if strings.Contains(ansi.Strip(m.dialog.view(m, 120, 40)), "to whom") {
@@ -746,8 +747,8 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 	}
 	m.dialog = nil
 
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
 	m.openMessage(false)
 	d := m.dialog.(*messageDialog)
 	if d.agent != two || !strings.Contains(ansi.Strip(d.view(m, 120, 40)), "to whom") {
@@ -770,12 +771,12 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 		t.Fatalf("alt+2 picks agent 2: %+v", two.Messages)
 	}
 
-	m.closePane(tb, two.paneOf())
+	m.ClosePane(tb, two.PaneOf())
 	if len(tb.Inactive) != 2 || tb.Inactive[1].Gone != 2 || tb.Inactive[1].Text != "only for two" {
 		t.Fatalf("its tasks should stay, for agent 2: %+v", tb.Inactive)
 	}
-	m.newAgent(tb, agents.Codex)
-	again := tb.extraAgents()[0]
+	m.NewAgent(tb, agents.Codex)
+	again := tb.ExtraAgents()[0]
 	if again.Num != 2 || len(again.Messages) != 0 {
 		t.Fatalf("a new agent 2 is not the one they were for: %d %+v", again.Num, again.Messages)
 	}
@@ -797,7 +798,7 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 	}
 
 	m.saveSession()
-	sess, err := state.Load(m.root)
+	sess, err := state.Load(m.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -810,12 +811,12 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 
 func TestCloseBusyTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.cfg.Shell = "bash --norc --noprofile -i"
+	m.Cfg.Shell = "bash --norc --noprofile -i"
 	m.runCommand("t t")
-	tb := m.cur()
-	p := tb.focused()
-	p.shell.Write([]byte("sleep 60\r"))
-	for end := time.Now().Add(5 * time.Second); !p.shell.Busy(); {
+	tb := m.Cur()
+	p := tb.Focused()
+	p.Shell.Write([]byte("sleep 60\r"))
+	for end := time.Now().Add(5 * time.Second); !p.Shell.Busy(); {
 		if time.Now().After(end) {
 			t.Fatal("command did not start")
 		}
@@ -831,13 +832,13 @@ func TestCloseBusyTerminal(t *testing.T) {
 			t.Fatalf("missing terminal close choices: %s", view)
 		}
 		m.handleKey(keyMsg(key))
-		if m.dialog != nil || !slices.Contains(tb.panes(), p) || !p.shell.Busy() {
+		if m.dialog != nil || !slices.Contains(tb.Panes(), p) || !p.Shell.Busy() {
 			t.Fatalf("%s should leave the terminal and command running", key)
 		}
 	}
 	m.runCommand("t x")
 	m.handleKey(keyMsg("y"))
-	if m.dialog != nil || slices.Contains(tb.panes(), p) {
+	if m.dialog != nil || slices.Contains(tb.Panes(), p) {
 		t.Fatal("confirmation should close the terminal")
 	}
 }

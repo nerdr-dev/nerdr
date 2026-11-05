@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -16,9 +17,9 @@ import (
 
 // ask sends report r from agent a and returns nerdr's answer, and the
 // command the report gave, if any.
-func askNerdr(m *Model, a *tab, r hooks.Report) (hooks.Answer, tea.Cmd) {
+func askNerdr(m *Model, a *core.Tab, r hooks.Report) (hooks.Answer, tea.Cmd) {
 	reply := make(chan hooks.Answer, 1)
-	r.Pane, r.Reply = a.hookKey(), reply
+	r.Pane, r.Reply = a.HookKey(), reply
 	_, cmd := m.Update(r)
 	return <-reply, cmd
 }
@@ -28,12 +29,12 @@ func askNerdr(m *Model, a *tab, r hooks.Report) (hooks.Answer, tea.Cmd) {
 func TestAgentsAndTabsAsJSON(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
-	two.status = stWorking
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
+	two.Light = core.StWorking
 	a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Query, What: hooks.QueryAgents})
-	var list []agentJSON
+	var list []core.AgentJSON
 	if err := json.Unmarshal([]byte(a.Text), &list); err != nil || len(list) != 2 {
 		t.Fatalf("agents %q %v", a.Text, err)
 	}
@@ -41,8 +42,8 @@ func TestAgentsAndTabsAsJSON(t *testing.T) {
 		t.Fatalf("agents %+v", list)
 	}
 	a, _ = askNerdr(m, two, hooks.Report{Method: hooks.Query, What: hooks.QueryTabs})
-	var tabs []tabJSON
-	if err := json.Unmarshal([]byte(a.Text), &tabs); err != nil || len(tabs) != len(m.tabs) {
+	var tabs []core.TabJSON
+	if err := json.Unmarshal([]byte(a.Text), &tabs); err != nil || len(tabs) != len(m.Tabs) {
 		t.Fatalf("tabs %q %v", a.Text, err)
 	}
 	if !tabs[0].Yours || tabs[1].Yours || len(tabs[0].Agents) != 2 || tabs[0].Branches[0].Branch != "login" {
@@ -55,14 +56,14 @@ func TestAgentsAndTabsAsJSON(t *testing.T) {
 // shows.
 func TestReadAndTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.cfg.Shell = "sh"
+	m.Cfg.Shell = "sh"
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
+	tb := m.Cur()
 	a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Terminal, Text: "echo hello-from-nerdr"})
 	if a.Err != "" || !strings.Contains(a.Text, "terminal") {
 		t.Fatalf("terminal: %+v", a)
 	}
-	if tb.focused().a != tb {
+	if tb.Focused().A != tb {
 		t.Fatal("the keyboard stays with the agent")
 	}
 	var text string
@@ -92,8 +93,8 @@ func TestAgentMakesATab(t *testing.T) {
 	m := tabsModel(t, state.Tab{ID: "a", Name: "main", Agent: "codex", Dir: repo,
 		Worktrees: []workspace.Worktree{{Path: repo, Repo: repo, Branch: "main"}}})
 	fakeAgent(m, agents.Codex)
-	m.wtRoot = t.TempDir()
-	tb := m.cur()
+	m.WtRoot = t.TempDir()
+	tb := m.Cur()
 	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.NewTab, Branch: "bad..name", Text: "x"}); a.Err == "" {
 		t.Fatal("a bad branch name is refused")
 	}
@@ -101,14 +102,14 @@ func TestAgentMakesATab(t *testing.T) {
 	if a.Err != "" || !strings.Contains(a.Text, "making the tab docs-fix") {
 		t.Fatalf("answer %+v", a)
 	}
-	var made *tabMadeMsg
+	var made *core.TabMadeMsg
 	var run func(c tea.Cmd)
 	run = func(c tea.Cmd) {
 		if c == nil || made != nil {
 			return
 		}
 		switch msg := c().(type) {
-		case tabMadeMsg:
+		case core.TabMadeMsg:
 			made = &msg
 		case tea.BatchMsg:
 			for _, c := range msg {
@@ -120,11 +121,11 @@ func TestAgentMakesATab(t *testing.T) {
 	if made == nil {
 		t.Fatal("no tab made")
 	}
-	if made.err != nil {
-		t.Skipf("making the worktree here: %v", made.err) // no origin to fetch from, say
+	if made.Err != nil {
+		t.Skipf("making the worktree here: %v", made.Err) // no origin to fetch from, say
 	}
 	m.Update(*made)
-	nt := m.tabs[len(m.tabs)-1]
+	nt := m.Tabs[len(m.Tabs)-1]
 	if nt.Name != "docs-fix" || nt.Model != "gpt-5.5-mini" || nt.Agent != agents.Codex {
 		t.Fatalf("new tab %+v", nt.Tab)
 	}
@@ -138,10 +139,10 @@ func TestAgentMakesATab(t *testing.T) {
 // neither, it says so.
 func TestRestartTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.cfg.Shell = "sh"
+	m.Cfg.Shell = "sh"
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	m.newShellIn(tb, true) // the user's, with no command from an agent
+	tb := m.Cur()
+	m.NewShellIn(tb, true) // the user's, with no command from an agent
 	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Terminal, Restart: true, Name: "terminal"}); !strings.Contains(a.Err, "no command") {
 		t.Fatalf("nothing to run again: %+v", a)
 	}
@@ -168,7 +169,7 @@ func TestRestartTerminal(t *testing.T) {
 	if !ran(2) {
 		t.Fatalf("the command should have run twice: %q", read())
 	}
-	if p, _ := findTerminal(tb, "2"); p == nil || p.command != "echo run-$((40+2))" || len(tb.panes()) != 3 {
+	if p, _ := core.FindTerminal(tb, "2"); p == nil || p.Command != "echo run-$((40+2))" || len(tb.Panes()) != 3 {
 		t.Fatalf("the same pane, with its command: %+v", p)
 	}
 }
@@ -177,12 +178,12 @@ func TestRestartTerminal(t *testing.T) {
 // pane; not the asking agent's own, nor the tab's first agent's.
 func TestAgentClosesPanes(t *testing.T) {
 	m := paneModel(t)
-	m.cfg.Shell = "sh"
+	m.Cfg.Shell = "sh"
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
+	tb := m.Cur()
 	askNerdr(m, tb, hooks.Report{Method: hooks.Terminal, Text: "true"})
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
 	if a, _ := askNerdr(m, two, hooks.Report{Method: hooks.Close, To: 1}); !strings.Contains(a.Err, "first agent") {
 		t.Fatalf("the tab's first agent: %+v", a)
 	}
@@ -198,8 +199,8 @@ func TestAgentClosesPanes(t *testing.T) {
 	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Close, To: 2}); a.Err != "" {
 		t.Fatalf("close agent 2: %+v", a)
 	}
-	if len(tb.panes()) != 1 || len(tb.extraAgents()) != 0 {
-		t.Fatalf("panes left: %d", len(tb.panes()))
+	if len(tb.Panes()) != 1 || len(tb.ExtraAgents()) != 0 {
+		t.Fatalf("panes left: %d", len(tb.Panes()))
 	}
 }
 
@@ -208,10 +209,10 @@ func TestAgentClosesPanes(t *testing.T) {
 func TestSendWaitTakesTheReply(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
-	tb := m.cur()
-	tb.status = stWorking // running nerdr send --wait
-	m.newAgent(tb, agents.Codex)
-	two := tb.extraAgents()[0]
+	tb := m.Cur()
+	tb.Light = core.StWorking // running nerdr send --wait
+	m.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
 	ask := func() hooks.Answer {
 		a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Query, What: hooks.QueryReply, To: 2})
 		return a
@@ -219,7 +220,7 @@ func TestSendWaitTakesTheReply(t *testing.T) {
 	if a := ask(); a.Err != "" || a.Text != "" {
 		t.Fatalf("no answer yet: %+v", a)
 	}
-	m.addMessage(tb, "from the user", true)
+	m.AddMessage(tb, "from the user", true)
 	askNerdr(m, two, hooks.Report{Method: hooks.Message, To: 1, Text: "My move is c5"})
 	if a := ask(); !strings.Contains(a.Text, "Message from agent 2") || !strings.Contains(a.Text, "My move is c5") {
 		t.Fatalf("the answer: %+v", a)

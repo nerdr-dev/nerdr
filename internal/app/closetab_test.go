@@ -13,7 +13,7 @@ import (
 // then the whole dialog comes at once.
 func TestCloseWaitsForTheCheck(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.openCloseFor(tb) // the check itself, git and gh, is not run here
 	c := m.dialog.(*closeTab)
 	if v := ansi.Strip(m.View()); strings.Contains(v, "Close tab") {
@@ -21,7 +21,7 @@ func TestCloseWaitsForTheCheck(t *testing.T) {
 	}
 	for _, k := range []string{"y", "n", "b"} {
 		m.Update(keyMsg(k))
-		if m.dialog != c || m.tabIndex(tb) < 0 {
+		if m.dialog != c || m.TabIndex(tb) < 0 {
 			t.Fatalf("%s typed ahead acted on a dialog not yet drawn", k)
 		}
 	}
@@ -38,7 +38,7 @@ func TestCloseWaitsForTheCheck(t *testing.T) {
 	}
 	m.Update(closeShowMsg{c}) // closeWait passing after the answer changes nothing
 	clickOn(t, m, "keep the worktree", tea.MouseButtonLeft)
-	if m.dialog != nil || m.tabIndex(tb) >= 0 {
+	if m.dialog != nil || m.TabIndex(tb) >= 0 {
 		t.Fatal("n should close the tab")
 	}
 }
@@ -48,7 +48,7 @@ func TestCloseWaitsForTheCheck(t *testing.T) {
 // waits for it, and then deletes the branch too, merged on GitHub.
 func TestCloseShowsTheCheckWhenSlow(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.openCloseFor(tb)
 	c := m.dialog.(*closeTab)
 	m.Update(closeShowMsg{c})
@@ -57,7 +57,7 @@ func TestCloseShowsTheCheckWhenSlow(t *testing.T) {
 		t.Fatalf("shown while checking:\n%s", v)
 	}
 	m.Update(keyMsg("y"))
-	if m.dialog != c || m.tabIndex(tb) < 0 {
+	if m.dialog != c || m.TabIndex(tb) < 0 {
 		t.Fatal("y before the check is done could lose work")
 	}
 	path := tb.Worktrees[0].Path
@@ -74,11 +74,11 @@ func TestCloseShowsTheCheckWhenSlow(t *testing.T) {
 // drawn, and a closeWait from a dialog already gone.
 func TestCloseCancelsWhileWaiting(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	m.openCloseFor(tb)
 	old := m.dialog.(*closeTab)
 	m.Update(keyMsg("esc"))
-	if m.dialog != nil || m.tabIndex(tb) < 0 {
+	if m.dialog != nil || m.TabIndex(tb) < 0 {
 		t.Fatal("esc should cancel and keep the tab")
 	}
 
@@ -88,7 +88,7 @@ func TestCloseCancelsWhileWaiting(t *testing.T) {
 		t.Fatal("the first dialog's closeWait showed the second")
 	}
 	m.Update(tea.MouseMsg{X: 5, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if m.dialog != nil || m.tabIndex(tb) < 0 {
+	if m.dialog != nil || m.TabIndex(tb) < 0 {
 		t.Fatal("a click while waiting should cancel and keep the tab")
 	}
 }
@@ -98,7 +98,7 @@ func TestCloseCancelsWhileWaiting(t *testing.T) {
 // enter keeps it.
 func TestCloseDeletesAnUnmergedBranch(t *testing.T) {
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	path := tb.Worktrees[0].Path
 	m.openCloseFor(tb)
 	c := m.dialog.(*closeTab)
@@ -116,12 +116,12 @@ func TestCloseDeletesAnUnmergedBranch(t *testing.T) {
 		t.Fatalf("y with unpushed commits should ask first:\n%s", v)
 	}
 	m.Update(keyMsg("n"))
-	if m.dialog != c || c.ask != "" || m.tabIndex(tb) < 0 {
+	if m.dialog != c || c.ask != "" || m.TabIndex(tb) < 0 {
 		t.Fatal("n should go back to the dialog")
 	}
 	m.Update(keyMsg("y"))
 	m.Update(keyMsg("Y"))
-	if m.dialog != nil || m.tabIndex(tb) >= 0 {
+	if m.dialog != nil || m.TabIndex(tb) >= 0 {
 		t.Fatal("Y should close the tab")
 	}
 }
@@ -132,7 +132,7 @@ func TestCloseDeletesAnUnmergedBranch(t *testing.T) {
 func TestEnterInTheCloseDialog(t *testing.T) {
 	for _, merged := range []bool{false, true} {
 		m := testModel(t)
-		tb := m.cur()
+		tb := m.Cur()
 		path := tb.Worktrees[0].Path
 		m.openCloseFor(tb)
 		info := closeInfoMsg{t: tb, heads: map[string]string{path: "abc"}, dirty: []string{"login"}}

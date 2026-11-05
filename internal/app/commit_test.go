@@ -94,8 +94,8 @@ func TestLookAfterCommitIsNotLost(t *testing.T) {
 	writeRepoFile(t, repo, "a.txt", "two\n")
 	m := tabsModel(t, state.Tab{ID: "a", Name: "feat", Dir: repo,
 		Worktrees: []workspace.Worktree{{Path: repo, Repo: repo, Branch: "main"}}})
-	tb := m.cur()
-	tb.lookAgain(false)
+	tb := m.Cur()
+	tb.LookAgain(false)
 	before := m.refreshInfo()
 	if before == nil {
 		t.Fatal("a look starts")
@@ -105,11 +105,11 @@ func TestLookAfterCommitIsNotLost(t *testing.T) {
 	gitRun(t, repo, "-c", "commit.gpgsign=false", "commit", "-qam", "commit while looking")
 	m.Update(prActionMsg{t: tb, note: "committed feat"})
 	_, again := m.Update(look)
-	if !tb.info.stale || again == nil {
+	if !tb.Info.Stale || again == nil {
 		t.Fatal("the look the commit asked for is still to come")
 	}
 	m.Update(again())
-	if tb.info.canCommit() {
+	if tb.Info.CanCommit() {
 		t.Fatal("after the commit there is nothing to commit")
 	}
 }

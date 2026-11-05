@@ -17,6 +17,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/app"
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/editor"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
@@ -65,8 +66,8 @@ config: %s
 `
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == app.PluginExecArg {
-		os.Exit(app.ExecPlugin(os.Args[2:]))
+	if len(os.Args) > 1 && os.Args[1] == core.PluginExecArg {
+		os.Exit(core.ExecPlugin(os.Args[2:]))
 	}
 	// Where notes go: what nerdr told the agent, when this is nerdr run by
 	// an agent (perhaps in a sandbox that cannot read the config), else

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -37,24 +38,25 @@ func TestFuzzy(t *testing.T) {
 }
 
 func TestFindOverlaps(t *testing.T) {
-	mk := func(id string, changed map[string][]string) *tab {
-		t := &tab{Tab: state.Tab{ID: id, Name: id}}
+	mk := func(id string, changed map[string][]string) *core.Tab {
+		t := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: id, Name: id}}}
 		for repo, files := range changed {
 			t.Worktrees = append(t.Worktrees, workspace.Worktree{Repo: repo})
-			t.info.wts = append(t.info.wts, wtInfo{repo: repo, stats: workspace.Stats{Changed: files}})
+			t.Info.Wts = append(t.Info.Wts, core.WtInfo{Repo: repo, Stats: workspace.Stats{Changed: files}})
 		}
 		return t
 	}
 	a := mk("a", map[string][]string{"/r/app": {"x.go", "y.go"}})
 	b := mk("b", map[string][]string{"/r/app": {"y.go", "z.go"}})
 	c := mk("c", map[string][]string{"/r/other": {"y.go"}}) // same name, other repo
-	m := &Model{tabs: []*tab{a, b, c}}
+	m := &Model{Tabs: []*core.Tab{a, b, c}}
+	m.Client = m
 	m.findOverlaps()
 
-	if got := m.overlaps["a"]; len(got) != 1 || got[0].with != b || !reflect.DeepEqual(got[0].files, []string{"app/y.go"}) {
+	if got := m.overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
 		t.Fatalf("a: %+v", got)
 	}
-	if got := m.overlaps["b"]; len(got) != 1 || got[0].with != a {
+	if got := m.overlaps["b"]; len(got) != 1 || got[0].With != a {
 		t.Fatalf("b: %+v", got)
 	}
 	if got := m.overlaps["c"]; len(got) != 0 {
@@ -63,28 +65,28 @@ func TestFindOverlaps(t *testing.T) {
 }
 
 func TestMergedNeedsEveryWorktree(t *testing.T) {
-	in := tabInfo{wts: []wtInfo{{hasPR: true}, {hasPR: true}}}
-	in.wts[0].pr.State = "MERGED"
-	if in.merged() {
+	in := core.TabInfo{Wts: []core.WtInfo{{HasPR: true}, {HasPR: true}}}
+	in.Wts[0].Pr.State = "MERGED"
+	if in.Merged() {
 		t.Fatal("merged with one PR still open")
 	}
-	in.wts[1].pr.State = "MERGED"
-	if !in.merged() {
+	in.Wts[1].Pr.State = "MERGED"
+	if !in.Merged() {
 		t.Fatal("not merged")
 	}
 	// Commits after the merged PR are in no PR: the tab is not done.
-	in.wts[1].pr.After = 1
-	if in.merged() {
+	in.Wts[1].Pr.After = 1
+	if in.Merged() {
 		t.Fatal("merged with commits after the PR")
 	}
-	if got := prLabel(in); got != "#0 merged" {
+	if got := core.PrLabel(in); got != "#0 merged" {
 		t.Fatalf("label %q", got)
 	}
-	in.wts[0].pr.After = 2
-	if got := prLabel(in); got != "#0 merged · 2 commits after" {
+	in.Wts[0].Pr.After = 2
+	if got := core.PrLabel(in); got != "#0 merged · 2 commits after" {
 		t.Fatalf("label %q", got)
 	}
-	if (tabInfo{}).merged() {
+	if (core.TabInfo{}).Merged() {
 		t.Fatal("no worktrees counts as merged")
 	}
 }
@@ -106,10 +108,11 @@ func TestNotesInsideHerdr(t *testing.T) {
 	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	top := &tab{Tab: state.Tab{ID: "a", Name: "top"}, status: stBlocked}
-	other := &tab{Tab: state.Tab{ID: "b", Name: "other"}, status: stDone}
-	m := &Model{tabs: []*tab{top, other}, herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
-	m.cfg.Notify = "all"
+	top := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "top"}, Light: core.StBlocked}}
+	other := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "other"}, Light: core.StDone}}
+	m := &Model{Tabs: []*core.Tab{top, other}, Herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
+	m.Client = m
+	m.Cfg.Notify = "all"
 	now := time.Now()
 	m.notifyChange(top, false, now)
 	m.notifyChange(other, false, now)
@@ -117,8 +120,8 @@ func TestNotesInsideHerdr(t *testing.T) {
 	if len(m.notes) != 2 {
 		t.Fatalf("notes = %d", len(m.notes))
 	}
-	before := m.herdr.State()
-	m.reportHerdr() // the pane turns blocked: herdr notifies of top itself
+	before := m.Herdr.State()
+	m.ReportHerdr() // the pane turns blocked: herdr notifies of top itself
 	m.flushNotes(before)
 
 	// Wait for the report as well as the notification: both run in the

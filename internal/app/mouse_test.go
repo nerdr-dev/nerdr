@@ -12,6 +12,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -24,6 +25,7 @@ import (
 
 func TestScanZones(t *testing.T) {
 	m := &Model{}
+	m.Client = m
 	var hit []string
 	fn := func(name string) zoneFn {
 		return func(*Model, tea.MouseMsg) tea.Cmd { hit = append(hit, name); return nil }
@@ -100,18 +102,18 @@ func clickOn(t *testing.T, m *Model, s string, b tea.MouseButton) {
 func TestClickTabsAndGroups(t *testing.T) {
 	m := testModel(t)
 	clickOn(t, m, "logout", tea.MouseButtonLeft)
-	if m.cur().Name != "logout" {
-		t.Fatalf("active %q after clicking logout", m.cur().Name)
+	if m.Cur().Name != "logout" {
+		t.Fatalf("active %q after clicking logout", m.Cur().Name)
 	}
 	clickOn(t, m, "lib (1)", tea.MouseButtonLeft)
-	if m.cur().Name != "parse" {
-		t.Fatalf("active %q after clicking group lib", m.cur().Name)
+	if m.Cur().Name != "parse" {
+		t.Fatalf("active %q after clicking group lib", m.Cur().Name)
 	}
 	// The wheel over the group row steps through the groups.
 	m.View()
 	m.Update(tea.MouseMsg{X: 100, Y: 0, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
-	if m.cur().group() != "app" {
-		t.Fatalf("group %q after the wheel", m.cur().group())
+	if m.Cur().GroupName() != "app" {
+		t.Fatalf("group %q after the wheel", m.Cur().GroupName())
 	}
 }
 
@@ -121,22 +123,22 @@ func TestWheelBurst(t *testing.T) {
 	m := testModel(t)
 	m.View()
 	y := m.tabRow()
-	before := m.cur().Name
+	before := m.Cur().Name
 	for range 30 {
 		m.Update(tea.MouseMsg{X: 5, Y: y, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 	}
-	after := m.cur().Name
+	after := m.Cur().Name
 	if after == before {
 		t.Fatal("the wheel over the tabs did not step")
 	}
 	m.Update(tea.MouseMsg{X: 5, Y: y, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
-	if m.cur().Name != after {
-		t.Fatalf("stepped on to %s straight after", m.cur().Name)
+	if m.Cur().Name != after {
+		t.Fatalf("stepped on to %s straight after", m.Cur().Name)
 	}
 	// Once the gap has passed, the next notch steps again.
 	m.lastWheelStep = m.lastWheelStep.Add(-wheelGap)
 	m.Update(tea.MouseMsg{X: 5, Y: y, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
-	if m.cur().Name == after {
+	if m.Cur().Name == after {
 		t.Fatal("the wheel did not step after the gap")
 	}
 }
@@ -147,23 +149,23 @@ func TestWheelBurst(t *testing.T) {
 func TestWheelAfterFocus(t *testing.T) {
 	m := testModel(t)
 	no := false
-	m.cfg.HerdrFocusJump = &no
+	m.Cfg.HerdrFocusJump = &no
 	m.View()
 	wheel := func() {
 		m.lastWheelStep = time.Time{} // not what this is about
 		m.Update(tea.MouseMsg{X: 5, Y: m.tabRow(), Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
 	}
-	start := m.cur().Name
+	start := m.Cur().Name
 	m.Update(tea.BlurMsg{})
 	wheel()
 	m.Update(tea.FocusMsg{})
 	wheel()
-	if m.cur().Name != start {
-		t.Fatalf("the wheel stepped to %s while gliding in from the background", m.cur().Name)
+	if m.Cur().Name != start {
+		t.Fatalf("the wheel stepped to %s while gliding in from the background", m.Cur().Name)
 	}
 	m.lastWheel = m.lastWheel.Add(-wheelQuiet)
 	wheel()
-	if m.cur().Name == start {
+	if m.Cur().Name == start {
 		t.Fatal("the wheel is not heard after being still")
 	}
 }
@@ -172,8 +174,8 @@ func TestTabMenu(t *testing.T) {
 	m := testModel(t)
 	clickOn(t, m, "logout", tea.MouseButtonRight)
 	mu, ok := m.dialog.(*menu)
-	if !ok || m.cur().Name != "logout" {
-		t.Fatalf("right click: dialog %T, tab %q", m.dialog, m.cur().Name)
+	if !ok || m.Cur().Name != "logout" {
+		t.Fatalf("right click: dialog %T, tab %q", m.dialog, m.Cur().Name)
 	}
 	if m.mouse != mouseAll {
 		t.Fatal("the menu does not follow the pointer")
@@ -261,7 +263,7 @@ func TestDragTheSideEdge(t *testing.T) {
 	if w := m.sideW(); w != auto+10 {
 		t.Fatalf("sidebar %d columns after the drag, want %d", w, auto+10)
 	}
-	if s, _ := state.Load(m.root); s.SideWidth != auto+9 {
+	if s, _ := state.Load(m.Root); s.SideWidth != auto+9 {
 		t.Fatalf("saved width %d, want %d", s.SideWidth, auto+9)
 	}
 	m.Update(tea.MouseMsg{X: m.sideW() - 1, Y: y, Button: tea.MouseButtonRight, Action: tea.MouseActionPress})
@@ -309,8 +311,8 @@ func TestTooltip(t *testing.T) {
 	}
 	m.Update(tipMsg{m.hover.seq})
 	m.Update(tea.MouseMsg{X: x + 4, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if m.hover.shown || m.cur().Name != "logout" {
-		t.Fatalf("after a click: tip shown %v, tab %q", m.hover.shown, m.cur().Name)
+	if m.hover.shown || m.Cur().Name != "logout" {
+		t.Fatalf("after a click: tip shown %v, tab %q", m.hover.shown, m.Cur().Name)
 	}
 	// A late wait for a tip left behind shows nothing.
 	m.Update(tipMsg{m.hover.seq - 1})
@@ -351,8 +353,8 @@ func TestDragCopiesFromATerminalPane(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'hello-panel'\nsleep 5\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m.cfg.Shell = script
-	m.cur().Dir = dir
+	m.Cfg.Shell = script
+	m.Cur().Dir = dir
 	m.runCommand("t t")
 	defer m.Shutdown()
 	var copied string
@@ -391,13 +393,13 @@ func TestTerminalBesideTheAgentScrollsAndCopies(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nfor i in $(seq 1 100); do echo line-$i; done\necho last-line\nsleep 5\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m.cfg.Shell = script
-	m.cur().Dir = dir
+	m.Cfg.Shell = script
+	m.Cur().Dir = dir
 	agent, err := term.Start([]string{"sh", "-c", "echo agent-here; sleep 5"}, dir, os.Environ(), 40, 10, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.cur().pane = agent
+	m.Cur().Pane = agent
 	m.runCommand("t t")
 	m.resize()
 	defer m.Shutdown()
@@ -464,7 +466,7 @@ func TestOSC52OnlyFromThePaneInUse(t *testing.T) {
 		t.Cleanup(func() { p.Stop(time.Second) })
 		return p
 	}
-	m.tabs[0].pane, m.tabs[1].pane = copying("here"), copying("elsewhere")
+	m.Tabs[0].Pane, m.Tabs[1].Pane = copying("here"), copying("elsewhere")
 	time.Sleep(300 * time.Millisecond)
 
 	// Nobody has typed: nothing is taken, from the pane in use either.
@@ -481,7 +483,7 @@ func TestOSC52OnlyFromThePaneInUse(t *testing.T) {
 	if len(copied) != 0 {
 		t.Fatalf("copied unasked: %q", copied)
 	}
-	m.tabs[0].pane, m.tabs[1].pane = copying("here"), copying("elsewhere")
+	m.Tabs[0].Pane, m.Tabs[1].Pane = copying("here"), copying("elsewhere")
 	time.Sleep(300 * time.Millisecond)
 	m.checkCopied()
 	if len(copied) != 1 || copied[0] != "here" {
@@ -506,8 +508,8 @@ func TestClickPRNumber(t *testing.T) {
 	m := testModel(t)
 	m.showDetails = true
 	for i, n := range []int{7, 8} {
-		m.tabs[i].info = tabInfo{at: time.Now(), wts: []wtInfo{{hasPR: true,
-			pr: github.Status{Number: n, State: "OPEN", URL: "https://github.com/o/app/pull/" + strconv.Itoa(n)}}}}
+		m.Tabs[i].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true,
+			Pr: github.Status{Number: n, State: "OPEN", URL: "https://github.com/o/app/pull/" + strconv.Itoa(n)}}}}
 	}
 	m.selectTab(0)
 	m.View()
@@ -532,8 +534,8 @@ func TestClickPRNumber(t *testing.T) {
 	}
 	m.dialog = nil
 	clickOn(t, m, "#8", tea.MouseButtonLeft)
-	if m.cur().Name != "logout" {
-		t.Fatalf("a click on another tab's PR number should go to it, active %q", m.cur().Name)
+	if m.Cur().Name != "logout" {
+		t.Fatalf("a click on another tab's PR number should go to it, active %q", m.Cur().Name)
 	}
 	if _, err := os.Stat(opened); err == nil {
 		t.Fatal("a click on another tab's PR number opened the browser")

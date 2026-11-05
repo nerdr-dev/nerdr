@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // A bar with more groups or tabs than fit shows a window of them, with
@@ -18,7 +19,7 @@ import (
 // barItem is one entry of a bar: drawn, zones and all, and its light.
 type barItem struct {
 	s  string
-	st status
+	st core.Status
 }
 
 // barSep is the columns between the entries of a bar.
@@ -30,25 +31,6 @@ type barRow struct {
 	start  int // the first entry shown
 	hidden int // entries not shown
 	room   bool
-}
-
-// statusRank orders the lights by how much they want a look.
-func statusRank(s status) int {
-	switch s {
-	case stBlocked:
-		return 7
-	case stDone:
-		return 6
-	case stWorking:
-		return 5
-	case stBackground:
-		return 4
-	case stIdle:
-		return 3
-	case stStarting, stUnknown:
-		return 2
-	}
-	return 1
 }
 
 // markerWidth is the columns the count of n hidden entries takes.
@@ -136,7 +118,7 @@ func (m *Model) hiddenMarker(items []barItem, lo, hi int, left bool, what string
 		best, step, end = hi-1, -1, lo-1
 	}
 	for i := best; i != end; i += step {
-		if statusRank(items[i].st) > statusRank(items[best].st) {
+		if core.StatusRank(items[i].st) > core.StatusRank(items[best].st) {
 			best = i
 		}
 	}
@@ -150,7 +132,7 @@ func (m *Model) hiddenMarker(items []barItem, lo, hi int, left bool, what string
 	} else {
 		s, side = st.Render(" ")+count+arrow.Render(" ▸ "), "right"
 	}
-	tip := plural(n, what) + " hidden to the " + side + " · the one that most wants a look: " +
+	tip := core.Plural(n, what) + " hidden to the " + side + " · the one that most wants a look: " +
 		strings.ToLower(statusTip(items[best].st)) + " · click: go to it"
 	return m.tip(m.onClick(s, func(m *Model) tea.Cmd { return goTo(m, best) }), tip)
 }

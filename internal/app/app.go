@@ -4,39 +4,27 @@ package app
 
 import (
 	"os"
-	"strconv"
 	"sync"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
-	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
-	"github.com/nerdr-dev/nerdr/internal/usage"
-	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-type focusArea int
-
-const (
-	focusAgent focusArea = iota
-	focusReview
-)
-
-// resizeSettle is how long after a resize the size is asked for again.
-const resizeSettle = 300 * time.Millisecond
-
 // Model is the whole program's state. It is used through a pointer: the
 // panes' goroutines hold on to it (notify), so it must not be copied.
 type Model struct {
+	core.Core
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
@@ -46,34 +34,24 @@ type Model struct {
 	// typed to the pane walked to, as after walking along the tabs.
 	groupWalk bool
 
-	// claudeLimits is the last of what a claude agent said of its
-	// account's limits, and when; see usage.go.
-	claudeLimits *usage.Report
-	claudeAt     time.Time
 	// convIndex is the agents' conversations read for the search; see
 	// search.go.
 	convIndex *agents.Index
 
-	cfg    config.Config
-	root   string // the folder nerdr was started in
-	wtRoot string // where new worktrees are made
 	// cfgMod is the config file's time when last taken in; restartNoted
 	// the settings read only at start that the file has changed, and to
 	// what, told once (see reloadConfig).
 	cfgMod       time.Time
 	restartNoted map[string]string
 	router       *input.Router
-	herdr        *herdr.Client
 
 	// keeper keeps the machine awake while keep_awake asks; made the first
 	// time it is wanted. See keepAwake.
-	keeper    keeper
+	keeper    core.Keeper
 	keeperErr string
 	lastBusy  time.Time
 	started   time.Time // when keepAwake first ran: input counts from then
 
-	tabs   []*tab
-	active int
 	// lastInGroup is the id of the tab last active in each group, so
 	// moving to a group returns to where you were in it.
 	lastInGroup map[string]string
@@ -89,7 +67,7 @@ type Model struct {
 	reviewOpen  bool
 	// screenTab is the tab whose screen the review panel shows; see
 	// pinReview.
-	screenTab  *tab
+	screenTab  *core.Tab
 	reviewZoom bool
 	// panelSmall is the review panel made small, to its F-keys: shown as
 	// a column on the right while folded, opened by an F-key, and folded
@@ -100,20 +78,18 @@ type Model struct {
 	// beside it; panelKept while it was opened by hand all the same. See
 	// fitPanel.
 	panelAuto, panelKept bool
-	// skillUse is how much the agents have used each skill, for F4; see
-	// skilluse.go.
-	skillUse skillUse
+
 	// sideZoom is set while the panel is full width because F1's files
 	// were put beside the diff in a panel too narrow for that; putting
 	// them back above makes it narrow again.
 	sideZoom    bool
 	reviewWidth int // percent
-	focus       focusArea
+	focus       core.FocusArea
 
 	// split is the tab shown beside the active one, splitLeft whether it
 	// is on the left, and splitWidth the right-hand tab's share of the
 	// window in percent; see split.go.
-	split      *tab
+	split      *core.Tab
 	splitLeft  bool
 	splitWidth int
 	// reviewerCursor is the agent picked in a review pane to review with;
@@ -122,8 +98,13 @@ type Model struct {
 	// reviewPick is the model being picked for the agent picked there, nil
 	// while the agent is; agentModels the models each agent listed; see
 	// reviewmodels.go.
-	reviewPick  *modelPick
-	agentModels map[agents.Kind]modelList
+	reviewPick *modelPick
+
+	// panelScreens is where the review panel was when you last left each tab
+	// (F1 to F5), to go back to when you come to it again; paneBars what each
+	// tab's row of panes showed when last drawn.
+	panelScreens map[*core.Tab]review.Screen
+	paneBars     map[*core.Tab]*barRow
 
 	// blurred is set while the terminal (herdr) has taken focus away from
 	// nerdr's window: then even the active tab is not being looked at.
@@ -180,7 +161,7 @@ type Model struct {
 	drag      dragKind
 	// dragTab and dragDiv are, while a divider between panes is dragged,
 	// its tab and which divider: the one after its dragDiv'th pane shown.
-	dragTab *tab
+	dragTab *core.Tab
 	dragDiv int
 	sel     term.Selection
 	selPane *term.Pane
@@ -200,9 +181,7 @@ type Model struct {
 	// them, and prPanelShown whether it did at the last look; see
 	// prpanel.go.
 	prPanel *prList
-	// issueWatch is the watching of the issues assigned to you; see
-	// issuewatch.go.
-	issueWatch   issueWatch
+
 	prPanelShown bool
 	// branchPanel is what F2 shows about the active tab's branches, as the
 	// tab panel does, and branchShown whether F2 showed it at the last
@@ -216,12 +195,7 @@ type Model struct {
 	// prAsking is the PRs a message for an agent is being made for, by
 	// prKey, so a second f does not make another.
 	prAsking map[string]bool
-	// groupNames is the group name given to each folder of worktrees in
-	// several repositories, kept when its tab is closed; see addTab.
-	groupNames map[string]string
-	// sandboxedDirs are the worktree folders where a sandboxed agent has
-	// run, kept across tab close and reopen.
-	sandboxedDirs map[string]bool
+
 	// sideWidth is the columns the sidebar's edge was dragged to, its
 	// frames included; 0 for as wide as its names need.
 	sideWidth int
@@ -235,37 +209,22 @@ type Model struct {
 	// inAppTabs the tabs saying it; see notify.go. toastTabs are the tabs
 	// the toast shown tells of, toastOf the text it was for them.
 	inApp     []string
-	inAppTabs []*tab
-	toastTabs []*tab
+	inAppTabs []*core.Tab
+	toastTabs []*core.Tab
 	toastOf   string
 
-	// infoBusy is set while a tab's branches are being looked at; see
-	// info.go. overlaps is, per tab id, the other tabs changing some of
-	// the same files, and shared the same by file, for the review panel's
-	// file list. showDetails shows that state in the tab bar.
-	// hookSock is the socket herdr's integrations in the agents report to,
-	// and hookBin nerdr itself, for those that report through the CLI.
-	hookSock, hookBin string
-	// hookSockErr is why there is no hookSock, when there is not.
-	hookSockErr string
-	// codexHooks are the arguments that give codex nerdr's hooks, once
-	// codex trusts them, and codexAsked whether it has been asked; see
-	// codexHookArgs.
-	codexHooks []string
-	codexAsked bool
-
 	// notes are the notifications due this tick; see notify.go.
-	notes []note
+	notes []core.Note
 
 	// entered is the tab last come to; see attention.go.
-	entered *tab
+	entered *core.Tab
 	// landed is when the active tab was come to, and looking is set until
 	// it has been looked at; see seenAfter.
 	landed  time.Time
 	looking bool
 
 	infoBusy    bool
-	overlaps    map[string][]overlap
+	overlaps    map[string][]core.Overlap
 	shared      map[string]map[string][]string
 	showDetails bool
 	hideGroups  bool // the repository row put away; see showGroups
@@ -279,7 +238,6 @@ type Model struct {
 	tabRows   map[string]*barRow
 	roomAsked bool
 
-	wake chan struct{}
 	// quitting is set once the program is on its way out.
 	quitting bool
 	shutdown sync.Once
@@ -288,17 +246,17 @@ type Model struct {
 // New builds the model for a session rooted at root.
 func New(cfg config.Config, root string, router *input.Router, sess state.Session) *Model {
 	m := &Model{
-		cfg:         cfg,
-		root:        root,
-		wtRoot:      workspace.WorktreesRoot(root, cfg.WorktreesDir),
+		Cfg:         cfg,
+		Root:        root,
+		WtRoot:      workspace.WorktreesRoot(root, cfg.WorktreesDir),
 		router:      router,
-		herdr:       herdr.Detect(),
+		Herdr:       herdr.Detect(),
 		review:      review.NewEmbedded(),
 		reviewWidth: cfg.PanelWidth,
 		splitWidth:  50,
-		wake:        make(chan struct{}, 1),
+		Wake:        make(chan struct{}, 1),
 		lastInGroup: map[string]string{},
-		overlaps:    map[string][]overlap{},
+		overlaps:    map[string][]core.Overlap{},
 		showDetails: *cfg.TabDetails,
 		sideBar:     cfg.TabBar == "left" || cfg.TabBar == "left-small",
 		sideSmall:   cfg.TabBar == "left-small",
@@ -308,7 +266,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	}
 	m.review = m.review.SetFocused(false).SetWideKey(m.pk("z z")).SetScreenKeys(m.screenMenuKeys())
 	m.review, _ = m.review.SetDiffColors(cfg.DiffColors)
-	m.review = m.review.SetPRRefresh(m.githubEvery(prPanelEvery))
+	m.review = m.review.SetPRRefresh(m.GithubEvery(core.PrPanelEvery))
 	if st, err := os.Stat(config.Path()); err == nil {
 		m.cfgMod = st.ModTime()
 	}
@@ -319,47 +277,48 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	}
 	now := time.Now()
 	for _, st := range sess.Tabs {
-		t := &tab{Tab: st, status: stStarting}
-		trustWorktrees(t)
+		t := &core.Tab{AgentState: core.Agent{Tab: st, Light: core.StStarting}}
+		core.TrustWorktrees(t)
 		t.TakeQueue()
-		m.restoreAgents(t)
+		m.RestoreAgents(t)
 		if t.LastActive.IsZero() {
 			t.LastActive = now // from before it was kept: not cold on that account
 		}
-		m.tabs = append(m.tabs, t)
+		m.Tabs = append(m.Tabs, t)
 	}
-	if sess.Active >= 0 && sess.Active < len(m.tabs) {
-		m.active = sess.Active
+	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
+		m.Active = sess.Active
 	}
-	if t := m.cur(); t != nil {
+	if t := m.Cur(); t != nil {
 		m.entered, t.LastActive = t, now // as enter does
 	}
-	for i, t := range m.tabs {
-		if sess.Split != "" && t.ID == sess.Split && i != m.active && t.group() == m.curGroup() {
+	for i, t := range m.Tabs {
+		if sess.Split != "" && t.ID == sess.Split && i != m.Active && t.GroupName() == m.CurGroup() {
 			m.split, m.splitLeft = t, sess.SplitLeft
 			m.reviewOpen = false
 		}
 	}
 	m.loadPRWatch(sess.PRs)
-	m.loadIssueWatch(sess.Issues)
-	m.groupNames = sess.GroupNames
-	m.sandboxedDirs = sess.SandboxedDirs
+	m.LoadIssueWatch(sess.Issues)
+	m.GroupNames = sess.GroupNames
+	m.SandboxedDirs = sess.SandboxedDirs
 	m.sideWidth = sess.SideWidth
-	if m.groupNames == nil {
-		m.groupNames = map[string]string{}
+	if m.GroupNames == nil {
+		m.GroupNames = map[string]string{}
 	}
-	if m.sandboxedDirs == nil {
-		m.sandboxedDirs = map[string]bool{}
+	if m.SandboxedDirs == nil {
+		m.SandboxedDirs = map[string]bool{}
 	} else {
-		for dir := range m.sandboxedDirs {
+		for dir := range m.SandboxedDirs {
 			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				delete(m.sandboxedDirs, dir)
+				delete(m.SandboxedDirs, dir)
 			}
 		}
 	}
-	for _, t := range m.tabs {
-		m.markSandboxed(t)
+	for _, t := range m.Tabs {
+		m.MarkSandboxed(t)
 	}
+	m.Client = m
 	return m
 }
 
@@ -369,77 +328,33 @@ func (m *Model) Init() tea.Cmd {
 	// A title of its own, which a terminal that names its tab after the
 	// program running in it can show in place of the one running last
 	// under nerdr: its shells and git.
-	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init(), waitFrame(m.wake), detectTick(), infoTick()}
-	if m.cfg.Install == "" {
+	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init(), fromCore(core.WaitFrame(m.Wake)), fromCore(core.DetectTick()), fromCore(core.InfoTick())}
+	if m.Cfg.Install == "" {
 		// The first start: where the worktrees, the skills and plugins and the notes
 		// go, before anything else. The new-tab dialog follows when there
 		// are no tabs.
 		var then func(m *Model) tea.Cmd
-		if len(m.tabs) == 0 {
+		if len(m.Tabs) == 0 {
 			then = (*Model).openWizard
 		}
 		cmds = append(cmds, m.openSetup(then))
-	} else if note := m.applySkills(); note != "" {
+	} else if note := m.ApplySkills(); note != "" {
 		m.toast(note)
 	}
-	if len(m.tabs) == 0 {
+	if len(m.Tabs) == 0 {
 		if m.dialog == nil {
 			cmds = append(cmds, m.openWizard())
 		}
 	} else {
 		cmds = append(cmds, m.restoreStarts()...)
-		cmds = append(cmds, m.pinReview(), pruneOrders(m.tabs))
-		m.toast("restored " + plural(len(m.tabs), "tab"))
-		if t := m.cur(); t != nil && t.Spinoff != nil && m.dialog == nil {
+		cmds = append(cmds, m.pinReview(), fromCore(core.PruneOrders(m.Tabs)))
+		m.toast("restored " + core.Plural(len(m.Tabs), "tab"))
+		if t := m.Cur(); t != nil && t.Spinoff != nil && m.dialog == nil {
 			cmds = append(cmds, m.openSpinoff(t))
 		}
 	}
 	m.syncInput()
 	return tea.Batch(cmds...)
-}
-
-// pruneOrders drops the reading-order entries and walkthroughs of
-// branches that are gone from the repositories of tabs, once at start, so
-// the files do not grow for ever and a branch name used again does not
-// find them; see order.Prune and walkthrough.Prune.
-func pruneOrders(tabs []*tab) tea.Cmd {
-	var paths []string
-	for _, t := range tabs {
-		for _, w := range t.Worktrees {
-			paths = append(paths, w.Path)
-		}
-	}
-	return func() tea.Msg {
-		done := map[string]bool{}
-		for _, p := range paths {
-			if f := order.File(p); f != "" && !done[f] {
-				done[f] = true
-				_, _ = order.Prune(p)
-			}
-			if f := walkthrough.File(p); f != "" && !done[f] {
-				done[f] = true
-				_, _ = walkthrough.Prune(p)
-			}
-		}
-		return nil
-	}
-}
-
-type frameMsg struct{}
-type detectMsg struct{}
-
-// waitFrame waits for a pane to draw, then gives it a moment to finish
-// the burst so one frame shows the lot.
-func waitFrame(wake chan struct{}) tea.Cmd {
-	return func() tea.Msg {
-		<-wake
-		time.Sleep(16 * time.Millisecond)
-		return frameMsg{}
-	}
-}
-
-func detectTick() tea.Cmd {
-	return tea.Tick(300*time.Millisecond, func(time.Time) tea.Msg { return detectMsg{} })
 }
 
 // isKey reports whether msg is the key k.
@@ -452,7 +367,7 @@ func isKey(msg tea.Msg, k string) bool {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	msgs, rows, side := m.panelMessages(), m.barRows(), m.sideW()
 	switch msg.(type) {
-	case frameMsg, detectMsg, infoTickMsg:
+	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg:
 		m.reviewReuse = true
 	default:
 		m.reviewReuse = false
@@ -470,8 +385,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Arriving on F3, the keyboard goes with it — and on F3 pressed
 		// again from the agent: the arrows and space are for the list then,
 		// not the agent, whose ↑ brings back the message it was last sent.
-		m.setFocus(focusReview)
-		m.msgCursor = noMessage
+		m.setFocus(core.FocusReview)
+		m.msgCursor = core.NoMessage
 	}
 	if m.split != nil && m.splitTab() == nil {
 		// Its tab was closed, became the active one, or the active tab is
@@ -504,148 +419,110 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		// drawn narrower than the window with the old screen showing
 		// beside it: the screen is cleared, and the size asked for again
 		// once the resize has settled.
-		return tea.Batch(m.resize(), tea.ClearScreen, tea.Tick(resizeSettle, func(time.Time) tea.Msg {
+		return tea.Batch(m.resize(), tea.ClearScreen, tea.Tick(core.ResizeSettle, func(time.Time) tea.Msg {
 			return tea.WindowSize()()
 		}))
 
-	case frameMsg:
+	case core.FrameMsg:
 		m.checkEditor()
-		m.checkShells()
+		m.CheckShells()
 		m.checkPluginUIs()
 		m.checkCopied()
-		return waitFrame(m.wake)
+		return fromCore(core.WaitFrame(m.Wake))
 
-	case detectMsg:
-		return tea.Batch(m.detect(), detectTick())
+	case core.DetectMsg:
+		return tea.Batch(m.detect(), fromCore(core.DetectTick()))
 
 	case hooks.Report:
-		msg = m.vouch(msg)
-		if t := m.agentByHook(msg.Pane); t != nil {
-			t.heard = true // it reaches nerdr, whatever it asks
-		}
-		if why := m.sandboxRefusal(msg); why != "" {
-			answerer(msg)(hooks.Answer{Err: why})
-			return nil
-		}
-		switch msg.Method {
-		case hooks.Spinoff:
-			return m.onSpinoff(msg)
-		case hooks.Handoff:
-			return m.onHandoff(msg)
-		case hooks.Review:
-			return m.onReview(msg)
-		case hooks.RequestReview:
-			return m.onReady(msg)
-		case hooks.Message:
-			return m.onMessage(msg)
-		case hooks.NewAgent:
-			return m.onNewAgent(msg)
-		case hooks.Usage:
-			m.onUsage(msg)
-			return nil
-		case hooks.Query:
-			return m.onQuery(msg)
-		case hooks.Terminal:
-			return m.onTerminal(msg)
-		case hooks.Close:
-			return m.onClose(msg)
-		case hooks.NewTab:
-			return m.onNewTab(msg)
-		case hooks.Status:
-			m.onStatus(msg)
-			return nil
-		case hooks.Plugin:
-			return m.onPlugin(msg)
-		}
-		return m.onHook(msg)
+		return fromCore(m.OnReport(msg))
 
-	case spinoffMsg:
+	case core.SpinoffMsg:
 		return m.spinoffMade(msg)
 
 	case usageReadMsg:
 		m.onUsageRead(msg)
 		return nil
 
-	case toastMsg:
+	case core.ToastMsg:
 		m.toast(string(msg))
 		return nil
 
-	case tabMadeMsg:
-		return m.tabMade(msg)
+	case core.TabMadeMsg:
+		return fromCore(m.TabMade(msg))
 
 	case searchReadMsg:
 		m.onSearchRead(msg)
 		return nil
 
-	case treeMsg:
+	case core.TreeMsg:
 		return m.onTree(msg)
 
-	case focusFilesMsg:
+	case core.FocusFilesMsg:
 		m.focusFiles(msg)
 		return nil
-	case infoTickMsg:
+	case core.InfoTickMsg:
 		m.toastDenied()
 		return tea.Batch(m.configCheck(), m.refreshInfo(), m.tickPRs(time.Now()), m.tickIssues(time.Now()), m.syncPRPanel(),
-			m.sleepIdle(time.Now()), infoTick())
+			m.sleepIdle(time.Now()), fromCore(core.InfoTick()))
 
-	case infoMsg:
+	case core.InfoMsg:
 		m.setInfo(msg)
 		return m.refreshInfo()
 
-	case headsMsg:
-		m.setHeads(msg)
+	case core.HeadsMsg:
+		m.SetHeads(msg)
 		return nil
 
-	case summaryMsg:
-		m.onSummary(msg.s)
+	case core.SummaryMsg:
+		m.OnSummary(msg.S)
 		return nil
 
-	case claimMsg:
-		m.onClaim(msg)
+	case core.ClaimMsg:
+		m.OnClaim(msg)
 		return nil
 
-	case goalMsg:
-		msg.t.goalLooking = false
-		m.setGoal(msg.t, msg.goal)
-		m.setLatest(msg.t, msg.latest)
+	case core.GoalMsg:
+		msg.T.GoalLooking = false
+		m.SetGoal(msg.T, msg.Goal)
+		m.SetLatest(msg.T, msg.Latest)
 		return nil
 
 	case sentMsg:
 		m.onSent(msg)
 		return nil
 
-	case skillUseMsg:
-		m.onSkillUse(msg)
+	case core.SkillUseMsg:
+		m.OnSkillUse(msg)
 		return nil
 
-	case recapMsg:
-		if !m.live(msg.t) {
+	case core.RecapMsg:
+		if !m.Live(msg.T) {
 			return nil
 		}
-		return m.lookUpGoal(msg.t)
+		return fromCore(m.LookUpGoal(msg.T))
 
 	case input.PrefixMsg:
 		m.startPrefix()
 		return nil
 
 	case tea.FocusMsg:
-		debugf("focus")
+		core.Debugf("focus")
 		m.blurred = false
 		m.wheelHeld = true // a glide begun elsewhere may still be coming
 		cmd := m.onHerdrFocus()
-		if t := m.cur(); t != nil {
+		if t := m.Cur(); t != nil {
 			m.focusTerms(t)
 			if m.dwelt() {
-				t.seen()
+				t.Seen()
 			}
 		}
-		m.reportHerdr()
+		m.ReportHerdr()
 		return cmd
 
 	case tea.BlurMsg:
-		debugf("blur")
+		core.Debugf("blur")
 		m.blurred = true
-		if t := m.cur(); t != nil {
+		if t := m.Cur(); t != nil {
 			m.focusTerms(t)
 		}
 		return nil
@@ -665,7 +542,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return m.onPanelLayout(msg.Beside)
 
 	case review.LeaveMsg:
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 		return nil
 
 	case review.HelpMsg:
@@ -682,11 +559,11 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.onPRWatch(msg)
 		return nil
 
-	case issueWatchMsg:
+	case core.IssueWatchMsg:
 		m.onIssueWatch(msg)
 		return nil
 
-	case issueAllMsg:
+	case core.IssueAllMsg:
 		m.onIssueAll(msg)
 		return nil
 
@@ -712,19 +589,19 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.dialog = &explainDialog{e: msg}
 		return nil
 
-	case launchMsg:
-		if !m.live(msg.t) || msg.kind != msg.t.Agent {
+	case core.LaunchMsg:
+		if !m.Live(msg.T) || msg.Kind != msg.T.Agent {
 			return nil // closed or switched while its conversation was being looked up
 		}
-		if msg.handoff != "" {
+		if msg.Handoff != "" {
 			// First, ahead of what was waiting for the agent before.
-			msg.t.Messages = append([]state.Message{{Text: msg.handoff, Auto: true, Sandboxed: msg.sandboxed}}, msg.t.Messages...)
+			msg.T.Messages = append([]state.Message{{Text: msg.Handoff, Auto: true, Sandboxed: msg.Sandboxed}}, msg.T.Messages...)
 			m.saveSession()
 		}
-		return m.spawn(msg.t, msg.l, msg.resume)
+		return fromCore(m.Spawn(msg.T, msg.L, msg.Resume))
 
-	case modelsMsg:
-		return m.onModels(msg)
+	case core.ModelsMsg:
+		return fromCore(m.OnModels(msg))
 
 	case commitFilesMsg:
 		m.onCommitFiles(msg)
@@ -764,8 +641,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return nil
 
-	case sendEnterMsg:
-		m.sendEnter(msg.t)
+	case core.SendEnter:
+		m.SendEnter(msg)
 		return nil
 
 	case promptEnterMsg:
@@ -834,32 +711,24 @@ func (m *Model) whileQuitting(msg tea.Msg) tea.Cmd {
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m.resize()
-	case frameMsg:
-		return waitFrame(m.wake)
+	case core.FrameMsg:
+		return fromCore(core.WaitFrame(m.Wake))
 	case hooks.Report:
 		if msg.Reply != nil {
-			answerer(msg)(hooks.Answer{Err: "nerdr is quitting"})
+			core.Answerer(msg)(hooks.Answer{Err: "nerdr is quitting"})
 			return nil
 		}
-		if m.sandboxRefusal(m.vouch(msg)) != "" {
+		if m.SandboxRefusal(m.Vouch(msg)) != "" {
 			return nil
 		}
 		switch msg.Method {
 		case hooks.ReportAgent, hooks.ReportAgentSession:
-			m.hookSession(msg)
+			m.HookSession(msg)
 		}
-	case claimMsg:
-		m.onClaim(msg)
+	case core.ClaimMsg:
+		m.OnClaim(msg)
 	}
 	return nil
-}
-
-// cur is the active tab, or nil when there are none.
-func (m *Model) cur() *tab {
-	if m.active < 0 || m.active >= len(m.tabs) {
-		return nil
-	}
-	return m.tabs[m.active]
 }
 
 // syncInput tells the input router where keys go now: straight to the
@@ -880,7 +749,7 @@ func (m *Model) syncInput() {
 			return
 		}
 	}
-	t := m.cur()
+	t := m.Cur()
 	if m.quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil {
 		m.router.Passthrough(nil)
 		return
@@ -891,9 +760,9 @@ func (m *Model) syncInput() {
 		return
 	}
 	p := m.keyPane()
-	f := t.focused()
-	a := f.a
-	if p == nil || (f.kind != paneShell && a != nil && p == a.pane && a.status == stExited) {
+	f := t.Focused()
+	a := f.A
+	if p == nil || (f.Kind != core.PaneShell && a != nil && p == a.Pane && a.Light == core.StExited) {
 		m.router.Passthrough(nil)
 		return
 	}
@@ -901,149 +770,61 @@ func (m *Model) syncInput() {
 		m.router.Passthrough(nil)
 		return
 	}
-	if f.kind != paneShell && a != nil && p == a.pane && a.Agent != agents.Claude {
+	if f.Kind != core.PaneShell && a != nil && p == a.Pane && a.Agent != agents.Claude {
 		// Claude's prompts are read from its log; the other agents' are
 		// taken from what is typed.
-		if a.typed == nil {
-			a.typed = &typedLine{}
+		if a.Typed == nil {
+			a.Typed = &core.TypedLine{}
 		}
-		typed := a.typed
+		typed := a.Typed
 		m.router.Passthrough(func(b []byte) {
-			typed.feed(b)
+			typed.Feed(b)
 			p.Input(b)
 		})
 		return
 	}
-	m.router.PassFKeys(f.kind == paneShell && p.AltScreen())
+	m.router.PassFKeys(f.Kind == core.PaneShell && p.AltScreen())
 	m.router.Passthrough(p.Input)
 }
 
 // detect refreshes every agent's traffic light and passes the result on.
 func (m *Model) detect() tea.Cmd {
 	now := time.Now()
-	herdrBefore := m.herdr.State()
+	herdrBefore := m.Herdr.State()
 	m.look()
 	var cmds []tea.Cmd
-	for i, t := range m.tabs {
-		shown := i == m.active || (t == m.splitTab() && m.splitShown())
+	for i, t := range m.Tabs {
+		shown := i == m.Active || (t == m.splitTab() && m.splitShown())
 		if shown {
-			t.shownAt = now
+			t.ShownAt = now
 		}
-		cmds = append(cmds, m.detectAgent(t, shown, now))
-		for _, a := range t.extraAgents() {
-			cmds = append(cmds, m.detectAgent(a, shown, now))
+		cmds = append(cmds, fromCore(m.DetectAgent(t, shown, now)))
+		for _, a := range t.ExtraAgents() {
+			cmds = append(cmds, fromCore(m.DetectAgent(a, shown, now)))
 		}
-		m.reportWhenBegun(t, now)
+		m.ReportWhenBegun(t, now)
 		if shown && m.editor == nil && !m.blurred {
 			m.toastSeen(t)
 		}
 	}
 	m.keepAwake(now)
-	m.reportHerdr()
+	m.ReportHerdr()
 	m.flushNotes(herdrBefore)
 	return tea.Batch(cmds...)
 }
 
 // agentVisible reports whether agent a is on screen, in a pane of the tab
 // shown, and you are looking.
-func (m *Model) agentVisible(a *tab) bool {
-	o := a.owner()
-	if o == m.cur() && !m.dwelt() {
+func (m *Model) agentVisible(a *core.Tab) bool {
+	o := a.Owner()
+	if o == m.Cur() && !m.dwelt() {
 		return false // only passed on the way: see seenAfter
 	}
-	if o != m.cur() && (o != m.splitTab() || !m.splitShown()) {
+	if o != m.Cur() && (o != m.splitTab() || !m.splitShown()) {
 		return false
 	}
-	p := a.paneOf()
+	p := a.PaneOf()
 	return p != nil && m.paneShown(o, p) && m.editor == nil && !m.blurred
-}
-
-// detectAgent is detect for agent a, the own of a tab or another in one
-// of its panes; shown is whether its tab is on screen.
-func (m *Model) detectAgent(t *tab, shown bool, now time.Time) tea.Cmd {
-	var cmds []tea.Cmd
-	if t.status == stAsleep {
-		return nil // see sleep.go
-	}
-	visible := m.agentVisible(t)
-	was := t.status
-	t.classify(visible, now)
-	if t.status != was && !shown {
-		switch t.status {
-		case stDone:
-			t.owner().away.done++
-		case stBlocked:
-			t.owner().away.blocked++
-		}
-	}
-	if t.status == stWorking {
-		t.LastActive = now
-		t.owner().LastActive = now
-	}
-	if t.status.atWork() && !was.atWork() {
-		cmds = append(cmds, m.lookUpGoal(t), m.promptLater(t)) // it has been asked something
-		if t.typed != nil {
-			t.typed.worked()
-		}
-	}
-	if t.typed != nil {
-		if s := t.typed.take(); s != "" {
-			t.noteSaid(s)
-			m.setGoal(t, s)
-			m.setLast(t, s)
-		}
-	}
-	if t.status != was {
-		debugf("agent %s: %s -> %s (visible %v, blurred %v; %s)", m.agentName(t), was.label(), t.status.label(), visible, m.blurred, t.why)
-		m.notifyChange(t, visible, now)
-		if was.atWork() {
-			// Whatever the agent did is worth a look in the tab bar.
-			t.owner().lookAgain(false)
-		}
-	}
-	if t.status == stExited && was != stExited {
-		cmds = append(cmds, m.onExit(t))
-	}
-	if was.atWork() && (t.status == stIdle || t.status == stDone) {
-		m.tellCutOff(t)
-		// The log has the turn's prompt by now, whenever it was written.
-		m.findingsDone(t)
-		cmds = append(cmds, m.afterTurn(t), m.lookUpGoal(t), m.recapLater(t), m.countSkills(t), m.claimSession(t))
-	}
-	cmds = append(cmds, m.detectReviewer(t, now))
-	m.checkSent(t, now)
-	cmds = append(cmds, m.checkHandoff(t, now), m.deliverQueue(t, now))
-	if visible && t.status == stDone {
-		t.seen()
-	}
-	return tea.Batch(cmds...)
-}
-
-// onExit handles an agent that has stopped. One that was resuming an old
-// conversation and died at once most likely could not find it (claude
-// says so and exits when the conversation was never saved): start a new
-// one in its place, once.
-func (m *Model) onExit(t *tab) tea.Cmd {
-	if t.pane == nil {
-		return nil
-	}
-	_, err, ran := t.pane.Exited()
-	if t.resumed && !t.fallbackTried && ran < 8*time.Second && err != nil {
-		t.fallbackTried = true
-		old := t.pane
-		go old.Close()
-		t.SessionID, t.ResumeArgv = "", nil
-		cmd := m.start(t, false)
-		if t.pane != nil && t.pane != old {
-			m.toast(t.Name + ": could not resume, started a new conversation")
-			m.saveSession()
-		}
-		return cmd
-	}
-	if err != nil {
-		t.err = err.Error()
-	}
-	return nil
 }
 
 // resize lays everything out again for the current window size.
@@ -1063,13 +844,13 @@ func (m *Model) resize() tea.Cmd {
 
 func (m *Model) resizePanes() {
 	m.fitPanel()
-	for _, t := range m.tabs {
-		for _, p := range t.panes() {
+	for _, t := range m.Tabs {
+		for _, p := range t.Panes() {
 			switch {
-			case p.kind == paneShell && p.shell != nil:
-				p.shell.Resize(m.shellSize(t, p))
-			case p.a != nil && p.a.pane != nil:
-				p.a.pane.Resize(m.paneSize(p.a))
+			case p.Kind == core.PaneShell && p.Shell != nil:
+				p.Shell.Resize(m.shellSize(t, p))
+			case p.A != nil && p.A.Pane != nil:
+				p.A.Pane.Resize(m.paneSize(p.A))
 			}
 		}
 	}
@@ -1121,27 +902,30 @@ func (m *Model) reviewArea() (int, int) {
 
 // pinReview points the review panel at the active tab's worktrees.
 func (m *Model) pinReview() tea.Cmd {
-	t := m.cur()
+	t := m.Cur()
 	var pins []review.Pin
 	if t != nil {
-		pins = t.pins()
+		pins = tabPins(t)
 	}
 	// The panel's screen (F1 to F5) is the tab's own. It is kept on the tab
 	// it was chosen in, not on whichever is active by now: a tab opened or
 	// closed changes the active one before the panel hears of it.
 	moved := t != m.screenTab
-	if moved && m.screenTab != nil {
-		m.screenTab.panelScreen = m.review.Screen()
+	if moved && m.screenTab != nil && m.TabIndex(m.screenTab) >= 0 {
+		if m.panelScreens == nil {
+			m.panelScreens = map[*core.Tab]review.Screen{}
+		}
+		m.panelScreens[m.screenTab] = m.review.Screen()
 	}
 	var cmd tea.Cmd
 	m.review, cmd = m.review.Pin(pins)
 	if moved && t != nil {
-		cmd = tea.Batch(cmd, m.review.SetScreen(t.panelScreen), m.syncPRPanel())
+		cmd = tea.Batch(cmd, m.review.SetScreen(m.panelScreens[t]), m.syncPRPanel())
 	}
 	m.screenTab = t
 	var unseen map[string]map[string]bool
 	if t != nil {
-		unseen = t.unseen
+		unseen = t.Unseen
 	}
 	m.review = m.review.SetUnseen(unseen)
 	m.shareOverlaps()
@@ -1152,16 +936,16 @@ func (m *Model) pinReview() tea.Cmd {
 // other tabs change too.
 func (m *Model) shareOverlaps() {
 	var shared map[string][]string
-	if t := m.cur(); t != nil {
+	if t := m.Cur(); t != nil {
 		shared = m.shared[t.ID]
 	}
 	m.review = m.review.SetShared(shared)
 	var counts []int
-	if t := m.cur(); t != nil {
+	if t := m.Cur(); t != nil {
 		for i := range t.Worktrees {
 			n := -1
-			if i < len(t.info.wts) && t.info.known() && t.info.wts[i].err == "" {
-				n = len(t.info.wts[i].stats.Changed)
+			if i < len(t.Info.Wts) && t.Info.Known() && t.Info.Wts[i].Err == "" {
+				n = len(t.Info.Wts[i].Stats.Changed)
 			}
 			counts = append(counts, n)
 		}
@@ -1170,15 +954,15 @@ func (m *Model) shareOverlaps() {
 }
 
 // setFocus moves the keyboard between the agent and the review panel.
-func (m *Model) setFocus(f focusArea) {
-	if f == focusAgent || f == focusReview && !m.review.Plugins() {
+func (m *Model) setFocus(f core.FocusArea) {
+	if f == core.FocusAgent || f == core.FocusReview && !m.review.Plugins() {
 		m.plugins.uiFocus = ""
 	}
-	if f == focusReview && !m.reviewOpen {
+	if f == core.FocusReview && !m.reviewOpen {
 		m.reviewOpen = true
 		m.resizePanes()
 	}
-	if f == focusAgent {
+	if f == core.FocusAgent {
 		m.reviewZoom = false
 		if m.panelSmall {
 			m.reviewOpen = false // folded to its F-keys again
@@ -1186,45 +970,45 @@ func (m *Model) setFocus(f focusArea) {
 		m.resizePanes()
 	}
 	m.focus = f
-	m.review = m.review.SetFocused(f == focusReview)
+	m.review = m.review.SetFocused(f == core.FocusReview)
 }
 
 // selectTab makes tab i the active one.
 func (m *Model) selectTab(i int) tea.Cmd {
-	if i < 0 || i >= len(m.tabs) {
+	if i < 0 || i >= len(m.Tabs) {
 		return nil
 	}
-	if i != m.active {
+	if i != m.Active {
 		m.plugins.uiFocus = ""
 	}
-	if old := m.cur(); old != nil && i != m.active {
-		for _, p := range old.panes() {
-			if tp := p.term(); tp != nil {
+	if old := m.Cur(); old != nil && i != m.Active {
+		for _, p := range old.Panes() {
+			if tp := p.Term(); tp != nil {
 				tp.Focus(false)
 			}
 		}
 	}
-	if s := m.splitTab(); s != nil && m.tabs[i] == s {
+	if s := m.splitTab(); s != nil && m.Tabs[i] == s {
 		// The other tab on screen: the keyboard moves across, and each
 		// keeps its side.
-		m.split, m.splitLeft = m.cur(), !m.splitLeft
+		m.split, m.splitLeft = m.Cur(), !m.splitLeft
 	}
-	splitEnded := m.split != nil && m.split.group() != m.tabs[i].group()
+	splitEnded := m.split != nil && m.split.GroupName() != m.Tabs[i].GroupName()
 	if splitEnded {
 		m.split = nil // only tabs of one repository share the screen
 	}
-	m.active = i
+	m.Active = i
 	m.scrolling = false
-	t := m.tabs[i]
+	t := m.Tabs[i]
 	tracked := m.track() // before seen: a finished agent is summed up as finished
-	m.lastInGroup[t.group()] = t.ID
+	m.lastInGroup[t.GroupName()] = t.ID
 	m.landed, m.looking = time.Now(), true
 	m.focusTerms(t)
 	if m.split != nil || splitEnded {
 		m.resizePanes() // the tab may have changed sides, or have the window
 	}
 	m.saveSession()
-	m.reportHerdr()
+	m.ReportHerdr()
 	var ask tea.Cmd
 	if m.dialog == nil && t.Spinoff != nil {
 		ask = m.openSpinoff(t)
@@ -1232,31 +1016,23 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	return tea.Batch(tracked, m.pinReview(), ask)
 }
 
-// seenAfter is how long a tab must be the active one before it counts as
-// looked at: tabs passed on the way to another, up or down the list, keep
-// their green lights.
-const seenAfter = time.Second
-
 // look marks the active tab looked at once it has been so for seenAfter
 // with you looking: not away in another window or behind an editor.
 func (m *Model) look() {
-	t := m.cur()
+	t := m.Cur()
 	if !m.looking || t == nil || !m.dwelt() || m.blurred || m.editor != nil {
 		return
 	}
 	m.looking = false
-	t.seen()
-	t.queuePaused = false // the user has seen what became of the last message
+	t.Seen()
+	t.QueuePaused = false // the user has seen what became of the last message
 }
 
 // dwelt reports whether the active tab has been so long enough to count as
 // looked at.
 func (m *Model) dwelt() bool {
-	return time.Since(m.landed) >= seenAfter
+	return time.Since(m.landed) >= core.SeenAfter
 }
-
-// toastMsg is a toast from work done out of the screen's way.
-type toastMsg string
 
 func (m *Model) toast(s string) {
 	m.toastText = s
@@ -1267,7 +1043,7 @@ func (m *Model) toast(s string) {
 // start resumes them. It runs with the program no longer updating the
 // model: after it has ended, or in a test.
 func (m *Model) Shutdown() {
-	m.shutdown.Do(func() { stopPanes(m.stopping(), m.herdr) })
+	m.shutdown.Do(func() { core.StopPanes(m.stopping(), m.Herdr) })
 }
 
 // stopping saves the session and lists every program to stop, there and
@@ -1277,9 +1053,9 @@ func (m *Model) stopping() []*term.Pane {
 	m.quitting = true
 	m.saveSession()
 	var panes []*term.Pane
-	for _, t := range m.tabs {
-		for _, p := range t.panes() {
-			if tp := p.term(); tp != nil {
+	for _, t := range m.Tabs {
+		for _, p := range t.Panes() {
+			if tp := p.Term(); tp != nil {
 				panes = append(panes, tp)
 			}
 		}
@@ -1288,25 +1064,6 @@ func (m *Model) stopping() []*term.Pane {
 		panes = append(panes, m.editor)
 	}
 	return append(panes, m.pluginUIPanes()...)
-}
-
-// stopPanes stops panes side by side, and tells herdr nerdr is gone. It
-// does not touch the model.
-func stopPanes(panes []*term.Pane, h *herdr.Client) {
-	var wg sync.WaitGroup
-	for _, p := range panes {
-		wg.Add(1)
-		go func() { p.Close(); wg.Done() }()
-	}
-	wg.Wait()
-	h.Release()
-}
-
-func plural(n int, word string) string {
-	if n == 1 {
-		return "1 " + word
-	}
-	return strconv.Itoa(n) + " " + word + "s"
 }
 
 // onPanelLayout follows F1's file list going beside the diff or back above
@@ -1330,4 +1087,13 @@ func (m *Model) onPanelLayout(beside bool) tea.Cmd {
 		m.sideZoom = false
 	}
 	return m.resize()
+}
+
+// tabPins is what the review panel shows for the tab.
+func tabPins(t *core.Tab) []review.Pin {
+	var out []review.Pin
+	for _, w := range t.Worktrees {
+		out = append(out, review.Pin{Repo: w.Repo, Path: w.Path})
+	}
+	return out
 }

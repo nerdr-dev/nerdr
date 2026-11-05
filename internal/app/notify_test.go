@@ -6,18 +6,20 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
-func notifyModel(notify string, tabs ...*tab) *Model {
-	m := &Model{tabs: tabs}
-	m.cfg.Notify = notify
-	m.cfg.Prefix = "ctrl+q"
+func notifyModel(notify string, tabs ...*core.Tab) *Model {
+	m := &Model{Tabs: tabs}
+	m.Client = m
+	m.Cfg.Notify = notify
+	m.Cfg.Prefix = "ctrl+q"
 	return m
 }
 
-func doneTab(name string) *tab {
-	return &tab{Tab: state.Tab{ID: name, Name: name, Agent: agents.Claude}, status: stDone}
+func doneTab(name string) *core.Tab {
+	return &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: name, Name: name, Agent: agents.Claude}, Light: core.StDone}}
 }
 
 // In nerdr, a tab behind the one shown says it is done in the bar, not
@@ -41,7 +43,7 @@ func TestBackgroundTabSaysSoInTheBar(t *testing.T) {
 // Two in one tick share the bar.
 func TestBackgroundTabsShareTheBar(t *testing.T) {
 	a, b := doneTab("a"), doneTab("b")
-	b.status = stBlocked
+	b.Light = core.StBlocked
 	m := notifyModel("all", a, b)
 	now := time.Now()
 	m.notifyChange(a, false, now)
@@ -67,15 +69,15 @@ func TestAwayItIsTheDesktop(t *testing.T) {
 func TestNotifySettingCoversTheBar(t *testing.T) {
 	for _, c := range []struct {
 		notify string
-		st     status
+		st     core.Status
 		want   bool
-	}{{"off", stDone, false}, {"blocked", stDone, false}, {"blocked", stBlocked, true}, {"done", stDone, true}} {
+	}{{"off", core.StDone, false}, {"blocked", core.StDone, false}, {"blocked", core.StBlocked, true}, {"done", core.StDone, true}} {
 		tb := doneTab("x")
-		tb.status = c.st
+		tb.Light = c.st
 		m := notifyModel(c.notify, tb)
 		m.notifyChange(tb, false, time.Now())
 		if got := len(m.inApp) == 1; got != c.want {
-			t.Errorf("notify %q, %s: %v", c.notify, c.st.label(), got)
+			t.Errorf("notify %q, %s: %v", c.notify, c.st.Label(), got)
 		}
 	}
 }

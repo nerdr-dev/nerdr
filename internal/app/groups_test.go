@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/muesli/termenv"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
@@ -22,37 +23,37 @@ func TestWalkingTabsKeepsThePrefix(t *testing.T) {
 		t.Fatal("the arrows start on the tab row")
 	}
 	m.handleKey(right)
-	if m.cur().Name != "logout" || !m.prefix {
-		t.Fatalf("on %s, prefix %v: → goes to the next tab and keeps the prefix", m.cur().Name, m.prefix)
+	if m.Cur().Name != "logout" || !m.prefix {
+		t.Fatalf("on %s, prefix %v: → goes to the next tab and keeps the prefix", m.Cur().Name, m.prefix)
 	}
 	m.handleKey(right)
-	if m.cur().Name != "login" {
-		t.Fatalf("on %s: → wraps round within the group", m.cur().Name)
+	if m.Cur().Name != "login" {
+		t.Fatalf("on %s: → wraps round within the group", m.Cur().Name)
 	}
 
 	// ↑ to the group row: → goes to the next repository.
 	m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
 	m.handleKey(right)
-	if !m.onGroups || m.cur().Name != "parse" {
-		t.Fatalf("on %s: → on the group row goes to lib", m.cur().Name)
+	if !m.onGroups || m.Cur().Name != "parse" {
+		t.Fatalf("on %s: → on the group row goes to lib", m.Cur().Name)
 	}
 	m.handleKey(right)
-	if m.cur().Name != "login" {
-		t.Fatalf("on %s: → wraps round the groups", m.cur().Name)
+	if m.Cur().Name != "login" {
+		t.Fatalf("on %s: → wraps round the groups", m.Cur().Name)
 	}
 
 	// ↓ back to the tab row, without going anywhere.
 	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
-	if m.onGroups || m.cur().Name != "login" {
-		t.Fatalf("↓ moves to the tab row without going anywhere: on %s", m.cur().Name)
+	if m.onGroups || m.Cur().Name != "login" {
+		t.Fatalf("↓ moves to the tab row without going anywhere: on %s", m.Cur().Name)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyLeft})
-	if m.cur().Name != "logout" {
-		t.Fatalf("on %s: ← goes to the previous tab", m.cur().Name)
+	if m.Cur().Name != "logout" {
+		t.Fatalf("on %s: ← goes to the previous tab", m.Cur().Name)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.prefix || m.nav || m.cur().Name != "logout" {
-		t.Fatalf("enter stays: on %s, prefix %v", m.cur().Name, m.prefix)
+	if m.prefix || m.nav || m.Cur().Name != "logout" {
+		t.Fatalf("enter stays: on %s, prefix %v", m.Cur().Name, m.prefix)
 	}
 
 	// A tab alone in its repository: the arrows go to the next repository
@@ -66,8 +67,8 @@ func TestWalkingTabsKeepsThePrefix(t *testing.T) {
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
 	m.handleKey(right)
-	if m.cur().group() == "lib" || !m.onGroups {
-		t.Fatalf("on %s: ← → from a lone tab go to the next repository", m.cur().Name)
+	if m.Cur().GroupName() == "lib" || !m.onGroups {
+		t.Fatalf("on %s: ← → from a lone tab go to the next repository", m.Cur().Name)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
 	m.selectTab(0)
@@ -87,13 +88,13 @@ func TestWalkingTabsKeepsThePrefix(t *testing.T) {
 	// branches — for the tab walked to.
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m.handleKey(tea.KeyMsg{Type: tea.KeyRight})
-	walked := m.cur()
+	walked := m.Cur()
 	m.handleKey(keyMsg("i"))
 	if !m.prefix || m.keyGroup != "i" || m.nav {
 		t.Fatalf("i after walking opens the group: prefix %v, group %q, nav %v", m.prefix, m.keyGroup, m.nav)
 	}
 	m.handleKey(keyMsg("i"))
-	if m.cur() != walked || !m.panelBranchPR() || m.focus != focusReview || m.prefix {
+	if m.Cur() != walked || !m.panelBranchPR() || m.focus != core.FocusReview || m.prefix {
 		t.Fatalf("i i after walking: F2 %v, focus %v, prefix %v", m.panelBranchPR(), m.focus, m.prefix)
 	}
 	m.dialog = nil
@@ -124,8 +125,8 @@ func TestWalkingTabsKeepsThePrefix(t *testing.T) {
 	// The wheel over the tab row goes across groups too.
 	m.selectTab(1) // logout
 	m.Update(tea.MouseMsg{X: 5, Y: m.tabRow(), Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
-	if m.cur().Name != "parse" {
-		t.Fatalf("on %s", m.cur().Name)
+	if m.Cur().Name != "parse" {
+		t.Fatalf("on %s", m.Cur().Name)
 	}
 }
 
@@ -157,7 +158,7 @@ func TestRepositoryRow(t *testing.T) {
 	}
 
 	// With one repository there is no row to show, nor a name to give.
-	m.tabs = m.tabs[:2]
+	m.Tabs = m.Tabs[:2]
 	row = bars()[0]
 	if m.barRows() != 1 || !strings.HasPrefix(row, " ○ 1:login") || !strings.Contains(row, "? help") {
 		t.Fatalf("one repository, one row: %q", row)
@@ -186,8 +187,8 @@ func TestRepositoryRowBackground(t *testing.T) {
 
 func TestRepoListCountsTheLights(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
-	m.tabs[0].status, m.tabs[1].status = stDone, stWorking
-	m.tabs[2].status = stIdle
+	m.Tabs[0].Light, m.Tabs[1].Light = core.StDone, core.StWorking
+	m.Tabs[2].Light = core.StIdle
 	out := ansi.Strip(strings.Join(m.repoList(40, 8, false), "\n"))
 	if !strings.Contains(out, "app (2 1)") {
 		t.Fatalf("a done tab's light hides one working, so the count shows it:\n%s", out)
@@ -199,11 +200,11 @@ func TestRepoListCountsTheLights(t *testing.T) {
 
 func TestPassingATabLeavesItDone(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
-	m.tabs[1].status = stDone
+	m.Tabs[1].Light = core.StDone
 	m.selectTab(1)
 	m.selectTab(2)
 	m.look()
-	if m.tabs[1].status != stDone {
+	if m.Tabs[1].Light != core.StDone {
 		t.Fatal("a tab only passed on the way to another is not seen")
 	}
 	if m.dwelt() {
@@ -211,22 +212,22 @@ func TestPassingATabLeavesItDone(t *testing.T) {
 	}
 
 	m.selectTab(1)
-	m.tabs[1].queuePaused = true
-	m.landed = m.landed.Add(-seenAfter)
+	m.Tabs[1].QueuePaused = true
+	m.landed = m.landed.Add(-core.SeenAfter)
 	m.blurred = true
 	m.look()
-	if m.tabs[1].status != stDone {
+	if m.Tabs[1].Light != core.StDone {
 		t.Fatal("a tab is not seen while you are in another window")
 	}
 	m.blurred = false
 	m.editor = &term.Pane{}
 	m.look()
-	if m.tabs[1].status != stDone {
+	if m.Tabs[1].Light != core.StDone {
 		t.Fatal("a tab is not seen behind an editor")
 	}
 	m.editor = nil
 	m.look()
-	if m.tabs[1].status != stIdle || m.tabs[1].queuePaused {
-		t.Fatalf("a tab stayed on is seen, its queue let go: %s, paused %v", m.tabs[1].status.label(), m.tabs[1].queuePaused)
+	if m.Tabs[1].Light != core.StIdle || m.Tabs[1].QueuePaused {
+		t.Fatalf("a tab stayed on is seen, its queue let go: %s, paused %v", m.Tabs[1].Light.Label(), m.Tabs[1].QueuePaused)
 	}
 }

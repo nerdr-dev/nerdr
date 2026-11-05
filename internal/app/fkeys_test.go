@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/term"
 )
@@ -32,9 +33,9 @@ func TestFKeysLeaveAShellAtItsPrompt(t *testing.T) {
 					t.Skip("the program did not go to the alternate screen")
 				}
 			}
-			tb := m.cur()
-			m.addPane(tb, &paneTab{kind: paneShell, shell: pane}, false)
-			if tb.screen() != pane || m.keyPane() != pane {
+			tb := m.Cur()
+			m.AddPane(tb, &core.PaneTab{Kind: core.PaneShell, Shell: pane}, false)
+			if tb.Screen() != pane || m.keyPane() != pane {
 				t.Fatal("the terminal pane should have the keyboard")
 			}
 			m.syncInput()

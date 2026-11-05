@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
-	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 
@@ -21,32 +21,6 @@ import (
 // claude through nerdr's status line (hooks.StatusLineCommand), codex in
 // its logs. See package usage.
 
-// onUsage keeps what a claude agent's status line said: its context, and
-// its account's limits, which are every claude agent's.
-func (m *Model) onUsage(r hooks.Report) {
-	a := m.agentByHook(r.Pane)
-	if a == nil || r.Limits == nil {
-		return
-	}
-	now := time.Now()
-	a.usage, a.usageAt = r.Limits, now
-	if r.Limits.Session == nil && r.Limits.Weekly == nil {
-		return
-	}
-	changed := m.claudeLimits == nil || !sameLimits(m.claudeLimits, r.Limits)
-	m.claudeLimits, m.claudeAt = r.Limits, now
-	if changed {
-		usage.SaveClaude(state.Dir(), usage.Saved{Report: *r.Limits, At: now})
-	}
-}
-
-func sameLimits(a, b *usage.Report) bool {
-	same := func(x, y *usage.Window) bool {
-		return x == nil && y == nil || x != nil && y != nil && *x == *y
-	}
-	return same(a.Session, b.Session) && same(a.Weekly, b.Weekly)
-}
-
 // usageDialog shows the accounts' limits and the agents' context windows.
 // Codex's are read from its logs when it opens, and again on r; it is
 // drawn again with every frame, so the times count down. Any other key
@@ -55,7 +29,7 @@ type usageDialog struct {
 	codex     *usage.Report
 	codexAt   time.Time
 	reading   bool
-	contexts  map[*tab]*usage.Report // codex agents', from their logs
+	contexts  map[*core.Tab]*usage.Report // codex agents', from their logs
 	firstRead bool
 }
 
@@ -65,14 +39,14 @@ type usageReadMsg struct {
 	d        *usageDialog
 	codex    *usage.Report
 	at       time.Time
-	contexts map[*tab]*usage.Report
+	contexts map[*core.Tab]*usage.Report
 }
 
 func (m *Model) openUsage() tea.Cmd {
-	if m.claudeLimits == nil {
+	if m.ClaudeLimits == nil {
 		if s, ok := usage.LoadClaude(state.Dir()); ok {
 			r := s.Report
-			m.claudeLimits, m.claudeAt = &r, s.At
+			m.ClaudeLimits, m.ClaudeAt = &r, s.At
 		}
 	}
 	d := &usageDialog{}
@@ -83,14 +57,14 @@ func (m *Model) openUsage() tea.Cmd {
 // readUsage reads codex's logs for d, in the background.
 func (m *Model) readUsage(d *usageDialog) tea.Cmd {
 	d.reading = true
-	logs := map[*tab]string{}
-	for _, a := range m.allAgents() {
+	logs := map[*core.Tab]string{}
+	for _, a := range m.AllAgents() {
 		if a.Agent == agents.Codex && a.SessionID != "" {
 			logs[a] = a.SessionID
 		}
 	}
 	return func() tea.Msg {
-		msg := usageReadMsg{d: d, contexts: map[*tab]*usage.Report{}}
+		msg := usageReadMsg{d: d, contexts: map[*core.Tab]*usage.Report{}}
 		if r, at, ok := usage.Codex(agents.CodexHome()); ok {
 			msg.codex, msg.at = &r, at
 		}
@@ -131,7 +105,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 			lines = append(lines, head, dim("  "+from), "")
 			return
 		}
-		lines = append(lines, head+dim("  "+from+", "+ago(now.Sub(at))))
+		lines = append(lines, head+dim("  "+from+", "+core.Ago(now.Sub(at))))
 		for _, win := range []struct {
 			name string
 			w    *usage.Window
@@ -143,12 +117,12 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "")
 	}
 	switch {
-	case !isOn(m.cfg.ClaudeStatusLine):
+	case !core.IsOn(m.Cfg.ClaudeStatusLine):
 		account("Claude", "not known: claude_status_line is off", nil, time.Time{})
-	case m.claudeLimits == nil:
+	case m.ClaudeLimits == nil:
 		account("Claude", "not known yet: a claude agent tells it after its first answer", nil, time.Time{})
 	default:
-		account("Claude", "from claude's status line", m.claudeLimits, m.claudeAt)
+		account("Claude", "from claude's status line", m.ClaudeLimits, m.ClaudeAt)
 	}
 	switch {
 	case d.codex != nil:
@@ -166,9 +140,9 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 		r          *usage.Report
 	}
 	var all []row
-	for _, t := range m.tabs {
-		for _, a := range t.agentsIn() {
-			r := a.usage
+	for _, t := range m.Tabs {
+		for _, a := range t.AgentsIn() {
+			r := a.Usage
 			if a.Agent == agents.Codex {
 				r = d.contexts[a]
 			}
@@ -177,7 +151,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 			}
 			name := t.Name
 			if a != t {
-				if p := a.paneOf(); p != nil {
+				if p := a.PaneOf(); p != nil {
 					name += " · " + m.paneName(t, p)
 				}
 			}
@@ -187,7 +161,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 	}
 	nameW = min(nameW, 34)
 	for _, r := range all {
-		line := padTo(truncName(r.name, nameW), nameW+2) + bar(*r.r.Context, 12) + fmt.Sprintf(" %3d%%", int(math.Round(*r.r.Context)))
+		line := padTo(core.TruncName(r.name, nameW), nameW+2) + bar(*r.r.Context, 12) + fmt.Sprintf(" %3d%%", int(math.Round(*r.r.Context)))
 		if r.r.Model != "" {
 			line += dim("  " + r.r.Model)
 		} else {
@@ -217,7 +191,7 @@ func limitLine(name string, w *usage.Window, now time.Time) string {
 	case !resets.After(now):
 		used, note = 0, dim("  started afresh "+resets.Format("15:04"))
 	default:
-		note = dim("  resets " + resetTime(resets, now) + " (in " + left(resets.Sub(now)) + ")")
+		note = dim("  resets " + core.ResetTime(resets, now) + " (in " + core.Left(resets.Sub(now)) + ")")
 	}
 	return padTo(name, 9) + bar(used, 20) + fmt.Sprintf(" %3d%%", int(math.Round(used))) + note
 }
@@ -234,38 +208,4 @@ func bar(pct float64, w int) string {
 	}
 	return lipgloss.NewStyle().Foreground(color).Render(strings.Repeat("█", n)) +
 		lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("░", w-n))
-}
-
-// resetTime is when t is, said shortly from now: the time today, else
-// the day and time.
-func resetTime(t, now time.Time) string {
-	if t.YearDay() == now.YearDay() && t.Year() == now.Year() {
-		return t.Format("15:04")
-	}
-	return t.Format("Mon 15:04")
-}
-
-// left is a time to come, said shortly: "2h 10m", "3d 4h".
-func left(d time.Duration) string {
-	d = d.Round(time.Minute)
-	switch {
-	case d >= 24*time.Hour:
-		return fmt.Sprintf("%dd %dh", int(d/(24*time.Hour)), int(d%(24*time.Hour)/time.Hour))
-	case d >= time.Hour:
-		return fmt.Sprintf("%dh %dm", int(d/time.Hour), int(d%time.Hour/time.Minute))
-	}
-	return fmt.Sprintf("%dm", max(int(d/time.Minute), 1))
-}
-
-// ago is a time gone, said shortly: "just now", "5 min ago".
-func ago(d time.Duration) string {
-	switch {
-	case d < time.Minute:
-		return "just now"
-	case d < time.Hour:
-		return fmt.Sprintf("%d min ago", int(d/time.Minute))
-	case d < 48*time.Hour:
-		return fmt.Sprintf("%d h ago", int(d/time.Hour))
-	}
-	return fmt.Sprintf("%d days ago", int(d/(24*time.Hour)))
 }

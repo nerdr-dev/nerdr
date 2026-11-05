@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/detect"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -26,7 +27,7 @@ const (
 
 // claudeTab is a claude tab whose pane shows screen, as an integration
 // reporting to it would see it.
-func claudeTab(t *testing.T, screen, want string) *tab {
+func claudeTab(t *testing.T, screen, want string) *core.Tab {
 	t.Helper()
 	p, err := term.Start([]string{"sh", "-c", `printf '%s' "$0"; sleep 60`, screen}, t.TempDir(), nil, 60, 12, func() {})
 	if err != nil {
@@ -40,11 +41,11 @@ func claudeTab(t *testing.T, screen, want string) *tab {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	return &tab{Tab: state.Tab{ID: "t1", Agent: agents.Claude}, pane: p}
+	return &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "t1", Agent: agents.Claude}, Pane: p}}
 }
 
-func reported(tb *tab, s detect.State, ago time.Duration) {
-	tb.hook = hookAuthority{source: hooks.ClaudeSource, state: s, at: time.Now().Add(-ago)}
+func reported(tb *core.Tab, s detect.State, ago time.Duration) {
+	tb.Hook = core.HookAuthority{Source: hooks.ClaudeSource, State: s, At: time.Now().Add(-ago)}
 }
 
 // A question dismissed with esc ends the turn with no Stop: once the
@@ -52,12 +53,12 @@ func reported(tb *tab, s detect.State, ago time.Duration) {
 func TestHookBlockedGivesWayToThePromptBox(t *testing.T) {
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	reported(tb, detect.Blocked, 0)
-	if got := tb.hookState(time.Now()); got != detect.Blocked {
+	if got := tb.HookState(time.Now()); got != detect.Blocked {
 		t.Fatalf("just reported: %v, want blocked (the dialog may not be drawn yet)", got)
 	}
 	reported(tb, detect.Blocked, 3*time.Second)
-	if got := tb.hookState(time.Now()); got != detect.Idle || tb.hook.state != detect.Idle {
-		t.Fatalf("stale: %v (hook %v), want idle", got, tb.hook.state)
+	if got := tb.HookState(time.Now()); got != detect.Idle || tb.Hook.State != detect.Idle {
+		t.Fatalf("stale: %v (hook %v), want idle", got, tb.Hook.State)
 	}
 }
 
@@ -66,7 +67,7 @@ func TestHookBlockedGivesWayToThePromptBox(t *testing.T) {
 func TestHookBlockedGivesWayToWork(t *testing.T) {
 	tb := claudeTab(t, claudeWorkingScreen, "Running")
 	reported(tb, detect.Blocked, 3*time.Second)
-	if got := tb.hookState(time.Now()); got != detect.Working {
+	if got := tb.HookState(time.Now()); got != detect.Working {
 		t.Fatalf("%v, want working", got)
 	}
 }
@@ -77,14 +78,14 @@ func TestHookBlockedGivesWayToWork(t *testing.T) {
 func TestHookIdleGivesWayToWork(t *testing.T) {
 	tb := claudeTab(t, claudeWorkingScreen, "Running")
 	reported(tb, detect.Idle, 0)
-	if got := tb.hookState(time.Now()); got != detect.Idle {
+	if got := tb.HookState(time.Now()); got != detect.Idle {
 		t.Fatalf("just reported: %v, want idle (the title may not be redrawn yet)", got)
 	}
 	reported(tb, detect.Idle, 3*time.Second)
-	tb.status, tb.raw = stDone, detect.Idle
-	tb.classify(false, time.Now())
-	if tb.status != stWorking || tb.hook.state != detect.Working {
-		t.Fatalf("stale: %v (hook %v), want working", tb.status.label(), tb.hook.state)
+	tb.Light, tb.Raw = core.StDone, detect.Idle
+	tb.Classify(false, time.Now())
+	if tb.Light != core.StWorking || tb.Hook.State != detect.Working {
+		t.Fatalf("stale: %v (hook %v), want working", tb.Light.Label(), tb.Hook.State)
 	}
 }
 
@@ -93,9 +94,9 @@ func TestHookIdleGivesWayToWork(t *testing.T) {
 func TestDialogOnScreenOverrulesTheHook(t *testing.T) {
 	tb := claudeTab(t, claudePermissionScreen, "proceed")
 	reported(tb, detect.Working, 0)
-	tb.classify(true, time.Now())
-	if tb.status != stBlocked || tb.hook.state != detect.Working {
-		t.Fatalf("status %v, hook %v", tb.status, tb.hook.state)
+	tb.Classify(true, time.Now())
+	if tb.Light != core.StBlocked || tb.Hook.State != detect.Working {
+		t.Fatalf("status %v, hook %v", tb.Light, tb.Hook.State)
 	}
 }
 
@@ -105,13 +106,14 @@ func TestNestedSessionDoesNotReplaceTheTabs(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // the session saved is not the user's
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.SessionID = "main"
-	m := &Model{tabs: []*tab{tb}}
-	m.onHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.hookKey(), Source: "herdr:claude", Agent: "claude",
+	m := &Model{Tabs: []*core.Tab{tb}}
+	m.Client = m
+	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "herdr:claude", Agent: "claude",
 		SessionID: "nested", SessionSource: "startup"})
 	if tb.SessionID != "main" {
 		t.Fatalf("nested start took over: %q", tb.SessionID)
 	}
-	m.onHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.hookKey(), Source: "herdr:claude", Agent: "claude",
+	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "herdr:claude", Agent: "claude",
 		SessionID: "cleared", SessionSource: "clear"})
 	if tb.SessionID != "cleared" {
 		t.Fatalf("/clear not taken: %q", tb.SessionID)
@@ -123,8 +125,9 @@ func TestReportedResumeCommandIsKept(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.Agent = "my-agent"
-	m := &Model{tabs: []*tab{tb}}
-	m.onHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.hookKey(), Source: "my-agent", Agent: "my-agent",
+	m := &Model{Tabs: []*core.Tab{tb}}
+	m.Client = m
+	m.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
 		State: "idle", ResumeArgv: []string{"my-agent", "--resume", "s-1"}})
 	if strings.Join(tb.ResumeArgv, " ") != "my-agent --resume s-1" {
 		t.Fatalf("resume command = %q", tb.ResumeArgv)
@@ -138,13 +141,14 @@ func TestResumeCommandFollowsTheConversation(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.Agent = "my-agent"
-	m := &Model{tabs: []*tab{tb}}
-	m.onHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.hookKey(), Source: "my-agent", Agent: "my-agent",
+	m := &Model{Tabs: []*core.Tab{tb}}
+	m.Client = m
+	m.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
 		State: "idle", SessionID: "s1", SessionSource: "startup", ResumeArgv: []string{"my-agent", "--resume", "s1"}})
 	if tb.SessionID != "s1" || strings.Join(tb.ResumeArgv, " ") != "my-agent --resume s1" {
 		t.Fatalf("after start: %q, %q", tb.SessionID, tb.ResumeArgv)
 	}
-	m.onHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.hookKey(), Source: "my-agent", Agent: "my-agent",
+	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
 		SessionID: "s2", SessionSource: "clear"})
 	if tb.SessionID != "s2" || tb.ResumeArgv != nil {
 		t.Fatalf("after /clear: %q, %q", tb.SessionID, tb.ResumeArgv)
@@ -165,7 +169,7 @@ func TestHerdrNotifies(t *testing.T) {
 		{"idle", "working", false},
 		{"idle", "idle", false},
 	} {
-		if got := herdrNotifies(c.before, c.after); got != c.want {
+		if got := core.HerdrNotifies(c.before, c.after); got != c.want {
 			t.Errorf("%q → %q: %v", c.before, c.after, got)
 		}
 	}
@@ -177,13 +181,13 @@ func TestHerdrNotifies(t *testing.T) {
 func TestOpenCodeTurnsDoneOnTheFallback(t *testing.T) {
 	tb := claudeTab(t, "┃ Ask anything…\r\n", "Ask anything")
 	tb.Agent = agents.OpenCode
-	tb.raw, tb.status, tb.worked = detect.Working, stWorking, true
+	tb.Raw, tb.Light, tb.Worked = detect.Working, core.StWorking, true
 	now := time.Now()
-	tb.classify(false, now)
-	time.Sleep(quietForIdle)
-	tb.classify(false, now.Add(idleDebounce+quietForIdle))
-	if tb.status != stDone {
-		t.Fatalf("%v, want done", tb.status.label())
+	tb.Classify(false, now)
+	time.Sleep(core.QuietForIdle)
+	tb.Classify(false, now.Add(core.IdleDebounce+core.QuietForIdle))
+	if tb.Light != core.StDone {
+		t.Fatalf("%v, want done", tb.Light.Label())
 	}
 }
 
@@ -193,15 +197,16 @@ func TestReportUnderTheTabsIDIsIgnored(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.SessionID = "main"
-	m := &Model{tabs: []*tab{tb}}
-	m.onHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.ID, Source: "herdr:claude", Agent: "claude",
+	m := &Model{Tabs: []*core.Tab{tb}}
+	m.Client = m
+	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.ID, Source: "herdr:claude", Agent: "claude",
 		SessionID: "other", SessionSource: "clear"})
-	m.onHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.ID, Handoff: "planted"})
-	if tb.SessionID != "main" || tb.handoffReady != nil {
-		t.Fatalf("taken: session %q, handoff %v", tb.SessionID, tb.handoffReady)
+	m.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.ID, Handoff: "planted"})
+	if tb.SessionID != "main" || tb.HandoffReady != nil {
+		t.Fatalf("taken: session %q, handoff %v", tb.SessionID, tb.HandoffReady)
 	}
-	if tb.hookKey() == tb.ID || len(tb.hookKey()) != 32 {
-		t.Fatalf("hook key %q", tb.hookKey())
+	if tb.HookKey() == tb.ID || len(tb.HookKey()) != 32 {
+		t.Fatalf("hook key %q", tb.HookKey())
 	}
 }
 
@@ -217,23 +222,23 @@ func TestHookGivesWayToAStillUnknownScreenWithoutIdleRule(t *testing.T) {
 	blocked := claudeTab(t, screen, "nothing")
 	blocked.Agent = agents.Copilot
 	claude := claudeTab(t, screen, "nothing")
-	working.hook = hookAuthority{source: hooks.CopilotSource, state: detect.Working, at: time.Now()}
-	blocked.hook = hookAuthority{source: hooks.CopilotSource, state: detect.Blocked, at: time.Now()}
+	working.Hook = core.HookAuthority{Source: hooks.CopilotSource, State: detect.Working, At: time.Now()}
+	blocked.Hook = core.HookAuthority{Source: hooks.CopilotSource, State: detect.Blocked, At: time.Now()}
 	reported(claude, detect.Working, 0)
-	if got := working.hookState(time.Now()); got != detect.Working {
+	if got := working.HookState(time.Now()); got != detect.Working {
 		t.Fatalf("just reported: %v, want working", got)
 	}
-	if got := blocked.hookState(time.Now()); got != detect.Blocked {
+	if got := blocked.HookState(time.Now()); got != detect.Blocked {
 		t.Fatalf("just reported: %v, want blocked", got)
 	}
-	time.Sleep(interruptQuiet + 200*time.Millisecond)
-	if got := working.hookState(time.Now()); got != detect.Idle {
+	time.Sleep(core.InterruptQuiet + 200*time.Millisecond)
+	if got := working.HookState(time.Now()); got != detect.Idle {
 		t.Errorf("still: %v, want idle", got)
 	}
-	if got := blocked.hookState(time.Now()); got != detect.Idle {
+	if got := blocked.HookState(time.Now()); got != detect.Idle {
 		t.Errorf("still: %v, want idle", got)
 	}
-	if got := claude.hookState(time.Now()); got != detect.Working {
+	if got := claude.HookState(time.Now()); got != detect.Working {
 		t.Errorf("claude, which has an idle rule: %v, want working", got)
 	}
 }
@@ -245,15 +250,16 @@ func TestWaitingOnBackgroundSubagentsStaysWorking(t *testing.T) {
 	t.Parallel()
 	waiting := claudeTab(t, claudePromptScreen, "auto mode")
 	interrupted := claudeTab(t, claudePromptScreen, "auto mode")
-	m := &Model{tabs: []*tab{waiting}}
-	m.onHook(hooks.Report{Method: hooks.ReportAgent, Pane: waiting.hookKey(), Source: hooks.ClaudeSource, Agent: "claude",
+	m := &Model{Tabs: []*core.Tab{waiting}}
+	m.Client = m
+	m.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: waiting.HookKey(), Source: hooks.ClaudeSource, Agent: "claude",
 		State: "working", Background: true})
 	reported(interrupted, detect.Working, 0)
-	time.Sleep(interruptQuiet + 200*time.Millisecond)
-	if got := waiting.hookState(time.Now()); got != detect.Working {
+	time.Sleep(core.InterruptQuiet + 200*time.Millisecond)
+	if got := waiting.HookState(time.Now()); got != detect.Working {
 		t.Errorf("waiting on a subagent: %v, want working", got)
 	}
-	if got := interrupted.hookState(time.Now()); got != detect.Idle {
+	if got := interrupted.HookState(time.Now()); got != detect.Idle {
 		t.Errorf("interrupted: %v, want idle", got)
 	}
 }
@@ -263,40 +269,40 @@ func TestWaitingOnBackgroundSubagentsStaysWorking(t *testing.T) {
 func TestBackgroundProcessHasItsOwnLight(t *testing.T) {
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	reported(tb, detect.Working, 3*time.Second)
-	tb.hook.background, tb.hook.processes = true, 2
-	tb.classify(true, time.Now())
-	if tb.status != stBackground {
-		t.Fatalf("waiting on a process: %v", tb.status.label())
+	tb.Hook.Background, tb.Hook.Processes = true, 2
+	tb.Classify(true, time.Now())
+	if tb.Light != core.StBackground {
+		t.Fatalf("waiting on a process: %v", tb.Light.Label())
 	}
 	if got := backgroundLine(tb); got != "2 processes running in the background" {
 		t.Fatalf("line: %q", got)
 	}
-	tb.hook.processes = 1
+	tb.Hook.Processes = 1
 	if got := backgroundLine(tb); got != "1 process running in the background" {
 		t.Fatalf("line: %q", got)
 	}
 
 	// Waiting on a subagent is the agent at work: yellow, and no line.
-	tb.hook.processes = 0
-	tb.classify(true, time.Now())
-	if tb.status != stWorking || backgroundLine(tb) != "" {
-		t.Fatalf("waiting on a subagent: %v, line %q", tb.status.label(), backgroundLine(tb))
+	tb.Hook.Processes = 0
+	tb.Classify(true, time.Now())
+	if tb.Light != core.StWorking || backgroundLine(tb) != "" {
+		t.Fatalf("waiting on a subagent: %v, line %q", tb.Light.Label(), backgroundLine(tb))
 	}
 }
 
 func TestBackgroundProcessGivesWayToWork(t *testing.T) {
 	tb := claudeTab(t, claudeWorkingScreen, "Running")
 	reported(tb, detect.Working, 0)
-	tb.hook.background, tb.hook.processes = true, 1
-	tb.classify(true, time.Now())
-	if tb.status != stBackground {
-		t.Fatalf("just reported: %v (the title may not be redrawn yet)", tb.status.label())
+	tb.Hook.Background, tb.Hook.Processes = true, 1
+	tb.Classify(true, time.Now())
+	if tb.Light != core.StBackground {
+		t.Fatalf("just reported: %v (the title may not be redrawn yet)", tb.Light.Label())
 	}
 	reported(tb, detect.Working, 3*time.Second)
-	tb.hook.background, tb.hook.processes = true, 1
-	tb.classify(true, time.Now())
-	if tb.status != stWorking || tb.hook.processes != 0 {
-		t.Fatalf("woken by its news: %v, %d processes", tb.status.label(), tb.hook.processes)
+	tb.Hook.Background, tb.Hook.Processes = true, 1
+	tb.Classify(true, time.Now())
+	if tb.Light != core.StWorking || tb.Hook.Processes != 0 {
+		t.Fatalf("woken by its news: %v, %d processes", tb.Light.Label(), tb.Hook.Processes)
 	}
 }
 
@@ -304,25 +310,25 @@ func TestBackgroundProcessGivesWayToWork(t *testing.T) {
 func TestBackgroundProcessGivesWayToAQuestion(t *testing.T) {
 	tb := claudeTab(t, claudePermissionScreen, "proceed")
 	reported(tb, detect.Working, 0)
-	tb.hook.background, tb.hook.processes = true, 1
-	tb.classify(true, time.Now())
-	if tb.status != stBlocked {
-		t.Fatalf("%v", tb.status.label())
+	tb.Hook.Background, tb.Hook.Processes = true, 1
+	tb.Classify(true, time.Now())
+	if tb.Light != core.StBlocked {
+		t.Fatalf("%v", tb.Light.Label())
 	}
 }
 
 // Red and yellow win over the new light, and it over a green seen.
 func TestBackgroundProcessRanksBelowWork(t *testing.T) {
-	r := statusRank(stBackground)
-	for _, s := range []status{stBlocked, stDone, stWorking} {
-		if statusRank(s) <= r {
-			t.Errorf("%v does not win over a background process", s.label())
+	r := core.StatusRank(core.StBackground)
+	for _, s := range []core.Status{core.StBlocked, core.StDone, core.StWorking} {
+		if core.StatusRank(s) <= r {
+			t.Errorf("%v does not win over a background process", s.Label())
 		}
 	}
-	if statusRank(stIdle) >= r {
+	if core.StatusRank(core.StIdle) >= r {
 		t.Error("idle wins over a background process")
 	}
-	if !stBackground.atWork() || !stWorking.atWork() || stIdle.atWork() {
+	if !core.StBackground.AtWork() || !core.StWorking.AtWork() || core.StIdle.AtWork() {
 		t.Error("atWork")
 	}
 }
@@ -331,17 +337,17 @@ func TestBackgroundProcessRanksBelowWork(t *testing.T) {
 // active idle tab picked instead, herdr would tell of the turn as done. Work
 // in another tab still wins over it.
 func TestNeediestTakesABackgroundProcess(t *testing.T) {
-	idle := &tab{status: stIdle}
-	background := &tab{status: stBackground}
-	m := &Model{tabs: []*tab{idle, background}}
-	if i, got := m.neediest(); got != background || i != 1 {
+	idle := &core.Tab{AgentState: core.Agent{Light: core.StIdle}}
+	background := &core.Tab{AgentState: core.Agent{Light: core.StBackground}}
+	m := &Model{Tabs: []*core.Tab{idle, background}}
+	if i, got := m.Neediest(); got != background || i != 1 {
 		t.Fatalf("picked tab %d", i)
 	}
-	working := &tab{status: stWorking}
-	working.changed = time.Now().Add(-time.Hour)
-	background.changed = time.Now()
-	m.tabs = append(m.tabs, working)
-	if i, got := m.neediest(); got != working || i != 2 {
+	working := &core.Tab{AgentState: core.Agent{Light: core.StWorking}}
+	working.Changed = time.Now().Add(-time.Hour)
+	background.Changed = time.Now()
+	m.Tabs = append(m.Tabs, working)
+	if i, got := m.Neediest(); got != working || i != 2 {
 		t.Fatalf("with one working: picked tab %d", i)
 	}
 }

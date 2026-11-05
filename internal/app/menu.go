@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // menu is a list of commands that pops up where it was asked for: the
@@ -179,12 +180,12 @@ func (mu *menu) view(m *Model, w, h int) string {
 // openMenu shows the menu of everything nerdr does.
 func (m *Model) openMenu(x, y int) {
 	var items []menuItem
-	for _, group := range allCommands() {
-		items = append(items, menuItem{label: group.title})
-		for _, entry := range group.entries {
+	for _, group := range core.AllCommands() {
+		items = append(items, menuItem{label: group.Title})
+		for _, entry := range group.Entries {
 			e := entry
-			items = append(items, menuItem{label: e.label, key: e.key, off: m.commandOff(e.run), run: func(m *Model) tea.Cmd {
-				return m.runCommand(e.run)
+			items = append(items, menuItem{label: e.Label, key: e.Key, off: m.commandOff(e.Run), run: func(m *Model) tea.Cmd {
+				return m.runCommand(e.Run)
 			}})
 		}
 	}
@@ -196,7 +197,7 @@ func (m *Model) tabItems() []menuItem {
 	cmd := func(k string) func(m *Model) tea.Cmd {
 		return func(m *Model) tea.Cmd { return m.runCommand(k) }
 	}
-	t := m.cur()
+	t := m.Cur()
 	items := []menuItem{}
 	if repo := tabRepo(t); repo != "" {
 		items = append(items, menuItem{label: "New tab in " + filepath.Base(repo) + "…",
@@ -233,15 +234,15 @@ func (m *Model) tabItems() []menuItem {
 
 // openTabMenu shows what can be done to tab t, which it makes the active
 // tab: the commands act on that one.
-func (m *Model) openTabMenu(t *tab, x, y int) tea.Cmd {
-	i := m.tabIndex(t)
+func (m *Model) openTabMenu(t *core.Tab, x, y int) tea.Cmd {
+	i := m.TabIndex(t)
 	if i < 0 {
 		return nil
 	}
-	prev := m.cur()
+	prev := m.Cur()
 	cmd := m.selectTab(i)
 	items := m.tabItems()
-	if prev != nil && prev != t && m.splitTab() != prev && prev.group() == t.group() {
+	if prev != nil && prev != t && m.splitTab() != prev && prev.GroupName() == t.GroupName() {
 		// Beside the tab that was on screen, which is where it goes back to.
 		items = append([]menuItem{{label: "Show beside " + prev.Name,
 			run: func(m *Model) tea.Cmd { return m.splitWith(prev, t) }}}, items...)
@@ -252,13 +253,13 @@ func (m *Model) openTabMenu(t *tab, x, y int) tea.Cmd {
 
 // openGroupMenu shows what can be done in group g.
 func (m *Model) openGroupMenu(g string, x, y int) tea.Cmd {
-	idx := m.groupTabs(g)
+	idx := m.GroupTabs(g)
 	if len(idx) == 0 {
 		return nil
 	}
 	cmd := m.selectTab(m.groupTab(g))
 	var items []menuItem
-	if repo := tabRepo(m.tabs[idx[0]]); repo != "" && g != multiGroup {
+	if repo := tabRepo(m.Tabs[idx[0]]); repo != "" && g != core.MultiGroup {
 		items = append(items, menuItem{label: "New tab in " + g + "…",
 			run: func(m *Model) tea.Cmd { return m.openWizardFor(repo) }})
 	} else {
@@ -267,7 +268,7 @@ func (m *Model) openGroupMenu(g string, x, y int) tea.Cmd {
 	}
 	items = append(items, menuItem{label: "Task to its tabs…",
 		run: func(m *Model) tea.Cmd { return m.command(keyMsg("M")) }})
-	if len(m.tabs[idx[0]].Worktrees) > 1 {
+	if len(m.Tabs[idx[0]].Worktrees) > 1 {
 		items = append(items, menuItem{label: "Rename group…",
 			run: func(m *Model) tea.Cmd { return m.openGroupRename(g) }})
 	}
@@ -280,7 +281,7 @@ func (m *Model) openGroupMenu(g string, x, y int) tea.Cmd {
 // stackOnTab opens the dialog for a new tab whose branch starts on top of
 // the active tab's.
 func (m *Model) stackOnTab() tea.Cmd {
-	t := m.cur()
+	t := m.Cur()
 	repo := tabRepo(t)
 	if repo == "" {
 		m.toast(m.commandOff("C"))
@@ -289,18 +290,11 @@ func (m *Model) stackOnTab() tea.Cmd {
 	return m.openWizardOn(repo, t.Worktrees[0].Branch)
 }
 
-func tabRepo(t *tab) string {
+func tabRepo(t *core.Tab) string {
 	if t == nil || len(t.Worktrees) != 1 {
 		return ""
 	}
 	return t.Worktrees[0].Repo
-}
-
-func onOff(on bool, yes, no string) string {
-	if on {
-		return yes
-	}
-	return no
 }
 
 // keyMsg is the key named k, as bubbletea would report it.

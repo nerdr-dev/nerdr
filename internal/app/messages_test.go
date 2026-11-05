@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
+
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/skills"
@@ -18,7 +20,7 @@ import (
 
 func TestMessagesWaitUnlessTicked(t *testing.T) {
 	m := testModel(t)
-	login := m.cur()
+	login := m.Cur()
 
 	m.openMessage(false)
 	d := m.dialog.(*messageDialog)
@@ -27,10 +29,10 @@ func TestMessagesWaitUnlessTicked(t *testing.T) {
 	if len(login.Messages) != 1 || login.Messages[0].Auto {
 		t.Fatalf("a message waits in F3 unless ticked: %+v", login.Messages)
 	}
-	if !m.panelMessages() || m.focus != focusReview {
+	if !m.panelMessages() || m.focus != core.FocusReview {
 		t.Fatal("F3 is shown with the keyboard once a message is added, to see what became of it")
 	}
-	if login.nextAuto() >= 0 {
+	if login.NextAuto() >= 0 {
 		t.Fatal("nothing to send by itself")
 	}
 
@@ -39,7 +41,7 @@ func TestMessagesWaitUnlessTicked(t *testing.T) {
 	d.input.SetValue("then run the tests")
 	d.key(m, tea.KeyMsg{Type: tea.KeyTab})
 	d.key(m, keyMsg("enter"))
-	if len(login.Messages) != 2 || !login.Messages[1].Auto || login.nextAuto() != 1 {
+	if len(login.Messages) != 2 || !login.Messages[1].Auto || login.NextAuto() != 1 {
 		t.Fatalf("tab ticks it: %+v", login.Messages)
 	}
 	m.openMessage(false)
@@ -51,8 +53,8 @@ func TestMessagesWaitUnlessTicked(t *testing.T) {
 	// The panel says there are some.
 	var msgs string
 	for _, r := range m.taskRows(login, 120, 30) {
-		if r.label == "tasks:" {
-			msgs = r.text
+		if r.Label == "tasks:" {
+			msgs = r.Text
 		}
 	}
 	if !strings.Contains(msgs, "1 task waiting") || !strings.Contains(msgs, "F3") {
@@ -62,21 +64,21 @@ func TestMessagesWaitUnlessTicked(t *testing.T) {
 
 func TestMessagesScreen(t *testing.T) {
 	m := testModel(t)
-	login := m.cur()
+	login := m.Cur()
 	login.Messages = []state.Message{{Text: "first"}, {Text: "second"}, {Text: "third", Auto: true}}
 
 	m.Update(tea.KeyMsg{Type: tea.KeyF3})
-	if !m.panelMessages() || m.focus != focusReview {
+	if !m.panelMessages() || m.focus != core.FocusReview {
 		t.Fatalf("F3 opens F3 with the keyboard: shown %v, focus %v", m.panelMessages(), m.focus)
 	}
 	if !strings.Contains(ansi.Strip(m.View()), "second") {
 		t.Fatal("the messages are drawn")
 	}
-	if m.msgCursor != noMessage {
+	if m.msgCursor != core.NoMessage {
 		t.Fatalf("F3 starts with no message picked: cursor %d", m.msgCursor)
 	}
 	m.Update(keyMsg("enter"))
-	if len(login.Messages) != 3 || m.focus != focusReview {
+	if len(login.Messages) != 3 || m.focus != core.FocusReview {
 		t.Fatalf("enter with none picked puts nothing in: %+v, focus %v", login.Messages, m.focus)
 	}
 	m.Update(keyMsg("j"))
@@ -101,10 +103,10 @@ func TestMessagesScreen(t *testing.T) {
 		t.Skip("no cat:", err)
 	}
 	defer pane.Close()
-	login.pane, login.status = pane, stIdle
+	login.Pane, login.Light = pane, core.StIdle
 	m.msgCursor = 0
 	m.Update(keyMsg("enter"))
-	if len(login.Messages) != 1 || m.focus != focusAgent {
+	if len(login.Messages) != 1 || m.focus != core.FocusAgent {
 		t.Fatalf("put in: %+v, focus %v", login.Messages, m.focus)
 	}
 	deadline := time.Now().Add(2 * time.Second)
@@ -116,8 +118,8 @@ func TestMessagesScreen(t *testing.T) {
 	}
 
 	// Not while the agent asks something: it would be the answer.
-	login.status = stBlocked
-	m.setFocus(focusReview)
+	login.Light = core.StBlocked
+	m.setFocus(core.FocusReview)
 	m.Update(keyMsg("enter"))
 	if len(login.Messages) != 1 {
 		t.Fatal("kept while the agent asks something")
@@ -137,21 +139,21 @@ func TestOldQueueIsTakenIn(t *testing.T) {
 // the agent to bring back what it was last sent.
 func TestF4AgainTakesTheKeyboard(t *testing.T) {
 	m := testModel(t)
-	login := m.cur()
+	login := m.Cur()
 	login.Messages = []state.Message{{Text: "first"}, {Text: "second"}}
 	f3 := tea.KeyMsg{Type: tea.KeyF3}
 
 	m.Update(f3)
-	if m.focus != focusReview || !m.panelMessages() {
+	if m.focus != core.FocusReview || !m.panelMessages() {
 		t.Fatalf("F3 opens the messages with the keyboard: focus %v", m.focus)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.focus != focusAgent || !m.panelMessages() {
+	if m.focus != core.FocusAgent || !m.panelMessages() {
 		t.Fatalf("esc gives the agent the keyboard, the messages stay: focus %v", m.focus)
 	}
 	m.Update(f3)
-	if m.focus != focusReview || m.msgCursor != noMessage {
+	if m.focus != core.FocusReview || m.msgCursor != core.NoMessage {
 		t.Fatalf("F3 again: focus %v, cursor %d", m.focus, m.msgCursor)
 	}
 	m.Update(keyMsg("j"))
@@ -166,7 +168,7 @@ func TestF4LeavesTheScrollback(t *testing.T) {
 	m := testModel(t)
 	m.scrolling = true
 	m.Update(tea.KeyMsg{Type: tea.KeyF3})
-	if m.scrolling || !m.panelMessages() || m.focus != focusReview {
+	if m.scrolling || !m.panelMessages() || m.focus != core.FocusReview {
 		t.Fatalf("scrolling %v, messages %v, focus %v", m.scrolling, m.panelMessages(), m.focus)
 	}
 }
@@ -175,7 +177,7 @@ func TestF4LeavesTheScrollback(t *testing.T) {
 // kept whole when it is changed with e — past the text field's 99 lines.
 func TestLongMessage(t *testing.T) {
 	m := testModel(t)
-	login := m.cur()
+	login := m.Cur()
 	var long []string
 	for i := range 150 {
 		long = append(long, fmt.Sprintf("line %d of a long message", i))
@@ -220,7 +222,7 @@ func TestSkillsScreen(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := testModel(t)
 	m.Update(tea.KeyMsg{Type: tea.KeyF4})
-	if !m.panelSkills() || m.focus != focusReview {
+	if !m.panelSkills() || m.focus != core.FocusReview {
 		t.Fatalf("F4 opens the skills with the keyboard: shown %v, focus %v", m.panelSkills(), m.focus)
 	}
 	view := ansi.Strip(m.View())
@@ -232,7 +234,7 @@ func TestSkillsScreen(t *testing.T) {
 	for range len(skills.All()) - 2 { // nerdr-spinoff, before nerdr-tools
 		m.Update(keyMsg("j"))
 	}
-	body := ansi.Strip(strings.Join(m.skillsBody(m.cur(), 70, 40), "\n"))
+	body := ansi.Strip(strings.Join(m.skillsBody(m.Cur(), 70, 40), "\n"))
 	if !strings.Contains(body, "── nerdr-spinoff") || !strings.Contains(body, "not where claude looks") {
 		t.Fatalf("j picks the next skill, shown with its state:\n%s", body)
 	}
@@ -243,12 +245,12 @@ func TestSkillsScreen(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.skills.at = time.Time{}
-	body = ansi.Strip(strings.Join(m.skillsBody(m.cur(), 70, 40), "\n"))
+	body = ansi.Strip(strings.Join(m.skillsBody(m.Cur(), 70, 40), "\n"))
 	if !strings.Contains(body, "available to claude") || !strings.Contains(body, "~/.claude/skills/nerdr-spinoff") {
 		t.Fatalf("once installed:\n%s", body)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.focus != focusAgent || !m.panelSkills() {
+	if m.focus != core.FocusAgent || !m.panelSkills() {
 		t.Fatalf("esc gives the agent the keyboard: focus %v", m.focus)
 	}
 }
@@ -256,7 +258,7 @@ func TestSkillsScreen(t *testing.T) {
 // What is typed into an agent stays one paste: an end-of-paste sequence or
 // a control character in the text does not reach the agent as keys.
 func TestPasteKeepsTheTextInThePaste(t *testing.T) {
-	got := string(paste("fix this\r\nplease\x1b[201~\r/clear\x03\tnow\u009b"))
+	got := string(core.Paste("fix this\r\nplease\x1b[201~\r/clear\x03\tnow\u009b"))
 	want := "\x1b[200~fix this\nplease[201~\n/clear\tnow\x1b[201~"
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
@@ -271,7 +273,7 @@ func TestPasteKeepsTheTextInThePaste(t *testing.T) {
 func TestMInF4StepsScreens(t *testing.T) {
 	m := testModel(t)
 	m.openMessages()
-	if !m.panelMessages() || m.focus != focusReview {
+	if !m.panelMessages() || m.focus != core.FocusReview {
 		t.Fatal("F3 is not open with the keyboard")
 	}
 	m.Update(keyMsg("m"))

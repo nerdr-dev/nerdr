@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // The sidebar: with tab_bar = "left" (or the prefix and z t), the
@@ -54,12 +55,12 @@ func (m *Model) wideW() int {
 		return min(max(m.sideWidth, sideMin), m.width/2) + 1
 	}
 	w := 0
-	for _, g := range m.groups() {
+	for _, g := range m.Groups() {
 		// light, name, (n)
-		w = max(w, lipgloss.Width(g)+len(strconv.Itoa(len(m.groupTabs(g))))+6)
-		for n, i := range m.groupTabs(g) {
+		w = max(w, lipgloss.Width(g)+len(strconv.Itoa(len(m.GroupTabs(g))))+6)
+		for n, i := range m.GroupTabs(g) {
 			// light, n:name, a mark or two, and its details
-			w = max(w, lipgloss.Width(m.tabs[i].Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(m.tabs[i], i == m.active)))
+			w = max(w, lipgloss.Width(m.Tabs[i].Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(m.Tabs[i], i == m.Active)))
 		}
 	}
 	return min(max(w+2, sideMin), max(sideMax, m.width/5), m.width/3) + 1
@@ -75,7 +76,7 @@ func (m *Model) sideRepoH(h int, small bool) int {
 	if h < 10 {
 		return 0
 	}
-	rows := len(m.groups())
+	rows := len(m.Groups())
 	if m.mouseOn() {
 		rows++ // + new repo
 	}
@@ -143,7 +144,7 @@ func (m *Model) sideToggle(small bool) string {
 // railEntry is one entry of the small sidebar: a light, with the active
 // one's background, and after it mark, when there is one, where the space
 // would be.
-func (m *Model) railEntry(active, walking bool, s status, of string, mark func(lipgloss.Color) string) string {
+func (m *Model) railEntry(active, walking bool, s core.Status, of string, mark func(lipgloss.Color) string) string {
 	bg := lipgloss.Color("")
 	if active {
 		bg = tabActiveBg
@@ -165,34 +166,34 @@ func (m *Model) railEntry(active, walking bool, s status, of string, mark func(l
 // lights under the » that makes it wide; wide, the « at the right of its
 // top, by the agent.
 func (m *Model) repoList(w, h int, small bool) []string {
-	cur := m.curGroup()
+	cur := m.CurGroup()
 	walking := m.prefix && m.onGroups
 	var lines []string
 	if small {
 		lines = append(lines, "  "+m.sideToggle(true))
 	}
 	at := 0
-	for _, g := range m.groups() {
-		n := len(m.groupTabs(g))
+	for _, g := range m.Groups() {
+		n := len(m.GroupTabs(g))
 		if g == cur {
 			at = len(lines)
 		}
-		tip := plural(n, "tab")
+		tip := core.Plural(n, "tab")
 		var s string
 		if small {
-			s = m.railEntry(g == cur, walking, m.groupStatus(g), "the tab here that most wants a look · "+g, nil)
+			s = m.railEntry(g == cur, walking, m.GroupStatus(g), "the tab here that most wants a look · "+g, nil)
 		} else {
 			// (7 2 3): the tabs, and how many of them ask and work, each count
 			// in the colour of their light
 			moreSt := lipgloss.NewStyle().Background(entryBg(g == cur, walking)).Foreground(lipgloss.Color("244"))
 			count := moreSt.Render(" (" + strconv.Itoa(n))
-			for _, st := range []status{stBlocked, stWorking} {
-				if k := m.groupCount(g, st); k > 0 {
+			for _, st := range []core.Status{core.StBlocked, core.StWorking} {
+				if k := m.GroupCount(g, st); k > 0 {
 					count += moreSt.Render(" ") + moreSt.Foreground(lightColours[st]).Render(strconv.Itoa(k))
-					tip += ", " + strconv.Itoa(k) + " " + st.label()
+					tip += ", " + strconv.Itoa(k) + " " + st.Label()
 				}
 			}
-			s = m.sideEntry(w-2, g == cur, walking, m.groupStatus(g), "the tab here that most wants a look",
+			s = m.sideEntry(w-2, g == cur, walking, m.GroupStatus(g), "the tab here that most wants a look",
 				g, "", count+moreSt.Render(")"))
 		}
 		s = m.tip(s, g+": "+tip+" · click: go there · right-click: more")
@@ -226,14 +227,14 @@ func (m *Model) repoList(w, h int, small bool) []string {
 // row numbers them, in a w×h frame; with the details on, each but the
 // active one has them on a line under it.
 func (m *Model) tabList(w, h int, small bool) []string {
-	g := m.curGroup()
+	g := m.CurGroup()
 	walking := m.prefix && !m.onGroups
 	now := time.Now()
 	var lines []string
 	at := 0
-	for n, i := range m.groupTabs(g) {
-		t := m.tabs[i]
-		active := i == m.active
+	for n, i := range m.GroupTabs(g) {
+		t := m.Tabs[i]
+		active := i == m.Active
 		if active {
 			at = len(lines)
 		}
@@ -241,7 +242,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 		if active {
 			more = " " + string(t.Agent)
 		}
-		if m.cold(t, now) {
+		if m.Cold(t, now) {
 			more += " ❄"
 		}
 		if t == m.splitTab() {
@@ -253,7 +254,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 		}
 		var s string
 		if small {
-			s = m.railEntry(active, walking, t.lit(), strconv.Itoa(n+1)+":"+t.Name,
+			s = m.railEntry(active, walking, t.Lit(), strconv.Itoa(n+1)+":"+t.Name,
 				func(bg lipgloss.Color) string { return m.reviewMark(t, bg) })
 		} else {
 			extra := m.sideDetails(t, active)
@@ -261,9 +262,9 @@ func (m *Model) tabList(w, h int, small bool) []string {
 			if mark := m.reviewMark(t, bg); mark != "" {
 				extra = lipgloss.NewStyle().Background(bg).Render(" ") + mark + extra
 			}
-			s = m.sideEntry(w-2, active, walking, t.lit(), "", strconv.Itoa(n+1)+":"+t.Name, more, extra)
+			s = m.sideEntry(w-2, active, walking, t.Lit(), "", strconv.Itoa(n+1)+":"+t.Name, more, extra)
 		}
-		s = m.tip(s, t.Name+" · "+string(t.Agent)+" · "+t.lit().label()+" · right-click: more · middle-click: close")
+		s = m.tip(s, t.Name+" · "+string(t.Agent)+" · "+t.Lit().Label()+" · right-click: more · middle-click: close")
 		lines = append(lines, m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.tabMouse(t, ev) }))
 	}
 	if m.mouseOn() {
@@ -272,7 +273,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 			plus = " + "
 		}
 		lines = append(lines, m.tip(m.onClick(plusStyle.UnsetBackground().Render(plus), func(m *Model) tea.Cmd {
-			if repo := tabRepo(m.cur()); repo != "" {
+			if repo := tabRepo(m.Cur()); repo != "" {
 				return m.openWizardFor(repo)
 			}
 			return m.openWizard()
@@ -292,7 +293,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 // list: "" for the active tab, whose are in the row on top, and with the
 // details off. On the entry's own line, cut short where there is no room,
 // rather than on a line of its own that reads as the name wrapped.
-func (m *Model) sideDetails(t *tab, active bool) string {
+func (m *Model) sideDetails(t *core.Tab, active bool) string {
 	if !m.showDetails || active {
 		return ""
 	}
@@ -305,7 +306,7 @@ func (m *Model) sideDetails(t *tab, active bool) string {
 // sideEntry is one entry of a list, w columns wide: its light, its name
 // and, dimmer, more about it, then extra as it is styled. The active one
 // has the bars' active background, blue while the arrows walk its list.
-func (m *Model) sideEntry(w int, active, walking bool, s status, of, name, more, extra string) string {
+func (m *Model) sideEntry(w int, active, walking bool, s core.Status, of, name, more, extra string) string {
 	bg := entryBg(active, walking)
 	st := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
 	if active {
@@ -348,9 +349,9 @@ func (m *Model) sideBarRow() string {
 	bar := lipgloss.NewStyle().Background(tabBarBg)
 	m.groupRow = barRow{} // neither row is drawn, so nothing hidden in them
 	var left string
-	if t := m.cur(); t != nil {
+	if t := m.Cur(); t != nil {
 		st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("231")).Bold(true)
-		left = st.Render(" ") + m.lightTip(t.lit(), tabBarBg, "") + st.Render(" "+t.Name+" ") +
+		left = st.Render(" ") + m.lightTip(t.Lit(), tabBarBg, "") + st.Render(" "+t.Name+" ") +
 			lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("248")).Render(string(t.Agent)+" ")
 		if m.showDetails {
 			if d := m.details(t, tabBarBg, true); d != "" {
@@ -396,23 +397,23 @@ func (m *Model) sideWheel(ev tea.MouseMsg) tea.Cmd {
 
 // sideArrows is groups with the arrows as the sidebar has them, for the
 // prefix hint: ↑ ↓ along a list, ← → between the two.
-func sideArrows(groups []commandGroup) []commandGroup {
-	side := map[string]commandEntry{
-		"up":    {key: "↑", label: "Tab up", run: "up", desc: "the tab above, or repository in the repository list; the prefix stays on for more"},
-		"down":  {key: "↓", label: "Tab down", run: "down", desc: "the tab below, or repository in the repository list; the prefix stays on for more"},
-		"left":  {key: "←", label: "Repositories / tabs", run: "left", desc: "the arrows move to the other list: the repositories or their tabs"},
-		"right": {key: "→", label: "Tabs / repositories", run: "right", desc: "the arrows move to the other list: the repositories or their tabs"},
+func sideArrows(groups []core.CommandGroup) []core.CommandGroup {
+	side := map[string]core.CommandEntry{
+		"up":    {Key: "↑", Label: "Tab up", Run: "up", Desc: "the tab above, or repository in the repository list; the prefix stays on for more"},
+		"down":  {Key: "↓", Label: "Tab down", Run: "down", Desc: "the tab below, or repository in the repository list; the prefix stays on for more"},
+		"left":  {Key: "←", Label: "Repositories / tabs", Run: "left", Desc: "the arrows move to the other list: the repositories or their tabs"},
+		"right": {Key: "→", Label: "Tabs / repositories", Run: "right", Desc: "the arrows move to the other list: the repositories or their tabs"},
 	}
-	out := make([]commandGroup, len(groups))
+	out := make([]core.CommandGroup, len(groups))
 	for i, g := range groups {
-		entries := make([]commandEntry, 0, len(g.entries))
-		for _, e := range g.entries {
-			if s, ok := side[e.run]; ok {
+		entries := make([]core.CommandEntry, 0, len(g.Entries))
+		for _, e := range g.Entries {
+			if s, ok := side[e.Run]; ok {
 				e = s
 			}
 			entries = append(entries, e)
 		}
-		out[i] = commandGroup{g.title, entries}
+		out[i] = core.CommandGroup{Title: g.Title, Entries: entries}
 	}
 	return out
 }

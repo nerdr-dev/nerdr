@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -28,17 +29,17 @@ var (
 	accent       = lipgloss.Color("110")
 	groupAccent  = lipgloss.Color("67")
 	frameColor   = lipgloss.Color("240")
-	lightColours = map[status]lipgloss.Color{
-		stStarting: lipgloss.Color("244"),
-		stIdle:     lipgloss.Color("46"),
-		stWorking:  lipgloss.Color("220"),
-		stBlocked:  lipgloss.Color("196"),
-		stDone:     lipgloss.Color("46"),
-		stUnknown:  lipgloss.Color("244"),
-		stExited:   lipgloss.Color("239"),
-		stAsleep:   lipgloss.Color("67"),
+	lightColours = map[core.Status]lipgloss.Color{
+		core.StStarting: lipgloss.Color("244"),
+		core.StIdle:     lipgloss.Color("46"),
+		core.StWorking:  lipgloss.Color("220"),
+		core.StBlocked:  lipgloss.Color("196"),
+		core.StDone:     lipgloss.Color("46"),
+		core.StUnknown:  lipgloss.Color("244"),
+		core.StExited:   lipgloss.Color("239"),
+		core.StAsleep:   lipgloss.Color("67"),
 		// Cyan: nothing to do with yellow's "at work" or the blue of asleep.
-		stBackground: lipgloss.Color("45"),
+		core.StBackground: lipgloss.Color("45"),
 	}
 	// lightSymbols draws the lights as shapes of their own rather than
 	// circles told apart by colour: status_lights = "symbols".
@@ -48,37 +49,37 @@ var (
 // light is a tab's traffic light, as herdr draws it: a filled circle for
 // something that wants a look (working, needs input, done and not yet
 // seen), a hollow one once it has been seen or has nothing to show.
-func light(s status) string {
+func light(s core.Status) string {
 	return lipgloss.NewStyle().Foreground(lightColours[s]).Render(lightGlyph(s))
 }
 
-func lightGlyph(s status) string {
+func lightGlyph(s core.Status) string {
 	if lightSymbols {
 		// herdr's symbols, which keep the colours too.
 		switch s {
-		case stBlocked:
+		case core.StBlocked:
 			return "×"
-		case stWorking:
+		case core.StWorking:
 			return "◐"
-		case stBackground:
+		case core.StBackground:
 			return "◎"
-		case stDone:
+		case core.StDone:
 			return "✓"
-		case stIdle:
+		case core.StIdle:
 			return "○"
-		case stExited:
+		case core.StExited:
 			return "◌"
-		case stAsleep:
+		case core.StAsleep:
 			return "z"
 		}
 		return "·"
 	}
 	switch s {
-	case stIdle, stStarting, stUnknown:
+	case core.StIdle, core.StStarting, core.StUnknown:
 		return "○"
-	case stExited:
+	case core.StExited:
 		return "◌"
-	case stAsleep:
+	case core.StAsleep:
 		return "z"
 	}
 	return "●"
@@ -86,13 +87,13 @@ func lightGlyph(s status) string {
 
 // lightOn is light on background bg, for the bars: a glyph with no
 // background of its own leaves a hole in a highlighted entry.
-func lightOn(s status, bg lipgloss.Color) string {
+func lightOn(s core.Status, bg lipgloss.Color) string {
 	return lipgloss.NewStyle().Background(bg).Foreground(lightColours[s]).Render(lightGlyph(s))
 }
 
 // lightTip is lightOn with a tip saying what the light means; of says
 // what it is the light of, when that is not the tab it is on.
-func (m *Model) lightTip(s status, bg lipgloss.Color, of string) string {
+func (m *Model) lightTip(s core.Status, bg lipgloss.Color, of string) string {
 	tip := statusTip(s)
 	if of != "" {
 		tip += " — " + of
@@ -101,23 +102,23 @@ func (m *Model) lightTip(s status, bg lipgloss.Color, of string) string {
 }
 
 // statusTip is what a light in status s means, for its tip.
-func statusTip(s status) string {
+func statusTip(s core.Status) string {
 	switch s {
-	case stStarting:
+	case core.StStarting:
 		return "Starting"
-	case stIdle:
+	case core.StIdle:
 		return "Idle"
-	case stWorking:
+	case core.StWorking:
 		return "Working"
-	case stBackground:
+	case core.StBackground:
 		return "Turn over; a process it started in the background still runs"
-	case stBlocked:
+	case core.StBlocked:
 		return "Needs input: the agent is asking you something"
-	case stDone:
+	case core.StDone:
 		return "Done, and not looked at yet"
-	case stExited:
+	case core.StExited:
 		return "Exited"
-	case stAsleep:
+	case core.StAsleep:
 		return "Asleep: stopped while done and nobody looked; carries on when you visit the tab"
 	}
 	return "State not known"
@@ -184,8 +185,8 @@ func (m *Model) draw() string {
 	if m.sideW() > 0 {
 		body = m.peekSide(besides(m.sideLines(bodyH), "", body))
 	}
-	if t := m.cur(); m.prefix && m.nav && m.dialog == nil && t != nil {
-		if rt, d := t.reviewToTell(); d != nil {
+	if t := m.Cur(); m.prefix && m.nav && m.dialog == nil && t != nil {
+		if rt, d := t.ReviewToTell(); d != nil {
 			// Over the agent, clear of the sidebar walked and the hint at
 			// the bottom.
 			left := m.sideW()
@@ -244,7 +245,7 @@ func (m *Model) gap() string {
 
 // agentLines draws the active tab's panes into a w×h area.
 func (m *Model) agentLines(w, h int) []string {
-	return m.tabLines(m.cur(), w, h)
+	return m.tabLines(m.Cur(), w, h)
 }
 
 // framed draws body, (w-2)×(h-2), in a rounded frame with title in its
@@ -303,7 +304,7 @@ func (m *Model) activeBg() lipgloss.Color {
 // shows or not, so the entries do not move about as messages come and go.
 func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	hint := " " + m.pk("?") + " help "
-	if m.focus == focusReview {
+	if m.focus == core.FocusReview {
 		hint = " review · esc → agent" + hint
 	}
 	status := m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
@@ -313,19 +314,19 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	msg = status
 	switch {
 	case m.prefix:
-		label := " " + m.cfg.Prefix + " … "
+		label := " " + m.Cfg.Prefix + " … "
 		if m.nav {
-			label = " " + m.cfg.Prefix + " ← → tabs · enter to stay "
-			if len(m.groups()) > 1 {
-				label = " " + m.cfg.Prefix + " ← → tabs · ↑ repos · enter to stay "
+			label = " " + m.Cfg.Prefix + " ← → tabs · enter to stay "
+			if len(m.Groups()) > 1 {
+				label = " " + m.Cfg.Prefix + " ← → tabs · ↑ repos · enter to stay "
 			}
 			if m.onGroups {
-				label = " " + m.cfg.Prefix + " ← → repos · ↓ tabs · enter to stay "
+				label = " " + m.Cfg.Prefix + " ← → repos · ↓ tabs · enter to stay "
 			}
 			if m.sideW() > 0 {
-				label = " " + m.cfg.Prefix + " ↑ ↓ tabs · ← → repos · enter to stay "
+				label = " " + m.Cfg.Prefix + " ↑ ↓ tabs · ← → repos · enter to stay "
 				if m.onGroups {
-					label = " " + m.cfg.Prefix + " ↑ ↓ repos · ← → tabs · enter to stay "
+					label = " " + m.Cfg.Prefix + " ↑ ↓ repos · ← → tabs · enter to stay "
 				}
 			}
 		}
@@ -351,14 +352,14 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 // on the right nerdr's messages.
 func (m *Model) groupBar() string {
 	bar := lipgloss.NewStyle().Background(tabBarBg)
-	cur := m.curGroup()
+	cur := m.CurGroup()
 	msg, menuBtn, reserve := m.barStatus()
 
-	gs := m.groups()
+	gs := m.Groups()
 	items := make([]barItem, len(gs))
 	at := 0
 	for i, g := range gs {
-		n := len(m.groupTabs(g))
+		n := len(m.GroupTabs(g))
 		var part string
 		if g == cur {
 			at = i
@@ -367,15 +368,15 @@ func (m *Model) groupBar() string {
 				bg = navActiveBg
 			}
 			st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
-			part = st.Render(" ") + m.lightTip(m.groupStatus(g), bg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
+			part = st.Render(" ") + m.lightTip(m.GroupStatus(g), bg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
 				lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("250")).Render("("+strconv.Itoa(n)+") ")
 		} else {
 			st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("250"))
-			part = st.Render(" ") + m.lightTip(m.groupStatus(g), tabBarBg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
+			part = st.Render(" ") + m.lightTip(m.GroupStatus(g), tabBarBg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
 				lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("241")).Render("("+strconv.Itoa(n)+") ")
 		}
-		part = m.tip(part, g+": "+plural(n, "tab")+" · click: go there · right-click: more")
-		items[i] = barItem{st: m.groupStatus(g), s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd {
+		part = m.tip(part, g+": "+core.Plural(n, "tab")+" · click: go there · right-click: more")
+		items[i] = barItem{st: m.GroupStatus(g), s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd {
 			switch {
 			case ev.Action != tea.MouseActionPress:
 				return nil
@@ -395,7 +396,7 @@ func (m *Model) groupBar() string {
 	avail := m.width - reserve - lipgloss.Width(plus)
 	left := m.scrollBar(items, at, &m.groupRow, avail, "repository",
 		func(m *Model, i int) tea.Cmd {
-			if gs := m.groups(); i < len(gs) {
+			if gs := m.Groups(); i < len(gs) {
 				return m.selectGroup(gs[i])
 			}
 			return nil
@@ -431,17 +432,17 @@ func (m *Model) tabBar() string {
 	var items []barItem
 	at := 0
 	now := time.Now()
-	g := m.curGroup()
-	idx := m.groupTabs(g)
+	g := m.CurGroup()
+	idx := m.GroupTabs(g)
 	for n, i := range idx {
-		t := m.tabs[i]
+		t := m.Tabs[i]
 		num := strconv.Itoa(n+1) + ":"
 		bg := tabBarBg
-		if i == m.active {
+		if i == m.Active {
 			bg = m.activeBg()
 		}
 		var extra string
-		cold := m.cold(t, now)
+		cold := m.Cold(t, now)
 		if cold {
 			extra = m.tip(lipgloss.NewStyle().Background(bg).Foreground(groupAccent).Render("❄"), "Cold: not used for a while") +
 				lipgloss.NewStyle().Background(bg).Render(" ")
@@ -458,32 +459,32 @@ func (m *Model) tabBar() string {
 				lipgloss.NewStyle().Background(bg).Render(" ")
 		}
 		if m.showDetails {
-			if d := m.details(t, bg, i == m.active); d != "" {
+			if d := m.details(t, bg, i == m.Active); d != "" {
 				extra += d + lipgloss.NewStyle().Background(bg).Render(" ")
 			}
 		}
 		var part string
-		if i == m.active {
+		if i == m.Active {
 			st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
-			part = st.Render(" ") + m.lightTip(t.lit(), bg, "") + st.Render(" "+num+t.Name+" ") +
+			part = st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") +
 				lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("248")).Render(string(t.Agent)+" ") + extra
 		} else {
 			st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("250"))
 			if cold {
 				st = st.Foreground(lipgloss.Color("243"))
 			}
-			part = st.Render(" ") + m.lightTip(t.lit(), bg, "") + st.Render(" "+num+t.Name+" ") + extra
+			part = st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") + extra
 		}
-		if i == m.active {
+		if i == m.Active {
 			at = n
 		}
-		part = m.tip(part, t.Name+" · "+string(t.Agent)+" · "+t.lit().label()+" · right-click: more · middle-click: close")
-		items = append(items, barItem{st: t.lit(), s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.tabMouse(t, ev) })})
+		part = m.tip(part, t.Name+" · "+string(t.Agent)+" · "+t.Lit().Label()+" · right-click: more · middle-click: close")
+		items = append(items, barItem{st: t.Lit(), s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.tabMouse(t, ev) })})
 	}
 	var plus string
 	if m.mouseOn() {
 		plus = bar.Render(" ") + m.tip(m.onClick(plusStyle.Render(" + "), func(m *Model) tea.Cmd {
-			if repo := tabRepo(m.cur()); repo != "" {
+			if repo := tabRepo(m.Cur()); repo != "" {
 				return m.openWizardFor(repo)
 			}
 			return m.openWizard()
@@ -497,7 +498,7 @@ func (m *Model) tabBar() string {
 		var r int
 		msg, menuBtn, r = m.barStatus()
 		reserve += r
-		if len(m.groups()) > 1 {
+		if len(m.Groups()) > 1 {
 			repo = m.repoLabel(g)
 		}
 	}
@@ -511,7 +512,7 @@ func (m *Model) tabBar() string {
 	}
 	left := repo + m.scrollBar(items, at, row, m.width-reserve-lipgloss.Width(plus)-lipgloss.Width(repo), "tab",
 		func(m *Model, i int) tea.Cmd {
-			if idx := m.groupTabs(g); i < len(idx) {
+			if idx := m.GroupTabs(g); i < len(idx) {
 				return m.selectTab(idx[i])
 			}
 			return nil
@@ -524,7 +525,7 @@ func (m *Model) tabBar() string {
 // overlapWarning is the warning in the bar that other tabs change some of
 // the active tab's files; "" when none do.
 func (m *Model) overlapWarning() string {
-	t := m.cur()
+	t := m.Cur()
 	if t == nil {
 		return ""
 	}
@@ -534,10 +535,10 @@ func (m *Model) overlapWarning() string {
 	}
 	n := 0
 	for _, o := range ov {
-		n += len(o.files)
+		n += len(o.Files)
 	}
 	return m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("214")).
-		Render(" ⚠ "+plural(n, "file")+" also changed in "+ov[0].with.Name+moreTabs(len(ov)-1)+" · "+m.pk("i i")+" "),
+		Render(" ⚠ "+core.Plural(n, "file")+" also changed in "+ov[0].With.Name+moreTabs(len(ov)-1)+" · "+m.pk("i i")+" "),
 		(*Model).showBranchPR), "Other tabs change some of the same files · click: which")
 }
 
@@ -559,8 +560,8 @@ func (m *Model) repoLabel(g string) string {
 
 // tabMouse handles the mouse on tab t in the tab bar: a click goes to it,
 // a middle click closes it, a right click shows what can be done to it.
-func (m *Model) tabMouse(t *tab, ev tea.MouseMsg) tea.Cmd {
-	i := m.tabIndex(t)
+func (m *Model) tabMouse(t *core.Tab, ev tea.MouseMsg) tea.Cmd {
+	i := m.TabIndex(t)
 	if ev.Action != tea.MouseActionPress || i < 0 {
 		return nil
 	}
@@ -673,30 +674,30 @@ func (m *Model) prefixHint(w int) []string {
 	keySt := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("81")).Bold(true)
 	txtSt := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("252"))
 	heading := txtSt.Bold(true).Foreground(accent)
-	groups := commandGroups()
+	groups := core.CommandGroups()
 	if m.sideW() > 0 {
 		groups = sideArrows(groups)
 	}
 	inGroup := false
-	if g, ok := keyGroups()[m.keyGroup]; ok {
-		groups, inGroup = []commandGroup{g}, true
+	if g, ok := core.KeyGroups()[m.keyGroup]; ok {
+		groups, inGroup = []core.CommandGroup{g}, true
 	}
 	var lines []string
 	for _, group := range groups {
-		cur := heading.Render(" "+group.title) + txtSt.Render("   ")
-		for _, e := range group.entries {
-			if e.rare {
+		cur := heading.Render(" "+group.Title) + txtSt.Render("   ")
+		for _, e := range group.Entries {
+			if e.Rare {
 				continue
 			}
 			entry := e
-			key := e.key
-			if !inGroup && !panelKey(e.run) {
+			key := e.Key
+			if !inGroup && !panelKey(e.Run) {
 				key = m.shownKeys(key) // a group's keys come after its own
 			}
-			part := keySt.Render(key) + txtSt.Render(" "+e.label+"   ")
-			if m.commandOff(e.run) != "" {
+			part := keySt.Render(key) + txtSt.Render(" "+e.Label+"   ")
+			if m.commandOff(e.Run) != "" {
 				off := txtSt.Foreground(lipgloss.Color("241"))
-				part = off.Render(key) + off.Render(" "+e.label+"   ")
+				part = off.Render(key) + off.Render(" "+e.Label+"   ")
 			}
 			if lipgloss.Width(cur)+lipgloss.Width(part) > w && lipgloss.Width(cur) > 1 {
 				lines = append(lines, padBg(cur, w, txtSt))
@@ -704,12 +705,12 @@ func (m *Model) prefixHint(w int) []string {
 			}
 			part = ansi.Truncate(part, max(1, w-1), "…")
 			part = m.onClick(part, func(m *Model) tea.Cmd {
-				if strings.Contains(entry.run, " ") || panelKey(entry.run) {
+				if strings.Contains(entry.Run, " ") || panelKey(entry.Run) {
 					m.prefix, m.keyGroup = false, ""
-					return m.runCommand(entry.run)
+					return m.runCommand(entry.Run)
 				}
 				m.prefix = true
-				return m.handleKey(keyMsg(m.swapKey(entry.run))) // as pressed
+				return m.handleKey(keyMsg(m.swapKey(entry.Run))) // as pressed
 			})
 			cur += part
 		}

@@ -2,11 +2,11 @@ package app
 
 import (
 	"fmt"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/proc"
 
@@ -24,13 +24,10 @@ type callsDialog struct {
 	opened map[proc.Call]int // the counts when it opened, for what came since
 }
 
-// allCalls is the name of the row that sums the others.
-const allCalls = "all"
-
 func (m *Model) newCallsDialog() *callsDialog {
-	d := &callsDialog{pick: allCalls}
+	d := &callsDialog{pick: core.AllCalls}
 	d.opened, _ = proc.Counts()
-	if t := m.cur(); t != nil {
+	if t := m.Cur(); t != nil {
 		d.pick = t.Name
 	}
 	return d
@@ -52,10 +49,10 @@ func (d *callsDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 func (d *callsDialog) move(m *Model, by int) {
 	calls, _ := proc.Counts()
 	names := []string{}
-	for _, r := range m.callRows(calls) {
-		names = append(names, r.name)
+	for _, r := range m.CallRows(calls) {
+		names = append(names, r.Name)
 	}
-	names = append(names, allCalls)
+	names = append(names, core.AllCalls)
 	at := len(names) - 1
 	for i, n := range names {
 		if n == d.pick {
@@ -65,106 +62,35 @@ func (d *callsDialog) move(m *Model, by int) {
 	d.pick = names[max(0, min(len(names)-1, at+by))]
 }
 
-// callRow is one tab's calls, or those in no tab's worktree.
-type callRow struct {
-	name            string
-	git, gh, others int
-	cmds            map[string]int // by program and what it was asked, "git status"
-}
-
-func (r callRow) total() int { return r.git + r.gh + r.others }
-
-// callRows sums calls by the tab whose worktree each ran in.
-func (m *Model) callRows(calls map[proc.Call]int) []callRow {
-	byTab := map[*tab]*callRow{}
-	elsewhere := &callRow{name: "elsewhere", cmds: map[string]int{}}
-	for c, n := range calls {
-		t := m.tabOfDir(c.Dir)
-		r := elsewhere
-		if t != nil {
-			if byTab[t] == nil {
-				byTab[t] = &callRow{name: t.Name, cmds: map[string]int{}}
-			}
-			r = byTab[t]
-		}
-		r.cmds[strings.TrimSpace(c.Program+" "+c.Sub)] += n
-		switch c.Program {
-		case "git":
-			r.git += n
-		case "gh":
-			r.gh += n
-		default:
-			r.others += n
-		}
-	}
-	var out []callRow
-	for _, r := range byTab {
-		out = append(out, *r)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].total() != out[j].total() {
-			return out[i].total() > out[j].total()
-		}
-		return out[i].name < out[j].name
-	})
-	if elsewhere.total() > 0 {
-		out = append(out, *elsewhere)
-	}
-	return out
-}
-
-// tabOfDir is the tab with dir in one of its worktrees, or nil.
-func (m *Model) tabOfDir(dir string) *tab {
-	if dir == "" {
-		return nil
-	}
-	dir = filepath.Clean(dir)
-	var best *tab
-	bestLen := 0
-	for _, t := range m.tabs {
-		paths := []string{t.Dir}
-		for _, w := range t.Worktrees {
-			paths = append(paths, w.Path)
-		}
-		for _, p := range paths {
-			p = filepath.Clean(p)
-			if p != "." && (dir == p || strings.HasPrefix(dir, p+string(filepath.Separator))) && len(p) > bestLen {
-				best, bestLen = t, len(p)
-			}
-		}
-	}
-	return best
-}
-
 func (d *callsDialog) view(m *Model, w, h int) string {
 	calls, since := proc.Counts()
-	rows := m.callRows(calls)
+	rows := m.CallRows(calls)
 	nameW := len("tab")
 	for _, r := range rows {
-		nameW = min(max(nameW, len([]rune(r.name))), 30)
+		nameW = min(max(nameW, len([]rune(r.Name))), 30)
 	}
 	line := func(name string, git, gh, others string) string {
-		return padTo(truncName(name, nameW), nameW+2) + fmt.Sprintf("%7s %7s %7s", git, gh, others)
+		return padTo(core.TruncName(name, nameW), nameW+2) + fmt.Sprintf("%7s %7s %7s", git, gh, others)
 	}
-	row := func(r callRow) string {
-		s := line(r.name, fmt.Sprint(r.git), fmt.Sprint(r.gh), fmt.Sprint(r.others))
-		if r.name == d.pick {
+	row := func(r core.CallRow) string {
+		s := line(r.Name, fmt.Sprint(r.Git), fmt.Sprint(r.Gh), fmt.Sprint(r.Others))
+		if r.Name == d.pick {
 			return "❯ " + lipgloss.NewStyle().Bold(true).Render(s)
 		}
-		name := r.name
+		name := r.Name
 		return "  " + m.onClick(s, func(m *Model) tea.Cmd { d.pick = name; return nil })
 	}
 	lines := []string{"  " + dim(line("tab", "git", "gh", "other"))}
-	all := callRow{name: allCalls, cmds: map[string]int{}}
+	all := core.CallRow{Name: core.AllCalls, Cmds: map[string]int{}}
 	picked := &all
 	for i := range rows {
 		r := rows[i]
 		lines = append(lines, row(r))
-		all.git, all.gh, all.others = all.git+r.git, all.gh+r.gh, all.others+r.others
-		for c, n := range r.cmds {
-			all.cmds[c] += n
+		all.Git, all.Gh, all.Others = all.Git+r.Git, all.Gh+r.Gh, all.Others+r.Others
+		for c, n := range r.Cmds {
+			all.Cmds[c] += n
 		}
-		if r.name == d.pick {
+		if r.Name == d.pick {
 			picked = &rows[i]
 		}
 	}
@@ -172,7 +98,7 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "  "+dim("(nothing run yet)"))
 	}
 	if picked == &all {
-		d.pick = allCalls // a tab with no calls, or closed
+		d.pick = core.AllCalls // a tab with no calls, or closed
 	}
 	lines = append(lines, "  "+dim(strings.Repeat("─", nameW+2+24)), row(all))
 	// By the wall clock, as the time it is shown with: the monotonic one
@@ -182,9 +108,9 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 	if since.Format("2006-01-02") != time.Now().Format("2006-01-02") {
 		at = since.Format("Mon 2 Jan 15:04") // not today: the time alone reads as one to come
 	}
-	when := fmt.Sprintf("Since nerdr started at %s, %s ago", at, duration(took))
+	when := fmt.Sprintf("Since nerdr started at %s, %s ago", at, core.Duration(took))
 	if took >= time.Minute {
-		when += fmt.Sprintf(": %.1f a minute", float64(all.total())/took.Minutes())
+		when += fmt.Sprintf(": %.1f a minute", float64(all.Total())/took.Minutes())
 	}
 	lines = append(lines, "", dim(when+"."), "")
 	// What was run since the dialog opened: "since" in the commands.
@@ -195,9 +121,9 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 		}
 	}
 	sinceOpen := map[string]int{}
-	for _, r := range m.callRows(recent) {
-		if r.name == picked.name || picked.name == allCalls {
-			for c, n := range r.cmds {
+	for _, r := range m.CallRows(recent) {
+		if r.Name == picked.Name || picked.Name == core.AllCalls {
+			for c, n := range r.Cmds {
 				sinceOpen[c] += n
 			}
 		}
@@ -214,9 +140,6 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 	return box("git and gh calls", lines, w)
 }
 
-// deniedShown is how many of the denials the dialog lists.
-const deniedShown = 6
-
 // deniedLines lists what nerdr was turned down for, the latest first, in
 // w columns: what it tried, and what said no.
 func deniedLines(w int) []string {
@@ -226,7 +149,7 @@ func deniedLines(w int) []string {
 	}
 	out := []string{"Turned down, the latest first:"}
 	for i, d := range ds {
-		if i == deniedShown {
+		if i == core.DeniedShown {
 			out = append(out, dim(fmt.Sprintf("  and %d more", len(ds)-i)))
 			break
 		}
@@ -234,9 +157,9 @@ func deniedLines(w int) []string {
 		if d.N > 1 {
 			times = fmt.Sprintf(" %d×", d.N)
 		}
-		out = append(out, "  "+dim(d.Last.Format("15:04")+times)+" "+truncName(d.What, max(w-14, 10)))
+		out = append(out, "  "+dim(d.Last.Format("15:04")+times)+" "+core.TruncName(d.What, max(w-14, 10)))
 		if d.Why != "" {
-			out = append(out, "    "+warn(truncName(d.Why, max(w-4, 10))))
+			out = append(out, "    "+warn(core.TruncName(d.Why, max(w-4, 10))))
 		}
 	}
 	return out
@@ -252,23 +175,20 @@ func (m *Model) toastDenied() {
 	m.deniedSaid = n
 	if ds := denied.List(); len(ds) > 0 {
 		m.toastText = "Turned down: " + ds[0].What + " · " + m.pk("g")
-		m.toastUntil = time.Now().Add(inAppFor)
+		m.toastUntil = time.Now().Add(core.InAppFor)
 	}
 }
 
-// callCmdsShown is how many of a row's commands the dialog lists.
-const callCmdsShown = 12
-
 // commandLines lists the commands of row r, the most run first, and how
 // many of each were run since the dialog opened, of those in recent.
-func commandLines(r callRow, recent map[string]int) []string {
+func commandLines(r core.CallRow, recent map[string]int) []string {
 	type cmd struct {
 		name string
 		n    int
 	}
 	var cmds []cmd
 	w := len("command")
-	for c, n := range r.cmds {
+	for c, n := range r.Cmds {
 		cmds = append(cmds, cmd{c, n})
 		w = max(w, len(c))
 	}
@@ -279,12 +199,12 @@ func commandLines(r callRow, recent map[string]int) []string {
 		return cmds[i].name < cmds[j].name
 	})
 	w = min(w, 30)
-	out := []string{"By command, " + r.name + ":", dim(padTo("  command", w+4) + fmt.Sprintf("%7s %7s", "calls", "new"))}
+	out := []string{"By command, " + r.Name + ":", dim(padTo("  command", w+4) + fmt.Sprintf("%7s %7s", "calls", "new"))}
 	if len(cmds) == 0 {
 		out = append(out, dim("  (none)"))
 	}
 	for i, c := range cmds {
-		if i == callCmdsShown {
+		if i == core.CallCmdsShown {
 			rest := 0
 			for _, c := range cmds[i:] {
 				rest += c.n
@@ -296,16 +216,7 @@ func commandLines(r callRow, recent map[string]int) []string {
 		if n := recent[c.name]; n > 0 {
 			more = "+" + fmt.Sprint(n)
 		}
-		out = append(out, padTo("  "+truncName(c.name, w), w+4)+fmt.Sprintf("%7d ", c.n)+warn(fmt.Sprintf("%7s", more)))
+		out = append(out, padTo("  "+core.TruncName(c.name, w), w+4)+fmt.Sprintf("%7d ", c.n)+warn(fmt.Sprintf("%7s", more)))
 	}
 	return out
-}
-
-// truncName cuts name to n columns.
-func truncName(name string, n int) string {
-	r := []rune(name)
-	if len(r) <= n {
-		return name
-	}
-	return string(r[:n-1]) + "…"
 }

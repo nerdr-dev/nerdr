@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,7 +21,7 @@ func TestReviewReuseStaysCurrent(t *testing.T) {
 	m := testModel(t)
 	m.reviewOpen = true
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
-	ticks := []tea.Msg{frameMsg{}, detectMsg{}, infoTickMsg{}}
+	ticks := []tea.Msg{core.FrameMsg{}, core.DetectMsg{}, core.InfoTickMsg{}}
 	for _, k := range []string{"f1", "f2", "f2", "f2", "f3", "f4", "f1", "tab", "down", "up", "enter", "esc"} {
 		m.Update(keyMsg(k))
 		m.View()
@@ -40,7 +41,7 @@ func TestReviewReuseCheckCatchesStale(t *testing.T) {
 	m.View()
 	rm, _ := m.review.Update(keyMsg("f3")) // behind Update's back
 	m.review = rm.(review.Model)
-	m.Update(frameMsg{})
+	m.Update(core.FrameMsg{})
 	defer func() {
 		if r := recover(); r == nil || !strings.Contains(r.(string), "reused") {
 			t.Fatalf("stale panel not caught: %v", r)

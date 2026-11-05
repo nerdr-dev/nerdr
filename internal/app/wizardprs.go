@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -65,7 +66,7 @@ func (w *wizard) loadPRs(m *Model) tea.Cmd {
 		return nil
 	}
 	w.pulls = wizardPRs{repo: r.Path}
-	if got, ok := m.prAll.repos[r.Path]; ok && m.prAll.asked != nil && time.Since(got.at) < m.githubEvery(prAllEvery) {
+	if got, ok := m.prAll.repos[r.Path]; ok && m.prAll.asked != nil && time.Since(got.at) < m.GithubEvery(core.PrAllEvery) {
 		w.setPRs(m, got, m.prAll.asked)
 		return nil
 	}

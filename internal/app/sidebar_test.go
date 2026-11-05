@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // sideModel is testModel with the tabs on the left.
@@ -56,20 +57,20 @@ func TestSidebarArrows(t *testing.T) {
 		t.Fatal("the arrows start on the tabs")
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
-	if m.cur().Name != "logout" || !m.prefix {
-		t.Fatalf("on %s, prefix %v: ↓ goes to the next tab and keeps the prefix", m.cur().Name, m.prefix)
+	if m.Cur().Name != "logout" || !m.prefix {
+		t.Fatalf("on %s, prefix %v: ↓ goes to the next tab and keeps the prefix", m.Cur().Name, m.prefix)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyUp})
-	if m.cur().Name != "login" {
-		t.Fatalf("on %s: ↑ goes to the tab before", m.cur().Name)
+	if m.Cur().Name != "login" {
+		t.Fatalf("on %s: ↑ goes to the tab before", m.Cur().Name)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyLeft})
-	if !m.onGroups || m.cur().Name != "login" {
-		t.Fatalf("← goes to the repositories without going anywhere: on %s", m.cur().Name)
+	if !m.onGroups || m.Cur().Name != "login" {
+		t.Fatalf("← goes to the repositories without going anywhere: on %s", m.Cur().Name)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
-	if m.cur().Name != "parse" {
-		t.Fatalf("on %s: ↓ in the repositories goes to lib", m.cur().Name)
+	if m.Cur().Name != "parse" {
+		t.Fatalf("on %s: ↓ in the repositories goes to lib", m.Cur().Name)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyRight})
 	if m.onGroups {
@@ -84,13 +85,13 @@ func TestSidebarArrows(t *testing.T) {
 func TestSidebarClicks(t *testing.T) {
 	m := sideModel(t)
 	clickOn(t, m, "lib (1)", tea.MouseButtonLeft)
-	if m.cur().Name != "parse" {
-		t.Fatalf("on %s: a click on lib goes there", m.cur().Name)
+	if m.Cur().Name != "parse" {
+		t.Fatalf("on %s: a click on lib goes there", m.Cur().Name)
 	}
 	clickOn(t, m, "app (2)", tea.MouseButtonLeft)
 	clickOn(t, m, "2:logout", tea.MouseButtonLeft)
-	if m.cur().Name != "logout" {
-		t.Fatalf("on %s: a click on logout goes there", m.cur().Name)
+	if m.Cur().Name != "logout" {
+		t.Fatalf("on %s: a click on logout goes there", m.Cur().Name)
 	}
 }
 
@@ -140,8 +141,8 @@ func TestSmallSidebar(t *testing.T) {
 	}
 	m.Update(tea.MouseMsg{X: 2, Y: lights[1], Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
 	m.View()
-	if m.cur().Name != "parse" {
-		t.Fatalf("on %s: a click on lib's light goes there", m.cur().Name)
+	if m.Cur().Name != "parse" {
+		t.Fatalf("on %s: a click on lib's light goes there", m.Cur().Name)
 	}
 
 	// The prefix shows the names over the agent, without resizing it.
@@ -165,9 +166,9 @@ func TestSmallSidebar(t *testing.T) {
 func TestSidebarDetailsOnTheTabsLine(t *testing.T) {
 	m := sideModel(t)
 	m.showDetails = true
-	for _, tb := range m.tabs {
-		tb.info = tabInfo{at: time.Now(), wts: []wtInfo{{add: 120, del: 33}}}
-		tb.info.wts[0].stats.Behind = 4
+	for _, tb := range m.Tabs {
+		tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Add: 120, Del: 33}}}
+		tb.Info.Wts[0].Stats.Behind = 4
 	}
 	m.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	var side []string

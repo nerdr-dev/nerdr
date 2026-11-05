@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -147,19 +148,19 @@ func TestWizardHiddenWhileCreating(t *testing.T) {
 	if m.dialog != other {
 		t.Fatalf("the result went to the wizard opened since: %T", m.dialog)
 	}
-	if m.cur().Name != "login" {
-		t.Fatalf("on %s: the new tab must not take the keyboard", m.cur().Name)
+	if m.Cur().Name != "login" {
+		t.Fatalf("on %s: the new tab must not take the keyboard", m.Cur().Name)
 	}
-	nt := m.tabs[len(m.tabs)-1]
+	nt := m.Tabs[len(m.Tabs)-1]
 	if nt.Name != "new" || len(nt.Messages) != 1 || nt.Goal != "do it" {
 		t.Fatalf("the new tab and its task: %+v", nt.Tab)
 	}
 
 	m.dialog = nil
-	n := len(m.tabs)
+	n := len(m.Tabs)
 	m.Update(wizardMsg{w: w, plan: plan, err: errors.New("no fetch")})
-	if len(m.tabs) != n || !strings.Contains(m.toastText, "no fetch") {
-		t.Fatalf("a failure is told, and opens nothing: %d tabs, toast %q", len(m.tabs), m.toastText)
+	if len(m.Tabs) != n || !strings.Contains(m.toastText, "no fetch") {
+		t.Fatalf("a failure is told, and opens nothing: %d tabs, toast %q", len(m.Tabs), m.toastText)
 	}
 }
 
@@ -231,14 +232,14 @@ func TestWizardGroupName(t *testing.T) {
 		t.Fatalf("shift+tab should go back to the branch, field %d", w.field)
 	}
 
-	tb := &tab{}
+	tb := &core.Tab{}
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/a"}, {Repo: "/r/b"}}
-	if tb.group() != multiGroup {
-		t.Fatalf("unnamed group = %q", tb.group())
+	if tb.GroupName() != core.MultiGroup {
+		t.Fatalf("unnamed group = %q", tb.GroupName())
 	}
 	tb.Group = "platform"
-	if tb.group() != "platform" {
-		t.Fatalf("named group = %q", tb.group())
+	if tb.GroupName() != "platform" {
+		t.Fatalf("named group = %q", tb.GroupName())
 	}
 }
 
@@ -249,17 +250,17 @@ func TestWizardGroupName(t *testing.T) {
 func TestGroupNameKeptAndRenamed(t *testing.T) {
 	m := tabsModel(t)
 	wts := []workspace.Worktree{{Repo: "/r/a"}, {Repo: "/r/b"}}
-	open := func(group string) *tab {
-		t := &tab{Tab: state.Tab{ID: newTabID(), Name: "feat", Dir: "/w/feat-a-b", Worktrees: wts}}
-		t.Group = m.rememberGroup(t.Dir, group, wts) // as addTab does, without starting an agent
-		m.tabs = append(m.tabs, t)
+	open := func(group string) *core.Tab {
+		t := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: core.NewTabID(), Name: "feat", Dir: "/w/feat-a-b", Worktrees: wts}}}
+		t.Group = m.RememberGroup(t.Dir, group, wts) // as addTab does, without starting an agent
+		m.Tabs = append(m.Tabs, t)
 		return t
 	}
 	m.closeTab(open("platform"), false, false, nil)
 
 	again := open("")
-	if again.group() != "platform" {
-		t.Fatalf("opened again: group %q", again.group())
+	if again.GroupName() != "platform" {
+		t.Fatalf("opened again: group %q", again.GroupName())
 	}
 
 	m.openWizard()
@@ -273,18 +274,18 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 	m.dialog = nil
 
 	m.renameGroup("platform", "infra")
-	if again.group() != "infra" || m.groupNames["/w/feat-a-b"] != "infra" {
-		t.Fatalf("renamed: group %q, kept %q", again.group(), m.groupNames["/w/feat-a-b"])
+	if again.GroupName() != "infra" || m.GroupNames["/w/feat-a-b"] != "infra" {
+		t.Fatalf("renamed: group %q, kept %q", again.GroupName(), m.GroupNames["/w/feat-a-b"])
 	}
 	m.renameGroup("infra", "")
-	if again.group() != multiGroup {
-		t.Fatalf("renamed to nothing: group %q", again.group())
+	if again.GroupName() != core.MultiGroup {
+		t.Fatalf("renamed to nothing: group %q", again.GroupName())
 	}
 
 	// Deleting the worktrees forgets the name.
-	m.renameGroup(multiGroup, "infra")
+	m.renameGroup(core.MultiGroup, "infra")
 	m.closeTab(again, true, true, nil)
-	if _, ok := m.groupNames["/w/feat-a-b"]; ok {
+	if _, ok := m.GroupNames["/w/feat-a-b"]; ok {
 		t.Fatal("the name of deleted worktrees should be forgotten")
 	}
 }
@@ -294,7 +295,7 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 // closes it, not going back to the repository list it never showed.
 func TestWizardForARepoClosesOnEsc(t *testing.T) {
 	m := tabsModel(t)
-	repo := filepath.Join(m.root, "app")
+	repo := filepath.Join(m.Root, "app")
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -322,14 +323,14 @@ func TestWizardForARepoClosesOnEsc(t *testing.T) {
 // or cloning one too; with none, at the form for a new one.
 func TestNewRepoPicksFromTheRepositoriesFirst(t *testing.T) {
 	m := tabsModel(t)
-	m.cfg.RepoDirs = []string{m.root}
+	m.Cfg.RepoDirs = []string{m.Root}
 	m.openNewRepoDialog()
 	if w, ok := m.dialog.(*wizard); !ok || w.repoDir == "" || w.step != stepNewRepo {
 		t.Fatalf("with no repositories it should open at the new one's form: %T", m.dialog)
 	}
 
 	m.dialog = nil
-	if err := os.MkdirAll(filepath.Join(m.root, "app", ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(m.Root, "app", ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	m.openNewRepoDialog()
@@ -413,8 +414,8 @@ func TestWizardScrollsLongLists(t *testing.T) {
 	m := tabsModel(t)
 	// Folders too long for a line, as a Mac's temporary ones are: their
 	// headings take two rows each.
-	m.root = "/" + strings.Repeat("folder/", 15) + "code"
-	m.wtRoot = m.root + "/worktrees"
+	m.Root = "/" + strings.Repeat("folder/", 15) + "code"
+	m.WtRoot = m.Root + "/worktrees"
 	m.openWizard()
 	w := m.dialog.(*wizard)
 	w.repos = []workspace.Repo{{Name: "app", Path: "/r/app"}}

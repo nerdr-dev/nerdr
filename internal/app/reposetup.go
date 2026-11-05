@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,18 +17,12 @@ import (
 // shown to the user before a worktree is made with it, the first time and
 // each time it has changed, and done only once they allow it.
 
-// setupAllowedFile is where the .nerdr.toml files the user allowed are
-// kept, beside the sessions.
-func setupAllowedFile() string {
-	return filepath.Join(filepath.Dir(state.Dir()), "setup-allowed.json")
-}
-
 // askRepoSetup goes on with then once the user has said whether the
 // .nerdr.toml of each of repos may be done, asking first about those not
 // yet allowed as they are now. The dialog open, a wizard or the spinoff
 // one, is put back for then.
 func (m *Model) askRepoSetup(repos []string, then func(m *Model) tea.Cmd) tea.Cmd {
-	file := setupAllowedFile()
+	file := core.SetupAllowedFile()
 	ask := workspace.ToAllow(file, repos)
 	if len(ask) == 0 {
 		return then(m)

@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // Layouts: the ways the screen can be laid out, each set by a key in the
@@ -45,7 +46,7 @@ var layouts = []layout{
 // startLayout lays the screen out as the config's layout setting says,
 // before nerdr has a window size: only the fields, no resize.
 func (m *Model) startLayout() {
-	switch m.cfg.Layout {
+	switch m.Cfg.Layout {
 	case "wide":
 		m.reviewOpen, m.reviewWidth = true, agentWideReview
 	case "small":
@@ -54,7 +55,7 @@ func (m *Model) startLayout() {
 		m.reviewOpen = false
 	case "panel":
 		m.reviewOpen, m.reviewZoom = true, true
-		m.focus = focusReview
+		m.focus = core.FocusReview
 		m.review = m.review.SetFocused(true)
 	default: // "normal"
 		m.reviewOpen = true
@@ -73,7 +74,7 @@ func (m *Model) currentLayout() string {
 		return "a"
 	case m.reviewWidth == agentWideReview:
 		return "+"
-	case m.reviewWidth == m.cfg.PanelWidth:
+	case m.reviewWidth == m.Cfg.PanelWidth:
 		return "="
 	}
 	return ""
@@ -88,21 +89,21 @@ func (m *Model) setLayout(k string) tea.Cmd {
 	switch k {
 	case "=", "+":
 		m.reviewOpen, m.reviewZoom = true, false
-		m.reviewWidth = m.cfg.PanelWidth
+		m.reviewWidth = m.Cfg.PanelWidth
 		if k == "+" {
 			m.reviewWidth = agentWideReview
 		}
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 	case "a":
 		m.reviewOpen, m.reviewZoom = false, false
 		if m.split != nil {
 			m.split = nil
 			m.saveSession()
 		}
-		m.setFocus(focusAgent)
+		m.setFocus(core.FocusAgent)
 	case "z":
 		m.reviewOpen, m.reviewZoom = true, true
-		m.setFocus(focusReview)
+		m.setFocus(core.FocusReview)
 	case "v":
 		if m.splitShown() {
 			return nil
@@ -131,10 +132,10 @@ type layoutPicker struct {
 type layoutSnapshot struct {
 	reviewOpen, reviewZoom bool
 	reviewWidth            int
-	split                  *tab
+	split                  *core.Tab
 	splitLeft              bool
-	focus                  focusArea
-	active                 *tab
+	focus                  core.FocusArea
+	active                 *core.Tab
 }
 
 func (m *Model) openLayouts() tea.Cmd {
@@ -142,7 +143,7 @@ func (m *Model) openLayouts() tea.Cmd {
 		reviewOpen: m.reviewOpen, reviewZoom: m.reviewZoom,
 		reviewWidth: m.reviewWidth,
 		split:       m.split, splitLeft: m.splitLeft,
-		focus: m.focus, active: m.cur(),
+		focus: m.focus, active: m.Cur(),
 	}}
 	cur := m.currentLayout()
 	for i, l := range layouts {
@@ -158,7 +159,7 @@ func (m *Model) openLayouts() tea.Cmd {
 func (p *layoutPicker) restore(m *Model) tea.Cmd {
 	b := p.before
 	var cmd tea.Cmd
-	if i := m.tabIndex(b.active); i >= 0 && b.active != m.cur() {
+	if i := m.TabIndex(b.active); i >= 0 && b.active != m.Cur() {
 		cmd = m.selectTab(i) // two agents moved the keyboard to the neighbour
 	}
 	splitChanged := m.split != b.split
@@ -166,7 +167,7 @@ func (p *layoutPicker) restore(m *Model) tea.Cmd {
 	m.split, m.splitLeft = b.split, b.splitLeft
 	// Not setFocus: it would also take the zoom back off.
 	m.focus = b.focus
-	m.review = m.review.SetFocused(b.focus == focusReview)
+	m.review = m.review.SetFocused(b.focus == core.FocusReview)
 	if splitChanged {
 		m.saveSession()
 	}

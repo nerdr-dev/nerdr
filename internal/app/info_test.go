@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/proc"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -34,13 +35,13 @@ func TestTabFollowsItsWorktreesBranch(t *testing.T) {
 		state.Tab{ID: "a", Name: "old", Dir: dir, Worktrees: wts},
 		state.Tab{ID: "b", Name: "mine", Dir: dir, Worktrees: append([]workspace.Worktree(nil), wts...)},
 	)
-	for _, tb := range m.tabs {
-		m.setInfo(infoMsg{id: tb.ID, info: lookAt(tb.Worktrees, tb.info, false, false)})
+	for _, tb := range m.Tabs {
+		m.setInfo(core.InfoMsg{Id: tb.ID, Info: core.LookAt(tb.Worktrees, tb.Info, false, false)})
 	}
-	if a := m.tabs[0]; a.Name != "new" || a.Worktrees[0].Branch != "new" {
+	if a := m.Tabs[0]; a.Name != "new" || a.Worktrees[0].Branch != "new" {
 		t.Fatalf("tab named after its branch: name %q branch %q", a.Name, a.Worktrees[0].Branch)
 	}
-	if b := m.tabs[1]; b.Name != "mine" || b.Worktrees[0].Branch != "new" {
+	if b := m.Tabs[1]; b.Name != "mine" || b.Worktrees[0].Branch != "new" {
 		t.Fatalf("renamed tab: name %q branch %q", b.Name, b.Worktrees[0].Branch)
 	}
 }
@@ -70,39 +71,39 @@ func TestLookSkipsGitWhenNothingChanged(t *testing.T) {
 		}
 		return n
 	}
-	first := lookAt(wts, tabInfo{}, false, true)
-	if first.fullAt.IsZero() || first.stamp == "" {
+	first := core.LookAt(wts, core.TabInfo{}, false, true)
+	if first.FullAt.IsZero() || first.Stamp == "" {
 		t.Fatal("the first look should run git, and keep a stamp")
 	}
 	before := gitCalls()
-	again := lookAt(wts, first, false, true)
-	if gitCalls() != before || again.fullAt != first.fullAt {
+	again := core.LookAt(wts, first, false, true)
+	if gitCalls() != before || again.FullAt != first.FullAt {
 		t.Fatalf("nothing changed, yet %d git calls", gitCalls()-before)
 	}
 	time.Sleep(10 * time.Millisecond)
 	gitIn("commit", "-q", "--allow-empty", "-m", "two")
 	before = gitCalls()
-	if after := lookAt(wts, again, false, true); gitCalls() == before || after.fullAt == first.fullAt {
+	if after := core.LookAt(wts, again, false, true); gitCalls() == before || after.FullAt == first.FullAt {
 		t.Fatal("a commit should have the branch looked at with git")
 	}
 
 	m := testModel(t)
-	tb := m.cur()
-	tb.info = tabInfo{at: time.Now(), fullAt: time.Now()}
+	tb := m.Cur()
+	tb.Info = core.TabInfo{At: time.Now(), FullAt: time.Now()}
 	if skip, _ := m.maySkip(tb, time.Now()); !skip {
 		t.Fatal("a quiet tab, looked at just now, may skip")
 	}
-	tb.status = stWorking
+	tb.Light = core.StWorking
 	if skip, _ := m.maySkip(tb, time.Now()); skip {
 		t.Fatal("a working agent edits files no watch reports")
 	}
-	tb.status = stIdle
-	tb.info.stale = true
+	tb.Light = core.StIdle
+	tb.Info.Stale = true
 	if skip, _ := m.maySkip(tb, time.Now()); skip {
 		t.Fatal("a look asked for should run git")
 	}
-	tb.info.stale = false
-	if skip, _ := m.maySkip(tb, time.Now().Add(fullInfoEvery)); skip {
+	tb.Info.Stale = false
+	if skip, _ := m.maySkip(tb, time.Now().Add(core.FullInfoEvery)); skip {
 		t.Fatal("git should run after fullInfoEvery anyway")
 	}
 }
@@ -112,8 +113,8 @@ func TestLookSkipsGitWhenNothingChanged(t *testing.T) {
 func TestLineCountsOnTheActiveTabOnly(t *testing.T) {
 	m := testModel(t)
 	m.showDetails = true
-	for _, x := range m.tabs[:2] {
-		x.info = tabInfo{at: time.Now(), wts: []wtInfo{{repo: "/r/app", add: 12, del: 3}}}
+	for _, x := range m.Tabs[:2] {
+		x.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", Add: 12, Del: 3}}}
 		x.Messages = []state.Message{{Text: "later"}}
 	}
 	bar := ansi.Strip(m.View())
@@ -129,37 +130,38 @@ func TestPushAndOpenPRWhenThereIsSomethingToDo(t *testing.T) {
 	open := github.Status{State: "OPEN"}
 	cases := []struct {
 		name         string
-		wi           wtInfo
+		wi           core.WtInfo
 		push, openPR bool
 	}{
-		{"all pushed, no PR", wtInfo{stats: workspace.Stats{Ahead: 2}}, false, true},
-		{"unpushed, open PR", wtInfo{stats: workspace.Stats{Ahead: 2}, unpushed: 1, pr: open, hasPR: true}, true, false},
-		{"nothing ahead", wtInfo{}, false, false},
-		{"merged PR, new commits", wtInfo{stats: workspace.Stats{Ahead: 1}, unpushed: 1, pr: github.Status{State: "MERGED"}, hasPR: true}, true, true},
+		{"all pushed, no PR", core.WtInfo{Stats: workspace.Stats{Ahead: 2}}, false, true},
+		{"unpushed, open PR", core.WtInfo{Stats: workspace.Stats{Ahead: 2}, Unpushed: 1, Pr: open, HasPR: true}, true, false},
+		{"nothing ahead", core.WtInfo{}, false, false},
+		{"merged PR, new commits", core.WtInfo{Stats: workspace.Stats{Ahead: 1}, Unpushed: 1, Pr: github.Status{State: "MERGED"}, HasPR: true}, true, true},
 	}
 	for _, c := range cases {
-		in := tabInfo{wts: []wtInfo{c.wi}, at: at}
-		if in.canPush() != c.push || in.canOpenPR() != c.openPR {
-			t.Errorf("%s: push %v, open PR %v; want %v, %v", c.name, in.canPush(), in.canOpenPR(), c.push, c.openPR)
+		in := core.TabInfo{Wts: []core.WtInfo{c.wi}, At: at}
+		if in.CanPush() != c.push || in.CanOpenPR() != c.openPR {
+			t.Errorf("%s: push %v, open PR %v; want %v, %v", c.name, in.CanPush(), in.CanOpenPR(), c.push, c.openPR)
 		}
 	}
-	if in := (tabInfo{}); !in.canPush() || !in.canOpenPR() {
+	if in := (core.TabInfo{}); !in.CanPush() || !in.CanOpenPR() {
 		t.Error("before the branches are looked at, p and c should not be greyed")
 	}
 }
 
 func TestGitHubEveryScalesWithTheSetting(t *testing.T) {
 	m := &Model{}
-	if got := m.githubEvery(idlePREvery); got != idlePREvery {
-		t.Fatalf("unset, the interval is %v, not %v", got, idlePREvery)
+	m.Client = m
+	if got := m.GithubEvery(core.IdlePREvery); got != core.IdlePREvery {
+		t.Fatalf("unset, the interval is %v, not %v", got, core.IdlePREvery)
 	}
-	m.cfg.GitHubRefresh = config.DefaultGitHubRefresh
-	if got := m.githubEvery(prEvery); got != prEvery {
-		t.Fatalf("at the default, the tab on screen is asked every %v, not %v", got, prEvery)
+	m.Cfg.GitHubRefresh = config.DefaultGitHubRefresh
+	if got := m.GithubEvery(core.PrEvery); got != core.PrEvery {
+		t.Fatalf("at the default, the tab on screen is asked every %v, not %v", got, core.PrEvery)
 	}
-	m.cfg.GitHubRefresh = 180
-	if got := m.githubEvery(prWatchEvery); got != 2*prWatchEvery {
-		t.Fatalf("at 180, the watch asks every %v, not %v", got, 2*prWatchEvery)
+	m.Cfg.GitHubRefresh = 180
+	if got := m.GithubEvery(core.PrWatchEvery); got != 2*core.PrWatchEvery {
+		t.Fatalf("at 180, the watch asks every %v, not %v", got, 2*core.PrWatchEvery)
 	}
 }
 
@@ -184,18 +186,18 @@ func TestLocalCommitUnmergesCachedPR(t *testing.T) {
 	gitIn("commit", "-q", "--allow-empty", "-m", "work")
 	head := gitIn("rev-parse", "HEAD")
 	wts := []workspace.Worktree{{Repo: dir, Path: dir, Branch: "brew"}}
-	prev := lookAt(wts, tabInfo{}, false, false)
-	prev.wts[0].pr = github.Status{Number: 16, State: "MERGED", HeadOID: head, Base: "main"}
-	prev.wts[0].hasPR = true
-	if !prev.merged() {
+	prev := core.LookAt(wts, core.TabInfo{}, false, false)
+	prev.Wts[0].Pr = github.Status{Number: 16, State: "MERGED", HeadOID: head, Base: "main"}
+	prev.Wts[0].HasPR = true
+	if !prev.Merged() {
 		t.Fatal("the branch at its merged PR's head should be merged")
 	}
-	if again := lookAt(wts, prev, false, false); !again.merged() {
+	if again := core.LookAt(wts, prev, false, false); !again.Merged() {
 		t.Fatal("a look with nothing changed took the merged PR away")
 	}
 	gitIn("commit", "-q", "--allow-empty", "-m", "more work")
-	now := lookAt(wts, prev, false, false)
-	if now.merged() || !now.wts[0].hasPR || now.wts[0].pr.After != 1 {
-		t.Fatalf("after a commit: merged %v, PR %+v %v", now.merged(), now.wts[0].pr, now.wts[0].hasPR)
+	now := core.LookAt(wts, prev, false, false)
+	if now.Merged() || !now.Wts[0].HasPR || now.Wts[0].Pr.After != 1 {
+		t.Fatalf("after a commit: merged %v, PR %+v %v", now.Merged(), now.Wts[0].Pr, now.Wts[0].HasPR)
 	}
 }

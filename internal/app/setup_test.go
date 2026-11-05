@@ -12,6 +12,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -26,12 +27,12 @@ func TestSkillsGoToTheAgentsOwnFolders(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	m := tabsModel(t)
-	m.cfg.Install = config.InstallHome
-	m.cfg.Agents = map[agents.Kind]agents.Spec{
+	m.Cfg.Install = config.InstallHome
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{
 		agents.Claude:  {Command: []string{"sh"}},
 		agents.Copilot: {Command: []string{"sh"}},
 	}
-	note := m.applySkills()
+	note := m.ApplySkills()
 	for _, dir := range []string{".claude/skills", ".copilot/skills"} {
 		if _, err := os.Stat(filepath.Join(home, dir, "nerdr-explain", "SKILL.md")); err != nil {
 			t.Errorf("no skill in ~/%s: %v", dir, err)
@@ -40,7 +41,7 @@ func TestSkillsGoToTheAgentsOwnFolders(t *testing.T) {
 	if !strings.Contains(note, "~/.claude/skills") {
 		t.Errorf("the toast should say where: %q", note)
 	}
-	if note := m.applySkills(); note != "" {
+	if note := m.ApplySkills(); note != "" {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
 }
@@ -67,18 +68,18 @@ func TestClaudeIsToldAboutSpinoff(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	m := testModel(t)
-	tb := m.cur()
+	tb := m.Cur()
 	for _, set := range []string{config.InstallHome, config.InstallWorktree} {
-		m.cfg.Install = set
-		args := m.claudeNote(tb)
+		m.Cfg.Install = set
+		args := m.ClaudeNote(tb)
 		if len(args) != 2 || args[0] != "--append-system-prompt" || !strings.Contains(args[1], "nerdr-spinoff") {
 			t.Fatalf("skills %s: %q", set, args)
 		}
 	}
 	// Off, nerdr installs nothing: the note only when the agent has the
 	// skill where it looks, put there by the user.
-	m.cfg.Install = config.InstallOff
-	if args := m.claudeNote(tb); args != nil {
+	m.Cfg.Install = config.InstallOff
+	if args := m.ClaudeNote(tb); args != nil {
 		t.Fatalf("skills off, spinoff nowhere: %q", args)
 	}
 	if !strings.Contains(ansi.Strip(strings.Join(m.skillsBody(tb, 100, 60), "\n")), "cannot find") {
@@ -88,19 +89,19 @@ func TestClaudeIsToldAboutSpinoff(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.skills.at = time.Time{} // look again
-	if args := m.claudeNote(tb); len(args) != 2 {
+	if args := m.ClaudeNote(tb); len(args) != 2 {
 		t.Fatalf("skills off, spinoff in place: %q", args)
 	}
 	if strings.Contains(ansi.Strip(strings.Join(m.skillsBody(tb, 100, 60), "\n")), "cannot find") {
 		t.Fatal("F4 still says the skills are missing")
 	}
-	m.cfg.Install = ""
-	if args := m.claudeNote(tb); args != nil {
+	m.Cfg.Install = ""
+	if args := m.ClaudeNote(tb); args != nil {
 		t.Fatalf("not set up yet: no skill to point to, %q", args)
 	}
-	m.cfg.Install = config.InstallHome
-	m.cfg.EnabledSkills = []string{"nerdr-explain"}
-	if args := m.claudeNote(tb); args != nil {
+	m.Cfg.Install = config.InstallHome
+	m.Cfg.EnabledSkills = []string{"nerdr-explain"}
+	if args := m.ClaudeNote(tb); args != nil {
 		t.Fatalf("disabled spinoff still injected: %v", args)
 	}
 }
@@ -110,7 +111,7 @@ func TestFirstStartTurnsAllSkillsOnAndF6ChangesThem(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := testModel(t)
-	for _, tb := range m.tabs {
+	for _, tb := range m.Tabs {
 		tb.Dir = t.TempDir()
 		tb.Worktrees = nil
 	}
@@ -127,12 +128,12 @@ func TestFirstStartTurnsAllSkillsOnAndF6ChangesThem(t *testing.T) {
 		t.Fatalf("location not saved: %q %v", cfg.Install, err)
 	}
 	for _, sk := range []string{"nerdr-explain", "nerdr-spinoff"} {
-		if !m.cfg.SkillEnabled(sk) || !cfg.SkillEnabled(sk) {
+		if !m.Cfg.SkillEnabled(sk) || !cfg.SkillEnabled(sk) {
 			t.Fatalf("%s should be on after the first start", sk)
 		}
 	}
 	// Use real temporary paths before synchronising skills to the tabs.
-	for _, tb := range m.tabs {
+	for _, tb := range m.Tabs {
 		tb.Dir = t.TempDir()
 		tb.Worktrees = nil
 	}
@@ -142,10 +143,10 @@ func TestFirstStartTurnsAllSkillsOnAndF6ChangesThem(t *testing.T) {
 		t.Fatalf("F4 did not disable: %v", err)
 	}
 	// Off, F4 still turns them on and off: they are taken to be in place.
-	m.cfg.Install = config.InstallOff
+	m.Cfg.Install = config.InstallOff
 	m.skillsKey(keyMsg(" "))
-	if m.dialog != nil || !m.cfg.SkillEnabled("nerdr-explain") {
-		t.Fatalf("F4 with skills off: dialog %T, explain on %v", m.dialog, m.cfg.SkillEnabled("nerdr-explain"))
+	if m.dialog != nil || !m.Cfg.SkillEnabled("nerdr-explain") {
+		t.Fatalf("F4 with skills off: dialog %T, explain on %v", m.dialog, m.Cfg.SkillEnabled("nerdr-explain"))
 	}
 	m.skillsKey(keyMsg("s"))
 	sd, ok := m.dialog.(*settings)
@@ -162,20 +163,20 @@ func TestFirstStartAsksWhereWorktreesGo(t *testing.T) {
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := testModel(t)
-	for _, tb := range m.tabs {
+	for _, tb := range m.Tabs {
 		tb.Dir = t.TempDir()
 		tb.Worktrees = nil
 	}
 	m.openSetup(nil)
 	d := m.dialog.(*setupDialog)
-	if d.field != setupWorktrees || d.worktrees.Value() != config.DefaultWorktreesDir {
+	if d.field != core.SetupWorktrees || d.worktrees.Value() != config.DefaultWorktreesDir {
 		t.Fatalf("field %d, value %q", d.field, d.worktrees.Value())
 	}
 	d.worktrees.SetValue("~/wt")
 	for _, step := range []struct {
 		key  string
 		want int
-	}{{"tab", setupSkills}, {"tab", setupNotes}, {"shift+tab", setupSkills}, {"shift+tab", setupWorktrees}, {"shift+tab", setupNotes}} {
+	}{{"tab", core.SetupSkills}, {"tab", core.SetupNotes}, {"shift+tab", core.SetupSkills}, {"shift+tab", core.SetupWorktrees}, {"shift+tab", core.SetupNotes}} {
 		d.key(m, keyMsg(step.key))
 		if d.field != step.want {
 			t.Fatalf("%s: field %d, want %d", step.key, d.field, step.want)
@@ -191,8 +192,8 @@ func TestFirstStartAsksWhereWorktreesGo(t *testing.T) {
 	}
 	d.key(m, keyMsg("enter"))
 	want := filepath.Join(home, "wt")
-	if m.wtRoot != want {
-		t.Fatalf("wtRoot %q, want %q", m.wtRoot, want)
+	if m.WtRoot != want {
+		t.Fatalf("wtRoot %q, want %q", m.WtRoot, want)
 	}
 	if cfg, err := config.Load(); err != nil || !cfg.WorktreesDirSet() || cfg.WorktreesDir != want || cfg.Install != config.InstallOff {
 		t.Fatalf("not saved: %q %q %v", cfg.WorktreesDir, cfg.Install, err)
@@ -206,16 +207,16 @@ func TestOpenCodePluginGoesWithTheSkills(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	m := tabsModel(t)
-	m.cfg.Install = config.InstallHome
-	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.OpenCode: {Command: []string{"sh"}}}
-	note := m.applySkills()
+	m.Cfg.Install = config.InstallHome
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.OpenCode: {Command: []string{"sh"}}}
+	note := m.ApplySkills()
 	if _, err := os.Stat(hooks.OpenCodePluginHome(home)); err != nil {
 		t.Fatalf("no plugin in the home folder: %v", err)
 	}
 	if !strings.Contains(note, "~/.config/opencode/plugins/nerdr.js") {
 		t.Errorf("the toast should say where: %q", note)
 	}
-	if note := m.applySkills(); note != "" {
+	if note := m.ApplySkills(); note != "" {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
 
@@ -225,9 +226,9 @@ func TestOpenCodePluginGoesWithTheSkills(t *testing.T) {
 	}
 	m = tabsModel(t, state.Tab{ID: "1", Name: "w", Agent: "opencode", Dir: dir,
 		Worktrees: []workspace.Worktree{{Repo: dir, Path: dir, Branch: "main"}}})
-	m.cfg.Install = config.InstallWorktree
-	tb := m.cur()
-	m.installProjectSkills(tb)
+	m.Cfg.Install = config.InstallWorktree
+	tb := m.Cur()
+	m.InstallProjectSkills(tb)
 	if _, err := os.Stat(hooks.OpenCodePluginProject(tb.Dir)); err != nil {
 		t.Fatalf("no plugin in the tab's folder: %v", err)
 	}
@@ -239,7 +240,7 @@ func TestOpenCodePluginGoesWithTheSkills(t *testing.T) {
 // The codex on the PATH is never asked to trust nerdr's hooks by a test:
 // it would write the user's config. A fake one, by its path, is.
 func init() {
-	trustCodex = func(argv, env []string, write bool) (bool, bool, error) {
+	core.TrustCodex = func(argv, env []string, write bool) (bool, bool, error) {
 		if len(argv) > 0 && !filepath.IsAbs(argv[0]) {
 			return false, false, errors.New("no codex in tests")
 		}
@@ -311,23 +312,23 @@ func TestCodexGetsNerdrsHooksOnceTrusted(t *testing.T) {
 	}
 
 	m := paneModel(t)
-	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
 	m.SetHookSocket("/run/nerdr.sock")
-	tb := m.cur()
-	m.cfg.Install = config.InstallWorktree
-	m.newAgent(tb, agents.Codex)
+	tb := m.Cur()
+	m.Cfg.Install = config.InstallWorktree
+	m.NewAgent(tb, agents.Codex)
 	if args := startedWith(); !strings.Contains(args, "--no-daemon") || strings.Contains(args, "hook codex") {
 		t.Fatalf("untrusted hooks passed, or not a codex of its own: %q", args)
 	}
 
-	m.cfg.Install = config.InstallHome
-	if note := m.applySkills(); !strings.Contains(note, "~/.codex/config.toml") {
+	m.Cfg.Install = config.InstallHome
+	if note := m.ApplySkills(); !strings.Contains(note, "~/.codex/config.toml") {
 		t.Errorf("the toast should say codex's config was written: %q", note)
 	}
-	if note := m.applySkills(); note != "" {
+	if note := m.ApplySkills(); note != "" {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
-	m.newAgent(tb, agents.Codex)
+	m.NewAgent(tb, agents.Codex)
 	if args := startedWith(); !strings.Contains(args, "hooks.Stop=") || !strings.Contains(args, "hook codex") {
 		t.Fatalf("trusted hooks not passed: %q", args)
 	}
@@ -360,27 +361,27 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 	}
 
 	m := paneModel(t)
-	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.Copilot: {Command: []string{cmd}}}
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Copilot: {Command: []string{cmd}}}
 	m.SetHookSocket("/run/nerdr.sock")
-	m.cfg.Install = config.InstallHome
-	note := m.applySkills()
+	m.Cfg.Install = config.InstallHome
+	note := m.ApplySkills()
 	if !hooks.HasCopilotPlugin(hooks.CopilotPluginHome(home)) {
 		t.Fatal("no plugin in the home folder")
 	}
 	if !strings.Contains(note, "~/.copilot/nerdr-plugin") {
 		t.Errorf("the toast should say where: %q", note)
 	}
-	if note := m.applySkills(); note != "" {
+	if note := m.ApplySkills(); note != "" {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
-	tb := m.cur()
-	m.newAgent(tb, agents.Copilot)
+	tb := m.Cur()
+	m.NewAgent(tb, agents.Copilot)
 	if args := startedWith(); !strings.Contains(args, "--plugin-dir\n"+hooks.CopilotPluginHome(home)+"\n") {
 		t.Fatalf("not given the plugin: %q", args)
 	}
 
-	m.cfg.Install = config.InstallOff
-	m.newAgent(tb, agents.Copilot)
+	m.Cfg.Install = config.InstallOff
+	m.NewAgent(tb, agents.Copilot)
 	if args := startedWith(); strings.Contains(args, "--plugin-dir") {
 		t.Fatalf("given the plugin with the skills off: %q", args)
 	}
@@ -391,15 +392,15 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 	}
 	m = tabsModel(t, state.Tab{ID: "1", Name: "w", Agent: "copilot", Dir: repo,
 		Worktrees: []workspace.Worktree{{Repo: repo, Path: repo, Branch: "main"}}})
-	m.cfg.Install = config.InstallWorktree
-	tb = m.cur()
-	tb.sandboxed = true
-	m.installProjectSkills(tb)
-	if got := m.copilotPlugin(tb); got != hooks.CopilotPluginProject(repo) {
+	m.Cfg.Install = config.InstallWorktree
+	tb = m.Cur()
+	tb.InSandbox = true
+	m.InstallProjectSkills(tb)
+	if got := m.CopilotPlugin(tb); got != hooks.CopilotPluginProject(repo) {
 		t.Fatalf("plugin for the sandboxed tab: %q", got)
 	}
-	tb.sandboxed = false
-	if got := m.copilotPlugin(tb); got == hooks.CopilotPluginProject(repo) || got == "" {
+	tb.InSandbox = false
+	if got := m.CopilotPlugin(tb); got == hooks.CopilotPluginProject(repo) || got == "" {
 		t.Fatalf("unsandboxed copilot should use state-dir plugin, not worktree: %q", got)
 	}
 	if out, err := exec.Command("git", "-C", repo, "status", "--porcelain", "--untracked-files=all").Output(); err != nil || strings.Contains(string(out), "nerdr-plugin") {
@@ -415,9 +416,9 @@ func TestAgyHooksGoWithTheSkills(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	m := tabsModel(t)
-	m.cfg.Install = config.InstallHome
-	m.cfg.Agents = map[agents.Kind]agents.Spec{agents.Antigravity: {Command: []string{"sh"}}, agents.Grok: {Command: []string{"sh"}}}
-	note := m.applySkills()
+	m.Cfg.Install = config.InstallHome
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Antigravity: {Command: []string{"sh"}}, agents.Grok: {Command: []string{"sh"}}}
+	note := m.ApplySkills()
 	if b, err := os.ReadFile(hooks.AgyHooksHome(home)); err != nil || !strings.Contains(string(b), "hook agy") {
 		t.Fatalf("no hooks in the home folder: %v %s", err, b)
 	}
@@ -430,7 +431,7 @@ func TestAgyHooksGoWithTheSkills(t *testing.T) {
 	if !strings.Contains(note, "~/.gemini/config/hooks.json") {
 		t.Errorf("the toast should say where: %q", note)
 	}
-	if note := m.applySkills(); note != "" {
+	if note := m.ApplySkills(); note != "" {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
 
@@ -441,15 +442,15 @@ func TestAgyHooksGoWithTheSkills(t *testing.T) {
 		}
 		return dir
 	}
-	tabIn := func(dir string) (*Model, *tab) {
+	tabIn := func(dir string) (*Model, *core.Tab) {
 		m := tabsModel(t, state.Tab{ID: "1", Name: "w", Agent: "agy", Dir: dir,
 			Worktrees: []workspace.Worktree{{Repo: dir, Path: dir, Branch: "main"}}})
-		m.cfg.Install = config.InstallWorktree
-		return m, m.cur()
+		m.Cfg.Install = config.InstallWorktree
+		return m, m.Cur()
 	}
 	dir := repo()
 	m, tb := tabIn(dir)
-	m.installProjectSkills(tb)
+	m.InstallProjectSkills(tb)
 	if b, err := os.ReadFile(hooks.AgyHooksProject(dir)); err != nil || !strings.Contains(string(b), "hook agy") {
 		t.Fatalf("no hooks in the tab's folder: %v %s", err, b)
 	}
@@ -465,7 +466,7 @@ func TestAgyHooksGoWithTheSkills(t *testing.T) {
 		t.Fatalf("git add: %v %s", err, out)
 	}
 	m, tb = tabIn(dir)
-	m.installProjectSkills(tb)
+	m.InstallProjectSkills(tb)
 	if b, _ := os.ReadFile(kept); string(b) != "{}\n" {
 		t.Fatalf("the repository's hooks file was changed:\n%s", b)
 	}
