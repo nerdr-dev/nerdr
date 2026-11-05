@@ -36,7 +36,7 @@ func TestTabFollowsItsWorktreesBranch(t *testing.T) {
 		state.Tab{ID: "b", Name: "mine", Dir: dir, Worktrees: append([]workspace.Worktree(nil), wts...)},
 	)
 	for _, tb := range m.Tabs {
-		m.setInfo(core.InfoMsg{Id: tb.ID, Info: core.LookAt(tb.Worktrees, tb.Info, false, false)})
+		m.SetInfo(core.InfoMsg{Id: tb.ID, Info: core.LookAt(tb.Worktrees, tb.Info, false, false)})
 	}
 	if a := m.Tabs[0]; a.Name != "new" || a.Worktrees[0].Branch != "new" {
 		t.Fatalf("tab named after its branch: name %q branch %q", a.Name, a.Worktrees[0].Branch)
@@ -90,20 +90,20 @@ func TestLookSkipsGitWhenNothingChanged(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
 	tb.Info = core.TabInfo{At: time.Now(), FullAt: time.Now()}
-	if skip, _ := m.maySkip(tb, time.Now()); !skip {
+	if skip, _ := m.MaySkip(tb, time.Now()); !skip {
 		t.Fatal("a quiet tab, looked at just now, may skip")
 	}
 	tb.Light = core.StWorking
-	if skip, _ := m.maySkip(tb, time.Now()); skip {
+	if skip, _ := m.MaySkip(tb, time.Now()); skip {
 		t.Fatal("a working agent edits files no watch reports")
 	}
 	tb.Light = core.StIdle
 	tb.Info.Stale = true
-	if skip, _ := m.maySkip(tb, time.Now()); skip {
+	if skip, _ := m.MaySkip(tb, time.Now()); skip {
 		t.Fatal("a look asked for should run git")
 	}
 	tb.Info.Stale = false
-	if skip, _ := m.maySkip(tb, time.Now().Add(core.FullInfoEvery)); skip {
+	if skip, _ := m.MaySkip(tb, time.Now().Add(core.FullInfoEvery)); skip {
 		t.Fatal("git should run after fullInfoEvery anyway")
 	}
 }

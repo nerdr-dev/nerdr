@@ -375,7 +375,7 @@ func (m *Model) onReposChanged(msg reposChangedMsg) tea.Cmd {
 		}
 	}
 	m.SaveSession()
-	m.findOverlaps()
+	m.FindOverlaps()
 	m.resizePanes()
 	m.reportHerdr() // its group may have changed
 	switch {
@@ -386,7 +386,7 @@ func (m *Model) onReposChanged(msg reposChangedMsg) tea.Cmd {
 	default:
 		m.toast(t.Name + ": " + msg.done())
 	}
-	cmds = append(cmds, m.pinReview(), m.syncPRPanel(), m.refreshInfo(), m.resize())
+	cmds = append(cmds, m.pinReview(), m.syncPRPanel(), fromCore(m.RefreshInfo()), m.resize())
 	return tea.Batch(cmds...)
 }
 

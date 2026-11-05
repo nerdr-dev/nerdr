@@ -96,7 +96,7 @@ func TestLookAfterCommitIsNotLost(t *testing.T) {
 		Worktrees: []workspace.Worktree{{Path: repo, Repo: repo, Branch: "main"}}})
 	tb := m.Cur()
 	tb.LookAgain(false)
-	before := m.refreshInfo()
+	before := fromCore(m.RefreshInfo())
 	if before == nil {
 		t.Fatal("a look starts")
 	}

@@ -236,9 +236,6 @@ type Model struct {
 	landed  time.Time
 	looking bool
 
-	infoBusy    bool
-	overlaps    map[string][]core.Overlap
-	shared      map[string]map[string][]string
 	showDetails bool
 	hideGroups  bool // the repository row put away; see showGroups
 	sideBar     bool // the repositories and tabs left of the body; see sidebar.go
@@ -267,7 +264,6 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		splitWidth:  50,
 		Wake:        make(chan struct{}, 1),
 		lastInGroup: map[string]core.TabRef{},
-		overlaps:    map[string][]core.Overlap{},
 		showDetails: *cfg.TabDetails,
 		sideBar:     cfg.TabBar == "left" || cfg.TabBar == "left-small",
 		sideSmall:   cfg.TabBar == "left-small",
@@ -484,12 +480,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 	case core.InfoTickMsg:
 		m.toastDenied()
-		return tea.Batch(m.configCheck(), m.refreshInfo(), m.tickPRs(time.Now()), m.tickIssues(time.Now()), m.syncPRPanel(),
+		return tea.Batch(m.configCheck(), fromCore(m.RefreshInfo()), m.tickPRs(time.Now()), m.tickIssues(time.Now()), m.syncPRPanel(),
 			m.sleepIdle(time.Now()), fromCore(core.InfoTick()))
-
-	case core.InfoMsg:
-		m.setInfo(msg)
-		return m.refreshInfo()
 
 	case sentMsg:
 		m.onSent(msg)
@@ -901,7 +893,12 @@ func (m *Model) pinReview() tea.Cmd {
 func (m *Model) shareOverlaps() {
 	var shared map[string][]string
 	if t := m.Cur(); t != nil {
-		shared = m.shared[t.ID]
+		for k, names := range m.Shared[t.ID] {
+			if shared == nil {
+				shared = map[string][]string{}
+			}
+			shared[review.SharedKey(k.Repo, k.File)] = names
+		}
 	}
 	m.review = m.review.SetShared(shared)
 	var counts []int

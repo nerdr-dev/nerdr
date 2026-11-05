@@ -99,7 +99,7 @@ func (m *Model) prDone(msg prActionMsg) tea.Cmd {
 	if msg.t == m.Cur() {
 		pr = m.review.ReloadPR() // F2 shows the new PR at once
 	}
-	return tea.Batch(m.refreshInfo(), pr)
+	return tea.Batch(fromCore(m.RefreshInfo()), pr)
 }
 
 func pushAll(t *core.Tab, wts []workspace.Worktree, hooks bool) prActionMsg {
@@ -321,7 +321,7 @@ func (p *tabPanel) tabNotes(m *Model) []string {
 	if t.Info.Merged() {
 		lines = append(lines, "", keyHint("merged")+" — closing the tab ("+m.pk("x")+") can delete the branch too.")
 	}
-	if ov := m.overlaps[t.ID]; len(ov) > 0 {
+	if ov := m.Overlaps[t.ID]; len(ov) > 0 {
 		lines = append(lines, "", warn("Also changed in other tabs — expect merge conflicts:"))
 		// The branches are enough to know what to merge with what; the
 		// files would fill the screen.

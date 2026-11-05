@@ -63,13 +63,16 @@ type Core struct {
 	// SandboxedDirs are the worktree folders where a sandboxed agent has
 	// run, kept across tab close and reopen.
 	SandboxedDirs map[string]bool
-	// infoBusy is set while a tab's branches are being looked at; see
-	// info.go. overlaps is, per tab id, the other tabs changing some of
-	// the same files, and shared the same by file, for the review panel's
-	// file list. showDetails shows that state in the tab bar.
 	// hookSock is the socket herdr's integrations in the agents report to,
 	// and hookBin nerdr itself, for those that report through the CLI.
 	HookSock, HookBin string
+	// InfoBusy is set while a tab's branches are being looked at; see
+	// RefreshInfo. Overlaps is, per tab id, the other tabs changing some of
+	// the same files, and Shared the same by file, for the review panel's
+	// file list.
+	InfoBusy bool
+	Overlaps map[string][]Overlap
+	Shared   map[string]map[FileKey][]string
 	// CodexHooks are the arguments that give codex nerdr's hooks, once
 	// codex trusts them, and codexAsked whether it has been asked; see
 	// codexHookArgs.

@@ -157,7 +157,7 @@ func (m *Model) branchKey(k string) (tea.Cmd, bool) {
 	case "r":
 		// The panel reloads the PR too: the key goes on to it.
 		p.t.LookAgain(true)
-		return m.refreshInfo(), false
+		return fromCore(m.RefreshInfo()), false
 	}
 	return nil, false
 }
@@ -175,7 +175,7 @@ func (m *Model) syncPRPanel() tea.Cmd {
 	if branch && !m.branchShown {
 		if t := m.Cur(); t != nil {
 			t.LookAgain(false)
-			look = m.refreshInfo()
+			look = fromCore(m.RefreshInfo())
 		}
 	}
 	m.branchShown = branch
