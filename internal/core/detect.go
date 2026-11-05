@@ -123,10 +123,18 @@ func (a *Agent) Classify(visible bool, now time.Time) {
 			a.IdleSince = now
 		}
 	}
+	if a.AwaitWork || a.Pane.Inputs() > 0 {
+		a.Tasked = true
+	}
 	a.Raw = res.State
 	switch res.State {
 	case detect.Working:
-		a.Worked, a.Begun = true, true
+		// Agents animate during startup too. Only work after a task
+		// was given can leave an unseen result for the user.
+		if a.Tasked {
+			a.Worked = true
+		}
+		a.Begun = true
 		a.AwaitWork, a.QueuePaused = false, false
 		if hooked && a.Hook.Processes > 0 {
 			a.SetStatus(StBackground)
