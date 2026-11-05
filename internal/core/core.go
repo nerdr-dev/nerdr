@@ -1,6 +1,7 @@
 package core
 
 import (
+	"sync"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
@@ -79,6 +80,15 @@ var _ Client = NoClient{}
 
 // Core is nerdr with no user interface: the tabs, and what goes on in them.
 type Core struct {
+	// Mu guards all of Core; see Loop.
+	Mu sync.Mutex
+	// Quitting is set once the program is on its way out.
+	Quitting bool
+	// Gen counts the events the loop has handled as core's: a client that
+	// drew something from core's state at one Gen need not again while it
+	// is the same.
+	Gen uint64
+
 	// Client is told what the user is to see; see Client.
 	Client Client
 

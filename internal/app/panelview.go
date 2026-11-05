@@ -72,6 +72,7 @@ func (m *Model) panelBody(w, h int) []string {
 	if !m.reviewReuse || m.reviewView == "" || m.review.BranchPR() {
 		m.review = m.reviewSet(m.review, w)
 		m.reviewView = m.review.View()
+		m.reviewGen = m.Gen
 	} else if reuseCheck {
 		if v := m.reviewSet(m.review, w).View(); v != m.reviewView {
 			panic(fmt.Sprintf("review panel reused, but it has changed:\n--- reused\n%s\n--- now\n%s", ansi.Strip(m.reviewView), ansi.Strip(v)))

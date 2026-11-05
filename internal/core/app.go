@@ -53,19 +53,8 @@ type FrameMsg struct{}
 
 type DetectMsg struct{}
 
-// WaitFrame waits for a pane to draw, then gives it a moment to finish
-// the burst so one frame shows the lot.
-func WaitFrame(wake chan struct{}) Cmd {
-	return func() Event {
-		<-wake
-		time.Sleep(16 * time.Millisecond)
-		return FrameMsg{}
-	}
-}
-
-func DetectTick() Cmd {
-	return Tick(300*time.Millisecond, func(time.Time) Event { return DetectMsg{} })
-}
+// DetectEvery is how often the agents are looked at.
+const DetectEvery = 300 * time.Millisecond
 
 // Cur is the active tab, or nil when there are none.
 func (m *Core) Cur() *Tab {

@@ -11,7 +11,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
-	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -25,6 +24,9 @@ import (
 // panes' goroutines hold on to it (notify), so it must not be copied.
 type Model struct {
 	core.Core
+	// Loop runs core on its own goroutine, once the program has started; nil
+	// in tests that drive Update by hand.
+	Loop       *core.Loop
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
@@ -64,7 +66,10 @@ type Model struct {
 	// costly part of the screen. See reuseCheck.
 	reviewView  string
 	reviewReuse bool
-	reviewOpen  bool
+	// reviewGen is core's Gen when the panel was last drawn anew: core,
+	// on its own goroutine, may have changed what it shows since.
+	reviewGen  uint64
+	reviewOpen bool
 	// screenTab is the tab whose screen the review panel shows; see
 	// pinReview.
 	screenTab  *core.Tab
@@ -238,8 +243,6 @@ type Model struct {
 	tabRows   map[string]*barRow
 	roomAsked bool
 
-	// quitting is set once the program is on its way out.
-	quitting bool
 	shutdown sync.Once
 }
 
@@ -325,10 +328,16 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 // Init starts the restored tabs' agents, or the new-tab wizard when there
 // are none.
 func (m *Model) Init() tea.Cmd {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+	// Core's own ticks wait on Mu until this is done.
+	if m.Loop != nil {
+		m.Loop.Start()
+	}
 	// A title of its own, which a terminal that names its tab after the
 	// program running in it can show in place of the one running last
 	// under nerdr: its shells and git.
-	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init(), fromCore(core.WaitFrame(m.Wake)), fromCore(core.DetectTick()), fromCore(core.InfoTick())}
+	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init(), fromCore(core.InfoTick())}
 	if m.Cfg.Install == "" {
 		// The first start: where the worktrees, the skills and plugins and the notes
 		// go, before anything else. The new-tab dialog follows when there
@@ -365,10 +374,15 @@ func isKey(msg tea.Msg, k string) bool {
 
 // Update handles one message.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if p, ok := msg.(core.PanicMsg); ok {
+		panic(p.String()) // here, where the terminal is put back
+	}
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 	msgs, rows, side := m.panelMessages(), m.barRows(), m.sideW()
 	switch msg.(type) {
-	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg:
-		m.reviewReuse = true
+	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg, core.RedrawMsg:
+		m.reviewReuse = m.Gen == m.reviewGen
 	default:
 		m.reviewReuse = false
 	}
@@ -406,10 +420,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) update(msg tea.Msg) tea.Cmd {
-	if m.quitting {
+	if m.Quitting {
 		return m.whileQuitting(msg)
 	}
+	if cmd, ok := m.Handle(msg); ok {
+		return fromCore(cmd)
+	}
 	switch msg := msg.(type) {
+	case core.ChangedMsg, core.RedrawMsg:
+		return nil // only to draw what core has done
+
 	case tea.WindowSizeMsg:
 		if msg.Width == m.width && msg.Height == m.height {
 			return nil // the size asked for again below, unchanged
@@ -428,13 +448,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.CheckShells()
 		m.checkPluginUIs()
 		m.checkCopied()
-		return fromCore(core.WaitFrame(m.Wake))
+		return nil
 
 	case core.DetectMsg:
-		return tea.Batch(m.detect(), fromCore(core.DetectTick()))
-
-	case hooks.Report:
-		return fromCore(m.OnReport(msg))
+		return m.detect()
 
 	case core.SpinoffMsg:
 		return m.spinoffMade(msg)
@@ -446,9 +463,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case core.ToastMsg:
 		m.toast(string(msg))
 		return nil
-
-	case core.TabMadeMsg:
-		return fromCore(m.TabMade(msg))
 
 	case searchReadMsg:
 		m.onSearchRead(msg)
@@ -469,43 +483,15 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.setInfo(msg)
 		return m.refreshInfo()
 
-	case core.HeadsMsg:
-		m.SetHeads(msg)
-		return nil
-
-	case core.SummaryMsg:
-		m.OnSummary(msg.S)
-		return nil
-
-	case core.ClaimMsg:
-		m.OnClaim(msg)
-		return nil
-
-	case core.GoalMsg:
-		msg.T.GoalLooking = false
-		m.SetGoal(msg.T, msg.Goal)
-		m.SetLatest(msg.T, msg.Latest)
-		return nil
-
 	case sentMsg:
 		m.onSent(msg)
-		if m.router != nil {
-			m.router.PrefixSeen()
-		}
 		return nil
-
-	case core.SkillUseMsg:
-		m.OnSkillUse(msg)
-		return nil
-
-	case core.RecapMsg:
-		if !m.Live(msg.T) {
-			return nil
-		}
-		return fromCore(m.LookUpGoal(msg.T))
 
 	case input.PrefixMsg:
 		m.startPrefix()
+		if m.router != nil {
+			m.router.PrefixSeen()
+		}
 		return nil
 
 	case tea.FocusMsg:
@@ -592,20 +578,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.dialog = &explainDialog{e: msg}
 		return nil
 
-	case core.LaunchMsg:
-		if !m.Live(msg.T) || msg.Kind != msg.T.Agent {
-			return nil // closed or switched while its conversation was being looked up
-		}
-		if msg.Handoff != "" {
-			// First, ahead of what was waiting for the agent before.
-			msg.T.Messages = append([]state.Message{{Text: msg.Handoff, Auto: true, Sandboxed: msg.Sandboxed}}, msg.T.Messages...)
-			m.saveSession()
-		}
-		return fromCore(m.Spawn(msg.T, msg.L, msg.Resume))
-
-	case core.ModelsMsg:
-		return fromCore(m.OnModels(msg))
-
 	case commitFilesMsg:
 		m.onCommitFiles(msg)
 		return nil
@@ -642,10 +614,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if m.dialog == msg.c {
 			msg.c.shown = true
 		}
-		return nil
-
-	case core.SendEnter:
-		m.SendEnter(msg)
 		return nil
 
 	case promptEnterMsg:
@@ -708,28 +676,15 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 // moved to just before (a /clear), one found for it. A report waiting
 // for an answer is told why there is none.
 func (m *Model) whileQuitting(msg tea.Msg) tea.Cmd {
+	if _, ok := m.Handle(msg); ok {
+		return nil
+	}
 	switch msg := msg.(type) {
 	case quitReadyMsg:
 		return tea.Quit
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		return m.resize()
-	case core.FrameMsg:
-		return fromCore(core.WaitFrame(m.Wake))
-	case hooks.Report:
-		if msg.Reply != nil {
-			core.Answerer(msg)(hooks.Answer{Err: "nerdr is quitting"})
-			return nil
-		}
-		if m.SandboxRefusal(m.Vouch(msg)) != "" {
-			return nil
-		}
-		switch msg.Method {
-		case hooks.ReportAgent, hooks.ReportAgentSession:
-			m.HookSession(msg)
-		}
-	case core.ClaimMsg:
-		m.OnClaim(msg)
 	}
 	return nil
 }
@@ -753,7 +708,7 @@ func (m *Model) syncInput() {
 		}
 	}
 	t := m.Cur()
-	if m.quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil {
+	if m.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil {
 		m.router.Passthrough(nil)
 		return
 	}
@@ -1046,14 +1001,22 @@ func (m *Model) toast(s string) {
 // start resumes them. It runs with the program no longer updating the
 // model: after it has ended, or in a test.
 func (m *Model) Shutdown() {
-	m.shutdown.Do(func() { core.StopPanes(m.stopping(), m.Herdr) })
+	if m.Loop != nil {
+		m.Loop.Stop()
+	}
+	m.shutdown.Do(func() {
+		m.Mu.Lock()
+		panes := m.stopping()
+		m.Mu.Unlock()
+		core.StopPanes(panes, m.Herdr)
+	})
 }
 
 // stopping saves the session and lists every program to stop, there and
 // then: what reads the model is done before the programs are stopped,
 // which takes a while and runs out of the screen's way when quitting.
 func (m *Model) stopping() []*term.Pane {
-	m.quitting = true
+	m.Quitting = true
 	m.saveSession()
 	var panes []*term.Pane
 	for _, t := range m.Tabs {

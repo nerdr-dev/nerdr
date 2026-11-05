@@ -127,6 +127,8 @@ func statusTip(s core.Status) string {
 // View draws the screen, and notes where its zones ended up for the
 // mouse; see zones.go.
 func (m *Model) View() string {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
 	if m.sameFrame && m.frame != "" {
 		m.sameFrame = false
 		return m.frame
