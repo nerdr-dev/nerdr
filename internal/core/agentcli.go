@@ -504,7 +504,7 @@ func (m *Core) TabMade(msg TabMadeMsg) Cmd {
 	}
 	t, cmd := m.AddTabWith(msg.Plan.Branch, msg.Plan.Dir, group, msg.Wts, msg.Kind, msg.Model, msg.Task, msg.Confined)
 	m.Client.ResizePanes()
-	note := "made " + t.Name + " for " + m.Client.AgentName(msg.From)
+	note := "made " + t.Name + " for " + m.AgentName(msg.From)
 	if len(msg.Warnings) > 0 {
 		note += "; " + strings.Join(msg.Warnings, "; ")
 	}
@@ -568,7 +568,7 @@ func (m *Core) OnClose(r hooks.Report) Cmd {
 			return nil
 		}
 	}
-	name := m.Client.PaneName(o, p)
+	name := m.PaneName(o, p)
 	if p.Kind == PaneShell {
 		name = TerminalName(p)
 	}

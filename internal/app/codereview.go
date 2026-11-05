@@ -176,8 +176,8 @@ func (m *Model) addReviewer(t *core.Tab, by core.Reviewer) tea.Cmd {
 	if model != "" {
 		with += " (" + model + ")"
 	}
-	core.Debugf("review %s: %s started", m.agentName(t), with)
-	m.toast(m.agentName(t) + ": " + with + " reviews " + string(t.Agent) + "'s work, in a pane beside it")
+	core.Debugf("review %s: %s started", m.AgentName(t), with)
+	m.toast(m.AgentName(t) + ": " + with + " reviews " + string(t.Agent) + "'s work, in a pane beside it")
 	return fromCore(cmd)
 }
 

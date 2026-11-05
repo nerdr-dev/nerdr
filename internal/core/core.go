@@ -42,14 +42,10 @@ type Client interface {
 	// Detect looks at every agent again, at once.
 	Detect() Cmd
 
-	// AgentName, PaneName, ScreenKey and KeyName are what the user knows
-	// things by, for messages.
-	AgentName(a *Tab) string
-	PaneName(t *Tab, p *PaneTab) string
+	// ScreenKey and KeyName are what the user knows things by, for
+	// messages.
 	ScreenKey(screen int) string
 	KeyName(command string) string
-	// SkillOn reports whether a skill is on for t.
-	SkillOn(t *Tab, skill string) bool
 
 	// EnsurePluginUI has p's screen running, as allowed with key, in t;
 	// PluginEvent tells a plugin's screen of a run; ShowPluginRun shows the
@@ -104,6 +100,9 @@ type Core struct {
 	// skillUse is how much the agents have used each skill, for F4; see
 	// skilluse.go.
 	SkillUse SkillUse
+	// SkillLook is the last look at where an agent has the skills; see
+	// SkillStates.
+	SkillLook SkillLook
 	// hookSockErr is why there is no hookSock, when there is not.
 	HookSockErr string
 
@@ -150,7 +149,6 @@ type NoClient struct{}
 
 func (NoClient) Toast(_ string)                           {}
 func (NoClient) Notice(_ string)                          {}
-func (NoClient) AgentName(_ *Tab) string                  { return "" }
 func (NoClient) AgentVisible(_ *Tab) bool                 { return false }
 func (NoClient) Detect() Cmd                              { return nil }
 func (NoClient) DropPane(_ *Tab, _ *PaneTab)              {}
@@ -168,16 +166,14 @@ func (NoClient) ScreenKey(_ int) string                   { return "" }
 func (NoClient) SetFocus(_ FocusArea)                     {}
 func (NoClient) ShareOverlaps()                           {}
 func (NoClient) ShellSize(_ *Tab, _ *PaneTab) (int, int)  { return 0, 0 }
-func (NoClient) SkillOn(_ *Tab, _ string) bool            { return false }
 func (NoClient) StopScrolling()                           {}
 func (NoClient) TabSize(_ *Tab) (int, int)                { return 0, 0 }
 
 func (NoClient) AskRepoSetup(_ []string, _ func() Cmd) Cmd { return nil }
 
-func (NoClient) DialogClosed() bool                 { return false }
-func (NoClient) OpenSpinoff(_ *Tab) Cmd             { return nil }
-func (NoClient) OpenSwitchAgent() Cmd               { return nil }
-func (NoClient) PaneName(_ *Tab, _ *PaneTab) string { return "" }
+func (NoClient) DialogClosed() bool     { return false }
+func (NoClient) OpenSpinoff(_ *Tab) Cmd { return nil }
+func (NoClient) OpenSwitchAgent() Cmd   { return nil }
 
 // AskPluginRun has it ask again: only a user can say yes.
 func (NoClient) AskPluginRun(_ *Tab, _ plugin.Plugin, _ map[string]any, _ string, _ bool, decide func(answer string) Cmd) {

@@ -22,7 +22,7 @@ func (m *Core) AskHandoff(t *Tab, k agents.Kind) {
 	t.Handoff = w
 	m.Client.SaveSession()
 	m.Client.ResizePanes() // the panel says it is waiting
-	m.Toast(m.Client.AgentName(t) + ": asked " + string(t.Agent) + " for a handoff to " + string(k))
+	m.Toast(m.AgentName(t) + ": asked " + string(t.Agent) + " for a handoff to " + string(k))
 }
 
 // cancelHandoff gives up the switch t is waiting on, with the request
@@ -104,7 +104,7 @@ func (m *Core) SwitchAgent(t *Tab, k agents.Kind, summary string) Cmd {
 	m.Client.SetFocus(FocusAgent)
 	m.Client.SaveSession()
 	m.Client.ResizePanes()
-	m.Toast(m.Client.AgentName(t) + ": switched to " + string(k))
+	m.Toast(m.AgentName(t) + ": switched to " + string(k))
 	specs, id, dir, tabID := m.SpecsFor(t), t.SessionID, t.Dir, t.ID
 	skip, shared := m.OthersSessions(t), m.SharesKind(t)
 	worktree := dir
@@ -199,6 +199,6 @@ func (m *Core) OnHandoff(r hooks.Report) Cmd {
 	if t == m.CurAgent() && m.Client.DialogClosed() {
 		return m.Client.OpenSwitchAgent()
 	}
-	m.Toast(m.Client.AgentName(t) + ": " + string(t.Agent) + " wrote a handoff; " + m.Client.KeyName("a s") + " switches the agent")
+	m.Toast(m.AgentName(t) + ": " + string(t.Agent) + " wrote a handoff; " + m.Client.KeyName("a s") + " switches the agent")
 	return nil
 }

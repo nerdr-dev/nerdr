@@ -152,7 +152,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 			name := t.Name
 			if a != t {
 				if p := a.PaneOf(); p != nil {
-					name += " · " + m.paneName(t, p)
+					name += " · " + m.PaneName(t, p)
 				}
 			}
 			all = append(all, row{name, string(a.Agent), r})

@@ -22,10 +22,6 @@ import (
 // and with their use counted in the active tab or in all tabs; and what else
 // the agent reads when it starts (see skillcontext.go).
 
-// skillsCheckEvery is how long a look at the skills folders is trusted:
-// the screen is drawn on every frame, and the files hardly ever change.
-const skillsCheckEvery = 2 * time.Second
-
 // skillsChangedNote is what a change of a skill means for the running agents.
 const skillsChangedNote = "Skills saved. Claude notices by itself; other agents at their next start. Text they already read stays in their conversation."
 
@@ -39,7 +35,8 @@ const (
 
 // skillsView is the F4 screen's state: the list shown, the row picked on
 // each, how far its text is scrolled, whether use is counted over all tabs,
-// and the last look at where the tab's agent has the skills and what it reads.
+// and the last look at what the tab's agent reads. Where it has the skills is
+// core's SkillLook.
 type skillsView struct {
 	cursor, scroll int
 	list           int
@@ -48,12 +45,6 @@ type skillsView struct {
 	allTabs        bool
 
 	context core.ContextView
-
-	key    string // the tab and agent looked for
-	at     time.Time
-	found  []string
-	states []skills.State
-	others []skills.Local
 }
 
 // panelSkills reports whether the review panel shows the skills.
@@ -117,7 +108,7 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		m.Cfg.EnabledSkills = enabled
 		note := m.ApplySkills()
-		v.at = time.Time{}
+		m.SkillLook.At = time.Time{}
 		m.toast(strings.TrimSpace(skillsChangedNote + " " + note))
 	case "s":
 		return m.openSettingsAt("install")
@@ -129,56 +120,6 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// skillStates is where the agent of t has each skill, and in what state,
-// looked up again when the last look is old or was for another tab.
-func (m *Model) skillStates(t *core.Tab) ([]string, []skills.State) {
-	all := skills.All()
-	v := &m.skills
-	key := ""
-	if t != nil {
-		key = t.ID + "/" + string(t.Agent) + "/" + t.Dir
-	}
-	if key == v.key && time.Since(v.at) < skillsCheckEvery && len(v.states) == len(all) {
-		return v.found, v.states
-	}
-	v.key, v.at = key, time.Now()
-	v.found, v.states = make([]string, len(all)), make([]skills.State, len(all))
-	v.others = nil
-	if t == nil {
-		return v.found, v.states
-	}
-	home, _ := os.UserHomeDir()
-	dirs := skills.Dirs(home, t.Dir, t.Agent)
-	v.others = skills.Others(dirs)
-	for i, s := range all {
-		file, st := s.Find(dirs)
-		v.found[i], v.states[i] = core.TildePath(file, home), st
-	}
-	return v.found, v.states
-}
-
-// skillOn is whether tab t's agent can use the skill called name: it is
-// turned on and, with skills "off", where the agent looks for skills, as
-// nerdr then puts none in place. What uses a skill is offered only then.
-func (m *Model) skillOn(t *core.Tab, name string) bool {
-	if !m.Cfg.SkillEnabled(name) {
-		return false
-	}
-	if m.Cfg.Install != config.InstallOff {
-		return true
-	}
-	if t == nil {
-		return false
-	}
-	_, states := m.skillStates(t)
-	for i, s := range skills.All() {
-		if s.Name == name {
-			return states[i] != skills.Missing
-		}
-	}
-	return false
-}
-
 // skillsMissing is how many of the skills turned on t's agent cannot find
 // when nerdr puts none in place, and so are not used.
 func (m *Model) skillsMissing(t *core.Tab) int {
@@ -187,7 +128,7 @@ func (m *Model) skillsMissing(t *core.Tab) int {
 	}
 	n := 0
 	for _, s := range skills.All() {
-		if m.Cfg.SkillEnabled(s.Name) && !m.skillOn(t, s.Name) {
+		if m.Cfg.SkillEnabled(s.Name) && !m.SkillOn(t, s.Name) {
 			n++
 		}
 	}
@@ -312,7 +253,7 @@ func (m *Model) nerdrSkillsList(t *core.Tab, tot map[string]*core.SkillTotal, te
 	all := skills.All()
 	v := &m.skills
 	v.cursor = min(max(v.cursor, 0), len(all)-1)
-	found, states := m.skillStates(t)
+	found, states := m.SkillStates(t)
 	agent := "the agent"
 	if t != nil {
 		agent = string(t.Agent)

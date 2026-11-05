@@ -270,7 +270,7 @@ func (b *inbox) view(m *Model, w, h int) string {
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	var lines []string
 	row := func(i int, t *core.Tab, what string) {
-		line := light(t.AgentLit()) + " " + m.agentName(t) + dim("  "+t.Owner().GroupName()) + "  " + what
+		line := light(t.AgentLit()) + " " + m.AgentName(t) + dim("  "+t.Owner().GroupName()) + "  " + what
 		if m.Cold(t, now) {
 			line = lipgloss.NewStyle().Foreground(groupAccent).Render("❄") + " " + t.Name + dim("  "+t.GroupName()) + "  " + what
 		}
@@ -307,7 +307,7 @@ func (b *inbox) view(m *Model, w, h int) string {
 	}
 	if b.cursor < len(waiting) {
 		t := waiting[b.cursor]
-		name := m.agentName(t)
+		name := m.AgentName(t)
 		lines = append(lines, "", dim("── "+name+" "+strings.Repeat("─", max(inner-lipgloss.Width(name)-4, 0))))
 		for _, l := range core.ScreenTail(t, 6) {
 			lines = append(lines, ansi.Truncate(l, inner, "…"))

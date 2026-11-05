@@ -88,7 +88,7 @@ func TestClaudeIsToldAboutSpinoff(t *testing.T) {
 	if _, err := skills.Install(filepath.Join(home, ".claude", "skills")); err != nil {
 		t.Fatal(err)
 	}
-	m.skills.at = time.Time{} // look again
+	m.SkillLook.At = time.Time{} // look again
 	if args := m.ClaudeNote(tb); len(args) != 2 {
 		t.Fatalf("skills off, spinoff in place: %q", args)
 	}

@@ -36,7 +36,7 @@ func (m *Model) notifyChange(t *core.Tab, visible bool, now time.Time) {
 	default:
 		return
 	}
-	name := m.agentName(t)
+	name := m.AgentName(t)
 	if !m.Cfg.NotifyOn(what) {
 		core.Debugf("notify %s: not sent, notify = %q", name, m.Cfg.Notify)
 		return

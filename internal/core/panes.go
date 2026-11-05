@@ -2,6 +2,7 @@ package core
 
 import (
 	"fmt"
+	"github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"slices"
@@ -750,7 +751,7 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 		if a.Pane != nil {
 			go a.Pane.Close()
 		}
-		name := m.Client.PaneName(t, p)
+		name := m.PaneName(t, p)
 		kept := t.KeepTasks(a)
 		m.Client.DropPane(t, p)
 		m.Client.SaveSession()
@@ -763,4 +764,40 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 	}
 	m.Client.DropPane(t, p)
 	return m.Client.Resize()
+}
+
+// PaneName is what p is called in its frame and in the row.
+func (m *Core) PaneName(t *Tab, p *PaneTab) string {
+	switch p.Kind {
+	case PaneShell:
+		name := "terminal"
+		if p.N > 1 {
+			name += " " + strconv.Itoa(p.N)
+		}
+		if p.Shell != nil {
+			if title := ShellTitle(p.Shell.Title(), t.Dir); title != "" {
+				name += ": " + ansi.Truncate(title, 24, "…")
+			}
+		}
+		return name
+	case PaneReview:
+		if p.A == nil {
+			return "review of " + m.AgentLabel(t, p.Of) + "…"
+		}
+		return string(p.A.Agent) + " reviews " + m.AgentLabel(t, p.Of)
+	}
+	return m.AgentLabel(t, p.A)
+}
+
+// AgentName is how a notification names agent a: its tab's name, and
+// which of its agents it is when not the tab's own.
+func (m *Core) AgentName(a *Tab) string {
+	o := a.Owner()
+	if o == a {
+		return a.Name
+	}
+	if p := a.PaneOf(); p != nil {
+		return o.Name + " · " + m.PaneName(o, p)
+	}
+	return o.Name + " · " + string(a.Agent)
 }

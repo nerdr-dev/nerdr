@@ -243,7 +243,7 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		for _, t := range ts {
 			m.AddMessage(t, d.input.Value(), d.auto)
 		}
-		who := m.agentName(ts[0])
+		who := m.AgentName(ts[0])
 		if d.all && len(ts) > 1 {
 			who = "all " + strconv.Itoa(len(ts)) + " agents of " + d.tab.Name
 		}
