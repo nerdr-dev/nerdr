@@ -36,6 +36,37 @@ func TestPrefixSplitsPassthrough(t *testing.T) {
 	}
 }
 
+// TestKeyAfterPrefixStaysTheProgramsUntilItKnows: between the prefix and the
+// program taking its PrefixMsg, the program may say to pass input through,
+// from something else it handled. The key after the prefix is still its.
+func TestKeyAfterPrefixStaysTheProgramsUntilItKnows(t *testing.T) {
+	r := New(nil, 0x11)
+	var sunk bytes.Buffer
+	sink := func(b []byte) { sunk.Write(b) }
+	r.Passthrough(sink)
+	// The program, busy with something else, says again to pass through as
+	// the prefix goes to it.
+	r.SetSend(func(any) { r.Passthrough(sink) })
+
+	got := make(chan []byte)
+	go func() { b, _ := io.ReadAll(r.pr); got <- b }()
+
+	r.route([]byte("ab\x11x"))
+	r.route([]byte("y"))
+	r.PrefixSeen()
+	r.Passthrough(sink)
+	r.route([]byte("z"))
+	_ = r.pw.Close()
+	app := <-got
+
+	if sunk.String() != "abz" {
+		t.Fatalf("sink got %q", sunk.String())
+	}
+	if string(app) != "xy" {
+		t.Fatalf("app got %q", app)
+	}
+}
+
 func TestSequenceSplitAcrossReadsIsStillTakenOut(t *testing.T) {
 	r := New(nil, 0x11)
 	var sunk bytes.Buffer

@@ -41,6 +41,11 @@ type Router struct {
 	mu   sync.Mutex
 	sink func([]byte)
 	send func(any)
+	// prefixed is set from the prefix key until the program has had its
+	// PrefixMsg (PrefixSeen): until then input stays the program's, however
+	// often the program, not yet knowing of the prefix, says to pass it
+	// through. Guarded by mu, with pass.
+	prefixed bool
 
 	pr *io.PipeReader
 	pw *io.PipeWriter
@@ -87,9 +92,17 @@ func (r *Router) SetSend(send func(any)) {
 // sends everything to bubbletea.
 func (r *Router) Passthrough(sink func([]byte)) {
 	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.sink = sink
-	r.mu.Unlock()
-	r.pass.Store(sink != nil)
+	r.pass.Store(sink != nil && !r.prefixed)
+}
+
+// PrefixSeen says the program has had the PrefixMsg: it decides where input
+// goes from here, with Passthrough.
+func (r *Router) PrefixSeen() {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.prefixed = false
 }
 
 // PassFKeys sends F1-F5 on to the sink as well, rather than to the
@@ -171,7 +184,10 @@ func (r *Router) route(b []byte) {
 			// decides where input goes next. The message is delivered
 			// before the key that follows is written, so the program
 			// always sees them in order.
+			r.mu.Lock()
 			r.pass.Store(false)
+			r.prefixed = send != nil
+			r.mu.Unlock()
 			if send != nil {
 				send(PrefixMsg{})
 			}
