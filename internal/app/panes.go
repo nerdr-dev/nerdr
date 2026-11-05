@@ -40,7 +40,7 @@ import (
 // them is minimised, there to be brought back.
 func (m *Model) rowShown(t *core.Tab) bool {
 	_, w, _ := m.tabArea(t)
-	return len(m.PaneCols(t, w)) < len(t.Panes())
+	return len(m.paneCols(t, w)) < len(t.Panes())
 }
 
 // rowH is the rows the pane row takes over t's panes.
@@ -59,7 +59,7 @@ func (m *Model) dividerAt(t *core.Tab, x, y int) int {
 	if y < m.rowH(t) || y >= ah {
 		return -1
 	}
-	cols := m.PaneCols(t, aw)
+	cols := m.paneCols(t, aw)
 	for i := 0; i+1 < len(cols); i++ {
 		if gap := cols[i].X + cols[i].W; x >= gap-1 && x <= gap+1 {
 			return i
@@ -73,7 +73,7 @@ func (m *Model) dividerAt(t *core.Tab, x, y int) int {
 // the others keep theirs.
 func (m *Model) dragDivider(t *core.Tab, i, x int) tea.Cmd {
 	_, aw, _ := m.tabArea(t)
-	cols := m.PaneCols(t, aw)
+	cols := m.paneCols(t, aw)
 	if i < 0 || i+1 >= len(cols) {
 		return nil
 	}
@@ -94,7 +94,7 @@ func (m *Model) dragDivider(t *core.Tab, i, x int) tea.Cmd {
 // paneShown reports whether p, one of t's panes, is on screen when t is.
 func (m *Model) paneShown(t *core.Tab, p *core.PaneTab) bool {
 	_, w, _ := m.tabArea(t)
-	for _, c := range m.PaneCols(t, w) {
+	for _, c := range m.paneCols(t, w) {
 		if c.P == p {
 			return true
 		}
@@ -136,11 +136,11 @@ func (m *Model) paneTop(p *core.PaneTab, w, h int) int {
 func (m *Model) paneRect(t *core.Tab, p *core.PaneTab) (x, y, w, h int) {
 	ax, aw, ah := m.tabArea(t)
 	ch := max(ah-m.rowH(t), 3)
-	cols := m.PaneCols(t, aw)
+	cols := m.paneCols(t, aw)
 	c := cols[0]
-	if i := slices.IndexFunc(cols, func(o core.PaneCol) bool { return o.P == p }); i >= 0 {
+	if i := slices.IndexFunc(cols, func(o paneCol) bool { return o.P == p }); i >= 0 {
 		c = cols[i]
-	} else if i := slices.IndexFunc(cols, func(o core.PaneCol) bool { return o.P == t.Focused() }); i >= 0 {
+	} else if i := slices.IndexFunc(cols, func(o paneCol) bool { return o.P == t.Focused() }); i >= 0 {
 		c = cols[i]
 	}
 	iw, ih := max(c.W-2, 1), max(ch-2, 1)
@@ -232,7 +232,7 @@ func (m *Model) minimisePane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 	}
 	var other *core.PaneTab
 	_, w, _ := m.tabArea(t)
-	for _, c := range m.PaneCols(t, w) {
+	for _, c := range m.paneCols(t, w) {
 		if c.P != p {
 			other = c.P
 		}
@@ -321,10 +321,10 @@ func (m *Model) openNewAgent() tea.Cmd {
 func (m *Model) paneRow(t *core.Tab, w int) string {
 	bar := lipgloss.NewStyle().Background(tabBarBg)
 	_, aw, _ := m.tabArea(t)
-	cols := m.PaneCols(t, aw)
+	cols := m.paneCols(t, aw)
 	var small []*core.PaneTab
 	for _, p := range t.Panes() {
-		if !slices.ContainsFunc(cols, func(c core.PaneCol) bool { return c.P == p }) {
+		if !slices.ContainsFunc(cols, func(c paneCol) bool { return c.P == p }) {
 			small = append(small, p)
 		}
 	}
@@ -379,7 +379,7 @@ func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 			return run(m)
 		}), tip+" · "+m.pk(keys))
 	}
-	return btn("terminal", "t t", "A terminal in the worktree, in a new pane", func(m *Model) tea.Cmd { return fromCore(m.NewShell()) }) + sp +
+	return btn("terminal", "t t", "A terminal in the worktree, in a new pane", func(m *Model) tea.Cmd { return fromCore(m.newShell()) }) + sp +
 		btn("agent", "t a", "Another agent in the same worktree, in a new conversation", (*Model).openNewAgent) + sp +
 		btn("review", "t r", "A second agent reviews the work of the agent whose pane has the keyboard", (*Model).newReviewPane) + sp
 }
@@ -434,7 +434,7 @@ func (m *Model) openPaneMenu(t *core.Tab, p *core.PaneTab, x, y int) {
 		{label: small, key: "t m", run: func(m *Model) tea.Cmd { return m.minimisePane(t, p) }},
 		{label: "Close", key: "t x", run: func(m *Model) tea.Cmd { return m.askClosePane() }},
 		{label: "New panes"},
-		{label: "Terminal", key: "t t", run: func(m *Model) tea.Cmd { return fromCore(m.NewShell()) }},
+		{label: "Terminal", key: "t t", run: func(m *Model) tea.Cmd { return fromCore(m.newShell()) }},
 		{label: "Agent…", key: "t a", run: func(m *Model) tea.Cmd { return m.openNewAgent() }},
 		{label: "Code review", key: "t r", run: func(m *Model) tea.Cmd { return m.newReviewPane() }, off: m.commandOff("t r")},
 	}
@@ -456,7 +456,7 @@ func (m *Model) paneEnd(t *core.Tab, p *core.PaneTab) string {
 	}
 	out := ""
 	if _, w, _ := m.tabArea(t); !m.rowShown(t) {
-		if cols := m.PaneCols(t, w); cols[len(cols)-1].P == p {
+		if cols := m.paneCols(t, w); cols[len(cols)-1].P == p {
 			out = m.newPaneButtons(t, "") + " "
 		}
 	}
@@ -482,7 +482,7 @@ func (m *Model) tabLines(t *core.Tab, w, h int) []string {
 		out = append(out, m.paneRow(t, w))
 	}
 	ch := h - len(out)
-	cols := m.PaneCols(t, w)
+	cols := m.paneCols(t, w)
 	var body []string
 	for i, c := range cols {
 		lines := m.paneColumn(t, c.P, c.W, ch)
@@ -593,7 +593,7 @@ func (m *Model) paneAt(t *core.Tab, x, y int) (p *core.PaneTab, px, py int, insi
 	if y < m.rowH(t) {
 		return nil, 0, 0, false
 	}
-	for _, c := range m.PaneCols(t, aw) {
+	for _, c := range m.paneCols(t, aw) {
 		if x >= c.X && x < c.X+c.W {
 			p = c.P
 		}
@@ -614,11 +614,11 @@ func (m *Model) cycleFocus() tea.Cmd {
 		return nil
 	}
 	_, w, _ := m.tabArea(t)
-	cols := m.PaneCols(t, w)
+	cols := m.paneCols(t, w)
 	if m.focus == core.FocusReview {
 		return m.focusPane(t, cols[0].P)
 	}
-	i := slices.IndexFunc(cols, func(c core.PaneCol) bool { return c.P == t.Focused() })
+	i := slices.IndexFunc(cols, func(c paneCol) bool { return c.P == t.Focused() })
 	switch {
 	case i+1 < len(cols):
 		return m.focusPane(t, cols[i+1].P)
@@ -637,4 +637,98 @@ func closeLine(a *core.Tab) string {
 		return string(a.Agent) + " has a process running in the background. Closing its pane stops it."
 	}
 	return string(a.Agent) + " is working. Closing its pane stops it mid-turn."
+}
+
+// stepPane moves the keyboard to the pane d along from the one with it,
+// round past the ends; minimised ones are gone to too, and shown.
+func (m *Model) stepPane(d int) core.Cmd {
+	t := m.Cur()
+	if t == nil {
+		return nil
+	}
+	ps := t.Panes()
+	i := slices.Index(ps, t.Focused())
+	return m.Client.FocusPane(t, ps[(i+d+len(ps))%len(ps)])
+}
+
+// movePane moves the pane with the keyboard d places along, to the left
+// for d < 0; not past the ends. The tab's own agent stays first.
+func (m *Model) movePane(d int) core.Cmd {
+	t := m.Cur()
+	if t == nil {
+		return nil
+	}
+	ps := t.Panes()
+	i := slices.Index(ps, t.Focused())
+	if i == 0 {
+		m.Toast(m.AgentLabel(t, t) + " is the tab's first agent: it stays first")
+		return nil
+	}
+	j := i + d
+	if j < 1 || j >= len(ps) {
+		return nil
+	}
+	ps[i], ps[j] = ps[j], ps[i]
+	m.SaveSession()
+	return m.Client.Resize()
+}
+
+// newShell opens a terminal in the active tab's worktree, in a pane of
+// its own, last.
+func (m *Model) newShell() core.Cmd {
+	t := m.Cur()
+	if t == nil {
+		return nil
+	}
+	_, cmd := m.NewShellIn(t, false)
+	return cmd
+}
+
+// paneCols are the panes of t shown in w columns: the one with the
+// keyboard, and as many of the others not minimised as there is room for,
+// those used last first, in the order of the row.
+func (m *Model) paneCols(t *core.Tab, w int) []paneCol {
+	ps := t.Panes()
+	f := t.Focused()
+	open := []*core.PaneTab{f}
+	for _, p := range ps {
+		if p != f && !p.Small {
+			open = append(open, p)
+		}
+	}
+	slices.SortStableFunc(open[1:], func(a, b *core.PaneTab) int { return b.Used.Compare(a.Used) })
+	n := min(len(open), max((w+1)/(m.PaneMinW()+1), 1))
+	shown := open[:n]
+	var out []paneCol
+	for _, p := range ps {
+		if slices.Contains(shown, p) {
+			out = append(out, paneCol{P: p})
+		}
+	}
+	// The room left by the columns between them, shared by weight; each
+	// at least paneMinShare wide.
+	room := w - (len(out) - 1)
+	sum := 0.0
+	for _, c := range out {
+		sum += c.P.Share()
+	}
+	x := 0
+	for i := range out {
+		left := len(out) - 1 - i // panes after this one
+		cw := int(float64(room)*out[i].P.Share()/sum + 0.5)
+		cw = min(max(cw, core.PaneMinShare), w-x-left*(core.PaneMinShare+1))
+		if i == len(out)-1 {
+			cw = w - x
+		}
+		out[i].X, out[i].W = x, cw
+		x += cw + 1
+	}
+	return out
+}
+
+// paneCol is one pane on screen: x and w its columns in the tab's area,
+// its frame included.
+type paneCol struct {
+	P    *core.PaneTab
+	X, W int
 }

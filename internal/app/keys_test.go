@@ -278,15 +278,15 @@ func TestBracketsStepRepositories(t *testing.T) {
 	if len(m.Groups()) < 2 {
 		t.Skip("needs two repositories")
 	}
-	g := m.CurGroup()
+	g := m.curGroup()
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m.handleKey(keyMsg("]"))
-	if m.CurGroup() == g || !m.prefix {
-		t.Fatalf("] should go to the next repository with the prefix kept: %q, prefix %v", m.CurGroup(), m.prefix)
+	if m.curGroup() == g || !m.prefix {
+		t.Fatalf("] should go to the next repository with the prefix kept: %q, prefix %v", m.curGroup(), m.prefix)
 	}
 	m.handleKey(keyMsg("["))
-	if m.CurGroup() != g {
-		t.Fatalf("[ should come back to %q, got %q", g, m.CurGroup())
+	if m.curGroup() != g {
+		t.Fatalf("[ should come back to %q, got %q", g, m.curGroup())
 	}
 }
 
@@ -334,7 +334,7 @@ func TestPushAsksFirst(t *testing.T) {
 // to the pane, not taken for a command that is not there.
 func TestTypingAfterSteppingPanes(t *testing.T) {
 	m := paneModel(t)
-	m.NewShell()
+	m.newShell()
 	m.Update(input.PrefixMsg{})
 	m.Update(keyMsg("t"))
 	m.Update(tea.KeyMsg{Type: tea.KeyLeft})

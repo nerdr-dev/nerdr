@@ -355,7 +355,7 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 // on the right nerdr's messages.
 func (m *Model) groupBar() string {
 	bar := lipgloss.NewStyle().Background(tabBarBg)
-	cur := m.CurGroup()
+	cur := m.curGroup()
 	msg, menuBtn, reserve := m.barStatus()
 
 	gs := m.Groups()
@@ -435,7 +435,7 @@ func (m *Model) tabBar() string {
 	var items []barItem
 	at := 0
 	now := time.Now()
-	g := m.CurGroup()
+	g := m.curGroup()
 	idx := m.GroupTabs(g)
 	for n, i := range idx {
 		t := m.Tabs[i]

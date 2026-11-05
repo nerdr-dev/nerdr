@@ -216,7 +216,7 @@ func (m *Model) startPrefix() {
 	// The arrows start on the tab row, among the repository's own tabs —
 	// unless it has only the one, when ← → can only mean the next
 	// repository.
-	m.onGroups = len(m.Groups()) > 1 && len(m.GroupTabs(m.CurGroup())) < 2
+	m.onGroups = len(m.Groups()) > 1 && len(m.GroupTabs(m.curGroup())) < 2
 }
 
 // navKey is whether k, after the prefix, goes to another tab or moves this
@@ -403,7 +403,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		if k == "left" {
 			delta = -1
 		}
-		if !m.onGroups && len(m.GroupTabs(m.CurGroup())) < 2 && len(m.Groups()) > 1 {
+		if !m.onGroups && len(m.GroupTabs(m.curGroup())) < 2 && len(m.Groups()) > 1 {
 			m.onGroups = true // a tab alone in its repository has no neighbour to go to
 		}
 		if m.onGroups {
@@ -529,7 +529,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	case "t t":
-		return fromCore(m.NewShell())
+		return fromCore(m.newShell())
 	case "t a":
 		return m.openNewAgent()
 	case "t r", "a c":
@@ -542,13 +542,13 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	case "t ←":
-		return fromCore(m.StepPane(-1))
+		return fromCore(m.stepPane(-1))
 	case "t →":
-		return fromCore(m.StepPane(1))
+		return fromCore(m.stepPane(1))
 	case "t ⇧←":
-		return fromCore(m.MovePane(-1))
+		return fromCore(m.movePane(-1))
 	case "t ⇧→":
-		return fromCore(m.MovePane(1))
+		return fromCore(m.movePane(1))
 	case "a s":
 		return m.openSwitchAgent()
 	case "a x":

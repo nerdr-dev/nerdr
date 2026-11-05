@@ -495,7 +495,7 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	} else if m.Tabs[m.Active].Pane != nil {
 		m.Tabs[m.Active].Pane.Focus(true)
 	}
-	m.ReportHerdr()
+	m.reportHerdr()
 	return tea.Batch(cmds...)
 }
 

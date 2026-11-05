@@ -98,7 +98,7 @@ func (m *Model) openMessage(broadcast bool) tea.Cmd {
 	if broadcast {
 		// The active group to start with: a message for all of them is
 		// the usual case ("rebase on main").
-		for _, i := range m.GroupTabs(m.CurGroup()) {
+		for _, i := range m.GroupTabs(m.curGroup()) {
 			d.picked[m.Tabs[i].ID] = true
 		}
 	} else {

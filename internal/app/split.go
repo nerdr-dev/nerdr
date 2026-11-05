@@ -16,7 +16,7 @@ import (
 // Only tabs of one repository share the screen: going to a tab of another
 // ends the split.
 func (m *Model) splitTab() *core.Tab {
-	if m.split == nil || m.split == m.Cur() || m.split.GroupName() != m.CurGroup() {
+	if m.split == nil || m.split == m.Cur() || m.split.GroupName() != m.curGroup() {
 		return nil
 	}
 	if m.TabIndex(m.split) < 0 {
