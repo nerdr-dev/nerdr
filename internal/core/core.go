@@ -22,6 +22,9 @@ type Core struct {
 	// not draw it again while Gen is the same.
 	Gen uint64
 
+	// ID tells this core from the others a client may show, in a TabRef;
+	// "" for the one on this machine.
+	ID string
 	// Client is told what the user is to see; see Client.
 	Client Client
 	// Asking is what waits for the user to answer, the first asked first;

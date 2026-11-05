@@ -62,7 +62,7 @@ type Model struct {
 
 	// lastInGroup is the id of the tab last active in each group, so
 	// moving to a group returns to where you were in it.
-	lastInGroup map[string]string
+	lastInGroup map[string]core.TabRef
 
 	review review.Model
 	// reviewView is the review panel as last drawn. It is drawn again from
@@ -266,7 +266,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		reviewWidth: cfg.PanelWidth,
 		splitWidth:  50,
 		Wake:        make(chan struct{}, 1),
-		lastInGroup: map[string]string{},
+		lastInGroup: map[string]core.TabRef{},
 		overlaps:    map[string][]core.Overlap{},
 		showDetails: *cfg.TabDetails,
 		sideBar:     cfg.TabBar == "left" || cfg.TabBar == "left-small",
@@ -965,7 +965,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	m.scrolling = false
 	t := m.Tabs[i]
 	tracked := m.track() // before seen: a finished agent is summed up as finished
-	m.lastInGroup[t.GroupName()] = t.ID
+	m.lastInGroup[t.GroupName()] = m.Ref(t)
 	m.landed, m.looking = time.Now(), true
 	m.focusTerms(t)
 	if m.split != nil || splitEnded {

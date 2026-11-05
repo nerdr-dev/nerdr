@@ -35,9 +35,9 @@ import (
 // several set, for any of the tabs.
 type messageDialog struct {
 	input textarea.Model
-	// broadcast lists every tab to pick from; picked is by tab id.
+	// broadcast lists every tab to pick from; picked is by tab.
 	broadcast bool
-	picked    map[string]bool
+	picked    map[core.TabRef]bool
 	cursor    int
 	// inList is set while the keys go to the tab list, not the text.
 	inList bool
@@ -90,7 +90,7 @@ func (m *Model) openMessage(broadcast bool) tea.Cmd {
 	d := &messageDialog{
 		input:     newTextArea("what the agent should do next…", min(max(m.width-16, 30), 90)),
 		broadcast: broadcast,
-		picked:    map[string]bool{},
+		picked:    map[core.TabRef]bool{},
 		auto:      m.autoMessage,
 		agent:     m.CurAgent(),
 		tab:       t,
@@ -99,10 +99,10 @@ func (m *Model) openMessage(broadcast bool) tea.Cmd {
 		// The active group to start with: a message for all of them is
 		// the usual case ("rebase on main").
 		for _, i := range m.GroupTabs(m.curGroup()) {
-			d.picked[m.Tabs[i].ID] = true
+			d.picked[m.Ref(m.Tabs[i])] = true
 		}
 	} else {
-		d.picked[t.ID] = true
+		d.picked[m.Ref(t)] = true
 	}
 	m.dialog = d
 	return nil
@@ -162,7 +162,7 @@ func (d *messageDialog) targets(m *Model) []*core.Tab {
 	}
 	var out []*core.Tab
 	for _, t := range m.Tabs {
-		if d.picked[t.ID] {
+		if d.picked[m.Ref(t)] {
 			out = append(out, t)
 		}
 	}
@@ -219,7 +219,7 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		if d.broadcast {
 			m.Enqueue(ts, d.input.Value())
 			m.toast("queued for " + core.Plural(len(ts), "tab") + ": sent to each when it is idle")
-			if d.picked[m.Cur().ID] {
+			if d.picked[m.Ref(m.Cur())] {
 				return m.openMessages()
 			}
 			return nil
@@ -263,13 +263,13 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			d.cursor = min(d.cursor+1, max(len(m.Tabs)-1, 0))
 		case " ", "x", "enter":
 			if d.cursor < len(m.Tabs) {
-				id := m.Tabs[d.cursor].ID
+				id := m.Ref(m.Tabs[d.cursor])
 				d.picked[id] = !d.picked[id]
 			}
 		case "a":
 			all := len(d.targets(m)) < len(m.Tabs)
 			for _, t := range m.Tabs {
-				d.picked[t.ID] = all
+				d.picked[m.Ref(t)] = all
 			}
 		}
 		return nil
@@ -325,8 +325,8 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "", "To:")
 		sel := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 		for i, t := range m.Tabs {
-			line := core.Checkbox(d.picked[t.ID]) + " " + light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName())
-			id := t.ID
+			line := core.Checkbox(d.picked[m.Ref(t)]) + " " + light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName())
+			id := m.Ref(t)
 			lines = append(lines, m.onClick(cursorLine(d.inList && i == d.cursor, line, sel), func(*Model) tea.Cmd {
 				d.cursor = i
 				d.picked[id] = !d.picked[id]

@@ -174,7 +174,7 @@ func TestCold(t *testing.T) {
 }
 
 func TestLeavingAndComingBack(t *testing.T) {
-	m := &Model{lastInGroup: map[string]string{}}
+	m := &Model{lastInGroup: map[string]core.TabRef{}}
 	m.Client = m
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "a"}, Light: core.StIdle}}
 	b := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "b"}, Light: core.StIdle}}
@@ -236,7 +236,7 @@ func TestLeavingAsksNothing(t *testing.T) {
 }
 
 func TestMergedTabSaysSoWithoutADialog(t *testing.T) {
-	m := &Model{Cfg: config.Config{CloseMerged: on(), Prefix: "ctrl+b"}, lastInGroup: map[string]string{}}
+	m := &Model{Cfg: config.Config{CloseMerged: on(), Prefix: "ctrl+b"}, lastInGroup: map[string]core.TabRef{}}
 	m.Client = m
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "a", Worktrees: []workspace.Worktree{{Path: "/x"}}}}}
 	b := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "b"}}}

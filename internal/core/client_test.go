@@ -19,3 +19,16 @@ func TestExpandKeysPutsInTheClientsKeys(t *testing.T) {
 		}
 	}
 }
+
+func TestTabRefIsTheCoresOwn(t *testing.T) {
+	a, b := &Tab{}, &Tab{}
+	a.ID, b.ID = "1", "2"
+	local := &Core{Tabs: []*Tab{a, b}}
+	there := &Core{ID: "box", Tabs: []*Tab{a}}
+	if got := local.ByRef(local.Ref(b)); got != b {
+		t.Fatalf("the local core's own tab: %v", got)
+	}
+	if got := local.ByRef(there.Ref(a)); got != nil {
+		t.Fatal("a tab of another core with the same id taken as this one's")
+	}
+}
