@@ -312,7 +312,9 @@ func TestEndToEnd(t *testing.T) {
 
 	// Closing and keeping the worktree.
 	h.keys(prefix + "x")
-	h.waitFor("Close tab", 2*time.Second)
+	// What the dialog says, not its title: "Close tab" is also among the
+	// prefix's hints, there before the dialog takes keys.
+	h.waitFor("closes feat-y", 2*time.Second)
 	h.keys("k")
 	h.waitFor("Repositories in", 5*time.Second) // no tabs left: the wizard
 	if _, err := os.Stat(filepath.Join(root, "worktrees", "feat-y-repoA")); err != nil {
