@@ -14,6 +14,13 @@ var (
 
 // ImportsOf returns the local files imported by targetRel.
 func (p *Project) ImportsOf(targetRel string) []string {
+	// Only a source file the project reads has imports of the kind
+	// looked for. Any other changed file (an image, a lock file) is not
+	// read: the regexps over a few MB of one take seconds, and the review
+	// panel asks for every changed file while the screen waits.
+	if !sourceExts[filepath.Ext(targetRel)] {
+		return nil
+	}
 	abs := filepath.Join(p.Root, filepath.FromSlash(targetRel))
 	data, err := os.ReadFile(abs)
 	if err != nil {
