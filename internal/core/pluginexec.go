@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"errors"
-	"os/exec"
 	"slices"
 	"sync"
 	"syscall"
@@ -73,12 +72,9 @@ func StartProc(sp spawn.Spawner, s spawn.Spec, notify func()) (*RunProc, error) 
 	}()
 	go func() {
 		code := 0
-		var exit *exec.ExitError
+		var exit *spawn.ExitError
 		if err := proc.Wait(); errors.As(err, &exit) {
-			code = exit.ExitCode()
-			if code < 0 {
-				code = 128 + int(exit.Sys().(syscall.WaitStatus).Signal())
-			}
+			code = exit.Status()
 		} else if err != nil {
 			code = 1
 		}
