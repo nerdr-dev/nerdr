@@ -25,6 +25,12 @@ Every file not listed here is upstream's, byte for byte; `go.mod` and
   feed in the region then index past the buffer and panic. Test in
   `margins_test.go` (new).
 
+- `screen.go`, `DeleteLine`: a scroll over the whole width moves the
+  lines instead of copying their cells, and blanks those leaving to come in
+  at the bottom; `copyOnScroll` turns it off for the tests. About 7 times
+  faster on scrolling output. Tests in `fastscroll_test.go` (new) compare
+  it with upstream's.
+
 ## Updating
 
 1. Copy the new upstream version over this directory, leaving out `go.mod`
