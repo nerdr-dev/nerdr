@@ -31,6 +31,11 @@ type Holder struct {
 	pausing chan struct{}
 	// upgrade is what an upgrade op runs, nil to refuse it.
 	upgrade func(seq uint64) error
+	// execArgv is how an upgrade starts the holder again.
+	execArgv func() ([]string, error)
+	// coreArgv is the core the holder starts, corePid the one running.
+	coreArgv []string
+	corePid  int
 }
 
 // prog is one program and what is kept of it.
@@ -82,6 +87,7 @@ func New() *Holder {
 	return &Holder{
 		progs: map[string]*prog{}, reads: map[uint64]*Msg{},
 		shut: make(chan struct{}), pausing: make(chan struct{}),
+		execArgv: defaultExecArgv,
 	}
 }
 
@@ -687,11 +693,24 @@ type frame struct {
 	Body []byte `json:"body,omitempty"`
 }
 
-func newSender(c *conn) *sender {
-	s := &sender{c: c, wake: make(chan struct{}, 1), halt: make(chan struct{}), stopped: make(chan struct{})}
+func newSender(c *conn) *sender { return newSenderWith(c, nil) }
+
+// newSenderWith is a sender with q to send first.
+func newSenderWith(c *conn, q []frame) *sender {
+	s := &sender{c: c, q: q, wake: make(chan struct{}, 1)}
 	s.idle = sync.NewCond(&s.mu)
-	go s.loop()
+	s.start()
 	return s
+}
+
+// start starts the sender, new or stopped.
+func (s *sender) start() {
+	s.halt, s.stopped = make(chan struct{}), make(chan struct{})
+	go s.loop(s.halt, s.stopped)
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
 }
 
 func (s *sender) post(m *Msg, body []byte) {
@@ -706,12 +725,14 @@ func (s *sender) post(m *Msg, body []byte) {
 	}
 }
 
-func (s *sender) loop() {
-	defer close(s.stopped)
+func (s *sender) loop(halt, stopped chan struct{}) {
+	defer close(stopped)
 	for {
 		s.mu.Lock()
 		select {
-		case <-s.halt:
+		case <-halt:
+			s.busy = false
+			s.idle.Broadcast()
 			s.mu.Unlock()
 			return
 		default:
@@ -723,7 +744,7 @@ func (s *sender) loop() {
 			select {
 			case <-s.wake:
 				continue
-			case <-s.halt:
+			case <-halt:
 				return
 			}
 		}
@@ -748,17 +769,20 @@ func (s *sender) flush() {
 	s.mu.Unlock()
 }
 
-// stop stops the sender between frames and gives what is left to send.
-func (s *sender) stop() []frame {
+// stop stops the sender between frames; what is posted after waits.
+func (s *sender) stop() {
 	select {
 	case <-s.halt:
 	default:
 		close(s.halt)
 	}
 	<-s.stopped
+}
+
+// take is what is left to send, taken out.
+func (s *sender) take() []frame {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.broken = true
 	q := s.q
 	s.q = nil
 	return q

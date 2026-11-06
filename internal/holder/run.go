@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"syscall"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // EnvFD names the descriptor a core started by a holder has its end of
@@ -34,10 +36,25 @@ func Run(core []string) error {
 }
 
 func (h *Holder) serveCores(core []string) error {
+	h.mu.Lock()
+	h.coreArgv = core
+	h.upgrade = h.doUpgrade
+	h.mu.Unlock()
+	return h.keepCoreUp(core, nil)
+}
+
+// keepCoreUp starts the core again each time it ends, after first, when
+// there is a core already: the one an upgraded holder serves on.
+func (h *Holder) keepCoreUp(core []string, first func() error) error {
 	wait := backoffFirst
 	for {
 		began := time.Now()
-		err := h.runCore(core)
+		var err error
+		if first != nil {
+			err, first = first(), nil
+		} else {
+			err = h.runCore(core)
+		}
 		select {
 		case <-h.shut:
 			return nil
@@ -81,13 +98,39 @@ func (h *Holder) runCore(argv []string) error {
 		cmd.Wait()
 		return err
 	}
+	h.mu.Lock()
+	h.corePid = cmd.Process.Pid
+	h.mu.Unlock()
 	served := make(chan error, 1)
 	go func() { served <- h.Serve(c) }()
-	// The core is not one of the programs: it is reaped as it ends, and
-	// its socket closed then, though a child of its own may hold the
-	// other end.
+	return h.superviseCore(cmd.Process.Pid, c, served)
+}
+
+// superviseCore waits for the core pid, served on c, to end. The core is
+// not one of the programs: it is reaped as it ends, and its socket closed
+// then, though a child of its own may hold the other end.
+func (h *Holder) superviseCore(pid int, c *conn, served chan error) error {
 	exited := make(chan error, 1)
-	go func() { exited <- cmd.Wait() }()
+	go func() {
+		var ws syscall.WaitStatus
+		for {
+			_, err := syscall.Wait4(pid, &ws, 0, nil)
+			if err == syscall.EINTR {
+				continue
+			}
+			if err != nil {
+				exited <- err
+				return
+			}
+			break
+		}
+		if e := exitOf(ws); e != nil {
+			exited <- &spawn.ExitError{Code: e.Code, Signal: syscall.Signal(e.Signal), CoreDumped: e.CoreDumped}
+			return
+		}
+		exited <- nil
+	}()
+	var err error
 	select {
 	case err = <-exited:
 		c.Close()
@@ -96,10 +139,10 @@ func (h *Holder) runCore(argv []string) error {
 		if serr == ErrShutdown {
 			// The core asked for it and is ending; give it a moment.
 			select {
-			case err = <-exited:
+			case <-exited:
 			case <-time.After(5 * time.Second):
-				cmd.Process.Kill()
-				err = <-exited
+				syscall.Kill(pid, syscall.SIGKILL)
+				<-exited
 			}
 			return nil
 		}
@@ -126,12 +169,25 @@ func FromEnv() (*Client, error) {
 }
 
 // Main is `nerdr holder -- CORE...`, which nothing uses yet: a holder
-// that starts CORE as nerdr's core. It is left out of the help.
+// that starts CORE as nerdr's core. It is left out of the help. An
+// upgraded holder is started as `nerdr holder --resume FD`.
 func Main(args []string) int {
-	if len(args) > 0 && args[0] == "--" {
-		args = args[1:]
+	var err error
+	switch {
+	case len(args) == 2 && args[0] == resumeArg:
+		fd, aerr := strconv.Atoi(args[1])
+		if aerr != nil {
+			err = fmt.Errorf("%s %q", resumeArg, args[1])
+		} else {
+			err = Resume(fd)
+		}
+	default:
+		if len(args) > 0 && args[0] == "--" {
+			args = args[1:]
+		}
+		err = Run(args)
 	}
-	if err := Run(args); err != nil {
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "nerdr holder: %v\n", err)
 		return 1
 	}
