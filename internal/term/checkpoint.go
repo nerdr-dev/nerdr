@@ -157,7 +157,8 @@ func (s *Screen) MarkIncomplete() {
 }
 
 // Incomplete reports whether the screen may be missing some of what the
-// program drew: a checkpoint could not be put back, or output was lost.
+// program drew: a checkpoint could not be put back, output was lost, or
+// the emulator failed on some of it.
 // Nothing clears it but the program's screen going away with the program.
 func (s *Screen) Incomplete() bool {
 	s.mu.Lock()

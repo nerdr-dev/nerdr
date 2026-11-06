@@ -152,3 +152,18 @@ func TestScreenResize(t *testing.T) {
 		t.Errorf("below the smallest: %d×%d", w, h)
 	}
 }
+
+// Output the emulator panics on does not bring nerdr down: the screen is
+// marked incomplete and goes on taking output.
+func TestFeedSurvivesEmulatorPanic(t *testing.T) {
+	s, _ := screenOf(t, "before ")
+	s.emu.RegisterOscHandler(777, func([]byte) bool { panic("bad output") })
+	s.Feed([]byte("\x1b]777;x\x07"))
+	if !s.Incomplete() || !s.Frame(0).Incomplete {
+		t.Fatal("not marked incomplete")
+	}
+	s.Feed([]byte("\r\nafter"))
+	if got := s.Snapshot().Screen; !strings.Contains(got, "after") {
+		t.Fatalf("output after the panic not shown: %q", got)
+	}
+}
