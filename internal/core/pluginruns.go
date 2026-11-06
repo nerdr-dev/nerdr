@@ -350,10 +350,11 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 	_, _ = rand.Read(idb)
 	cmd := p.RunCmd(vals, "")
 	cmd.Env = append(append(ChildEnv(o), "NERDR_SHELL=1"), p.Env(vals)...)
-	if err := PluginCommandIn(cmd, dir, p.Dir, key); err != nil {
+	spec, err := PluginSpec(cmd, dir, p.Dir, key)
+	if err != nil {
 		return nil, err
 	}
-	proc, err := StartProc(cmd, m.Notify)
+	proc, err := StartProc(m.Programs(), spec, m.Notify)
 	if err != nil {
 		return nil, err
 	}

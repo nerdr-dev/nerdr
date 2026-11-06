@@ -1,10 +1,11 @@
 package core
 
 import (
-	"os/exec"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // A run's output is read to the end, and its exit status is the shell's:
@@ -17,7 +18,7 @@ func TestRunProcOutputAndExit(t *testing.T) {
 		{"echo out; echo err >&2; exit 3", 3},
 		{"echo out; echo err >&2; kill -TERM $$", 128 + 15},
 	} {
-		p, err := StartProc(exec.Command("sh", "-c", c.script), func() {})
+		p, err := StartProc(spawn.Local{}, spawn.Spec{Argv: []string{"sh", "-c", c.script}}, func() {})
 		if err != nil {
 			t.Fatal(err)
 		}

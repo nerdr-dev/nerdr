@@ -194,12 +194,14 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 		dropEvents()
 		return fail(err)
 	}
-	if err := PluginCommandIn(cmd, dir, p.Dir, key); err != nil {
+	spec, err := PluginSpec(cmd, dir, p.Dir, key)
+	if err != nil {
 		dir.Close()
 		dropEvents()
 		return fail(err)
 	}
-	pane, err := term.StartCmd(cmd, w, h, m.Notify)
+	spec.W, spec.H = w, h
+	pane, err := term.StartWith(m.Programs(), spec, m.Notify)
 	dir.Close()
 	if err != nil {
 		dropEvents()
