@@ -7,3 +7,8 @@ This product includes agent detection manifests from herdr
 (https://github.com/herdrdev/herdr, src/detect/manifests),
 Copyright herdr contributors, licensed under the Apache License 2.0.
 They are in internal/detect/manifests and are built into the nerdr binary.
+
+This product includes a fork of x/vt from Charmbracelet
+(https://github.com/charmbracelet/x, vt), Copyright Charmbracelet, Inc.,
+licensed under the MIT License. It is in internal/vt; see
+internal/vt/UPSTREAM.md and internal/vt/LICENSE.

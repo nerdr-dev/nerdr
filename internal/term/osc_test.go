@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/x/vt"
+	"github.com/nerdr-dev/nerdr/internal/vt"
 )
 
 // TestOSCWithC1ByteInCharacter covers a title whose ✳ has the byte 0x9C in

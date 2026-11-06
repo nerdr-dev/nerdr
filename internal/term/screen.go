@@ -10,7 +10,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/detect"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/charmbracelet/x/vt"
+	"github.com/nerdr-dev/nerdr/internal/vt"
 )
 
 // Screen is what a program has drawn: the virtual screen and its
