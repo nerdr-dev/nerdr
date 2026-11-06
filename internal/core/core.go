@@ -60,8 +60,11 @@ type Core struct {
 	HookSockErr string
 
 	// Spawner starts the programs of the tabs: agents, terminals and
-	// plugins. Nil is spawn.Local; see Programs.
+	// plugins. Nil is spawn.Local, or Held's holder; see Programs.
 	Spawner spawn.Spawner
+	// Held is the holder the programs run in, when nerdr runs over one;
+	// see held.go.
+	Held *Held
 
 	Cfg         config.Config
 	Root        string // the folder nerdr was started in
@@ -107,8 +110,11 @@ func (c *Core) Toast(s string) { c.Tell(ToastMsg(s)) }
 
 // Programs starts the programs of the tabs.
 func (m *Core) Programs() spawn.Spawner {
-	if m.Spawner == nil {
-		return spawn.Local{}
+	switch {
+	case m.Spawner != nil:
+		return m.Spawner
+	case m.Held != nil:
+		return m.Held.Client
 	}
-	return m.Spawner
+	return spawn.Local{}
 }

@@ -201,6 +201,7 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 		return fail(err)
 	}
 	spec.W, spec.H = w, h
+	m.Hold(&spec, Label{Kind: HeldPluginUI, Tab: t.ID, Plugin: p.Dir, Key: key, Events: events.Name()}, false, "")
 	pane, err := term.StartWith(m.Programs(), spec, m.Notify)
 	dir.Close()
 	if err != nil {

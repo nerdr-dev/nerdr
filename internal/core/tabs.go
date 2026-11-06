@@ -340,7 +340,9 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 		}
 	}
 	w, h := m.Client.TabSize(m.Ref(t))
-	p, err := term.StartWith(m.Programs(), spawn.Spec{Argv: l.Argv, Dir: t.Dir, Env: WithUserEnv(m.AgentEnv(t), l.Env), W: w, H: h}, m.Notify)
+	spec := spawn.Spec{Argv: l.Argv, Dir: t.Dir, Env: WithUserEnv(m.AgentEnv(t), l.Env), W: w, H: h}
+	m.Hold(&spec, AgentHeldLabel(t), t.InSandbox, t.HookKey())
+	p, err := term.StartWith(m.Programs(), spec, m.Notify)
 	if err != nil {
 		t.Messages = append(first, t.Messages...) // for the next start
 		t.Err = fmt.Sprintf("could not start %s: %v", l.Argv[0], err)

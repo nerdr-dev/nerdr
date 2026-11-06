@@ -1020,6 +1020,7 @@ func (m *Model) Shutdown() {
 		panes := m.stopping()
 		m.Mu.Unlock()
 		core.StopPanes(panes)
+		m.ShutdownHolder()
 		m.Herdr.Release()
 	})
 }

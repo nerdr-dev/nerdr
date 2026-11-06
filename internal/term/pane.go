@@ -124,6 +124,23 @@ func (p *Pane) run() {
 	go p.wait()
 }
 
+// HeldID is the program's id in the holder that keeps it, "" for one
+// that runs in this process.
+func (p *Pane) HeldID() string {
+	if h, ok := p.proc.(interface{ ID() string }); ok {
+		return h.ID()
+	}
+	return ""
+}
+
+// Position is how far into the program's output the screen has got: the
+// position a checkpoint taken now would be for.
+func (p *Pane) Position() int64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.base + p.fed
+}
+
 // CheckpointAt is the screen's checkpoint, as Screen.Checkpoint, and the
 // position in the program's output it is for: what was read before Attach
 // and all that has reached the screen since.

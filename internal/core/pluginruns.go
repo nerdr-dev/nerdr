@@ -354,6 +354,8 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 	if err != nil {
 		return nil, err
 	}
+	m.Hold(&spec, Label{Kind: HeldRun, Tab: o.ID, Plugin: p.Dir, Key: key, Run: hex.EncodeToString(idb),
+		From: a.ID, Values: map[string]any(vals), Watch: p.Watch, Confined: confined}, confined, "")
 	proc, err := StartProc(m.Programs(), spec, m.Notify)
 	if err != nil {
 		return nil, err

@@ -205,7 +205,9 @@ func (m *Core) NewShellIn(t *Tab, quiet bool) (*PaneTab, Cmd) {
 	cmd := m.AddPane(t, p, quiet)
 	w, h := m.Client.ShellSize(m.Ref(t), m.PaneRef(p))
 	env := append(ChildEnv(t), "NERDR_SHELL=1")
-	sh, err := term.StartWith(m.Programs(), spawn.Spec{Argv: m.ShellCommand(), Dir: t.Dir, Env: env, W: w, H: h}, m.Notify)
+	spec := spawn.Spec{Argv: m.ShellCommand(), Dir: t.Dir, Env: env, W: w, H: h}
+	m.Hold(&spec, Label{Kind: HeldShell, Tab: t.ID, N: n}, false, "")
+	sh, err := term.StartWith(m.Programs(), spec, m.Notify)
 	if err != nil {
 		m.DropPane(t, p)
 		m.Toast("terminal: " + err.Error())
