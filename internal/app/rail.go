@@ -178,7 +178,7 @@ func (m *Model) fitPanel() {
 	}
 	n := 0
 	for _, p := range t.Panes() {
-		if !p.Small {
+		if !m.pl(p).small {
 			n++
 		}
 	}

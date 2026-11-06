@@ -124,7 +124,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	f := t.Focused()
+	f := m.focused(t)
 	if f.Kind == core.PaneReview && f.A == nil {
 		return m.reviewPickKey(t, f, msg)
 	}
@@ -204,7 +204,7 @@ func (m *Model) keyPane() *term.Pane {
 	if t == nil || m.focus == core.FocusReview {
 		return nil
 	}
-	return t.Screen()
+	return m.screen(t)
 }
 
 // startPrefix turns the prefix on for a new command. The arrows start on
@@ -481,9 +481,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "z s":
 		return m.swapSides()
 	case "b", "pgup":
-		if t := m.Cur(); t != nil && t.Screen() != nil {
+		if t := m.Cur(); t != nil && m.screen(t) != nil {
 			m.scrolling = true
-			t.Scroll = 0
+			m.tl(t).scroll = 0
 			if k == "pgup" {
 				m.scrollKey(msg)
 			}
@@ -538,7 +538,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.askClosePane()
 	case "t m":
 		if t := m.Cur(); t != nil {
-			return m.minimisePane(t, t.Focused())
+			return m.minimisePane(t, m.focused(t))
 		}
 		return nil
 	case "t ←":
@@ -627,35 +627,35 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 // scrollKey moves through the active tab's scrollback.
 func (m *Model) scrollKey(msg tea.KeyMsg) {
 	t := m.Cur()
-	if t == nil || t.Screen() == nil {
+	if t == nil || m.screen(t) == nil {
 		m.scrolling = false
 		return
 	}
 	w, h := m.tabSize(t)
-	if p := t.Screen(); p.AltScreen() {
+	if p := m.screen(t); p.AltScreen() {
 		m.altScrollKey(p, msg, w, h)
 		return
 	}
-	n := t.Screen().ScrollbackLen()
+	n := m.screen(t).ScrollbackLen()
 	switch msg.String() {
 	case "up", "k":
-		t.Scroll++
+		m.tl(t).scroll++
 	case "down", "j":
-		t.Scroll--
+		m.tl(t).scroll--
 	case "pgup", "b", "ctrl+u", "u":
-		t.Scroll += h - 2
+		m.tl(t).scroll += h - 2
 	case "pgdown", "f", "ctrl+d", "d", " ":
-		t.Scroll -= h - 2
+		m.tl(t).scroll -= h - 2
 	case "g", "home":
-		t.Scroll = n
+		m.tl(t).scroll = n
 	case "G", "end":
-		t.Scroll = 0
+		m.tl(t).scroll = 0
 	case "q", "esc", "enter":
-		t.Scroll = 0
+		m.tl(t).scroll = 0
 		m.scrolling = false
 		return
 	}
-	t.Scroll = min(max(t.Scroll, 0), n)
+	m.tl(t).scroll = min(max(m.tl(t).scroll, 0), n)
 }
 
 // altScrollKey is scrollKey for a program on the alternate screen, which

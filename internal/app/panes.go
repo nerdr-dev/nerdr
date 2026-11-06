@@ -84,9 +84,9 @@ func (m *Model) dragDivider(t *core.Tab, i, x int) tea.Cmd {
 		return nil
 	}
 	for _, c := range cols {
-		c.P.Weight = float64(c.W)
+		m.pl(c.P).weight = float64(c.W)
 	}
-	a.P.Weight, b.P.Weight = float64(aw2), float64(both-aw2)
+	m.pl(a.P).weight, m.pl(b.P).weight = float64(aw2), float64(both-aw2)
 	m.resizePanes()
 	return nil
 }
@@ -140,7 +140,7 @@ func (m *Model) paneRect(t *core.Tab, p *core.PaneTab) (x, y, w, h int) {
 	c := cols[0]
 	if i := slices.IndexFunc(cols, func(o paneCol) bool { return o.P == p }); i >= 0 {
 		c = cols[i]
-	} else if i := slices.IndexFunc(cols, func(o paneCol) bool { return o.P == t.Focused() }); i >= 0 {
+	} else if i := slices.IndexFunc(cols, func(o paneCol) bool { return o.P == m.focused(t) }); i >= 0 {
 		c = cols[i]
 	}
 	iw, ih := max(c.W-2, 1), max(ch-2, 1)
@@ -153,7 +153,7 @@ func (m *Model) paneSize(a *core.Tab) (int, int) {
 	o := a.Owner()
 	p := a.PaneOf()
 	if p == nil {
-		p = o.Focused()
+		p = m.focused(o)
 	}
 	_, _, w, h := m.paneRect(o, p)
 	return w, h
@@ -171,13 +171,13 @@ func (m *Model) shellSize(t *core.Tab, p *core.PaneTab) (int, int) {
 // focusPane gives p, one of t's panes, the keyboard: it is shown, and
 // counts as used now.
 func (m *Model) focusPane(t *core.Tab, p *core.PaneTab) tea.Cmd {
-	if t.On != p {
+	if m.tl(t).on != p {
 		m.scrolling = false
-		t.Scroll = 0
+		m.tl(t).scroll = 0
 	}
-	t.On = p
-	p.Small = false
-	p.Used = time.Now()
+	m.tl(t).on = p
+	m.pl(p).small = false
+	m.pl(p).used = time.Now()
 	if a := p.A; a != nil && p.Kind != core.PaneShell {
 		a.Seen()
 		a.QueuePaused = false
@@ -190,7 +190,7 @@ func (m *Model) focusPane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 // focusTerms tells t's programs which of them has the keyboard, for those
 // that draw it (a cursor, a focus ring).
 func (m *Model) focusTerms(t *core.Tab) {
-	f := t.Focused()
+	f := m.focused(t)
 	for _, p := range t.Panes() {
 		if tp := p.Term(); tp != nil {
 			tp.Focus(p == f && t == m.Cur() && !m.blurred)
@@ -201,18 +201,18 @@ func (m *Model) focusTerms(t *core.Tab) {
 // paneClosed is p taken out of t's panes by core: the keyboard goes to the
 // one used last when p had it, mostly the one it was opened from.
 func (m *Model) paneClosed(t *core.Tab, p *core.PaneTab) {
-	if t.On == p {
+	if m.tl(t).on == p {
 		var next *core.PaneTab
 		for _, q := range t.Panes() {
-			if next == nil || q.Used.After(next.Used) {
+			if next == nil || m.pl(q).used.After(m.pl(next).used) {
 				next = q
 			}
 		}
-		t.On = next
-		next.Used = time.Now()
-		next.Small = false
+		m.tl(t).on = next
+		m.pl(next).used = time.Now()
+		m.pl(next).small = false
 		m.scrolling = false
-		t.Scroll = 0
+		m.tl(t).scroll = 0
 	}
 	m.focusTerms(t)
 	m.resizePanes()
@@ -221,7 +221,7 @@ func (m *Model) paneClosed(t *core.Tab, p *core.PaneTab) {
 // minimisePane folds p into the row, the keyboard going to the next pane
 // shown; the tab's last pane shown stays.
 func (m *Model) minimisePane(t *core.Tab, p *core.PaneTab) tea.Cmd {
-	if p.Small {
+	if m.pl(p).small {
 		return m.focusPane(t, p)
 	}
 	var other *core.PaneTab
@@ -233,7 +233,7 @@ func (m *Model) minimisePane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 	}
 	if other == nil {
 		for _, q := range t.Panes() {
-			if q != p && !q.Small {
+			if q != p && !m.pl(q).small {
 				other = q
 			}
 		}
@@ -242,8 +242,8 @@ func (m *Model) minimisePane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 		m.toast("the last pane shown stays · " + m.pk("t t") + " opens a terminal beside it")
 		return nil
 	}
-	p.Small = true
-	if t.Focused() == p {
+	m.pl(p).small = true
+	if m.focused(t) == p {
 		return m.focusPane(t, other)
 	}
 	return m.resize()
@@ -256,7 +256,7 @@ func (m *Model) askClosePane() tea.Cmd {
 	if t == nil {
 		return nil
 	}
-	p := t.Focused()
+	p := m.focused(t)
 	if p.Kind == core.PaneShell && p.Shell != nil && p.Shell.Busy() {
 		m.dialog = &confirm{
 			title:     "Stop the process and close the terminal?",
@@ -420,7 +420,7 @@ func (m *Model) paneMouse(t *core.Tab, p *core.PaneTab, ev tea.MouseMsg) tea.Cmd
 // openPaneMenu shows what can be done to pane p of t's, at (x, y).
 func (m *Model) openPaneMenu(t *core.Tab, p *core.PaneTab, x, y int) {
 	small := "Minimise"
-	if p.Small {
+	if m.pl(p).small {
 		small = "Show"
 	}
 	items := []menuItem{
@@ -501,7 +501,7 @@ func (m *Model) paneColumn(t *core.Tab, p *core.PaneTab, w, h int) []string {
 			title += dim(" · " + t.Name)
 		}
 	}
-	active := m.focus == core.FocusAgent && t == m.Cur() && p == t.Focused()
+	active := m.focus == core.FocusAgent && t == m.Cur() && p == m.focused(t)
 	iw, ih := w-2, h-2
 	var body []string
 	switch p.Kind {
@@ -542,11 +542,11 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	if tp == nil {
 		return fitLines(nil, w, h)
 	}
-	keys := t == m.Cur() && p == t.Focused()
+	keys := t == m.Cur() && p == m.focused(t)
 	scrolling := keys && m.scrolling
 	scroll := 0
 	if scrolling {
-		scroll = t.Scroll
+		scroll = m.tl(t).scroll
 	}
 	lines := fitLines(tp.Render(scroll, keys && m.focus == core.FocusAgent && !m.scrolling && m.dialog == nil), w, h)
 	if p.Kind != core.PaneShell && a.Light == core.StExited {
@@ -565,7 +565,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	}
 	if scrolling {
 		n := tp.ScrollbackLen()
-		note := " scrollback " + strconv.Itoa(t.Scroll) + "/" + strconv.Itoa(n) + " · ↑↓ pgup pgdn g G wheel · q or click here: back "
+		note := " scrollback " + strconv.Itoa(m.tl(t).scroll) + "/" + strconv.Itoa(n) + " · ↑↓ pgup pgdn g G wheel · q or click here: back "
 		if tp.AltScreen() {
 			// It keeps no scrollback for nerdr: the keys scroll it.
 			note = " scrolling " + m.PaneName(t, p) + "'s own screen · ↑↓ pgup pgdn wheel · q or click here: back "
@@ -612,7 +612,7 @@ func (m *Model) cycleFocus() tea.Cmd {
 	if m.focus == core.FocusReview {
 		return m.focusPane(t, cols[0].P)
 	}
-	i := slices.IndexFunc(cols, func(c paneCol) bool { return c.P == t.Focused() })
+	i := slices.IndexFunc(cols, func(c paneCol) bool { return c.P == m.focused(t) })
 	switch {
 	case i+1 < len(cols):
 		return m.focusPane(t, cols[i+1].P)
@@ -641,7 +641,7 @@ func (m *Model) stepPane(d int) core.Cmd {
 		return nil
 	}
 	ps := t.Panes()
-	i := slices.Index(ps, t.Focused())
+	i := slices.Index(ps, m.focused(t))
 	m.Gen++
 	return toCore(m.focusPane(t, ps[(i+d+len(ps))%len(ps)]))
 }
@@ -654,7 +654,7 @@ func (m *Model) movePane(d int) core.Cmd {
 		return nil
 	}
 	ps := t.Panes()
-	i := slices.Index(ps, t.Focused())
+	i := slices.Index(ps, m.focused(t))
 	if i == 0 {
 		m.Toast(m.AgentLabel(t, t) + " is the tab's first agent: it stays first")
 		return nil
@@ -685,14 +685,14 @@ func (m *Model) newShell() core.Cmd {
 // those used last first, in the order of the row.
 func (m *Model) paneCols(t *core.Tab, w int) []paneCol {
 	ps := t.Panes()
-	f := t.Focused()
+	f := m.focused(t)
 	open := []*core.PaneTab{f}
 	for _, p := range ps {
-		if p != f && !p.Small {
+		if p != f && !m.pl(p).small {
 			open = append(open, p)
 		}
 	}
-	slices.SortStableFunc(open[1:], func(a, b *core.PaneTab) int { return b.Used.Compare(a.Used) })
+	slices.SortStableFunc(open[1:], func(a, b *core.PaneTab) int { return m.pl(b).used.Compare(m.pl(a).used) })
 	n := min(len(open), max((w+1)/(m.PaneMinW()+1), 1))
 	shown := open[:n]
 	var out []paneCol
@@ -706,12 +706,12 @@ func (m *Model) paneCols(t *core.Tab, w int) []paneCol {
 	room := w - (len(out) - 1)
 	sum := 0.0
 	for _, c := range out {
-		sum += c.P.Share()
+		sum += m.share(c.P)
 	}
 	x := 0
 	for i := range out {
 		left := len(out) - 1 - i // panes after this one
-		cw := int(float64(room)*out[i].P.Share()/sum + 0.5)
+		cw := int(float64(room)*m.share(out[i].P)/sum + 0.5)
 		cw = min(max(cw, core.PaneMinShare), w-x-left*(core.PaneMinShare+1))
 		if i == len(out)-1 {
 			cw = w - x
@@ -744,7 +744,7 @@ func (m *Model) CurAgent() *core.Tab {
 	if t == nil {
 		return nil
 	}
-	if a := t.Focused().Agent(); a != nil {
+	if a := m.focused(t).Agent(); a != nil {
 		return a
 	}
 	return t

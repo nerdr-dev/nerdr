@@ -102,7 +102,7 @@ func TestColdTabSleepsFromTheStart(t *testing.T) {
 // beside gives tab o another agent, in a pane of its own.
 func beside(o *core.Tab) *core.Tab {
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: o.ID + "-2", Agent: "claude", Dir: o.Dir}}, PartOf: o}
-	o.PaneList = append(o.Panes(), &core.PaneTab{Kind: core.PaneAgent, A: a, Used: time.Now()})
+	o.PaneList = append(o.Panes(), &core.PaneTab{Kind: core.PaneAgent, A: a, Opened: time.Now()})
 	return a
 }
 

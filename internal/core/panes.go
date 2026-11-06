@@ -18,17 +18,12 @@ import (
 )
 
 // FrontAgent is the agent the keyboard is with, or the one it is nearest
-// to: the front tab's focused pane's agent, its own otherwise. Nil with no
-// tab in front.
+// to, as the client says; nil with no tab in front.
 func (m *Core) FrontAgent() *Tab {
-	t := m.Front()
-	if t == nil {
+	if m.Client == nil {
 		return nil
 	}
-	if a := t.Focused().Agent(); a != nil {
-		return a
-	}
-	return t
+	return m.Client.Sight().Keyboard
 }
 
 // AllAgents are every agent nerdr runs: the tabs' own, the others beside
@@ -84,7 +79,7 @@ func (m *Core) RestoreAgents(t *Tab) {
 		}
 		a.Name, a.Worktrees = t.Name, t.Worktrees
 		a.TakeQueue()
-		t.PaneList = append(t.Panes(), &PaneTab{Kind: PaneAgent, A: a, Used: time.Now()})
+		t.PaneList = append(t.Panes(), &PaneTab{Kind: PaneAgent, A: a, Opened: time.Now()})
 		if a.Num == 0 || t.AgentNumbered(a.Num) != a {
 			a.Num = 0
 			a.Num = t.NextNum()
@@ -444,19 +439,16 @@ type PaneTab struct {
 	Shell   *term.Pane
 	N       int
 	Command string
-	// Small is set while the pane is minimised by hand; used is when it
-	// last had the keyboard, for which to fold first when room runs out.
-	Small bool
-	Used  time.Time
-	// Weight is the pane's share of the room beside the others shown, as
-	// its divider was dragged to; 0 is an even share.
-	Weight float64
+	// Opened is when the pane came with its tab, made or taken up from the
+	// session: where a client starts its last use from. Zero for one opened
+	// later, which a client hears of as it opens.
+	Opened time.Time
 }
 
 // Panes are t's panes, its own agent first.
 func (t *Tab) Panes() []*PaneTab {
 	if len(t.PaneList) == 0 || t.PaneList[0].A != t {
-		t.PaneList = append([]*PaneTab{{Kind: PaneAgent, A: t, Used: time.Now()}}, t.PaneList...)
+		t.PaneList = append([]*PaneTab{{Kind: PaneAgent, A: t, Opened: time.Now()}}, t.PaneList...)
 	}
 	if t.Num == 0 {
 		t.Num = t.NextNum()
@@ -492,16 +484,6 @@ func (t *Tab) AgentNumbered(n int) *Tab {
 		}
 	}
 	return nil
-}
-
-// Focused is the pane of t's the keyboard goes to while it is with the
-// tab: the one last gone to, or its own agent.
-func (t *Tab) Focused() *PaneTab {
-	ps := t.Panes()
-	if t.On != nil && slices.Contains(ps, t.On) {
-		return t.On
-	}
-	return ps[0]
 }
 
 // Term is the program the pane shows: its agent's or its terminal's; nil
@@ -573,14 +555,6 @@ func (t *Tab) PaneOf() *PaneTab {
 		}
 	}
 	return nil
-}
-
-// Share is p's weight, 1 when it has none of its own.
-func (p *PaneTab) Share() float64 {
-	if p.Weight <= 0 {
-		return 1
-	}
-	return p.Weight
 }
 
 // Holds reports whether dir is t's folder, or in it or one of its

@@ -38,7 +38,7 @@ func (m *Model) newReviewPane() tea.Cmd {
 		m.toast(why)
 		return nil
 	}
-	of := t.Focused().Agent()
+	of := m.focused(t).Agent()
 	m.reviewerCursor = 0
 	cmds := []tea.Cmd{fromCore(m.AddPane(t, &core.PaneTab{Kind: core.PaneReview, Of: of}, false))}
 	for _, k := range m.reviewKinds(of) {
@@ -129,7 +129,7 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 		}
 	}
 	m.reviewerCursor = min(max(m.reviewerCursor, 0), len(kinds)-1)
-	keys := m.focus == core.FocusAgent && t == m.Cur() && t.Focused() == p
+	keys := m.focus == core.FocusAgent && t == m.Cur() && m.focused(t) == p
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	for i, k := range kinds {
 		var notes []string
@@ -211,7 +211,7 @@ func (m *Model) reviewOff() string {
 	if t == nil {
 		return "no tab open"
 	}
-	if t.Focused().Agent() == nil {
+	if m.focused(t).Agent() == nil {
 		return "a review is of an agent's work: go to the agent's pane first"
 	}
 	return ""

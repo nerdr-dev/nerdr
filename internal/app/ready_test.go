@@ -43,7 +43,7 @@ func TestReviewWaitsForReady(t *testing.T) {
 	if tb.Review == nil || tb.Review.Focus != "the locking" || tb.ReviewAsk != nil {
 		t.Fatalf("review %+v, ask %v", tb.Review, tb.ReviewAsk)
 	}
-	if p := tb.Review.Seats[0].R.PaneOf(); p == nil || p.Kind != core.PaneReview || tb.Focused() == p {
+	if p := tb.Review.Seats[0].R.PaneOf(); p == nil || p.Kind != core.PaneReview || m.focused(tb) == p {
 		t.Fatalf("the reviewer should have a pane of its own, leaving the keyboard where it was: %+v", p)
 	}
 	m.EndReview(tb, "done", false)

@@ -63,7 +63,7 @@ func TestReadAndTerminal(t *testing.T) {
 	if a.Err != "" || !strings.Contains(a.Text, "terminal") {
 		t.Fatalf("terminal: %+v", a)
 	}
-	if tb.Focused().A != tb {
+	if m.focused(tb).A != tb {
 		t.Fatal("the keyboard stays with the agent")
 	}
 	var text string

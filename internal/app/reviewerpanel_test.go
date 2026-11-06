@@ -26,7 +26,7 @@ func TestReviewPaneOffersAgents(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
 	m.runCommand("t r")
-	p := tb.Focused()
+	p := m.focused(tb)
 	if p.Kind != core.PaneReview || p.Of != tb || m.focus != core.FocusAgent {
 		t.Fatalf("t r should open a review pane with the keyboard: %+v", p)
 	}
@@ -39,7 +39,7 @@ func TestReviewPaneOffersAgents(t *testing.T) {
 		t.Fatal("1 should start a review with the first agent")
 	}
 	m.handleKey(keyMsg("esc"))
-	if len(tb.Panes()) != 1 || tb.Focused().A != tb {
+	if len(tb.Panes()) != 1 || m.focused(tb).A != tb {
 		t.Fatal("esc should close the pane, the keyboard back with the agent")
 	}
 }
@@ -70,7 +70,7 @@ func TestReviewPaneShowsTheReviewer(t *testing.T) {
 	r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: tb.ID + "-review", Name: tb.Name + " · review", Agent: "codex"}, Pane: pane}, ReviewOf: tb}
 	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 2}
 	p := m.ReviewPaneFor(tb, r)
-	if tb.Focused() == p {
+	if m.focused(tb) == p {
 		t.Fatal("a review that started by itself should leave the keyboard where it was")
 	}
 	m.goToPane(tb, p)
@@ -180,7 +180,7 @@ func TestRoundsInAReviewPane(t *testing.T) {
 	m.Cfg.Review.Rounds = 2
 	tb := m.Cur()
 	m.runCommand("t r")
-	p := tb.Focused()
+	p := m.focused(tb)
 	m.handleKey(keyMsg("+"))
 	if m.Cfg.Review.Rounds != 3 {
 		t.Fatalf("+ gives %d rounds", m.Cfg.Review.Rounds)
