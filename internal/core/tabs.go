@@ -216,6 +216,9 @@ func (m *Core) Notify() {
 // mean asking the agent's CLI (opencode), so that part runs in the
 // background and the agent is started when launchMsg comes back.
 func (m *Core) Start(t *Tab, resume bool) Cmd {
+	if m.takeUpAgent(t) {
+		return nil
+	}
 	t.Light = StStarting
 	t.Err = ""
 	if t.InSandbox || m.SandboxedKind(t.Agent) {

@@ -23,20 +23,43 @@ const EnvHolder = "NERDR_HOLDER"
 type Held struct {
 	Client *holder.Client
 	// Progs are the programs the holder had at start that are not taken up
-	// yet, by id.
-	Progs map[string]holder.Prog
+	// yet, by id, and Checkpoints the screen it kept of each.
+	Progs       map[string]holder.Prog
+	Checkpoints map[string]Checkpoint
+}
+
+// Checkpoint is a screen's block as the holder kept it, and the position
+// in the program's output it is for; Pos is -1 for none.
+type Checkpoint struct {
+	Pos   int64
+	Block []byte
 }
 
 // NewHeld is the core's side of the holder at the other end of cl, with
-// the programs it has now.
+// the programs it has now and their checkpoints: all fetched here, before
+// the core runs, so taking a program up asks the holder nothing.
 func NewHeld(cl *holder.Client) (*Held, error) {
 	progs, err := cl.List()
 	if err != nil {
 		return nil, err
 	}
-	h := &Held{Client: cl, Progs: map[string]holder.Prog{}}
+	h := &Held{Client: cl, Progs: map[string]holder.Prog{}, Checkpoints: map[string]Checkpoint{}}
 	for _, p := range progs {
+		if p.State == holder.Reaped {
+			continue
+		}
 		h.Progs[p.ID] = p
+		if p.Checkpoint < 0 {
+			continue
+		}
+		pos, block, err := cl.FetchCheckpoint(p.ID)
+		if err != nil {
+			// A holder from before fetch: the screen is shown from what
+			// is left of the output, marked incomplete.
+			Debugf("checkpoint of %s: %v", p.ID, err)
+			continue
+		}
+		h.Checkpoints[p.ID] = Checkpoint{pos, block}
 	}
 	return h, nil
 }
