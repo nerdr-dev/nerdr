@@ -468,3 +468,28 @@ func TestFetchCheckpoint(t *testing.T) {
 		t.Fatalf("big: %d %d bytes %v", pos, len(blk), err)
 	}
 }
+
+// Spawn, as a spawn.Spawner, keeps a program under the ID and Mark of its
+// Spec, and one with no Mark as sandboxed.
+func TestSpawnKeepsTheSpecsIDAndMark(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	var sp spawn.Spawner = cl
+	if _, err := sp.Spawn(spawn.Spec{Argv: []string{"sleep", "60"}, ID: "tab1/agent",
+		Mark: &spawn.Mark{Secret: "k", Label: "agent"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := sp.Spawn(spawn.Spec{Argv: []string{"sleep", "60"}}); err != nil {
+		t.Fatal(err)
+	}
+	progs, err := cl.List()
+	if err != nil || len(progs) != 2 {
+		t.Fatalf("list: %+v %v", progs, err)
+	}
+	if p := progs[0]; p.ID != "tab1/agent" || p.Sandboxed || p.Secret != "k" || p.Label != "agent" {
+		t.Errorf("with a mark: %+v", p)
+	}
+	if p := progs[1]; p.ID == "" || !p.Sandboxed {
+		t.Errorf("with none: %+v", p)
+	}
+}
