@@ -13,7 +13,12 @@ and put it back, which the public API does not give.
 Every file not listed here is upstream's, byte for byte; `go.mod` and
 `go.sum` are left out, since the fork is part of nerdr's module.
 
-None yet.
+- `checkpoint.go` and `checkpoint_test.go` (new): `Emulator.Checkpoint`,
+  `Restore`, `AtGround` and `CheckpointVersionOf`. All of the emulator's
+  state, both screens and their scrollback, in a compact format of nerdr's
+  own with a version. It reads private fields: a change upstream to the
+  fields it reads (`Emulator`, `Screen`, `Scrollback`, `Cursor`) must be
+  matched there, and `CheckpointVersion` raised if what is written changes.
 
 ## Updating
 
