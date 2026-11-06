@@ -74,7 +74,7 @@ func ChildEnv(t *Tab) []string {
 		// config. See skills/.
 		store.EnvDataDir+"="+store.DataDir,
 	)
-	if exe, err := os.Executable(); err == nil {
+	if exe, err := Bin(); err == nil {
 		env = append(env, "NERDR_BIN="+exe)
 	}
 	return env

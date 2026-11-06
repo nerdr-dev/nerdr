@@ -71,7 +71,7 @@ func PluginCommandIn(cmd *exec.Cmd, dir *os.File, checkDir, key string) error {
 	if cmd.Err != nil {
 		return cmd.Err
 	}
-	exe, err := os.Executable()
+	exe, err := Bin()
 	if err != nil {
 		return err
 	}
