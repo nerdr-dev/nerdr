@@ -1,4 +1,4 @@
-package holder
+package core
 
 import (
 	"errors"
@@ -8,16 +8,18 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // The test binary is the nerdr a plugin's run starts through, as
 // cmd/nerdr is.
+//
+// These tests are of a plugin's run in a holder, with the core's spec.
 func init() {
-	if len(os.Args) > 1 && os.Args[1] == core.PluginExecArg {
-		os.Exit(core.ExecPlugin(os.Args[2:]))
+	if len(os.Args) > 1 && os.Args[1] == PluginExecArg {
+		os.Exit(ExecPlugin(os.Args[2:]))
 	}
 }
 
@@ -25,8 +27,7 @@ func init() {
 // descriptor 3, and runs there even when the path has since gone
 // elsewhere.
 func TestPluginRunGetsTheFolderTheCoreOpened(t *testing.T) {
-	h, cl := serve(t)
-	shutdown(t, h)
+	cl := inProcessHolder(t)
 	root, outside := t.TempDir(), t.TempDir()
 	inside := filepath.Join(root, "inside")
 	if err := os.Mkdir(inside, 0o700); err != nil {
@@ -45,7 +46,7 @@ func TestPluginRunGetsTheFolderTheCoreOpened(t *testing.T) {
 	if err := os.Symlink(outside, inside); err != nil {
 		t.Fatal(err)
 	}
-	s, err := core.PluginSpec(exec.Command("sh", "-c", `cat marker; printf '\n%s\n' "$PWD"`), f, "", "")
+	s, err := PluginSpec(exec.Command("sh", "-c", `cat marker; printf '\n%s\n' "$PWD"`), f, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,8 +69,7 @@ func TestPluginRunGetsTheFolderTheCoreOpened(t *testing.T) {
 // The check of the plugin's key in the child still refuses a plugin that
 // changed after the user allowed it, when the holder starts it.
 func TestPluginChangedBeforeTheHolderStartsItIsRefused(t *testing.T) {
-	h, cl := serve(t)
-	shutdown(t, h)
+	cl := inProcessHolder(t)
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, plugin.File), []byte("description = \"d\"\nrun = [\"./run.sh\"]\n"), 0o644)
 	script := filepath.Join(dir, "run.sh")
@@ -85,7 +85,7 @@ func TestPluginChangedBeforeTheHolderStartsItIsRefused(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer f.Close()
-		s, err := core.PluginSpec(exec.Command("sh", "-c", "touch "+marker), f, dir, key)
+		s, err := PluginSpec(exec.Command("sh", "-c", "touch "+marker), f, dir, key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,4 +110,14 @@ func TestPluginChangedBeforeTheHolderStartsItIsRefused(t *testing.T) {
 	if _, err := os.Stat(marker); err == nil {
 		t.Fatal("the changed program ran")
 	}
+}
+
+func inProcessHolder(t *testing.T) *holder.Client {
+	t.Helper()
+	cl, err := holder.InProcess()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cl.Shutdown() })
+	return cl
 }
