@@ -301,3 +301,72 @@ func BenchmarkRestoreFullHistory(b *testing.B) {
 		}
 	}
 }
+
+// A screen made smaller after the cursor was saved, or while on the
+// alternate screen, can be checkpointed and put back: Resize moves only
+// the active cursor onto it, and Restore the others.
+func TestCheckpointAfterShrink(t *testing.T) {
+	for _, s := range []string{
+		"\x1b[20;70H\x1b7",                  // saved cursor
+		"\x1b[20;70H\x1b[?1049h",            // main cursor under the alternate screen
+		"\x1b[?1049h\x1b[20;70H\x1b[?1049l", // the alternate screen's, left
+	} {
+		a := newCkEmu(t, 80, 24)
+		_, _ = a.Write([]byte(s))
+		a.Resize(20, 5)
+		b := newCkEmu(t, 80, 24)
+		if err := b.Restore(mustCheckpoint(t, a)); err != nil {
+			t.Fatalf("%q: %v", s, err)
+		}
+		// What then moves to the cursors stays on the screen.
+		_, _ = b.Write([]byte("\x1b8x\x1b[?1049lx\x1b[?1049hx"))
+	}
+}
+
+// Restore refuses what an emulator cannot be in, and is not left inside a
+// sequence it was in before.
+func TestRestoreRefusesImpossibleStates(t *testing.T) {
+	a := newCkEmu(t, 20, 5)
+	_, _ = a.Write([]byte("x\x1b[1;3r"))
+	good := mustCheckpoint(t, a)
+	mangle := func(f func(*ckWriter)) []byte {
+		var w ckWriter
+		w.styles = map[string]int{}
+		f(&w)
+		var out ckWriter
+		out.b = append(out.b, checkpointMagic...)
+		out.uvarint(CheckpointVersion)
+		out.uvarint(0)
+		return append(out.b, w.b...)
+	}
+	cases := map[string][]byte{
+		"empty screen": mangle(func(w *ckWriter) { w.uvarint(0); w.uvarint(5) }),
+		"wide cell": mangle(func(w *ckWriter) {
+			w.uvarint(2)
+			w.uvarint(1)
+			w.bool(false)
+			w.uvarint(2)
+			w.byte(ckCell)
+			w.str("x")
+			w.uvarint(1 << 63) // -1 as an int
+			w.b = append(w.b, make([]byte, 64)...)
+		}),
+	}
+	for name, b := range cases {
+		if err := newCkEmu(t, 20, 5).Restore(b); err == nil {
+			t.Errorf("%s: restored", name)
+		}
+	}
+	b := newCkEmu(t, 20, 5)
+	_, _ = b.Write([]byte("\x1b[3")) // inside a CSI
+	if err := b.Restore(good); err != nil {
+		t.Fatal(err)
+	}
+	if !b.AtGround() {
+		t.Fatal("still inside the sequence")
+	}
+	_, _ = b.Write([]byte("8m"))
+	if !strings.Contains(b.String(), "8m") {
+		t.Fatalf("what followed was taken as the sequence: %q", b.String())
+	}
+}

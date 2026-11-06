@@ -28,6 +28,8 @@ const (
 	maxCheckpointSide  = 1 << 14
 	maxCheckpointLines = 1 << 20
 	maxCheckpointStr   = 16 << 20
+	// maxCellWidth is the most cells a character takes.
+	maxCellWidth = 2
 )
 
 // ErrNotAtGround is returned by Checkpoint while the parser is inside a
@@ -155,6 +157,9 @@ func (e *Emulator) Restore(b []byte) error {
 		r.styles = append(r.styles, r.styleOf(r.str()))
 	}
 	w, h := r.count(maxCheckpointSide), r.count(maxCheckpointSide)
+	if w == 0 || h == 0 {
+		r.fail("empty screen")
+	}
 	if w*h*2 > len(r.b) {
 		// Each cell takes a byte at least: the screens must be there
 		// before they are made.
@@ -237,6 +242,9 @@ func (e *Emulator) Restore(b []byte) error {
 	e.tabstops = tabs
 	e.gl, e.gr, e.gsingle = gl, gr, gsingle
 	e.atPhantom = phantom
+	// A checkpoint is taken at ground; whatever this emulator was in the
+	// middle of is not part of it.
+	e.parser.Reset()
 	return nil
 }
 
@@ -535,7 +543,10 @@ func (r *ckReader) style() ckStyleOf {
 	return r.styles[i-1]
 }
 
-func (r *ckReader) line() uv.Line {
+// line reads a line; one of the screen's is whole, so a wide character
+// in it has the cells it covers after it, while a line of the scrollback
+// is cut after its last character.
+func (r *ckReader) line(whole bool) uv.Line {
 	n := r.count(maxCheckpointSide)
 	if n > len(r.b) {
 		r.fail("short line")
@@ -548,7 +559,12 @@ func (r *ckReader) line() uv.Line {
 		case b == ckStyle:
 			cur = r.style()
 		case b == ckCell:
-			l = append(l, uv.Cell{Content: r.str(), Width: int(r.uvarint()), Style: cur.style, Link: cur.link})
+			content, width := r.str(), r.uvarint()
+			if width > maxCellWidth || whole && width > uint64(n-len(l)) {
+				r.fail("cell too wide")
+				break
+			}
+			l = append(l, uv.Cell{Content: content, Width: int(width), Style: cur.style, Link: cur.link})
 		case b >= 0x20 && b < 0x7f:
 			l = append(l, uv.Cell{Content: string(rune(b)), Width: 1, Style: cur.style, Link: cur.link})
 		default:
@@ -569,7 +585,7 @@ func (r *ckReader) cursor() Cursor {
 func (r *ckReader) screen(w, h int) Screen {
 	s := Screen{buf: uv.NewRenderBuffer(w, h)}
 	for y := range h {
-		l := r.line()
+		l := r.line(true)
 		if r.err == nil && len(l) != w {
 			r.fail("line of the wrong width")
 		}
@@ -577,14 +593,15 @@ func (r *ckReader) screen(w, h int) Screen {
 		s.buf.TouchLine(0, y, w)
 	}
 	s.cur, s.saved = r.cursor(), r.cursor()
-	s.scroll = r.rect()
-	for _, c := range []Cursor{s.cur, s.saved} {
-		// The cursor may be one past the last column, for a pending wrap.
-		if c.X < 0 || c.X > w || c.Y < 0 || c.Y >= max(h, 1) {
-			r.fail("cursor off the screen")
-		}
+	// Resize keeps only the active screen's cursor on it: the other
+	// screen's, and the saved ones, can be off a screen made smaller, and
+	// are put on it here.
+	for _, c := range []*Cursor{&s.cur, &s.saved} {
+		c.X = min(max(c.X, 0), max(w-1, 0))
+		c.Y = min(max(c.Y, 0), max(h-1, 0))
 	}
-	if sc := s.scroll; sc.Min.X < 0 || sc.Min.Y < 0 || sc.Max.X > w || sc.Max.Y > h || sc.Min.X > sc.Max.X || sc.Min.Y > sc.Max.Y {
+	s.scroll = r.rect()
+	if sc := s.scroll; sc.Min.X < 0 || sc.Min.Y < 0 || sc.Max.X > w || sc.Max.Y > h || sc.Min.X >= sc.Max.X || sc.Min.Y >= sc.Max.Y {
 		r.fail("scroll region off the screen")
 	}
 	if r.bool() {
@@ -598,7 +615,7 @@ func (r *ckReader) screen(w, h int) Screen {
 			if r.err != nil {
 				break
 			}
-			s.scrollback.lines = append(s.scrollback.lines, r.line())
+			s.scrollback.lines = append(s.scrollback.lines, r.line(false))
 		}
 	}
 	return s
