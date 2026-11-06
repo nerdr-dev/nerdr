@@ -42,6 +42,9 @@ type Screen struct {
 	mouseSgr bool
 	// exited is set when the program has gone: no cursor is drawn then.
 	exited bool
+	// incomplete is set when the screen may be missing some of what the
+	// program drew; see Incomplete.
+	incomplete bool
 
 	// drawGen counts what changes what a Frame shows: output, a resize,
 	// the exit. See DrawGen.

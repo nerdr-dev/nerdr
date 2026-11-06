@@ -38,6 +38,9 @@ type Frame struct {
 	Alt        bool
 	Scrollback int
 	Title      string
+	// Incomplete is set when the screen may be missing some of what the
+	// program drew; see Screen.Incomplete.
+	Incomplete bool
 	// Gen is the screen's DrawGen when the frame was taken.
 	Gen uint64
 }
@@ -75,7 +78,7 @@ func (s *Screen) FrameInto(f *Frame, scroll int) {
 	}
 	scroll = min(max(scroll, 0), sb)
 	rows := f.Rows
-	*f = Frame{W: w, H: h, Top: sb - scroll, Alt: alt, Scrollback: sb, Title: s.title, Gen: s.drawGen}
+	*f = Frame{W: w, H: h, Top: sb - scroll, Alt: alt, Scrollback: sb, Title: s.title, Incomplete: s.incomplete, Gen: s.drawGen}
 	cur := s.emu.CursorPosition()
 	f.CursorX, f.CursorY = cur.X, cur.Y
 	f.Cursor = s.cursorOn && scroll == 0 && !s.exited
