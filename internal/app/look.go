@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 // How the TUI shows the tabs and panes core has: the pane with the keyboard
@@ -67,8 +66,17 @@ func (m *Model) focused(t *core.Tab) *core.PaneTab {
 }
 
 // screen is the program in t's pane with the keyboard: an agent's or a
-// terminal's.
-func (m *Model) screen(t *core.Tab) *term.Pane { return m.focused(t).Term() }
+// terminal's; nil when none runs there.
+func (m *Model) screen(t *core.Tab) core.Program { return m.program(m.focused(t)) }
+
+// program is the program in pane p, as core gives it by p's PaneRef; nil
+// when none runs there.
+func (m *Model) program(p *core.PaneTab) core.Program {
+	if p == nil {
+		return nil
+	}
+	return m.Program(core.ProgramRef{Pane: m.PaneRef(p)})
+}
 
 // share is p's weight, 1 when it has none of its own.
 func (m *Model) share(p *core.PaneTab) float64 {

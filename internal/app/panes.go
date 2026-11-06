@@ -192,8 +192,8 @@ func (m *Model) focusPane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 func (m *Model) focusTerms(t *core.Tab) {
 	f := m.focused(t)
 	for _, p := range t.Panes() {
-		if tp := p.Term(); tp != nil {
-			tp.Focus(p == f && t == m.Cur() && !m.blurred)
+		if pr := m.program(p); pr != nil {
+			pr.Focus(p == f && t == m.Cur() && !m.blurred)
 		}
 	}
 }
@@ -262,7 +262,7 @@ func (m *Model) askClosePane() tea.Cmd {
 		return nil
 	}
 	p := m.focused(t)
-	if p.Kind == core.PaneShell && p.Shell != nil && p.Shell.Busy() {
+	if pr := m.program(p); p.Kind == core.PaneShell && pr != nil && pr.Busy() {
 		m.dialog = &confirm{
 			title:     "Stop the process and close the terminal?",
 			lines:     []string{"A process is still running in this terminal."},
@@ -543,7 +543,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 		}
 		return fitLines(msg, w, h)
 	}
-	tp := p.Term()
+	tp := m.program(p)
 	if tp == nil {
 		return fitLines(nil, w, h)
 	}

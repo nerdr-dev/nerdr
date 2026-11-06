@@ -252,7 +252,7 @@ func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 			return cmd
 		}
 	}
-	if !inside || p.Term() == nil {
+	if !inside || m.program(p) == nil {
 		return cmd
 	}
 	return tea.Batch(cmd, m.agentMouse(ev, px, py))
@@ -471,7 +471,7 @@ func (m *Model) shownScroll(t *core.Tab) int {
 // terminal (OSC 52, which reaches the clipboard of the machine in front of
 // you over SSH and through herdr), and the local clipboard's own way too
 // where there is one.
-func (m *Model) copySelection(p *term.Pane) {
+func (m *Model) copySelection(p core.Program) {
 	text := selectedText(p, m.sel)
 	if p == m.selPane {
 		m.selShown = false
@@ -506,7 +506,7 @@ const copyWindow = 5 * time.Second
 // clipboard unasked is what the user pastes next, into a shell perhaps.
 // The rest is let go.
 func (m *Model) checkCopied() {
-	var from []*term.Pane
+	var from []core.Program
 	if m.editor != nil {
 		from = append(from, m.editor)
 	} else {
@@ -517,10 +517,13 @@ func (m *Model) checkCopied() {
 		}
 	}
 	recent := m.router != nil && time.Since(m.router.LastInput()) < copyWindow
-	panes := []*term.Pane{m.editor}
+	var panes []core.Program
+	if m.editor != nil {
+		panes = append(panes, m.editor)
+	}
 	for _, t := range m.Tabs {
 		for _, p := range t.Panes() {
-			panes = append(panes, p.Term())
+			panes = append(panes, m.program(p))
 		}
 	}
 	for _, p := range panes {
