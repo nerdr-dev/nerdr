@@ -251,6 +251,7 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		var cmd Cmd
 		if !m.Quitting {
 			m.CheckShells()
+			m.CheckPluginUIs()
 			cmd = m.ExpireAsks(time.Now())
 		}
 		return cmd, FrameMsg{}

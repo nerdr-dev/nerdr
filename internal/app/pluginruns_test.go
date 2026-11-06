@@ -182,7 +182,7 @@ func TestPluginRunTellsTheScreen(t *testing.T) {
 		"\"tail -f \\\"$NERDR_PLUGIN_EVENTS\\\" | grep --line-buffered -o 'event...[a-z]*\\\\|clean..true\\\\|done-it\\\\|exit..0'\"]\nshow = [\"ui\"]\n"+
 		"[[params]]\nname = \"clean\"\ntype = \"bool\"\n")
 	run := started(t, m, askRun(m, tb, "board", map[string]any{"clean": true}))
-	if !m.pluginUIOf(tb, p).Running() {
+	if !m.PluginUIOf(tb, p).Running() {
 		t.Fatal("the plugin's screen was not started for the run")
 	}
 	if m.pluginUIPane() != nil {
@@ -199,8 +199,8 @@ func TestPluginRunTellsTheScreen(t *testing.T) {
 			t.Fatalf("the screen was not told of the run:\n%s", view)
 		}
 	}
-	events := m.pluginUIOf(tb, p).Events.Name()
-	m.stopPluginUI(tb, p)
+	events := m.PluginUIOf(tb, p).Events.Name()
+	m.StopPluginUI(tb, p)
 	if _, err := os.Stat(events); !os.IsNotExist(err) {
 		t.Fatal("the events file outlives its screen")
 	}
