@@ -296,6 +296,12 @@ func TestANewCoreFindsWhatTheHolderKept(t *testing.T) {
 	if pos, blk := h.Checkpoint("shell"); pos != 0 || string(blk) != "screen" {
 		t.Errorf("checkpoint %d %q", pos, blk)
 	}
+	if pos, blk, err := cl2.FetchCheckpoint("shell"); err != nil || pos != 0 || string(blk) != "screen" {
+		t.Errorf("fetched checkpoint %d %q %v", pos, blk, err)
+	}
+	if _, _, err := cl2.FetchCheckpoint("none"); err == nil {
+		t.Error("fetched a checkpoint of no program")
+	}
 	readUntil(t, q, "got x")
 	if err := q.Wait(); err == nil || err.Error() != "exit status 4" {
 		t.Errorf("Wait = %v", err)
@@ -440,5 +446,25 @@ func TestAProgramClosedBeforeItExitsIsReapedWhenItDoes(t *testing.T) {
 	}
 	if err := p.Wait(); err != nil {
 		t.Errorf("Wait after Close: %v", err)
+	}
+}
+
+// A program with no checkpoint has none to fetch; one larger than MaxBody
+// comes back whole.
+func TestFetchCheckpoint(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	if _, err := cl.SpawnAs("p", spawn.Spec{Argv: []string{"sleep", "10"}}, Mark{}, 0); err != nil {
+		t.Fatal(err)
+	}
+	if pos, blk, err := cl.FetchCheckpoint("p"); err != nil || pos != -1 || len(blk) != 0 {
+		t.Fatalf("none: %d %d bytes %v", pos, len(blk), err)
+	}
+	big := bytes.Repeat([]byte("s"), 2*MaxBody)
+	if err := cl.Checkpoint("p", 0, big); err != nil {
+		t.Fatal(err)
+	}
+	if pos, blk, err := cl.FetchCheckpoint("p"); err != nil || pos != 0 || !bytes.Equal(blk, big) {
+		t.Fatalf("big: %d %d bytes %v", pos, len(blk), err)
 	}
 }

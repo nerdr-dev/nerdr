@@ -44,6 +44,7 @@ const (
 	OpRead       = "read"       // ID, Pos, Max; reply: Pos, Lost, EOF, body
 	OpAck        = "ack"        // ID, and Pos, Exit or Done
 	OpCheckpoint = "checkpoint" // ID, Pos; body: the block, kept unread
+	OpFetch      = "fetch"      // ID; reply: Pos (-1 for none), body: the last block
 	OpList       = "list"       // ID or all; reply: Progs
 	OpShutdown   = "shutdown"   // stop every program and end
 	OpUpgrade    = "upgrade"    // exec the holder again, its programs kept
@@ -52,6 +53,19 @@ const (
 
 // MaxBody is the most a frame's body can hold; a read asks for no more.
 const MaxBody = 1 << 20
+
+// MaxCheckpoint is the most a checkpoint's block can be, in the frame
+// that keeps it and the one that fetches it: a screen with a long history
+// can be more than MaxBody.
+const MaxCheckpoint = 16 << 20
+
+// maxBodyOf is the most the body of a frame of op can hold.
+func maxBodyOf(op string) int {
+	if op == OpCheckpoint || op == OpFetch {
+		return MaxCheckpoint
+	}
+	return MaxBody
+}
 
 // maxHeader keeps a frame's header from asking for more than a list of
 // many programs needs.
@@ -183,7 +197,7 @@ func (c *conn) send(m *Msg, body []byte, files []*os.File) error {
 	if err != nil {
 		return err
 	}
-	if len(body) > MaxBody {
+	if len(body) > maxBodyOf(m.Op) {
 		return fmt.Errorf("holder: body of %d bytes", len(body))
 	}
 	frame := make([]byte, 8, 8+len(h)+len(body))
@@ -232,7 +246,7 @@ func (c *conn) recv() (*Msg, []byte, []*os.File, error) {
 		return nil, nil, nil, err
 	}
 	hl, bl := binary.BigEndian.Uint32(lens[0:]), binary.BigEndian.Uint32(lens[4:])
-	if hl > maxHeader || bl > MaxBody {
+	if hl > maxHeader || bl > MaxCheckpoint {
 		closeAll(fds)
 		return nil, nil, nil, fmt.Errorf("holder: frame of %d+%d bytes", hl, bl)
 	}
@@ -247,6 +261,10 @@ func (c *conn) recv() (*Msg, []byte, []*os.File, error) {
 	if err := json.Unmarshal(buf[:hl], m); err != nil {
 		closeAll(fds)
 		return nil, nil, nil, fmt.Errorf("holder: header: %w", err)
+	}
+	if int(bl) > maxBodyOf(m.Op) {
+		closeAll(fds)
+		return nil, nil, nil, fmt.Errorf("holder: %s with a body of %d bytes", m.Op, bl)
 	}
 	return m, buf[hl:], fds, nil
 }
