@@ -13,13 +13,14 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/detect"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // SetHookSocket gives the agents the socket their integrations report to.
 func (m *Core) SetHookSocket(path string) {
 	m.HookSock = path
-	if exe, err := Bin(); err == nil {
+	if exe, err := spawn.Bin(); err == nil {
 		m.HookBin = exe
 	}
 }
