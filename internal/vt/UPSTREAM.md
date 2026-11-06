@@ -20,6 +20,11 @@ Every file not listed here is upstream's, byte for byte; `go.mod` and
   fields it reads (`Emulator`, `Screen`, `Scrollback`, `Cursor`) must be
   matched there, and `CheckpointVersion` raised if what is written changes.
 
+- `handlers.go`, DECSTBM: a bottom margin below the screen is taken as the
+  screen's bottom once it is checked to be below the top. Upstream keeps it, and IL, DL and a line
+  feed in the region then index past the buffer and panic. Test in
+  `margins_test.go` (new).
+
 ## Updating
 
 1. Copy the new upstream version over this directory, leaving out `go.mod`

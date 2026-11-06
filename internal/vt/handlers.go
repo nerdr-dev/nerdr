@@ -875,6 +875,16 @@ func (e *Emulator) registerDefaultCsiHandlers() {
 			return false
 		}
 
+		// nerdr: a bottom below the screen is the screen's; kept, IL, DL
+		// and a line feed in the region index past the buffer. See
+		// UPSTREAM.md.
+		if bottom > height {
+			bottom = height
+			if top > bottom {
+				return false
+			}
+		}
+
 		// Rect is [x, y) which means y is exclusive. So the top margin
 		// is the top of the screen minus one.
 		e.scr.setVerticalMargins(top-1, bottom)
