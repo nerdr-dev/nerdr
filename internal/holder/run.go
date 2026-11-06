@@ -172,6 +172,7 @@ func FromEnv() (*Client, error) {
 // that starts CORE as nerdr's core. It is left out of the help. An
 // upgraded holder is started as `nerdr holder --resume FD`.
 func Main(args []string) int {
+	closeInheritedOnExec()
 	var err error
 	switch {
 	case len(args) == 2 && args[0] == resumeArg:
@@ -192,4 +193,20 @@ func Main(args []string) int {
 		return 1
 	}
 	return 0
+}
+
+// closeInheritedOnExec marks every descriptor from 3 up closed on exec:
+// those this process was given without the mark would otherwise go on to
+// the core and every program, as os.StartProcess passes on all that lack
+// it. The holder's own, and those an upgrade kept, are marked anyway.
+func closeInheritedOnExec() {
+	entries, err := os.ReadDir("/dev/fd")
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if fd, err := strconv.Atoi(e.Name()); err == nil && fd > 2 {
+			syscall.CloseOnExec(fd)
+		}
+	}
 }

@@ -380,3 +380,65 @@ func TestFailedUpgradeLeavesTheHolderAsItWas(t *testing.T) {
 		t.Error(err)
 	}
 }
+
+// What is left of a program's group once it is reaped can still be
+// stopped, as Pane.Stop and RunProc.Stop do; once the group is seen gone,
+// its id is never signalled again.
+func TestWhatIsLeftOfTheGroupCanBeStopped(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	p, err := cl.Spawn(spawn.Spec{Argv: []string{"sh", "-c", "trap '' HUP TERM; sleep 60 & exit 0"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := p.Wait(); err != nil {
+		t.Fatal(err)
+	}
+	pid := p.Pid()
+	if err := p.Signal(pid, 0); err != nil {
+		t.Fatalf("the group with a sleep left in it: %v", err)
+	}
+	if err := p.Signal(pid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	within(t, 5*time.Second, "the group to go", func() {
+		for p.Signal(pid, 0) != syscall.ESRCH {
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+	if err := p.Signal(pid, 0); err != syscall.ESRCH {
+		t.Errorf("a group seen gone is signalled again: %v", err)
+	}
+	p.Close()
+	if progs, _ := cl.List(); len(progs) != 0 {
+		t.Errorf("still listed: %+v", progs)
+	}
+}
+
+// A program the core lets go of before it exits is reaped and forgotten
+// by the holder when it does, with no ack.
+func TestAProgramClosedBeforeItExitsIsReapedWhenItDoes(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	p, err := cl.Spawn(spawn.Spec{Argv: []string{"sleep", "0.2"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := p.Pid()
+	p.Close()
+	within(t, 5*time.Second, "it to be forgotten", func() {
+		for {
+			progs, _ := cl.List()
+			if len(progs) == 0 {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+		t.Errorf("%d not reaped: %v", pid, err)
+	}
+	if err := p.Wait(); err != nil {
+		t.Errorf("Wait after Close: %v", err)
+	}
+}

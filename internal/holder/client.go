@@ -118,7 +118,7 @@ func (cl *Client) exited(id string, e *Exit) {
 	cl.mu.Unlock()
 	if p != nil {
 		p.setExit(e)
-		p.ackIfClosed()
+		p.forgetIfClosed()
 	}
 }
 
@@ -347,7 +347,9 @@ func (p *Proc) Wait() error {
 		p.cl.mu.Unlock()
 		return err
 	}
-	if _, _, err := p.cl.call(&Msg{Op: OpAck, ID: p.id, Exit: &Exit{}}, nil, nil, nil); err != nil {
+	// Closed first, the holder reaps it itself and may have forgotten
+	// it: the ack is not needed then.
+	if _, _, err := p.cl.call(&Msg{Op: OpAck, ID: p.id, Exit: &Exit{}}, nil, nil, nil); err != nil && !p.isClosed() {
 		return err
 	}
 	if p.exit == nil {
@@ -375,24 +377,31 @@ func (p *Proc) Signal(pg int, sig syscall.Signal) error {
 }
 
 // Close lets go of its terminal or output: the holder closes it, and
-// forgets the program once it is reaped. One closed before it exits has
-// its exit taken when it comes, so it is reaped all the same.
+// reaps and forgets the program once it has exited, no ack needed.
 func (p *Proc) Close() error {
 	var err error
 	p.closeMu.Do(func() {
 		close(p.closed)
 		_, _, err = p.cl.call(&Msg{Op: OpAck, ID: p.id, Done: true}, nil, nil, nil)
-		p.ackIfClosed()
+		p.forgetIfClosed()
 	})
 	return err
 }
 
-// ackIfClosed takes the exit of a program closed and exited, so the
-// holder reaps and forgets it, and forgets it here.
-func (p *Proc) ackIfClosed() {
+func (p *Proc) isClosed() bool {
 	select {
 	case <-p.closed:
+		return true
 	default:
+		return false
+	}
+}
+
+// forgetIfClosed forgets a program closed and exited here: the holder
+// has, or will once its groups are gone. One closed while it runs is
+// kept until its exit comes, so the exit has somewhere to go.
+func (p *Proc) forgetIfClosed() {
+	if !p.isClosed() {
 		return
 	}
 	select {
@@ -401,10 +410,8 @@ func (p *Proc) ackIfClosed() {
 		return
 	}
 	p.cl.mu.Lock()
-	mine := p.cl.procs[p.id] == p
-	delete(p.cl.procs, p.id)
-	p.cl.mu.Unlock()
-	if mine {
-		go p.cl.call(&Msg{Op: OpAck, ID: p.id, Exit: &Exit{}}, nil, nil, nil)
+	if p.cl.procs[p.id] == p {
+		delete(p.cl.procs, p.id)
 	}
+	p.cl.mu.Unlock()
 }

@@ -179,6 +179,16 @@ func runHolder(t *testing.T, core string) string {
 // it, cannot open it through the core's /proc entry, nor take it with
 // pidfd_getfd.
 func TestAnAgentCannotReachTheHoldersSocket(t *testing.T) {
+	// A socket the holder is given without close-on-exec, as a careless
+	// parent might, does not reach the agent either.
+	syscall.ForkLock.Lock()
+	leak, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
+	syscall.ForkLock.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer syscall.Close(leak[0])
+	defer syscall.Close(leak[1])
 	out := runHolder(t, "core-agent")
 	var r report
 	if err := json.Unmarshal([]byte(out), &r); err != nil {

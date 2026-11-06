@@ -63,6 +63,14 @@ type prog struct {
 	exitAcked, done bool
 	acked           int64
 
+	// groups are the process groups of p's session the holder has seen
+	// while p was not yet reaped, so in its session for sure; pgGone is
+	// that p's own group was seen empty after p was reaped. A group's id
+	// is not reused while the group has a process in it, so the holder
+	// signals them until it sees them gone, and then never again.
+	groups map[int]bool
+	pgGone bool
+
 	ckPos  int64
 	ckData []byte
 
@@ -421,8 +429,10 @@ func (h *Holder) resize(id string, w, ht int) error {
 }
 
 // signal sends sig to process group pg of p: its own, or for a program
-// on a terminal one in the session it leads. Once p is reaped its PID can
-// be another's, and nothing is sent.
+// on a terminal one in the session it leads. Its own group is reached
+// after p is reaped too, for what is left in it, until it is seen empty;
+// another group, only one seen in p's session before p was reaped. So a
+// group id that could be another's once its group is gone is not used.
 func (h *Holder) signal(id string, pg int, sig syscall.Signal) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -430,24 +440,83 @@ func (h *Holder) signal(id string, pg int, sig syscall.Signal) error {
 	if err != nil {
 		return err
 	}
-	if p.reaped || pg <= 0 {
+	if pg <= 0 {
 		return syscall.ESRCH
 	}
-	if pg != p.pid {
+	if pg == p.pid {
+		if p.pgGone {
+			return syscall.ESRCH
+		}
+	} else {
 		if !p.spawn.PTY {
 			return syscall.EPERM
 		}
-		sid, err := unix.Getsid(pg)
-		if err != nil {
+		if !p.reaped && !p.groups[pg] {
+			sid, err := unix.Getsid(pg)
+			if err != nil {
+				return syscall.ESRCH
+			}
+			if sid != p.pid {
+				return syscall.EPERM
+			}
+			p.see(pg)
+		}
+		if !p.groups[pg] {
 			return syscall.ESRCH
 		}
-		if sid != p.pid {
-			return syscall.EPERM
+	}
+	err = syscall.Kill(-pg, sig)
+	if err == syscall.ESRCH {
+		p.gone(pg)
+		h.forgetIfDone(p)
+	}
+	return err
+}
+
+// see notes that pg is a group in p's session. h.mu is held.
+func (p *prog) see(pg int) {
+	if p.groups == nil {
+		p.groups = map[int]bool{}
+	}
+	p.groups[pg] = true
+}
+
+// gone notes that pg was seen empty. h.mu is held.
+func (p *prog) gone(pg int) {
+	if pg == p.pid {
+		p.pgGone = p.reaped
+	} else {
+		delete(p.groups, pg)
+	}
+}
+
+// groupsLeft says whether any of p's groups may still have a process,
+// looking again at those not yet seen gone. h.mu is held.
+func (p *prog) groupsLeft() bool {
+	if p.reaped && !p.pgGone && syscall.Kill(-p.pid, 0) == syscall.ESRCH {
+		p.pgGone = true
+	}
+	for pg := range p.groups {
+		if syscall.Kill(-pg, 0) == syscall.ESRCH {
+			delete(p.groups, pg)
 		}
 	}
-	// The PID cannot be reused while p is unreaped, and h.mu keeps it
-	// so while the signal is sent.
-	return syscall.Kill(-pg, sig)
+	return !p.pgGone || len(p.groups) > 0
+}
+
+// forgetIfDone reaps p once it has exited and the core has let go of it,
+// and forgets it once its groups are gone too. h.mu is held.
+func (h *Holder) forgetIfDone(p *prog) {
+	if !p.done || !p.exited {
+		return
+	}
+	if !p.reaped {
+		reap(p.pid)
+		p.reaped = true
+	}
+	if !p.groupsLeft() && h.progs[p.id] == p {
+		h.forget(p.id)
+	}
 }
 
 // read answers m once there is output from m.Pos on, the output ends or
@@ -507,6 +576,8 @@ func (h *Holder) watch(p *prog) {
 	if h.core != nil {
 		h.core.post(&Msg{Op: OpExit, ID: p.id, Exit: e}, nil)
 	}
+	// Let go of already, it is reaped now: no core waits for its exit.
+	h.forgetIfDone(p)
 }
 
 func (h *Holder) ack(m *Msg) error {
@@ -540,9 +611,7 @@ func (h *Holder) ack(m *Msg) error {
 		p.signalChanged()
 		p.poke()
 	}
-	if p.done && p.reaped {
-		h.forget(p.id)
-	}
+	h.forgetIfDone(p)
 	return nil
 }
 
@@ -608,8 +677,19 @@ func (h *Holder) list(id string) ([]Prog, error) {
 		}
 		if p.spawn.PTY && !p.done && !p.exited {
 			pr.Foreground = foreground(p.out) // an ioctl; it does not wait
+			if fg := pr.Foreground; fg > 0 && fg != p.pid {
+				if sid, err := unix.Getsid(fg); err == nil && sid == p.pid {
+					p.see(fg)
+				}
+			}
 		}
 		progs = append(progs, pr)
+	}
+	// Those let go of whose groups have gone since.
+	for _, id := range ids {
+		if p := h.progs[id]; p != nil && p.done && p.reaped {
+			h.forgetIfDone(p)
+		}
 	}
 	return progs, nil
 }
@@ -635,21 +715,33 @@ func (h *Holder) shutdown(grace time.Duration) {
 		}
 	}
 	h.mu.Unlock()
-	deadline := time.Now().Add(grace)
-	for _, p := range running {
-		for {
-			h.mu.Lock()
-			exited := p.exited
-			h.mu.Unlock()
-			if exited {
-				break
+	left := func() []*prog {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		var l []*prog
+		for _, p := range running {
+			if !p.exited {
+				l = append(l, p)
 			}
-			if time.Now().After(deadline) {
-				_ = syscall.Kill(-p.pid, syscall.SIGKILL)
-				deadline = time.Now().Add(time.Second)
-			}
-			time.Sleep(10 * time.Millisecond)
 		}
+		return l
+	}
+	deadline := time.Now().Add(grace)
+	for time.Now().Before(deadline) && len(left()) > 0 {
+		time.Sleep(10 * time.Millisecond)
+	}
+	// What is left is killed, all at once; under h.mu, so none is reaped
+	// meanwhile and its PID another's.
+	h.mu.Lock()
+	for _, p := range running {
+		if !p.exited {
+			_ = syscall.Kill(-p.pid, syscall.SIGKILL)
+		}
+	}
+	h.mu.Unlock()
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) && len(left()) > 0 {
+		time.Sleep(10 * time.Millisecond)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -779,11 +871,9 @@ func (s *sender) stop() {
 	<-s.stopped
 }
 
-// take is what is left to send, taken out.
-func (s *sender) take() []frame {
+// pending is a copy of what is left to send.
+func (s *sender) pending() []frame {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	q := s.q
-	s.q = nil
-	return q
+	return append([]frame(nil), s.q...)
 }

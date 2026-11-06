@@ -70,6 +70,8 @@ type progSave struct {
 	CkPos     int64       `json:"ck_pos"`
 	CkData    []byte      `json:"ck_data,omitempty"`
 	Writes    []writeSave `json:"writes,omitempty"`
+	Groups    []int       `json:"groups,omitempty"`
+	PgGone    bool        `json:"pg_gone,omitempty"`
 }
 
 type writeSave struct {
@@ -146,7 +148,8 @@ func (h *Holder) save(s *sender, seq uint64) (*state, []int, error) {
 			return nil, nil, err
 		}
 		keep = append(keep, st.ConnFD)
-		st.Outbox = s.take()
+		// A copy: should the exec fail, the sender goes on with it.
+		st.Outbox = s.pending()
 		for _, m := range h.reads {
 			st.Reads = append(st.Reads, m)
 		}
@@ -157,7 +160,10 @@ func (h *Holder) save(s *sender, seq uint64) (*state, []int, error) {
 			ID: p.id, Spawn: p.spawn, Pid: p.pid, Started: p.started, OutFD: -1, InFD: -1,
 			Stdin: p.stdin, Ring: p.ring.bytes(), End: p.ring.end, OutEOF: p.outEOF,
 			Exited: p.exited, Exit: p.exit, Reaped: p.reaped, ExitAcked: p.exitAcked, Done: p.done,
-			Acked: p.acked, CkPos: p.ckPos, CkData: p.ckData,
+			Acked: p.acked, CkPos: p.ckPos, CkData: p.ckData, PgGone: p.pgGone,
+		}
+		for pg := range p.groups {
+			ps.Groups = append(ps.Groups, pg)
 		}
 		var err error
 		if !p.done {
@@ -275,7 +281,10 @@ func Resume(fd int) error {
 			id: ps.ID, spawn: ps.Spawn, pid: ps.Pid, started: ps.Started, stdin: ps.Stdin,
 			ring: newRing(ps.Spawn.Ring), outEOF: ps.OutEOF, changed: make(chan struct{}),
 			exited: ps.Exited, exit: ps.Exit, reaped: ps.Reaped, exitAcked: ps.ExitAcked, done: ps.Done,
-			acked: ps.Acked, ckPos: ps.CkPos, ckData: ps.CkData,
+			acked: ps.Acked, ckPos: ps.CkPos, ckData: ps.CkData, pgGone: ps.PgGone,
+		}
+		for _, pg := range ps.Groups {
+			p.see(pg)
 		}
 		p.ring.restore(ps.Ring, ps.End)
 		if ps.OutFD >= 0 {
@@ -304,6 +313,7 @@ func Resume(fd int) error {
 		}
 		served := make(chan error, 1)
 		go func() {
+			defer c.Close()
 			defer s.stop()
 			defer h.detach(s, gone)
 			served <- h.serve(s, gone)
