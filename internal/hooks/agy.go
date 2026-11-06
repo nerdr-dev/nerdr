@@ -226,7 +226,9 @@ func AgyState(ev AgyEvent) string {
 		return "working"
 	case "Stop":
 		if ev.FullyIdle != nil && !*ev.FullyIdle {
-			return "working" // its subagents are still at it
+			// Subagents, or a command it put in the background, are
+			// still at it (as agy 1.5.1 says of both).
+			return "working"
 		}
 		return "idle" // done, failed or cancelled
 	}
