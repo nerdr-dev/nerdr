@@ -2,12 +2,14 @@ package core
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"syscall"
 
 	"github.com/nerdr-dev/nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // RunDir opens the requested working directory beneath a trusted tab
@@ -77,6 +79,24 @@ func PluginCommandIn(cmd *exec.Cmd, dir *os.File, checkDir, key string) error {
 	cmd.Path, cmd.Dir = exe, ""
 	cmd.ExtraFiles = []*os.File{dir} // descriptor 3 in the child
 	return nil
+}
+
+// PluginSpec is cmd, a plugin's program, as PluginCommandIn has nerdr
+// start it: what it reads from standard input taken in, and dir given as
+// descriptor 3. dir is the caller's to close once it has started.
+func PluginSpec(cmd *exec.Cmd, dir *os.File, checkDir, key string) (spawn.Spec, error) {
+	if err := PluginCommandIn(cmd, dir, checkDir, key); err != nil {
+		return spawn.Spec{}, err
+	}
+	s := spawn.Spec{Argv: cmd.Args, Dir: cmd.Dir, Env: cmd.Env, Files: cmd.ExtraFiles}
+	if cmd.Stdin != nil {
+		b, err := io.ReadAll(cmd.Stdin)
+		if err != nil {
+			return spawn.Spec{}, err
+		}
+		s.Stdin = b
+	}
+	return s, nil
 }
 
 // CheckPluginKey is the last look at a plugin before its program starts:

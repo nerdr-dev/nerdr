@@ -3,8 +3,6 @@ package term
 import (
 	"syscall"
 	"time"
-
-	"golang.org/x/sys/unix"
 )
 
 // Busy reports whether a program other than the one started runs in the
@@ -12,20 +10,19 @@ import (
 // has not ended. False when it cannot tell.
 func (p *Pane) Busy() bool {
 	pg, ok := p.foreground()
-	return ok && p.cmd.Process != nil && pg != p.cmd.Process.Pid
+	return ok && p.Pid() != 0 && pg != p.Pid()
 }
 
 // SignalForeground sends sig to the terminal's foreground process group,
 // when that is not the program started: to stop a command run in a shell
 // that did not stop for ctrl+c.
 func (p *Pane) SignalForeground(sig syscall.Signal) {
-	if pg, ok := p.foreground(); ok && p.cmd.Process != nil && pg != p.cmd.Process.Pid && pg > 0 {
-		_ = syscall.Kill(-pg, sig)
+	if pg, ok := p.foreground(); ok && p.Pid() != 0 && pg != p.Pid() && pg > 0 {
+		_ = p.proc.Signal(pg, sig)
 	}
 }
 
-// foreground is the terminal's foreground process group. It goes through
-// SyscallConn, not Fd, which would make the pty blocking.
+// foreground is the terminal's foreground process group.
 func (p *Pane) foreground() (int, bool) {
 	p.mu.Lock()
 	exited := p.exited
@@ -33,15 +30,7 @@ func (p *Pane) foreground() (int, bool) {
 	if exited {
 		return 0, false
 	}
-	rc, err := p.pty.SyscallConn()
-	if err != nil {
-		return 0, false
-	}
-	pg, ierr := 0, error(nil)
-	if err := rc.Control(func(fd uintptr) { pg, ierr = unix.IoctlGetInt(int(fd), unix.TIOCGPGRP) }); err != nil || ierr != nil {
-		return 0, false
-	}
-	return pg, true
+	return p.proc.Foreground()
 }
 
 // Rerun stops the command running in a shell's terminal, if one is, and

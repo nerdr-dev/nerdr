@@ -5,24 +5,19 @@ package term
 
 import (
 	"encoding/base64"
-	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/denied"
-
-	"github.com/creack/pty"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // Pane is one program running in a pseudo-terminal, and its Screen.
 type Pane struct {
 	*Screen
-	pty *os.File
-	cmd *exec.Cmd
+	proc spawn.Proc
 
 	started time.Time
 	// exitErr is how the program exited; Screen.mu guards it.
@@ -52,25 +47,21 @@ type Pane struct {
 // called (from another goroutine) whenever the screen changes or the
 // program exits; it must not block.
 func Start(argv []string, dir string, env []string, w, h int, notify func()) (*Pane, error) {
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Dir = dir
-	cmd.Env = env
-	return StartCmd(cmd, w, h, notify)
+	return StartWith(spawn.Local{}, spawn.Spec{Argv: argv, Dir: dir, Env: env, W: w, H: h}, notify)
 }
 
-// StartCmd starts a command already prepared, as Start does: its own
-// argv, environment and extra files, and nerdr's re-exec helper among
-// them.
-func StartCmd(cmd *exec.Cmd, w, h int, notify func()) (*Pane, error) {
-	w, h = max(w, 10), max(h, 3)
-	f, err := pty.StartWithSize(cmd, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
-	if denied.Err(err) != nil {
+// StartWith starts s in a terminal through sp, as Start does: s.PTY is
+// set, and the size made at least 10×3.
+func StartWith(sp spawn.Spawner, s spawn.Spec, notify func()) (*Pane, error) {
+	s.PTY = true
+	s.W, s.H = max(s.W, 10), max(s.H, 3)
+	proc, err := sp.Spawn(s)
+	if err != nil {
 		return nil, err
 	}
 	p := &Pane{
-		Screen:    NewScreen(w, h),
-		pty:       f,
-		cmd:       cmd,
+		Screen:    NewScreen(s.W, s.H),
+		proc:      proc,
 		started:   time.Now(),
 		done:      make(chan struct{}),
 		readDone:  make(chan struct{}),
@@ -89,7 +80,7 @@ func (p *Pane) readLoop() {
 	defer close(p.readDone)
 	buf := make([]byte, 32*1024)
 	for {
-		n, err := p.pty.Read(buf)
+		n, err := p.proc.Read(buf)
 		if n > 0 {
 			p.Feed(buf[:n])
 			if p.drawnOn.Load() == frame.Load() {
@@ -110,7 +101,7 @@ func (p *Pane) replyLoop() {
 	for {
 		n, err := p.ReadReply(buf)
 		if n > 0 {
-			_, _ = p.pty.Write(buf[:n])
+			_, _ = p.proc.Write(buf[:n])
 		}
 		if err != nil {
 			return
@@ -119,7 +110,7 @@ func (p *Pane) replyLoop() {
 }
 
 func (p *Pane) wait() {
-	err := p.cmd.Wait()
+	err := p.proc.Wait()
 	// Let the last of the output reach the screen before saying the
 	// program is gone; a background child holding the pty open must not
 	// keep the tab waiting, though.
@@ -133,7 +124,7 @@ func (p *Pane) wait() {
 	p.mu.Unlock()
 	close(p.done)
 	p.dropWrites()
-	_ = p.pty.Close()
+	_ = p.proc.Close()
 	p.notify()
 }
 
@@ -198,7 +189,7 @@ func (p *Pane) writeLoop() {
 				p.out = p.out[1:]
 			}
 			p.outMu.Unlock()
-			if _, err := p.pty.Write(buf[:n]); err != nil {
+			if _, err := p.proc.Write(buf[:n]); err != nil {
 				return
 			}
 		}
@@ -262,16 +253,16 @@ func (p *Pane) Resize(w, h int) {
 	defer p.mu.Unlock()
 	if p.resize(w, h) && !p.exited {
 		w, h = p.emu.Width(), p.emu.Height()
-		_ = pty.Setsize(p.pty, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
+		_ = p.proc.Resize(w, h)
 	}
 }
 
 // Pid is the process of the program started, 0 when there is none.
 func (p *Pane) Pid() int {
-	if p.cmd == nil || p.cmd.Process == nil {
+	if p.proc == nil {
 		return 0
 	}
-	return p.cmd.Process.Pid
+	return p.proc.Pid()
 }
 
 // Stop hangs up the program's process group and the terminal's foreground
@@ -279,16 +270,16 @@ func (p *Pane) Pid() int {
 // their own group, so stopping only the shell's group can leave a server alive.
 // Once a group disappears, forget it: its id could be reused.
 func (p *Pane) Stop(grace time.Duration) {
-	if p.cmd.Process == nil {
+	if p.Pid() == 0 {
 		return
 	}
-	groups := []int{p.cmd.Process.Pid}
+	groups := []int{p.Pid()}
 	if pg, ok := p.foreground(); ok && pg > 0 && pg != groups[0] {
 		groups = append(groups, pg)
 	}
 	alive := groups[:0]
 	for _, pg := range groups {
-		if syscall.Kill(-pg, syscall.SIGHUP) != syscall.ESRCH {
+		if p.proc.Signal(pg, syscall.SIGHUP) != syscall.ESRCH {
 			alive = append(alive, pg)
 		}
 	}
@@ -301,14 +292,14 @@ func (p *Pane) Stop(grace time.Duration) {
 		case <-tick.C:
 			remaining := alive[:0]
 			for _, pg := range alive {
-				if syscall.Kill(-pg, 0) != syscall.ESRCH {
+				if p.proc.Signal(pg, 0) != syscall.ESRCH {
 					remaining = append(remaining, pg)
 				}
 			}
 			alive = remaining
 		case <-deadline.C:
 			for _, pg := range alive {
-				_ = syscall.Kill(-pg, syscall.SIGKILL)
+				_ = p.proc.Signal(pg, syscall.SIGKILL)
 			}
 			return
 		}

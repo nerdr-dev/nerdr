@@ -3,7 +3,6 @@ package core
 import (
 	"encoding/json"
 	"errors"
-	"os"
 	"os/exec"
 	"slices"
 	"sync"
@@ -12,13 +11,14 @@ import (
 	"unicode/utf8"
 
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // RunProc is the program of a plugin's run, which nerdr runs, and what it
 // has printed: kept by the goroutines that read it and wait for it, and
 // read by the model and by `nerdr plugin run` asking for it, under mu.
 type RunProc struct {
-	Cmd      *exec.Cmd
+	Proc     spawn.Proc
 	Notify   func()
 	StopOnce sync.Once
 	Stopped  chan struct{} // closed when stopping the process group is complete
@@ -48,29 +48,21 @@ const MaxRaw = 1 << 20
 // command waiting on the run is answered well within its request's time.
 const ReadWait = 5 * time.Second
 
-// StartProc starts cmd, its output to be read from the run, and notify
-// called when there is more of it, or it ended.
-func StartProc(cmd *exec.Cmd, notify func()) (*RunProc, error) {
-	pr, pw, err := os.Pipe()
+// StartProc starts s through sp with no terminal, its output to be read
+// from the run, and notify called when there is more of it, or it ended.
+func StartProc(sp spawn.Spawner, s spawn.Spec, notify func()) (*RunProc, error) {
+	s.PTY = false
+	proc, err := sp.Spawn(s)
 	if err != nil {
 		return nil, err
 	}
-	cmd.Stdout, cmd.Stderr = pw, pw
-	// Its own process group, so a stop stops what it started too.
-	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	if err := cmd.Start(); err != nil {
-		pr.Close()
-		pw.Close()
-		return nil, err
-	}
-	pw.Close()
-	p := &RunProc{Cmd: cmd, Notify: notify, Stopped: make(chan struct{})}
+	p := &RunProc{Proc: proc, Notify: notify, Stopped: make(chan struct{})}
 	read := make(chan struct{})
 	go func() {
 		defer close(read)
 		buf := make([]byte, 32<<10)
 		for {
-			n, err := pr.Read(buf)
+			n, err := proc.Read(buf)
 			if n > 0 {
 				p.Add(buf[:n])
 			}
@@ -82,7 +74,7 @@ func StartProc(cmd *exec.Cmd, notify func()) (*RunProc, error) {
 	go func() {
 		code := 0
 		var exit *exec.ExitError
-		if err := cmd.Wait(); errors.As(err, &exit) {
+		if err := proc.Wait(); errors.As(err, &exit) {
 			code = exit.ExitCode()
 			if code < 0 {
 				code = 128 + int(exit.Sys().(syscall.WaitStatus).Signal())
@@ -96,7 +88,7 @@ func StartProc(cmd *exec.Cmd, notify func()) (*RunProc, error) {
 		case <-read:
 		case <-time.After(time.Second):
 		}
-		pr.Close()
+		proc.Close()
 		<-read
 		p.Finish(code)
 	}()
@@ -201,16 +193,16 @@ func (p *RunProc) Since(offset int) (text string, next int, done bool, exit int)
 // would, and for good if it has not ended in a few seconds.
 func (p *RunProc) Stop() {
 	p.StopOnce.Do(func() {
-		pid := p.Cmd.Process.Pid
+		pid := p.Proc.Pid()
 		// Wait reaps only the leader: what it started may still be in its
 		// process group after p.done, so ask the group, not p.done. If
 		// the number has been reused as another group in the meantime,
 		// this cannot tell; the tick below stops once the group is gone.
-		if syscall.Kill(-pid, 0) != nil {
+		if p.Proc.Signal(pid, 0) != nil {
 			close(p.Stopped)
 			return
 		}
-		err := syscall.Kill(-pid, syscall.SIGTERM)
+		err := p.Proc.Signal(pid, syscall.SIGTERM)
 		go func() {
 			defer close(p.Stopped)
 			if err == syscall.ESRCH {
@@ -225,13 +217,13 @@ func (p *RunProc) Stop() {
 				case <-tick.C:
 					// Stop checking once the group is gone, rather than
 					// signalling its number later if it has been reused.
-					if syscall.Kill(-pid, 0) == syscall.ESRCH {
+					if p.Proc.Signal(pid, 0) == syscall.ESRCH {
 						return
 					}
 				case <-deadline.C:
 					// Wait reaps only the leader. Children may still be
 					// running even though p.done is true.
-					_ = syscall.Kill(-pid, syscall.SIGKILL)
+					_ = p.Proc.Signal(pid, syscall.SIGKILL)
 					return
 				}
 			}

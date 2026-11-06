@@ -6,6 +6,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 )
 
@@ -58,6 +59,10 @@ type Core struct {
 	// hookSockErr is why there is no hookSock, when there is not.
 	HookSockErr string
 
+	// Spawner starts the programs of the tabs: agents, terminals and
+	// plugins. Nil is spawn.Local; see Programs.
+	Spawner spawn.Spawner
+
 	Cfg         config.Config
 	Root        string // the folder nerdr was started in
 	Tabs        []*Tab
@@ -99,3 +104,11 @@ type Core struct {
 
 // Toast shows a short message to the user, if a client is there to show it.
 func (c *Core) Toast(s string) { c.Tell(ToastMsg(s)) }
+
+// Programs starts the programs of the tabs.
+func (m *Core) Programs() spawn.Spawner {
+	if m.Spawner == nil {
+		return spawn.Local{}
+	}
+	return m.Spawner
+}

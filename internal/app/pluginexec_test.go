@@ -12,19 +12,19 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // The leader exits on TERM, but its child keeps doing work until KILL.
 // A heartbeat avoids mistaking a dead, unreaped child for a live process.
 func TestPluginStopKillsDescendants(t *testing.T) {
 	heartbeat := filepath.Join(t.TempDir(), "heartbeat")
-	cmd := exec.Command(os.Args[0], "-test.run=^TestPluginProcessHelper$")
-	cmd.Env = append(os.Environ(), "NERDR_PLUGIN_TEST_PROCESS=parent", "NERDR_PLUGIN_TEST_HEARTBEAT="+heartbeat)
-	p, err := core.StartProc(cmd, func() {})
+	p, err := core.StartProc(spawn.Local{}, spawn.Spec{Argv: []string{os.Args[0], "-test.run=^TestPluginProcessHelper$"},
+		Env: append(os.Environ(), "NERDR_PLUGIN_TEST_PROCESS=parent", "NERDR_PLUGIN_TEST_HEARTBEAT="+heartbeat)}, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+	defer syscall.Kill(-p.Proc.Pid(), syscall.SIGKILL)
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
 		out, _, _, _ := p.Since(0)
 		if strings.Contains(out, "child ready") {
