@@ -132,3 +132,24 @@ func TestBackgroundWorkGoesOnWithNoClient(t *testing.T) {
 		t.Fatal("the tab's branches were not looked at with no client")
 	}
 }
+
+type heldKeeper struct{ sleep, screen bool }
+
+func (k *heldKeeper) Set(sleep, screen bool) { k.sleep, k.screen = sleep, screen }
+func (k *heldKeeper) Err() string            { return "" }
+
+// TestNoClientKeepsTheMachineAwake: keep_awake holds while an agent works with
+// nobody looking, but keep_screen_on keeps no screen on for nobody.
+func TestNoClientKeepsTheMachineAwake(t *testing.T) {
+	k := &heldKeeper{}
+	old := NewKeeper
+	NewKeeper = func() Keeper { return k }
+	defer func() { NewKeeper = old }()
+	on := true
+	tb := &Tab{AgentState: Agent{Light: StWorking}}
+	core := &Core{Client: NoClient{}, Tabs: []*Tab{tb}, Cfg: config.Config{KeepAwake: config.KeepBusy, KeepScreenOn: &on}}
+	core.KeepAwake(time.Now(), nil)
+	if !k.sleep || k.screen {
+		t.Fatalf("with an agent at work and no client: %+v", k)
+	}
+}

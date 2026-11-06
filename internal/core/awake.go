@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/awake"
+	"github.com/nerdr-dev/nerdr/internal/config"
 )
 
 // Keeper is what holds the machine awake; awake.Keeper but in tests.
@@ -39,4 +40,39 @@ func (m *Core) Busy() bool {
 // ScreenMax is how long after the last input the screen is kept on.
 func (m *Core) ScreenMax() time.Duration {
 	return time.Duration(max(m.Cfg.KeepScreenMax, 1)) * time.Minute
+}
+
+// KeepAwake keeps the machine from sleeping, and with keep_screen_on the
+// screen on, while keep_awake asks: while an agent works, or always. The
+// screen stays on only for a while after lastInput, the user's last key or
+// click, asked for only while the screen is to be kept on; nil with no
+// client, which keeps the screen on for nobody.
+func (m *Core) KeepAwake(now time.Time, lastInput func() time.Time) {
+	if m.Busy() {
+		m.LastBusy = now
+	}
+	want := false
+	switch m.Cfg.KeepAwake {
+	case config.KeepAlways:
+		want = true
+	case config.KeepBusy:
+		want = !m.LastBusy.IsZero() && now.Sub(m.LastBusy) < AwakeAfter
+	}
+	if m.Awake == nil {
+		if !want {
+			return
+		}
+		m.Awake = NewKeeper()
+	}
+	screen := false
+	if IsOn(m.Cfg.KeepScreenOn) && lastInput != nil {
+		screen = now.Sub(lastInput()) < m.ScreenMax()
+	}
+	m.Awake.Set(want, screen)
+	if err := m.Awake.Err(); err != m.AwakeErr {
+		m.AwakeErr = err
+		if err != "" {
+			m.Toast("keep_awake: " + err)
+		}
+	}
 }

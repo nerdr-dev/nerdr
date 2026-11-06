@@ -25,42 +25,42 @@ func TestKeepAwake(t *testing.T) {
 	m := testModel(t)
 	m.Cfg.KeepAwake = config.KeepBusy
 	now := time.Now()
-	m.keepAwake(now)
-	if m.keeper != nil {
+	m.KeepAwake(now, func() time.Time { return m.lastInput(now) })
+	if m.Awake != nil {
 		t.Fatal("a keeper was made with no agent working")
 	}
 	m.Tabs[1].Light = core.StWorking
-	m.keepAwake(now)
+	m.KeepAwake(now, func() time.Time { return m.lastInput(now) })
 	if !k.sleep || k.screen {
 		t.Fatalf("an agent works: %+v", k)
 	}
 	m.Tabs[1].Light = core.StDone
-	m.keepAwake(now.Add(30 * time.Second))
+	m.KeepAwake(now.Add(30 * time.Second), func() time.Time { return m.lastInput(now.Add(30 * time.Second)) })
 	if !k.sleep {
 		t.Fatal("let go at once after the turn")
 	}
-	m.keepAwake(now.Add(core.AwakeAfter + time.Second))
+	m.KeepAwake(now.Add(core.AwakeAfter + time.Second), func() time.Time { return m.lastInput(now.Add(core.AwakeAfter + time.Second)) })
 	if k.sleep {
 		t.Fatal("still held a minute after")
 	}
 	on := true
 	m.Cfg.KeepScreenOn = &on
 	m.Cfg.KeepAwake = config.KeepAlways
-	m.keepAwake(now.Add(time.Hour))
+	m.KeepAwake(now.Add(time.Hour), func() time.Time { return m.lastInput(now.Add(time.Hour)) })
 	if !k.sleep || !k.screen {
 		t.Fatalf("always, with the screen: %+v", k)
 	}
 	// The screen is let go of keep_screen_max after the last input, the
 	// machine still kept awake.
 	m.Cfg.KeepScreenMax = 60
-	m.keepAwake(m.started.Add(61 * time.Minute))
+	m.KeepAwake(m.started.Add(61 * time.Minute), func() time.Time { return m.lastInput(m.started.Add(61 * time.Minute)) })
 	if !k.sleep || k.screen {
 		t.Fatalf("an hour with no input: %+v", k)
 	}
 
 	m.Cfg.KeepAwake = "off"
 	m.Tabs[0].Light = core.StWorking
-	m.keepAwake(now.Add(time.Hour))
+	m.KeepAwake(now.Add(time.Hour), func() time.Time { return m.lastInput(now.Add(time.Hour)) })
 	if k.sleep {
 		t.Fatal("off holds nothing")
 	}
