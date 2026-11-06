@@ -134,7 +134,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	if p := f.Term(); p != nil {
+	if p := m.program(f); p != nil {
 		// Keys reach here while the router is switching over.
 		if b := keyBytes(msg); len(b) > 0 {
 			p.Input(b)
@@ -199,7 +199,7 @@ func (m *Model) screenMenuKeys() ([]string, string) {
 
 // keyPane is the program that has the keyboard: the one in the active
 // tab's pane with it; nil when the review panel has it, or none does.
-func (m *Model) keyPane() *term.Pane {
+func (m *Model) keyPane() core.Program {
 	t := m.Cur()
 	if t == nil || m.focus == core.FocusReview {
 		return nil
@@ -662,7 +662,7 @@ func (m *Model) scrollKey(msg tea.KeyMsg) {
 // keeps no scrollback for nerdr to show — a full-screen agent scrolls its
 // own: the keys go to it as a terminal sends the wheel and the page keys
 // there.
-func (m *Model) altScrollKey(p *term.Pane, msg tea.KeyMsg, w, h int) {
+func (m *Model) altScrollKey(p core.Program, msg tea.KeyMsg, w, h int) {
 	wheel := func(btn ansi.MouseButton, arrow string) {
 		for range 3 {
 			if !p.SendMouse(term.MouseEvent{Button: btn, X: w / 2, Y: h / 2}) {

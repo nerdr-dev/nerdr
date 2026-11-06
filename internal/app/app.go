@@ -182,10 +182,10 @@ type Model struct {
 	// sel is the text being chosen in selPane with the mouse, drawn while
 	// selShown; see drawPane.
 	sel      term.Selection
-	selPane  *term.Pane
+	selPane  core.Program
 	selShown bool
 	// drawnPanes are the programs' screens as last drawn; see drawPane.
-	drawnPanes map[*term.Pane]*drawnPane
+	drawnPanes map[core.Program]*drawnPane
 	// textSel is the text in a dialog being selected; see textsel.go.
 	textSel *textSel
 	// lastWheelStep is when the wheel last stepped to another tab or
@@ -804,10 +804,14 @@ func (m *Model) resizePanes() {
 	for _, t := range m.Tabs {
 		for _, p := range t.Panes() {
 			switch {
-			case p.Kind == core.PaneShell && p.Shell != nil:
-				p.Shell.Resize(m.shellSize(t, p))
+			case p.Kind == core.PaneShell:
+				if pr := m.program(p); pr != nil {
+					pr.Resize(m.shellSize(t, p))
+				}
 			case p.A != nil && p.A.Pane != nil:
-				p.A.Pane.Resize(m.paneSize(p.A))
+				if pr := m.program(p); pr != nil {
+					pr.Resize(m.paneSize(p.A))
+				}
 			}
 		}
 	}
@@ -945,8 +949,8 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	}
 	if old := m.Cur(); old != nil && i != m.Active {
 		for _, p := range old.Panes() {
-			if tp := p.Term(); tp != nil {
-				tp.Focus(false)
+			if pr := m.program(p); pr != nil {
+				pr.Focus(false)
 			}
 		}
 	}

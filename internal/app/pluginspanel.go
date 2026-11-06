@@ -14,7 +14,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
-	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -112,7 +111,7 @@ func (m *Model) pickedPlugin(t *core.Tab) (plugin.Plugin, bool) {
 
 // pluginUIPane is the plugin screen with the keyboard, if one has it: the
 // input router passes keys straight to it.
-func (m *Model) pluginUIPane() *term.Pane {
+func (m *Model) pluginUIPane() core.Program {
 	if m.focus != core.FocusReview || !m.panelPlugins() || m.plugins.uiFocus == "" {
 		return nil
 	}
@@ -122,7 +121,7 @@ func (m *Model) pluginUIPane() *term.Pane {
 		return nil
 	}
 	if u := m.PluginUIOf(t, p); u.Running() {
-		return u.Pane
+		return m.Program(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	}
 	return nil
 }
@@ -566,10 +565,14 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	if u == nil {
 		return fitLines(out, w, h)
 	}
-	if pw, ph := u.Pane.Size(); pw != m.PluginUIW || ph != m.PluginUIH {
-		u.Pane.Resize(m.PluginUIW, m.PluginUIH)
+	pr := m.Program(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
+	if pr == nil {
+		return fitLines(out, w, h)
 	}
-	return fitLines(append(out, m.drawPane(u.Pane, 0, inUI)...), w, h)
+	if pw, ph := pr.Size(); pw != m.PluginUIW || ph != m.PluginUIH {
+		pr.Resize(m.PluginUIW, m.PluginUIH)
+	}
+	return fitLines(append(out, m.drawPane(pr, 0, inUI)...), w, h)
 }
 
 // pluginKeys is the F5 screen's row of keys, each one a button.

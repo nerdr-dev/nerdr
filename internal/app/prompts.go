@@ -108,7 +108,9 @@ func (m *Model) promptEnter(t *core.Tab, pane *term.Pane) {
 	if !m.Live(t) || t.Pane == nil || t.Pane != pane {
 		return
 	}
-	t.Pane.Input([]byte("\r"))
+	if pr := m.program(t.PaneOf()); pr != nil {
+		pr.Input([]byte("\r"))
+	}
 	if t.Typed != nil {
 		t.Typed.Feed([]byte("\r"))
 	}

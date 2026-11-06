@@ -51,8 +51,8 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 		m.tl(a).scroll = 0
 		if o := a.Owner(); o == m.Cur() && m.focused(o) == a.PaneOf() {
-			if p := a.Pane; p != nil {
-				p.Focus(true)
+			if pr := m.program(a.PaneOf()); pr != nil {
+				pr.Focus(true)
 			}
 		}
 	case core.TermsMsg:

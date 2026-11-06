@@ -3,6 +3,7 @@ package app
 import (
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
 	"github.com/charmbracelet/x/ansi"
@@ -28,7 +29,7 @@ const drawnPanesMax = 64
 // is set, and the text being chosen in it. A program drawing many times a
 // second is drawn from its frames as they come; one whose screen has not
 // changed, from its last drawing. See reuseCheck.
-func (m *Model) drawPane(tp *term.Pane, scroll int, cursor bool) []string {
+func (m *Model) drawPane(tp core.Program, scroll int, cursor bool) []string {
 	var sel *term.Selection
 	if m.selShown && tp == m.selPane {
 		s := m.sel
@@ -48,7 +49,7 @@ func (m *Model) drawPane(tp *term.Pane, scroll int, cursor bool) []string {
 	}
 	if d == nil {
 		if m.drawnPanes == nil || len(m.drawnPanes) >= drawnPanesMax {
-			m.drawnPanes = map[*term.Pane]*drawnPane{}
+			m.drawnPanes = map[core.Program]*drawnPane{}
 		}
 		d = &drawnPane{}
 		m.drawnPanes[tp] = d
@@ -67,7 +68,7 @@ func sameSel(a, b *term.Selection) bool {
 }
 
 // selectedText is the text chosen in p, read from its rows.
-func selectedText(p *term.Pane, sel term.Selection) string {
+func selectedText(p core.Program, sel term.Selection) string {
 	from, to := sel.From.Line, sel.To.Line
 	if to < from {
 		from, to = to, from
