@@ -55,6 +55,12 @@ func StartProc(sp spawn.Spawner, s spawn.Spec, notify func()) (*RunProc, error) 
 	if err != nil {
 		return nil, err
 	}
+	return WatchProc(proc, notify), nil
+}
+
+// WatchProc reads what proc, a plugin's run started already, prints, and
+// waits for it to end, as StartProc does.
+func WatchProc(proc spawn.Proc, notify func()) *RunProc {
 	p := &RunProc{Proc: proc, Notify: notify, Stopped: make(chan struct{})}
 	read := make(chan struct{})
 	go func() {
@@ -88,7 +94,7 @@ func StartProc(sp spawn.Spawner, s spawn.Spec, notify func()) (*RunProc, error) 
 		<-read
 		p.Finish(code)
 	}()
-	return p, nil
+	return p
 }
 
 // Add takes what the program printed.

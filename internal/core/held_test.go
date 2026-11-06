@@ -127,3 +127,130 @@ func (s *signalled) Signal(pg int, sig syscall.Signal) error {
 	s.asked = true
 	return syscall.ESRCH
 }
+
+// A core started after one that crashed takes up the agent and terminal
+// the holder kept: the same processes, the agent known by the same secret,
+// and the screens as they were, from the checkpoint and the output after
+// it.
+func TestANewCoreTakesUpWhatTheHolderKept(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := agentScript(t, "echo before; exec cat\n")
+	a, tabA := heldCore(t, clA, script)
+	a.Start(tabA, false)
+	if tabA.Pane == nil {
+		t.Fatalf("not started: %s", tabA.Err)
+	}
+	shell, _ := a.NewShellIn(tabA, true)
+	if shell == nil {
+		t.Fatal("no terminal")
+	}
+	waitFor(t, "the agent's first line", func() bool { return strings.Contains(tabA.Pane.Snapshot().Screen, "before") })
+	waitFor(t, "the agent to go quiet", func() bool { return tabA.Pane.Quiet() >= CheckpointQuiet })
+	a.checkpoint(heldPane{tabA.Pane.HeldID(), tabA.Pane}, map[string]int64{})
+	if pos, _, _ := clA.FetchCheckpoint(tabA.Pane.HeldID()); pos <= 0 {
+		t.Fatalf("no checkpoint: %d", pos)
+	}
+	tabA.Pane.Write([]byte("after\r"))
+	waitFor(t, "the line after the checkpoint", func() bool { return strings.Contains(tabA.Pane.Snapshot().Screen, "after") })
+	pid, shellPid, secret := tabA.Pane.Pid(), shell.Shell.Pid(), tabA.HookKey()
+	clA.Close() // the core is gone, its panes with it
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, tabB := heldCore(t, clB, script)
+	b.Mu.Lock()
+	b.TakeUpHeld()
+	b.Start(tabB, true)
+	b.Mu.Unlock()
+	if tabB.Pane == nil || tabB.Pane.Pid() != pid || tabB.HookKey() != secret {
+		t.Fatalf("agent not taken up: %+v", tabB.Pane)
+	}
+	want := tabA.Pane.Text(100)
+	waitFor(t, "the screen as it was", func() bool { return tabB.Pane.Text(100) == want })
+	if !strings.Contains(want, "before") || !strings.Contains(want, "after") {
+		t.Fatalf("the agent showed %q", want)
+	}
+	if tabB.Pane.Incomplete() {
+		t.Error("marked incomplete")
+	}
+	var shells []*PaneTab
+	for _, p := range tabB.Panes() {
+		if p.Kind == PaneShell {
+			shells = append(shells, p)
+		}
+	}
+	if len(shells) != 1 || shells[0].Shell.Pid() != shellPid || shells[0].N != shell.N {
+		t.Fatalf("terminal not taken up: %+v", shells)
+	}
+	tabB.Pane.Write([]byte("on\r"))
+	waitFor(t, "the agent to go on", func() bool { return strings.Count(tabB.Pane.Text(100), "on") >= 2 })
+	if b.HeldLeft() != 0 {
+		t.Errorf("%d programs left", b.HeldLeft())
+	}
+}
+
+// A plugin's screen and a run of it, started by a core that crashed, go
+// back to their tab: the run with what it printed, and the screen with the
+// file it is told of runs in.
+func TestANewCoreTakesUpPluginsFromTheHolder(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := filepath.Join(t.TempDir(), "events.jsonl")
+	if err := os.WriteFile(events, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	spawnLabelled := func(s spawn.Spec, l Label) {
+		c := &Core{Held: &Held{Client: clA}}
+		c.Hold(&s, l, false, "")
+		if _, err := clA.Spawn(s); err != nil {
+			t.Fatal(err)
+		}
+	}
+	spawnLabelled(spawn.Spec{Argv: []string{"sh", "-c", "echo screen; exec cat"}, PTY: true, W: 20, H: 4},
+		Label{Kind: HeldPluginUI, Tab: "tab1", Plugin: "/p", Key: "k", Events: events})
+	spawnLabelled(spawn.Spec{Argv: []string{"sh", "-c", "echo ran; exec sleep 60"}},
+		Label{Kind: HeldRun, Tab: "tab1", Plugin: "/p", Key: "k", Run: "r1", From: "tab1", Watch: true})
+	spawnLabelled(spawn.Spec{Argv: []string{"sleep", "60"}}, Label{Kind: HeldShell, Tab: "closed"})
+	clA.Close()
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, tb := heldCore(t, clB, agentScript(t, "exec cat\n"))
+	b.Mu.Lock()
+	b.TakeUpHeld()
+	b.Mu.Unlock()
+	u := b.PluginUIs["tab1\x00/p"]
+	if u == nil || u.Key != "k" || u.Events == nil || u.Events.Name() != events {
+		t.Fatalf("plugin screen: %+v", u)
+	}
+	waitFor(t, "the plugin's screen", func() bool { return strings.Contains(u.Pane.Text(10), "screen") })
+	b.PluginEvent(tb, "/p", map[string]any{"run": "r1"})
+	if got, _ := os.ReadFile(events); !strings.Contains(string(got), "r1") {
+		t.Fatalf("events file: %q", got)
+	}
+	run := b.PluginRuns.ByID["r1"]
+	if run == nil || run.T != tb || run.From != tb || !run.Watch || run.Dir != "/p" {
+		t.Fatalf("run: %+v", run)
+	}
+	waitFor(t, "what the run printed", func() bool {
+		run.Proc.Mu.Lock()
+		defer run.Proc.Mu.Unlock()
+		return strings.Contains(string(run.Proc.Raw), "ran")
+	})
+	if b.HeldLeft() != 1 {
+		t.Errorf("%d programs left, want the closed tab's terminal", b.HeldLeft())
+	}
+}
