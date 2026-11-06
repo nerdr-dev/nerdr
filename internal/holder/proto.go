@@ -87,8 +87,8 @@ type Msg struct {
 	PG  int `json:"pg,omitempty"`
 	Sig int `json:"sig,omitempty"`
 
-	// Ack: Exit says the core has the program's exit, so the holder can
-	// reap it; Done that it wants nothing more of it, so the holder lets
+	// Ack: Exit, any, says the core has the program's exit, so the
+	// holder can reap it; Done that it wants nothing more of it, so the holder lets
 	// go of its terminal and, once it is reaped, forgets it.
 	Exit *Exit `json:"exit,omitempty"`
 	Done bool  `json:"done,omitempty"`
@@ -256,6 +256,7 @@ func (c *conn) readFull(b []byte) ([]*os.File, error) {
 	oob := make([]byte, syscall.CmsgSpace(4*maxFiles))
 	for len(b) > 0 {
 		n, oobn, _, _, err := c.c.ReadMsgUnix(b, oob)
+		n, oobn = max(n, 0), max(oobn, 0)
 		if oobn > 0 {
 			got, perr := parseRights(oob[:oobn])
 			files = append(files, got...)
