@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
@@ -129,11 +130,16 @@ func (s *Screen) restore(b []byte) error {
 		flags[i] = r.bool()
 	}
 	var osc oscFilter
-	osc.state = int(r.uvarint())
-	osc.buf = []byte(r.str())
-	osc.pending = int(r.uvarint())
+	state, buf, pending := r.uvarint(), r.str(), r.uvarint()
 	osc.split = r.bool()
-	if osc.state < oscGround || osc.state > oscRaw || len(osc.buf) > oscMax+1 || osc.pending > 3 {
+	if state > oscRaw || pending > 3 || len(buf) > oscMax+1 {
+		r.fail()
+	}
+	osc.state, osc.buf, osc.pending = int(state), []byte(buf), int(pending)
+	// An OSC held back starts with ESC ], which end takes off. Outside
+	// one, buf and split are what the last left, unread until the next
+	// begins.
+	if osc.state == oscString && !strings.HasPrefix(buf, "\x1b]") {
 		r.fail()
 	}
 	if r.err != nil {

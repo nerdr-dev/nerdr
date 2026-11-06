@@ -2,6 +2,7 @@ package term
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"math/rand/v2"
 	"reflect"
@@ -198,4 +199,37 @@ func FuzzScreenRestore(f *testing.F) {
 			_ = s.Frame(0)
 		}
 	})
+}
+
+// A block whose filter is in a state the filter cannot be in is refused:
+// the OSC it would hold back is not one, or a count is out of range.
+func TestScreenRestoreRefusesABrokenFilter(t *testing.T) {
+	a, _ := screenOf(t, "\x1b]0;✳")
+	good, err := a.Checkpoint()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.osc.state != oscString {
+		t.Fatal("no OSC held back: the test shows nothing")
+	}
+	held := appendStr(nil, string(a.osc.buf))
+	at := bytes.Index(good, held)
+	if at < 0 {
+		t.Fatal("filter not found in the block")
+	}
+	for name, buf := range map[string]string{"empty": "", "not an OSC": "ab"} {
+		bad := append(append(bytes.Clone(good[:at]), appendStr(nil, buf)...), good[at+len(held):]...)
+		b, _ := screenOf(t)
+		if b.Restore(bad) == nil {
+			t.Errorf("%s: restored", name)
+		}
+		b.Feed([]byte("\x07\x1b\\")) // would end the OSC
+	}
+	// pending, after the buffer, as a uvarint far past an int's range.
+	p := at + len(held)
+	bad := append(append(bytes.Clone(good[:p]), binary.AppendUvarint(nil, 1<<63)...), good[p+1:]...)
+	b, _ := screenOf(t)
+	if b.Restore(bad) == nil {
+		t.Error("negative pending restored")
+	}
 }

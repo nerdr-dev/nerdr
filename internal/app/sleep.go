@@ -38,7 +38,7 @@ func (m *Model) restoreStarts() []tea.Cmd {
 	var cmds []tea.Cmd
 	n := 0
 	for _, t := range order {
-		if t != m.Cur() && t != m.splitTab() && m.Cold(t, now) && !core.TabHasAuto(t) {
+		if t != m.Cur() && t != m.splitTab() && m.Cold(t, now) && !core.TabHasAuto(t) && !m.HeldAgent(t) {
 			for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
 				a.Light = core.StAsleep
 			}
