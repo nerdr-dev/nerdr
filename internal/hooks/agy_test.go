@@ -144,8 +144,16 @@ func TestAgyCommandReportsOnlyForNerdrsAgy(t *testing.T) {
 	none("a subagent")
 	run("Stop", "300", `{"conversationId":"c9","fullyIdle":true}`)
 	none("an agy the agent ran")
+	run("Stop", "200", `{"conversationId":"c1","fullyIdle":false}`)
+	if r := next(t, got); r.State != "working" || !r.Background {
+		t.Fatalf("turn over, work in the background: report = %+v", r)
+	}
+	run("PreInvocation", "200", `{"conversationId":"c1","invocationNum":1}`)
+	if r := next(t, got); r.State != "working" || r.Background {
+		t.Fatalf("taking the background work up: report = %+v", r)
+	}
 	run("Stop", "200", `{"conversationId":"c1","fullyIdle":true,"terminationReason":"NO_TOOL_CALL"}`)
-	if r := next(t, got); r.State != "idle" || r.SessionID != "c1" {
+	if r := next(t, got); r.State != "idle" || r.SessionID != "c1" || r.Background {
 		t.Fatalf("report = %+v", r)
 	}
 	t.Setenv("NERDR_AGY_HOOK", "")

@@ -312,6 +312,12 @@ func agyReport(ev AgyEvent, pane string) (string, map[string]any) {
 	switch {
 	case state != "":
 		p["state"] = state
+		if ev.Event == "Stop" && state == "working" {
+			// The turn is over and agy is back at its prompt, still and
+			// with nothing to tell it from done but the task count in its
+			// footer: it waits on work it started in the background.
+			p["background"] = true
+		}
 		return ReportAgent, p
 	case ev.Event == "SessionStart" && p["agent_session_id"] != nil:
 		return ReportAgentSession, p
