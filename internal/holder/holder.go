@@ -16,18 +16,21 @@ type Holder struct {
 	mu    sync.Mutex
 	progs map[string]*prog
 	order []string // ids by when they were spawned
-	// core is the core served now, nil between one and the next.
-	core *conn
-	// gone is closed when core goes.
+	// core is what sends to the core served now, nil between one and the
+	// next; gone is closed when it goes.
+	core *sender
 	gone chan struct{}
-	// shut is closed when shutdown or upgrade has the holder stop
-	// serving.
+	// reads wait for output, for the core served now.
+	reads map[uint64]*Msg
+	// shut is closed once a shutdown op has the holder stop.
 	shut     chan struct{}
 	shutOnce sync.Once
-	// paused stops what moves bytes, for an upgrade.
-	paused bool
-	// upgrade is what an upgrade op runs; nil refuses it.
-	upgrade func() error
+	// paused stops what moves bytes, for an upgrade; pausing is closed
+	// then, for those waiting to see.
+	paused  bool
+	pausing chan struct{}
+	// upgrade is what an upgrade op runs, nil to refuse it.
+	upgrade func(seq uint64) error
 }
 
 // prog is one program and what is kept of it.
@@ -58,7 +61,7 @@ type prog struct {
 	ckPos  int64
 	ckData []byte
 
-	// writes waits for the writer, in order.
+	// writes wait for the writer, in order.
 	writes  []*write
 	wake    chan struct{} // the writer has work, or should stop
 	readerQ chan struct{} // closed when the reader stops
@@ -71,11 +74,15 @@ type write struct {
 	seq  uint64
 	data []byte
 	n    int
+	to   *sender
 }
 
 // New is a holder with no programs.
 func New() *Holder {
-	return &Holder{progs: map[string]*prog{}, shut: make(chan struct{})}
+	return &Holder{
+		progs: map[string]*prog{}, reads: map[uint64]*Msg{},
+		shut: make(chan struct{}), pausing: make(chan struct{}),
+	}
 }
 
 // ErrShutdown is what Serve returns after a shutdown op.
@@ -85,31 +92,9 @@ var ErrShutdown = errors.New("holder: shut down")
 // c. Only one core is served at a time: a new one waits for the last.
 func (h *Holder) Serve(c *conn) error {
 	defer c.Close()
-	gone := make(chan struct{})
-	for {
-		h.mu.Lock()
-		if h.core == nil {
-			h.core, h.gone = c, gone
-			h.mu.Unlock()
-			break
-		}
-		last := h.gone
-		h.mu.Unlock()
-		select {
-		case <-last:
-		case <-h.shut:
-			return ErrShutdown
-		}
-	}
-	defer func() {
-		h.mu.Lock()
-		h.core = nil
-		close(gone)
-		h.mu.Unlock()
-	}()
-	if err := c.send(&Msg{Op: OpHello, Proto: Proto, Pid: os.Getpid()}, nil, nil); err != nil {
-		return err
-	}
+	s := newSender(c)
+	defer s.stop()
+	s.post(&Msg{Op: OpHello, Proto: Proto, Pid: os.Getpid()}, nil)
 	m, _, files, err := c.recv()
 	closeAll(files)
 	if err != nil {
@@ -118,29 +103,64 @@ func (h *Holder) Serve(c *conn) error {
 	if m.Op != OpHello || m.Proto != Proto {
 		return fmt.Errorf("holder: core speaks protocol %d, not %d", m.Proto, Proto)
 	}
+	gone, err := h.attach(s)
+	if err != nil {
+		return err
+	}
+	defer h.detach(s, gone)
 	h.mu.Lock()
 	// The exits the last core did not take.
-	var exits []*Msg
 	for _, id := range h.order {
 		if p := h.progs[id]; p.exited && !p.exitAcked {
-			exits = append(exits, &Msg{Op: OpExit, ID: id, Exit: p.exit})
+			s.post(&Msg{Op: OpExit, ID: id, Exit: p.exit}, nil)
 		}
+	}
+	h.reads = map[uint64]*Msg{}
+	h.mu.Unlock()
+	return h.serve(s, gone)
+}
+
+// attach makes s the core served, once the last has gone.
+func (h *Holder) attach(s *sender) (chan struct{}, error) {
+	gone := make(chan struct{})
+	for {
+		h.mu.Lock()
+		if h.core == nil {
+			h.core, h.gone = s, gone
+			h.mu.Unlock()
+			return gone, nil
+		}
+		last := h.gone
+		h.mu.Unlock()
+		select {
+		case <-last:
+		case <-h.shut:
+			return nil, ErrShutdown
+		}
+	}
+}
+
+func (h *Holder) detach(s *sender, gone chan struct{}) {
+	h.mu.Lock()
+	if h.core == s {
+		h.core = nil
+		close(gone)
 	}
 	h.mu.Unlock()
-	for _, e := range exits {
-		if err := c.send(e, nil, nil); err != nil {
-			return err
-		}
-	}
+}
+
+// serve handles what the core asks, one request at a time as they come,
+// until it goes.
+func (h *Holder) serve(s *sender, gone chan struct{}) error {
 	reqs := make(chan error, 1)
 	go func() {
 		for {
-			m, body, files, err := c.recv()
+			m, body, files, err := s.c.recv()
 			if err != nil {
 				reqs <- err
 				return
 			}
-			if err := h.handle(c, gone, m, body, files); err != nil {
+			if err := h.handle(s, gone, m, body, files); err != nil {
 				reqs <- err
 				return
 			}
@@ -154,7 +174,7 @@ func (h *Holder) Serve(c *conn) error {
 	}
 }
 
-func (h *Holder) reply(c *conn, req *Msg, m *Msg, body []byte, err error) error {
+func answer(s *sender, req *Msg, m *Msg, body []byte, err error) {
 	if m == nil {
 		m = &Msg{}
 	}
@@ -162,37 +182,41 @@ func (h *Holder) reply(c *conn, req *Msg, m *Msg, body []byte, err error) error 
 	if err != nil {
 		errMsg(m, err)
 	}
-	return c.send(m, body, nil)
+	s.post(m, body)
 }
 
-func (h *Holder) handle(c *conn, gone chan struct{}, m *Msg, body []byte, files []*os.File) error {
+func (h *Holder) handle(s *sender, gone chan struct{}, m *Msg, body []byte, files []*os.File) error {
 	switch m.Op {
 	case OpSpawn:
 		pid, err := h.spawn(m, body, files)
 		closeAll(files)
-		return h.reply(c, m, &Msg{ID: m.ID, Pid: pid}, nil, err)
+		answer(s, m, &Msg{ID: m.ID, Pid: pid}, nil, err)
+		return nil
 	}
 	closeAll(files)
 	switch m.Op {
 	case OpWrite:
-		return h.reply(c, m, nil, nil, h.queueWrite(c, m, body))
+		h.queueWrite(s, m, body)
 	case OpResize:
-		return h.reply(c, m, nil, nil, h.resize(m.ID, m.W, m.H))
+		answer(s, m, nil, nil, h.resize(m.ID, m.W, m.H))
 	case OpSignal:
-		return h.reply(c, m, nil, nil, h.signal(m.ID, m.PG, syscall.Signal(m.Sig)))
+		answer(s, m, nil, nil, h.signal(m.ID, m.PG, syscall.Signal(m.Sig)))
 	case OpRead:
-		go h.read(c, gone, m)
-		return nil
+		h.mu.Lock()
+		h.reads[m.Seq] = m
+		h.mu.Unlock()
+		go h.read(s, gone, m)
 	case OpAck:
-		return h.reply(c, m, nil, nil, h.ack(m))
+		answer(s, m, nil, nil, h.ack(m))
 	case OpCheckpoint:
-		return h.reply(c, m, nil, nil, h.checkpoint(m.ID, m.Pos, body))
+		answer(s, m, nil, nil, h.checkpoint(m.ID, m.Pos, body))
 	case OpList:
 		progs, err := h.list(m.ID)
-		return h.reply(c, m, &Msg{Progs: progs}, nil, err)
+		answer(s, m, &Msg{Progs: progs}, nil, err)
 	case OpShutdown:
 		h.shutdown(5 * time.Second)
-		_ = h.reply(c, m, nil, nil, nil)
+		answer(s, m, nil, nil, nil)
+		s.flush()
 		h.stop()
 		return ErrShutdown
 	case OpUpgrade:
@@ -200,23 +224,23 @@ func (h *Holder) handle(c *conn, gone chan struct{}, m *Msg, body []byte, files 
 		up := h.upgrade
 		h.mu.Unlock()
 		if up == nil {
-			return h.reply(c, m, nil, nil, fmt.Errorf("holder: cannot upgrade here"))
+			answer(s, m, nil, nil, fmt.Errorf("holder: cannot upgrade here"))
+			return nil
 		}
-		// On success it does not return: the holder is running anew,
-		// and its reply comes from there.
-		return h.reply(c, m, nil, nil, up())
+		// On success it does not return: the holder runs anew, and its
+		// reply comes from there.
+		answer(s, m, nil, nil, up(m.Seq))
+	default:
+		answer(s, m, nil, nil, fmt.Errorf("holder: no op %q", m.Op))
 	}
-	return h.reply(c, m, nil, nil, fmt.Errorf("holder: no op %q", m.Op))
+	return nil
 }
 
 func (h *Holder) stop() { h.shutOnce.Do(func() { close(h.shut) }) }
 
-// Done is closed once a shutdown op has stopped the holder.
-func (h *Holder) Done() <-chan struct{} { return h.shut }
-
 func (h *Holder) get(id string) (*prog, error) {
 	p := h.progs[id]
-	if p == nil || p.done && p.reaped {
+	if p == nil {
 		return nil, fmt.Errorf("holder: no program %q", id)
 	}
 	return p, nil
@@ -238,7 +262,7 @@ func (h *Holder) spawn(m *Msg, stdin []byte, files []*os.File) (int, error) {
 	if dup {
 		return 0, fmt.Errorf("holder: program %q is there already", m.ID)
 	}
-	if !s.PTY && len(stdin) == 0 {
+	if s.PTY || len(stdin) == 0 {
 		stdin = nil
 	}
 	st, err := start(s, stdin, files)
@@ -263,11 +287,16 @@ func (h *Holder) spawn(m *Msg, stdin []byte, files []*os.File) (int, error) {
 func (h *Holder) run(p *prog) {
 	p.wake = make(chan struct{}, 1)
 	p.readerQ, p.writerQ = make(chan struct{}), make(chan struct{})
-	go h.reader(p)
+	if p.done || p.outEOF {
+		close(p.readerQ)
+	} else {
+		go h.reader(p)
+	}
 	go h.writer(p)
 }
 
-// changed tells those waiting on p that something has. h.mu is held.
+// signalChanged tells those waiting on p that something has. h.mu is
+// held.
 func (p *prog) signalChanged() {
 	close(p.changed)
 	p.changed = make(chan struct{})
@@ -289,16 +318,15 @@ func (h *Holder) reader(p *prog) {
 			p.outEOF = true
 			p.signalChanged()
 		}
-		stop := err != nil
 		h.mu.Unlock()
-		if stop {
+		if err != nil {
 			return
 		}
 	}
 }
 
 // writer writes what is queued for p, in order, and answers each write
-// once it is written; or its standard input, once.
+// once it is written; or first its standard input, then closes that.
 func (h *Holder) writer(p *prog) {
 	defer close(p.writerQ)
 	for {
@@ -314,7 +342,6 @@ func (h *Holder) writer(p *prog) {
 		} else if len(p.writes) > 0 {
 			dst, w = p.out, p.writes[0]
 		}
-		core := h.core
 		h.mu.Unlock()
 		if w == nil {
 			<-p.wake
@@ -338,14 +365,14 @@ func (h *Holder) writer(p *prog) {
 			continue
 		}
 		p.writes = p.writes[1:]
-		h.mu.Unlock()
-		if core != nil && w.seq != 0 {
-			m := &Msg{Op: OpWrite, Seq: w.seq, Pos: int64(w.n)}
+		if w.to != nil {
+			r := &Msg{Op: OpWrite, Seq: w.seq, Pos: int64(w.n)}
 			if err != nil {
-				errMsg(m, err)
+				errMsg(r, err)
 			}
-			_ = core.send(m, nil, nil)
+			w.to.post(r, nil)
 		}
+		h.mu.Unlock()
 	}
 }
 
@@ -358,7 +385,7 @@ func (p *prog) poke() {
 
 // queueWrite queues body for p's terminal; the writer answers. A write
 // does not wait for another program, or for anything else of this one.
-func (h *Holder) queueWrite(c *conn, m *Msg, body []byte) error {
+func (h *Holder) queueWrite(s *sender, m *Msg, body []byte) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	p, err := h.get(m.ID)
@@ -370,19 +397,17 @@ func (h *Holder) queueWrite(c *conn, m *Msg, body []byte) error {
 		err = os.ErrClosed
 	}
 	if err != nil {
-		// Answered here, not by the writer; send without the lock.
-		go h.reply(c, m, nil, nil, err)
-		return nil
+		answer(s, m, nil, nil, err)
+		return
 	}
-	p.writes = append(p.writes, &write{seq: m.Seq, data: body})
+	p.writes = append(p.writes, &write{seq: m.Seq, data: body, to: s})
 	p.poke()
-	return nil
 }
 
 func (h *Holder) resize(id string, w, ht int) error {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	p, err := h.get(id)
-	h.mu.Unlock()
 	if err != nil || !p.spawn.PTY || p.done {
 		return err
 	}
@@ -419,33 +444,41 @@ func (h *Holder) signal(id string, pg int, sig syscall.Signal) error {
 	return syscall.Kill(-pg, sig)
 }
 
-// read answers m once there is output from m.Pos on, the output ends,
-// the program goes or the core does.
-func (h *Holder) read(c *conn, gone chan struct{}, m *Msg) {
+// read answers m once there is output from m.Pos on, the output ends or
+// the program goes. It gives up when the core goes, and leaves m in
+// h.reads when an upgrade pauses the holder, to be read from there.
+func (h *Holder) read(s *sender, gone chan struct{}, m *Msg) {
 	want := min(max(m.Max, 1), MaxBody)
 	for {
 		h.mu.Lock()
+		if h.paused || h.reads[m.Seq] != m {
+			h.mu.Unlock()
+			return
+		}
 		p, err := h.get(m.ID)
 		if err == nil && p.done {
 			err = os.ErrClosed
 		}
 		if err != nil {
+			delete(h.reads, m.Seq)
+			answer(s, m, nil, nil, err)
 			h.mu.Unlock()
-			_ = h.reply(c, m, nil, nil, err)
 			return
 		}
-		if p.ring.end > m.Pos || p.outEOF || m.Pos > p.ring.end {
+		if p.ring.end != m.Pos || p.outEOF {
 			buf := make([]byte, want)
 			n, from := p.ring.read(m.Pos, buf)
 			r := &Msg{ID: m.ID, Pos: from, Lost: max(from-m.Pos, 0), EOF: p.outEOF && from+int64(n) >= p.ring.end}
+			delete(h.reads, m.Seq)
+			answer(s, m, r, buf[:n], nil)
 			h.mu.Unlock()
-			_ = h.reply(c, m, r, buf[:n], nil)
 			return
 		}
-		ch := p.changed
+		ch, pausing := p.changed, h.pausing
 		h.mu.Unlock()
 		select {
 		case <-ch:
+		case <-pausing:
 		case <-gone:
 			return
 		}
@@ -461,53 +494,48 @@ func (h *Holder) watch(p *prog) {
 		e, reaped = &Exit{Code: -1}, true
 	}
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	p.exited, p.exit = true, e
 	p.reaped = p.reaped || reaped
 	p.signalChanged()
-	core := h.core
-	h.mu.Unlock()
-	if core != nil {
-		_ = core.send(&Msg{Op: OpExit, ID: p.id, Exit: e}, nil, nil)
+	if h.core != nil {
+		h.core.post(&Msg{Op: OpExit, ID: p.id, Exit: e}, nil)
 	}
 }
 
 func (h *Holder) ack(m *Msg) error {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	p, err := h.get(m.ID)
 	if err != nil {
-		h.mu.Unlock()
 		return err
 	}
 	if m.Pos > p.acked {
 		p.acked = min(m.Pos, p.ring.end)
 	}
-	var reapPid int
 	if m.Exit != nil {
 		if !p.exited {
-			h.mu.Unlock()
 			return fmt.Errorf("holder: %q has not exited", m.ID)
 		}
 		p.exitAcked = true
 		if !p.reaped {
-			p.reaped, reapPid = true, p.pid
+			// A zombie is reaped at once; done under h.mu, so an
+			// upgrade never sees it marked one way and left the other.
+			reap(p.pid)
+			p.reaped = true
 		}
 	}
-	var closeOut *os.File
 	if m.Done && !p.done {
-		p.done, closeOut = true, p.out
+		p.done = true
+		// Closing does not wait: the reader's Read returns, and the
+		// writer's Write.
+		p.out.Close()
 		p.writes = nil
 		p.signalChanged()
 		p.poke()
 	}
 	if p.done && p.reaped {
 		h.forget(p.id)
-	}
-	h.mu.Unlock()
-	if reapPid != 0 {
-		reap(reapPid)
-	}
-	if closeOut != nil {
-		closeOut.Close()
 	}
 	return nil
 }
@@ -549,19 +577,14 @@ func (h *Holder) Checkpoint(id string) (int64, []byte) {
 
 func (h *Holder) list(id string) ([]Prog, error) {
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	ids := h.order
 	if id != "" {
 		if _, err := h.get(id); err != nil {
-			h.mu.Unlock()
 			return nil, err
 		}
 		ids = []string{id}
 	}
-	type fg struct {
-		i   int
-		out *os.File
-	}
-	var fgs []fg
 	progs := make([]Prog, 0, len(ids))
 	for _, id := range ids {
 		p := h.progs[id]
@@ -571,19 +594,16 @@ func (h *Holder) list(id string) ([]Prog, error) {
 		} else if p.exited {
 			state = Exited
 		}
-		progs = append(progs, Prog{
+		pr := Prog{
 			ID: p.id, Pid: p.pid, Started: p.started,
 			Sandboxed: p.spawn.Sandboxed, Secret: p.spawn.Secret, Label: p.spawn.Label,
 			PTY: p.spawn.PTY, State: state, Exit: p.exit,
 			Pos: p.ring.end, Start: p.ring.start(), Acked: p.acked, Checkpoint: p.ckPos,
-		})
-		if p.spawn.PTY && !p.done && !p.exited {
-			fgs = append(fgs, fg{len(progs) - 1, p.out})
 		}
-	}
-	h.mu.Unlock()
-	for _, f := range fgs {
-		progs[f.i].Foreground = foreground(f.out)
+		if p.spawn.PTY && !p.done && !p.exited {
+			pr.Foreground = foreground(p.out) // an ioctl; it does not wait
+		}
+		progs = append(progs, pr)
 	}
 	return progs, nil
 }
@@ -626,26 +646,120 @@ func (h *Holder) shutdown(grace time.Duration) {
 		}
 	}
 	h.mu.Lock()
-	var pids []int
-	var files []*os.File
+	defer h.mu.Unlock()
 	for _, id := range h.order {
 		p := h.progs[id]
 		if p.exited && !p.reaped {
+			reap(p.pid)
 			p.reaped = true
-			pids = append(pids, p.pid)
 		}
 		if !p.done {
 			p.done = true
-			files = append(files, p.out)
+			p.out.Close()
+			p.signalChanged()
+			p.poke()
 		}
 		if p.in != nil {
-			files = append(files, p.in)
+			p.in.Close()
+			p.in = nil
 		}
 	}
 	h.progs, h.order = map[string]*prog{}, nil
-	h.mu.Unlock()
-	for _, pid := range pids {
-		reap(pid)
+}
+
+// sender sends a core what the holder has for it, in order, from one
+// goroutine: posting never waits on the socket, so it can be done under
+// h.mu, and an upgrade can stop it between frames and take what is left.
+type sender struct {
+	c       *conn
+	mu      sync.Mutex
+	q       []frame
+	broken  bool
+	wake    chan struct{}
+	halt    chan struct{}
+	stopped chan struct{}
+	idle    *sync.Cond
+	busy    bool
+}
+
+type frame struct {
+	M    *Msg   `json:"m"`
+	Body []byte `json:"body,omitempty"`
+}
+
+func newSender(c *conn) *sender {
+	s := &sender{c: c, wake: make(chan struct{}, 1), halt: make(chan struct{}), stopped: make(chan struct{})}
+	s.idle = sync.NewCond(&s.mu)
+	go s.loop()
+	return s
+}
+
+func (s *sender) post(m *Msg, body []byte) {
+	s.mu.Lock()
+	if !s.broken {
+		s.q = append(s.q, frame{m, body})
 	}
-	closeAll(files)
+	s.mu.Unlock()
+	select {
+	case s.wake <- struct{}{}:
+	default:
+	}
+}
+
+func (s *sender) loop() {
+	defer close(s.stopped)
+	for {
+		s.mu.Lock()
+		select {
+		case <-s.halt:
+			s.mu.Unlock()
+			return
+		default:
+		}
+		if len(s.q) == 0 {
+			s.busy = false
+			s.idle.Broadcast()
+			s.mu.Unlock()
+			select {
+			case <-s.wake:
+				continue
+			case <-s.halt:
+				return
+			}
+		}
+		f := s.q[0]
+		s.q = s.q[1:]
+		s.busy = true
+		s.mu.Unlock()
+		if err := s.c.send(f.M, f.Body, nil); err != nil {
+			s.mu.Lock()
+			s.broken, s.q = true, nil
+			s.mu.Unlock()
+		}
+	}
+}
+
+// flush waits until all posted is sent, or cannot be.
+func (s *sender) flush() {
+	s.mu.Lock()
+	for (len(s.q) > 0 || s.busy) && !s.broken {
+		s.idle.Wait()
+	}
+	s.mu.Unlock()
+}
+
+// stop stops the sender between frames and gives what is left to send.
+func (s *sender) stop() []frame {
+	select {
+	case <-s.halt:
+	default:
+		close(s.halt)
+	}
+	<-s.stopped
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.broken = true
+	q := s.q
+	s.q = nil
+	return q
 }

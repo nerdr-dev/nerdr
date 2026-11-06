@@ -119,8 +119,8 @@ func TestHolderRunsATerminalAndAPipe(t *testing.T) {
 	if err := p.Resize(90, 20); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := p.Write([]byte("hello\r")); err != nil {
-		t.Fatal(err)
+	if n, err := p.Write([]byte("hello\r")); err != nil || n != 6 {
+		t.Fatalf("Write = %d, %v", n, err)
 	}
 	readUntil(t, p, "20 90")
 	if err := p.Wait(); err != nil {
