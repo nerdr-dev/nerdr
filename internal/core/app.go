@@ -5,7 +5,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -72,16 +71,14 @@ const SeenAfter = time.Second
 // ToastMsg is a toast from work done out of the screen's way.
 type ToastMsg string
 
-// StopPanes stops panes side by side, and tells herdr nerdr is gone. It
-// does not touch the model.
-func StopPanes(panes []*term.Pane, h *herdr.Client) {
+// StopPanes stops panes side by side. It does not touch the model.
+func StopPanes(panes []*term.Pane) {
 	var wg sync.WaitGroup
 	for _, p := range panes {
 		wg.Add(1)
 		go func() { p.Close(); wg.Done() }()
 	}
 	wg.Wait()
-	h.Release()
 }
 
 func Plural(n int, word string) string {

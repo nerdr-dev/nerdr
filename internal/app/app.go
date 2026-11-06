@@ -32,6 +32,9 @@ type Model struct {
 	// look.go.
 	tabLooks  map[*core.Tab]*tabLook
 	paneLooks map[*core.PaneTab]*paneLook
+	// Herdr is the herdr pane nerdr runs in, when it does: the client's
+	// terminal, which core does not know of.
+	Herdr *herdr.Client
 	// herdrBefore is the state reported to herdr when the last look at the
 	// agents began; see flushNotes.
 	herdrBefore string
@@ -1016,7 +1019,8 @@ func (m *Model) Shutdown() {
 		m.Mu.Lock()
 		panes := m.stopping()
 		m.Mu.Unlock()
-		core.StopPanes(panes, m.Herdr)
+		core.StopPanes(panes)
+		m.Herdr.Release()
 	})
 }
 
