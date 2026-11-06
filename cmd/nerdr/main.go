@@ -179,8 +179,25 @@ func main() {
 		os.Exit(2)
 	}
 
-	if err := run(); err != nil {
+	if err := overHolder(); err != nil {
+		fmt.Fprintln(os.Stderr, "nerdr: holder:", err)
+		os.Exit(1)
+	}
+	h, err := held()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "nerdr: holder:", err)
+		os.Exit(holder.ExitDone)
+	}
+	if err := run(h); err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr:", err)
+		switch {
+		case h != nil && errors.Is(err, tea.ErrProgramPanic):
+			// A crash: the holder starts nerdr again, which takes up
+			// the programs it kept.
+			os.Exit(2)
+		case h != nil:
+			os.Exit(holder.ExitDone)
+		}
 		os.Exit(1)
 	}
 }
@@ -228,7 +245,8 @@ func version() string {
 	return out
 }
 
-func run() error {
+// run is nerdr in the terminal, over holder h when it is not nil.
+func run(h *core.Held) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -300,6 +318,9 @@ func run() error {
 
 	router := input.New(os.Stdin, prefix)
 	model := app.New(cfg, root, router, sess)
+	if h != nil {
+		model.Held = h
+	}
 	if hookSrv != nil {
 		model.SetHookSocket(hookSrv.Path())
 	} else {
@@ -324,6 +345,17 @@ func run() error {
 	p := tea.NewProgram(model, opts...)
 	router.SetSend(func(m any) { p.Send(m) })
 	model.Loop = core.NewLoop(&model.Core, func(ev core.Event) { p.Send(ev) })
+	if h != nil {
+		model.Mu.Lock()
+		model.TakeUpHeld()
+		if n := model.HeldLeft(); n > 0 {
+			model.Notice(core.Plural(n, "program") + " from before nerdr started again run on in the holder, unseen: they stop when you quit")
+		}
+		model.Mu.Unlock()
+		stop := make(chan struct{})
+		defer close(stop)
+		go model.Checkpoints(stop)
+	}
 	sendMu.Lock()
 	send = func(m any) { model.Loop.Post(m) }
 	sendMu.Unlock()
@@ -345,6 +377,10 @@ func run() error {
 	_, _ = os.Stdout.WriteString(ansi.ResetModeAutoWrap)
 	_, err = p.Run()
 	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap)
+	if h != nil && errors.Is(err, tea.ErrProgramPanic) {
+		// The programs live on in the holder, for nerdr started again.
+		return err
+	}
 	model.Shutdown()
 	if err != nil && (!errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, tea.ErrProgramPanic)) {
 		return err
