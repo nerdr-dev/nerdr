@@ -19,6 +19,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -68,6 +69,9 @@ config: %s
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == core.PluginExecArg {
 		os.Exit(core.ExecPlugin(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "holder" {
+		os.Exit(holder.Main(os.Args[2:]))
 	}
 	// Where notes go: what nerdr told the agent, when this is nerdr run by
 	// an agent (perhaps in a sandbox that cannot read the config), else
