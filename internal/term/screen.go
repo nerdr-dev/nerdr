@@ -45,6 +45,8 @@ type Screen struct {
 	// incomplete is set when the screen may be missing some of what the
 	// program drew; see Incomplete.
 	incomplete bool
+	// fed is how many bytes of output Feed has been given.
+	fed int64
 
 	// drawGen counts what changes what a Frame shows: output, a resize,
 	// the exit. See DrawGen.
@@ -105,6 +107,7 @@ func (s *Screen) Feed(b []byte) {
 	defer s.mu.Unlock()
 	s.oscOut = s.osc.write(s.oscOut[:0], b, func(t string) { s.title = t })
 	s.write(s.oscOut)
+	s.fed += int64(len(b))
 	s.drawGen++
 	s.gen++
 	s.lastOutput = time.Now()

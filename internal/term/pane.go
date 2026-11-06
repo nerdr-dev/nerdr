@@ -39,6 +39,9 @@ type Pane struct {
 
 	// inputs counts what has been typed into it; see Inputs.
 	inputs atomic.Uint64
+	// base is the position in the program's output the pane started
+	// reading at; see Attach.
+	base int64
 
 	notify func()
 }
@@ -59,21 +62,74 @@ func StartWith(sp spawn.Spawner, s spawn.Spec, notify func()) (*Pane, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Pane{
-		Screen:    NewScreen(s.W, s.H),
+	p := newPane(proc, NewScreen(s.W, s.H), time.Now(), notify)
+	p.run()
+	return p, nil
+}
+
+// Taken is where a program already running is taken up from: the
+// position in its output reading starts at, the checkpoint of its screen
+// for that position if there is one, and when it started. Incomplete is
+// set when what is read from Pos on, on top of Block, is not all it drew:
+// output was lost, or it wrote before Pos and there is no checkpoint.
+type Taken struct {
+	Pos        int64
+	Block      []byte
+	Incomplete bool
+	Started    time.Time
+}
+
+// Attach is a pane of proc, a program already running in a terminal, as
+// a core started after another takes it up: its screen is put back from
+// at.Block, and what it wrote from at.Pos on is read onto it. The screen
+// is marked incomplete when at says so or the block cannot be put back.
+// It is then the size w×h, as the caller has it, and the program is told.
+func Attach(proc spawn.Proc, w, h int, at Taken, notify func()) *Pane {
+	sc := NewScreen(w, h)
+	if at.Block != nil {
+		_ = sc.Restore(at.Block)
+	}
+	if at.Incomplete {
+		sc.MarkIncomplete()
+	}
+	sc.Resize(w, h)
+	started := at.Started
+	if started.IsZero() {
+		started = time.Now()
+	}
+	p := newPane(proc, sc, started, notify)
+	p.base = at.Pos
+	_ = proc.Resize(max(w, 10), max(h, 3))
+	p.run()
+	return p
+}
+
+func newPane(proc spawn.Proc, sc *Screen, started time.Time, notify func()) *Pane {
+	return &Pane{
+		Screen:    sc,
 		proc:      proc,
-		started:   time.Now(),
+		started:   started,
 		done:      make(chan struct{}),
 		readDone:  make(chan struct{}),
 		replyDone: make(chan struct{}),
 		outWake:   make(chan struct{}, 1),
 		notify:    notify,
 	}
+}
+
+func (p *Pane) run() {
 	go p.readLoop()
 	go p.replyLoop()
 	go p.writeLoop()
 	go p.wait()
-	return p, nil
+}
+
+// CheckpointAt is the screen's checkpoint, as Screen.Checkpoint, and the
+// position in the program's output it is for: what was read before Attach
+// and all that has reached the screen since.
+func (p *Pane) CheckpointAt() ([]byte, int64, error) {
+	block, fed, err := p.checkpoint()
+	return block, p.base + fed, err
 }
 
 func (p *Pane) readLoop() {

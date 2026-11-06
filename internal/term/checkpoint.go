@@ -36,8 +36,20 @@ var ErrCheckpointBusy = errors.New("term: inside a sequence")
 // of the program's modes and title. It fails with ErrCheckpointBusy
 // while the program is in the middle of a sequence.
 func (s *Screen) Checkpoint() ([]byte, error) {
+	b, _, err := s.checkpoint()
+	return b, err
+}
+
+// checkpoint is Checkpoint, and how many bytes of output Feed had been
+// given when it was taken.
+func (s *Screen) checkpoint() ([]byte, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	b, err := s.checkpointLocked()
+	return b, s.fed, err
+}
+
+func (s *Screen) checkpointLocked() ([]byte, error) {
 	emu, err := s.emu.Checkpoint()
 	if errors.Is(err, vt.ErrNotAtGround) {
 		return nil, ErrCheckpointBusy
