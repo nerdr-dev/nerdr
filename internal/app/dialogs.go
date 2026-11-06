@@ -515,7 +515,8 @@ func (m *Model) quit() tea.Cmd {
 	m.shutdown.Do(func() { panes = m.stopping() })
 	h := m.Herdr
 	return func() tea.Msg {
-		core.StopPanes(panes, h)
+		core.StopPanes(panes)
+		h.Release()
 		return quitReadyMsg{}
 	}
 }

@@ -6,7 +6,6 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
-	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 )
 
@@ -61,7 +60,6 @@ type Core struct {
 
 	Cfg         config.Config
 	Root        string // the folder nerdr was started in
-	Herdr       *herdr.Client
 	Tabs        []*Tab
 	AgentModels map[agents.Kind]ModelList
 	// IssueWatch is the watching of the issues assigned to you; see
