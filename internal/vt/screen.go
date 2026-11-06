@@ -19,6 +19,10 @@ type Screen struct {
 	scrollback *Scrollback
 }
 
+// copyOnScroll turns nerdr's faster scroll off, for the tests to compare
+// it with upstream's. See UPSTREAM.md.
+var copyOnScroll bool
+
 // NewScreen creates a new screen.
 func NewScreen(w, h int) *Screen {
 	s := Screen{
@@ -366,7 +370,29 @@ func (s *Screen) DeleteLine(n int) bool {
 		s.scrollback.PushN(s.buf, y, linesToSave)
 	}
 
-	s.buf.DeleteLineArea(y, n, s.blankCell(), scroll)
+	if !copyOnScroll && scroll.Min.X == 0 && scroll.Max.X == s.buf.Width() && y >= scroll.Min.Y && n > 0 && y+n <= scroll.Max.Y {
+		// nerdr: a whole-width scroll need not copy cells: the lines change
+		// places, and those leaving are blanked to come in at the bottom.
+		lines := s.buf.Lines[y:scroll.Max.Y]
+		out := append([]uv.Line(nil), lines[:n]...)
+		copy(lines, lines[n:])
+		blank := s.blankCell()
+		for i, l := range out {
+			for x := range l {
+				if blank != nil {
+					l[x] = *blank
+				} else {
+					l[x] = uv.EmptyCell
+				}
+			}
+			lines[len(lines)-n+i] = l
+		}
+		for i := y; i < scroll.Max.Y; i++ {
+			s.buf.TouchLine(0, i, s.buf.Width())
+		}
+	} else {
+		s.buf.DeleteLineArea(y, n, s.blankCell(), scroll)
+	}
 
 	return true
 }
