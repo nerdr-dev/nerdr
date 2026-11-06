@@ -118,3 +118,50 @@ export const b = 1;
 		t.Fatalf("expected one 2-file group despite the import cycle, got %v", groups)
 	}
 }
+
+// A changed file that is not source has no imports looked for in it, and
+// is not read: an image of a few MB took seconds of regexps, while the
+// review panel, grouping the changed files, held up the screen.
+func TestImportsOfReadsOnlySource(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "lib.js"), []byte("export const x = 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Bytes that look like an import, in a file that is no source.
+	if err := os.WriteFile(filepath.Join(root, "picture.png"), []byte(`import x from "./lib";`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := LoadProject(root)
+	if got := p.ImportsOf("picture.png"); got != nil {
+		t.Fatalf("ImportsOf(picture.png) = %v", got)
+	}
+	if err := os.WriteFile(filepath.Join(root, "main.js"), []byte(`import x from "./lib";`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.ImportsOf("main.js"); len(got) != 1 || got[0] != "lib.js" {
+		t.Fatalf("ImportsOf(main.js) = %v", got)
+	}
+}
+
+// BenchmarkGroupChangedWithImages: the changed files of a game, a few
+// large images among them, are grouped in well under a frame.
+func BenchmarkGroupChangedWithImages(b *testing.B) {
+	root := b.TempDir()
+	big := make([]byte, 3<<20)
+	for i := range big {
+		big[i] = byte(i * 7)
+	}
+	files := []string{"game.js", "art.js"}
+	_ = os.WriteFile(filepath.Join(root, "game.js"), []byte(`import { draw } from "./art";`), 0o644)
+	_ = os.WriteFile(filepath.Join(root, "art.js"), []byte(`export function draw() {}`), 0o644)
+	for i := range 5 {
+		name := filepath.Join("assets", "img"+string(rune('a'+i))+".png")
+		_ = os.MkdirAll(filepath.Join(root, "assets"), 0o755)
+		_ = os.WriteFile(filepath.Join(root, name), big, 0o644)
+		files = append(files, filepath.ToSlash(name))
+	}
+	p := LoadProject(root)
+	for b.Loop() {
+		p.GroupChanged(files)
+	}
+}
