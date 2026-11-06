@@ -61,12 +61,7 @@ type Model struct {
 	restartNoted map[string]string
 	router       *input.Router
 
-	// keeper keeps the machine awake while keep_awake asks; made the first
-	// time it is wanted. See keepAwake.
-	keeper    core.Keeper
-	keeperErr string
-	lastBusy  time.Time
-	started   time.Time // when keepAwake first ran: input counts from then
+	started time.Time // when the last input was first asked for: input counts from then
 
 	// lastInGroup is the id of the tab last active in each group, so
 	// moving to a group returns to where you were in it.
@@ -764,7 +759,7 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 			}
 		}
 	}
-	m.keepAwake(now)
+	m.KeepAwake(now, func() time.Time { return m.lastInput(now) })
 	m.reportHerdr()
 	m.flushNotes(m.herdrBefore)
 	return nil

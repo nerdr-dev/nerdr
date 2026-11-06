@@ -57,6 +57,12 @@ type Core struct {
 	// IssueWatch is the watching of the issues assigned to you; see
 	// issuewatch.go.
 	IssueWatch IssueWatch
+	// Awake keeps the machine awake while keep_awake asks, made the first
+	// time it is wanted; AwakeErr is why it could not, as last told; and
+	// LastBusy when an agent last worked. See KeepAwake.
+	Awake    Keeper
+	AwakeErr string
+	LastBusy time.Time
 	// PRWatch is the watching of your pull requests; see prwatch.go.
 	PRWatch PRWatchState
 	// GroupNames is the group name given to each folder of worktrees in
