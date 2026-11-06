@@ -918,6 +918,15 @@ func (e *Emulator) registerDefaultCsiHandlers() {
 				return false
 			}
 
+			// nerdr: a right margin past the screen is the screen's, as
+			// a bottom one below it is; see DECSTBM and UPSTREAM.md.
+			if right > width {
+				right = width
+				if left > right {
+					return false
+				}
+			}
+
 			e.scr.setHorizontalMargins(left-1, right)
 
 			// Move the cursor to the top-left of the screen or scroll region

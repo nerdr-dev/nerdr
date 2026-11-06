@@ -22,8 +22,9 @@ Every file not listed here is upstream's, byte for byte; `go.mod` and
 
 - `handlers.go`, DECSTBM: a bottom margin below the screen is taken as the
   screen's bottom once it is checked to be below the top. Upstream keeps it, and IL, DL and a line
-  feed in the region then index past the buffer and panic. Test in
-  `margins_test.go` (new).
+  feed in the region then index past the buffer and panic. DECSLRM the
+  same for a right margin past the screen, which ICH, DCH, IL and DL
+  index past. Tests in `margins_test.go` (new).
 
 - `screen.go`, `DeleteLine`: a scroll over the whole width moves the
   lines instead of copying their cells, and blanks those leaving to come in

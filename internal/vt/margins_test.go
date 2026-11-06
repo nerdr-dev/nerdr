@@ -19,3 +19,19 @@ func TestBottomMarginBelowScreen(t *testing.T) {
 		}
 	}
 }
+
+// So is a right margin past the screen: inserting and deleting in it is
+// not a panic, and the screen can be checkpointed and put back.
+func TestRightMarginPastScreen(t *testing.T) {
+	for _, s := range []string{"\x1b[3@", "\x1b[3P", "\x1b[3L", "\x1b[3M", "\x1b[3X", strings.Repeat("x", 30)} {
+		e := NewEmulator(20, 5)
+		_, _ = e.Write([]byte("\x1b[?69h\x1b[1;999s" + s))
+		b, err := e.Checkpoint()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := NewEmulator(20, 5).Restore(b); err != nil {
+			t.Errorf("%q: %v", s, err)
+		}
+	}
+}
