@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"strings"
 	"syscall"
@@ -38,6 +39,9 @@ func playRole(role string, args []string) int {
 	switch role {
 	case "holder":
 		backoffFirst = 50 * time.Millisecond
+		if os.Getenv("TEST_HANGUP_GRACE") != "" {
+			hangupGrace = 100 * time.Millisecond
+		}
 		defaultExecArgv = func() ([]string, error) { return []string{self(), roleArg, "holder"}, nil }
 		if len(args) > 0 && args[0] == resumeArg {
 			return Main(args)
@@ -49,6 +53,10 @@ func playRole(role string, args []string) int {
 		return coreStartsAnAgent()
 	case "core-crash":
 		return coreCrashesOnce()
+	case "core-done":
+		return coreCannotStart()
+	case "core-hangup":
+		return coreWaitsForAHangup()
 	case "agent":
 		return agentReachesFor(args)
 	}
@@ -157,6 +165,49 @@ func coreCrashesOnce() int {
 	p := progs[0]
 	fmt.Printf("second core %d found %s %d %s sandboxed=%v secret=%s\n", os.Getpid(), p.ID, p.Pid, p.State, p.Sandboxed, p.Secret)
 	cl.Shutdown()
+	return 0
+}
+
+// coreCannotStart starts a program, then ends as a core that cannot
+// start does; started again, it says so.
+func coreCannotStart() int {
+	cl, err := FromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	if progs, _ := cl.List(); len(progs) > 0 {
+		fmt.Println("started again")
+		return 1
+	}
+	p, err := cl.SpawnAs("keep", spawn.Spec{Argv: []string{"sleep", "60"}}, Mark{}, 0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("program %d\n", p.Pid())
+	return ExitDone
+}
+
+// coreWaitsForAHangup starts a program and waits, as a core whose
+// terminal is gone and that never has the holder shut down; the hangup
+// goes to the holder, its parent.
+func coreWaitsForAHangup() int {
+	cl, err := FromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	signal.Ignore(syscall.SIGHUP)
+	p, err := cl.SpawnAs("keep", spawn.Spec{Argv: []string{"sleep", "60"}}, Mark{}, 0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("program %d\n", p.Pid())
+	os.Stdout.Close()
+	syscall.Kill(os.Getppid(), syscall.SIGHUP)
+	time.Sleep(time.Minute)
 	return 0
 }
 
@@ -347,5 +398,39 @@ func TestUpgradeKeepsTheProgramsAsTheyWere(t *testing.T) {
 	out := runHolder(t, "core-upgrade")
 	if !strings.HasPrefix(out, "ok ") {
 		t.Fatalf("core said %q", out)
+	}
+}
+
+// A core that ends with ExitDone is not started again: the holder stops
+// its programs and ends.
+func TestACoreThatCannotStartEndsTheHolder(t *testing.T) {
+	out := runHolder(t, "core-done")
+	var pid int
+	if _, err := fmt.Sscanf(out, "program %d", &pid); err != nil || strings.Contains(out, "started again") {
+		t.Fatalf("holder said %q", out)
+	}
+	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+		t.Errorf("program %d left running: %v", pid, err)
+	}
+}
+
+// Once its terminal hangs up, the holder stops its programs and ends, if
+// the core has not had it shut down by then.
+func TestAHangupEndsTheHolder(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, self(), roleArg, "holder", "core-hangup")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = append(os.Environ(), "TEST_HANGUP_GRACE=1")
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("holder: %v\n%s", err, out)
+	}
+	var pid int
+	if _, err := fmt.Sscanf(string(out), "program %d", &pid); err != nil {
+		t.Fatalf("holder said %q", out)
+	}
+	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+		t.Errorf("program %d left running: %v", pid, err)
 	}
 }

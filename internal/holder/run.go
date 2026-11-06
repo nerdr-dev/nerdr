@@ -1,9 +1,11 @@
 package holder
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
 	"strconv"
 	"syscall"
 	"time"
@@ -14,6 +16,17 @@ import (
 // EnvFD names the descriptor a core started by a holder has its end of
 // the socket on.
 const EnvFD = "NERDR_HOLDER_FD"
+
+// ExitDone is the status a core ends with to say it is not to be started
+// again: it could not start at all (another nerdr has the folder, there is
+// no terminal), and starting it again would not help. The holder then
+// stops its programs and ends. A core that ends any other way, short of
+// a shutdown, has crashed and is started again.
+const ExitDone = 64
+
+// hangupGrace is how long the holder waits, once its terminal hangs up,
+// for the core to have it shut down before it does so itself.
+var hangupGrace = 10 * time.Second
 
 // Backoff between starts of a core that keeps ending: from the first to
 // the most, doubling, and back to the first once a core has run steady.
@@ -40,7 +53,30 @@ func (h *Holder) serveCores(core []string) error {
 	h.coreArgv = core
 	h.upgrade = h.doUpgrade
 	h.mu.Unlock()
+	h.onHangup()
 	return h.keepCoreUp(core, nil)
+}
+
+// onHangup stops the programs and ends the holder once its terminal hangs
+// up and the core has not had it shut down within hangupGrace: with no
+// terminal, no core can be started again to show them.
+func (h *Holder) onHangup() {
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, syscall.SIGHUP, syscall.SIGTERM)
+	go func() {
+		defer signal.Stop(sig)
+		select {
+		case <-sig:
+		case <-h.shut:
+			return
+		}
+		select {
+		case <-h.shut:
+		case <-time.After(hangupGrace):
+			h.shutdown(5 * time.Second)
+			h.stop()
+		}
+	}()
 }
 
 // keepCoreUp starts the core again each time it ends, after first, when
@@ -59,6 +95,12 @@ func (h *Holder) keepCoreUp(core []string, first func() error) error {
 		case <-h.shut:
 			return nil
 		default:
+		}
+		var exit *spawn.ExitError
+		if errors.As(err, &exit) && exit.Signal == 0 && exit.Code == ExitDone {
+			h.shutdown(5 * time.Second)
+			h.stop()
+			return nil
 		}
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "nerdr holder: core: %v\n", err)
