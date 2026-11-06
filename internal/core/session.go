@@ -19,7 +19,8 @@ func (m *Core) SaveSession() {
 	s := state.Session{Root: m.Root, Active: l.Active, Split: l.Split, SplitLeft: l.SplitLeft, SideWidth: l.SideWidth, PRs: m.SavedPRWatch()}
 	for _, t := range m.Tabs {
 		st := t.Tab
-		st.Agents = t.SavedAgents()
+		st.Agents = m.SavedAgents(t)
+		st.Review = m.savedReview(t)
 		if w := t.Handoff; w != nil {
 			// The switch it is for does not outlive nerdr.
 			if i := t.FindMessage(w.Asked); i >= 0 {

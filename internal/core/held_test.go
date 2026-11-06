@@ -8,8 +8,10 @@ import (
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/holder"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -252,5 +254,86 @@ func TestANewCoreTakesUpPluginsFromTheHolder(t *testing.T) {
 	})
 	if b.HeldLeft() != 1 {
 		t.Errorf("%d programs left, want the closed tab's terminal", b.HeldLeft())
+	}
+}
+
+// A review going on when the core crashed is taken up by the core started
+// again: the session kept it, the holder its reviewer, which sent its
+// review before the crash and is the same process after.
+func TestANewCoreTakesUpAReview(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := agentScript(t, "echo agent; exec cat\n")
+	a, tabA := heldCore(t, clA, script)
+	a.Root = t.TempDir()
+	reviewer := []string{agentScript(t, "echo reviewing; exec cat\n")}
+	a.Cfg.Agents[agents.Claude] = agents.Spec{Command: reviewer}
+	a.Cfg.Agents[agents.OpenCode] = agents.Spec{Command: reviewer}
+	a.Start(tabA, false)
+	a.StartReview(tabA, Reviewer{Kind: agents.Claude}, "main", "tree1", "the parser")
+	a.AddReviewer(tabA, Reviewer{Kind: agents.OpenCode})
+	if tabA.Review == nil || len(tabA.Review.Seats) != 2 {
+		t.Fatalf("no review: %+v", tabA.Review)
+	}
+	r := tabA.Review.Seats[0].R
+	a.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: "approve", Summary: "fine"}})
+	if tabA.Review == nil || tabA.Review.Seats[0].Res == nil {
+		t.Fatal("the review ended, or the verdict was not taken")
+	}
+	phase, round, pid := tabA.Review.Phase, tabA.Review.Round, r.Pane.Pid()
+	clA.Close()
+
+	sess, err := state.Load(a.Root)
+	if err != nil || len(sess.Tabs) != 1 || sess.Tabs[0].Review == nil {
+		t.Fatalf("session: %+v %v", sess, err)
+	}
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, _ := heldCore(t, clB, script)
+	b.Root = a.Root
+	tabB := &Tab{AgentState: Agent{Tab: sess.Tabs[0], Light: StStarting}}
+	b.Tabs = []*Tab{tabB}
+	b.Mu.Lock()
+	b.TakeUpHeld()
+	b.Start(tabB, true)
+	b.Mu.Unlock()
+	run := tabB.Review
+	if run == nil || run.Phase != phase || run.Round != round || run.Focus != "the parser" || len(run.Seats) != 2 {
+		t.Fatalf("review: %+v", run)
+	}
+	s := run.Seats[0]
+	if s.R.Pane == nil || s.R.Pane.Pid() != pid || s.R.ReviewOf != tabB || s.Res == nil || s.Res.Verdict != "approve" {
+		t.Fatalf("reviewer: %+v", s)
+	}
+	if o := run.Seats[1]; o.R.Pane == nil || o.Res != nil || o.R.Agent != agents.OpenCode {
+		t.Fatalf("second reviewer: %+v", o)
+	}
+	if p := s.R.PaneOf(); p == nil || p.Kind != PaneReview {
+		t.Fatalf("reviewer's pane: %+v", p)
+	}
+	if tabB.Tab.Review != nil {
+		t.Error("the kept review left on the tab")
+	}
+	if b.HeldLeft() != 0 {
+		t.Errorf("%d programs left", b.HeldLeft())
+	}
+}
+
+// Without a holder the session keeps no review, as before.
+func TestNoReviewSavedWithoutAHolder(t *testing.T) {
+	c := &Core{Client: NoClient{}, Root: t.TempDir()}
+	tb := &Tab{AgentState: Agent{Tab: state.Tab{ID: "x", Name: "x"}}}
+	tb.Review = &ReviewRun{Id: "r", Round: 1}
+	c.Tabs = []*Tab{tb}
+	c.SaveSession()
+	sess, err := state.Load(c.Root)
+	if err != nil || len(sess.Tabs) != 1 || sess.Tabs[0].Review != nil {
+		t.Fatalf("session: %+v %v", sess, err)
 	}
 }

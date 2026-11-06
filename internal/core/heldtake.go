@@ -95,8 +95,9 @@ func (m *Core) takeUpAgent(t *Tab) bool {
 	return true
 }
 
-// TakeUpHeld gives the tabs back the terminals, plugin screens and plugin
-// runs they had in the holder before the core was started again. Agents
+// TakeUpHeld gives the tabs back the terminals, plugin screens, plugin
+// runs and reviews they had in the holder before the core was started
+// again. Agents
 // are taken up as they are started; see takeUpAgent. m.Mu is held.
 func (m *Core) TakeUpHeld() {
 	if m.Held == nil {
@@ -119,6 +120,7 @@ func (m *Core) TakeUpHeld() {
 			}
 		}
 	}
+	m.takeUpReviews()
 }
 
 func (m *Core) takeUpShell(t *Tab, p holder.Prog, l Label) {
@@ -161,9 +163,9 @@ func (m *Core) takeUpRun(t *Tab, p holder.Prog, l Label) {
 	v.Runs[t.ID+"\x00"+l.Plugin], v.ByID[run.Id] = run, run
 }
 
-// HeldLeft is how many programs the holder runs that no tab took up: a
-// reviewer, whose review was the core's alone, or one of a tab since
-// closed. They go on unseen until nerdr quits; nothing stops them before.
+// HeldLeft is how many programs the holder runs that no tab took up: one
+// of a tab since closed, or a reviewer of a review the session did not
+// keep. They go on unseen until nerdr quits; nothing stops them before.
 func (m *Core) HeldLeft() int {
 	if m.Held == nil {
 		return 0

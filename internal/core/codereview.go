@@ -240,6 +240,7 @@ func (m *Core) OnReview(rep hooks.Report) Cmd {
 	}
 	res := *rep.Review
 	t.SeatOf(r).Res = &res
+	m.saveReview()
 	Debugf("review %s: %s sent its review", m.AgentName(t), r.Agent)
 	branch := ""
 	worktree := t.Dir
@@ -405,6 +406,7 @@ func (m *Core) DropReviewer(t, r *Tab, why string, notify bool) Cmd {
 			break
 		}
 	}
+	m.saveReview()
 	if p := r.Pane; p != nil {
 		go p.Close()
 	}
@@ -709,6 +711,7 @@ func (m *Core) OnTree(msg TreeMsg) Cmd {
 			s.Res = nil
 			m.AddMessage(s.R, codereview.Again(string(t.Agent), run.Round, run.Rounds), true)
 		}
+		m.saveReview()
 		m.Tell(PanesMsg{})
 		m.Toast(t.Name + ": " + m.ReviewerNames(t) + " review again (round " + strconv.Itoa(run.Round) + ")")
 		return nil
@@ -775,6 +778,7 @@ func (m *Core) AddReviewer(t *Tab, by Reviewer) Cmd {
 		return cmd
 	}
 	run.Seats = append(run.Seats, &Seat{R: r})
+	m.saveReview()
 	m.Tell(TermsMsg{T: m.Ref(t.Owner())})
 	m.Tell(PanesMsg{}) // the panes say so
 	with := string(k)

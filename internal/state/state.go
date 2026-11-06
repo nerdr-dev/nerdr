@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -101,6 +102,10 @@ type Tab struct {
 	// Agents are the agents working beside the tab's own in its worktree,
 	// each in a pane of its own, to be resumed with it.
 	Agents []Tab `json:"agents,omitempty"`
+	// Review is the code review of the agent's work going on, kept only
+	// while nerdr runs over a holder: its reviewers run on there, for a
+	// core started after a crash to take up.
+	Review *Review `json:"review,omitempty"`
 	// Num is the agent's number among the tab's agents, which names it in
 	// the row of panes and to the others: `nerdr send 2` reaches number 2.
 	Num int `json:"num,omitempty"`
@@ -394,4 +399,26 @@ func Lock(root string) (release func(), err error) {
 		return nil, err
 	}
 	return func() { _ = f.Close() }, nil
+}
+
+// Review is a code review going on, as core.ReviewRun has it.
+type Review struct {
+	ID       string       `json:"id"`
+	Phase    int          `json:"phase"`
+	Round    int          `json:"round"`
+	Rounds   int          `json:"rounds"`
+	Base     string       `json:"base,omitempty"`
+	Focus    string       `json:"focus,omitempty"`
+	Tree     string       `json:"tree,omitempty"`
+	FixMsg   Message      `json:"fix_msg,omitempty"`
+	Brief    string       `json:"brief,omitempty"`
+	Approved []string     `json:"approved,omitempty"`
+	Seats    []ReviewSeat `json:"seats"`
+}
+
+// ReviewSeat is a reviewer in a Review: the agent, and the review it sent
+// this round, if it has.
+type ReviewSeat struct {
+	Agent  Tab                `json:"agent"`
+	Result *codereview.Result `json:"result,omitempty"`
 }
