@@ -104,10 +104,33 @@ func (s *Screen) Feed(b []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.oscOut = s.osc.write(s.oscOut[:0], b, func(t string) { s.title = t })
-	_, _ = s.emu.Write(s.oscOut)
+	s.write(s.oscOut)
 	s.drawGen++
 	s.gen++
 	s.lastOutput = time.Now()
+}
+
+// write gives b to the emulator. Output it cannot handle can make it
+// panic, which is not let bring nerdr down with it: the screen is marked
+// incomplete instead, and the rest of b is dropped. The parser may be left
+// inside the sequence, so a CAN, which ends any sequence, is given after.
+// s.mu is held.
+func (s *Screen) write(b []byte) {
+	if !s.tryWrite(b) {
+		s.incomplete = true
+		s.tryWrite([]byte{0x18})
+	}
+}
+
+// tryWrite reports whether the emulator took b without a panic.
+func (s *Screen) tryWrite(b []byte) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	_, _ = s.emu.Write(b)
+	return true
 }
 
 // ReadReply reads what the screen answers to the program's queries (cursor
