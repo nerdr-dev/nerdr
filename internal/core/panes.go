@@ -592,11 +592,12 @@ func (p *PaneTab) Status() (Status, bool) {
 }
 
 // SavedAgents are t's agents beside its own, as the session keeps them.
-func (t *Tab) SavedAgents() []state.Tab {
+func (m *Core) SavedAgents(t *Tab) []state.Tab {
 	var out []state.Tab
 	for _, a := range t.ExtraAgents() {
 		st := a.Tab
 		st.Agents = nil
+		st.Review = m.savedReview(a)
 		out = append(out, st)
 	}
 	return out
