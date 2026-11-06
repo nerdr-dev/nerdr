@@ -133,9 +133,16 @@ func (m *Core) Hold(s *spawn.Spec, l Label, sandboxed bool, secret string) {
 
 // ShutdownHolder has the holder stop what it still runs and end, once
 // the user has quit: without it, the holder would start the core again.
-func (m *Core) ShutdownHolder() {
-	if m.Held != nil {
-		_ = m.Held.Client.Shutdown()
+func (m *Core) ShutdownHolder() { m.Held.Shutdown() }
+
+// Shutdown has the holder stop what it still runs and end; nothing for
+// no holder.
+func (h *Held) Shutdown() {
+	if h == nil {
+		return
+	}
+	if err := h.Client.Shutdown(); err != nil {
+		Debugf("holder shutdown: %v", err)
 	}
 }
 

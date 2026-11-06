@@ -513,9 +513,10 @@ func (m *Model) quit() tea.Cmd {
 	m.toast("stopping agents…")
 	var panes []*term.Pane
 	m.shutdown.Do(func() { panes = m.stopping() })
-	h := m.Herdr
+	h, held := m.Herdr, m.Held
 	return func() tea.Msg {
 		core.StopPanes(panes)
+		held.Shutdown()
 		h.Release()
 		return quitReadyMsg{}
 	}
