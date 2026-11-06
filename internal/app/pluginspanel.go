@@ -5,9 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -51,18 +49,9 @@ type pluginsView struct {
 	// by folder.
 	allowed map[string]bool
 
-	// uis are the plugins' screens started, by pluginUIKey.
-	uis map[string]*core.PluginUI
 	// asking is the question whether an agent may run a plugin, while it
 	// is asked.
 	asking *runQuestion
-	// uiW and uiH are the size the last drawing left a screen.
-	uiW, uiH int
-	// goneAt is when the plugins' folders were last looked for, and
-	// missing when each absent folder was first seen: a plugin.toml
-	// written by rename is missing for a moment.
-	goneAt  time.Time
-	missing map[string]time.Time
 }
 
 // panelPlugins reports whether the review panel shows the plugins.
@@ -87,92 +76,6 @@ func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 	}
 	v.repick()
 	return v.list
-}
-
-// pluginGone stops the screens and runs of a plugin whose folder is no
-// longer there: the user cannot pick them, nor stop them, in F5.
-func (m *Model) pluginGone(dir string) {
-	delete(m.plugins.missing, dir)
-	for k, u := range m.plugins.uis {
-		if u.Dir != dir {
-			continue
-		}
-		delete(m.plugins.uis, k)
-		if m.plugins.uiFocus == k {
-			m.plugins.uiFocus = ""
-		}
-		u.Close()
-	}
-	for _, r := range m.PluginRuns.ByID {
-		if r.Dir != dir {
-			continue
-		}
-		if r.Running() && r.StopBy == "" {
-			r.StopBy = "the plugin is gone"
-			r.Proc.Stop()
-		}
-	}
-	for k, r := range m.PluginRuns.Runs {
-		if r.Dir == dir {
-			delete(m.PluginRuns.Runs, k)
-		}
-	}
-}
-
-// checkPluginsGone stops screens and runs whose plugin folder is gone, or
-// has had no plugin.toml for a while. It looks every few seconds, so a
-// watch does not outlive its plugin just because F5 is not open.
-func (m *Model) checkPluginsGone(now time.Time) {
-	if now.Sub(m.plugins.goneAt) < core.PluginsCheckEvery {
-		return
-	}
-	m.plugins.goneAt = now
-	if m.plugins.missing == nil {
-		m.plugins.missing = map[string]time.Time{}
-	}
-	dirs := map[string]bool{}
-	for _, u := range m.plugins.uis {
-		dirs[u.Dir] = true
-	}
-	for _, r := range m.PluginRuns.ByID {
-		dirs[r.Dir] = true
-	}
-	for _, r := range m.PluginRuns.Runs {
-		dirs[r.Dir] = true
-	}
-	if len(dirs) == 0 {
-		for dir := range m.plugins.missing {
-			delete(m.plugins.missing, dir)
-		}
-		return
-	}
-	live := map[string]bool{}
-	for _, p := range plugin.Find(plugin.UserDir(config.Path())) {
-		live[p.Dir] = true
-	}
-	for dir := range dirs {
-		if live[dir] {
-			delete(m.plugins.missing, dir)
-			continue
-		}
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			m.pluginGone(dir)
-			continue
-		}
-		since, ok := m.plugins.missing[dir]
-		if !ok {
-			m.plugins.missing[dir] = now
-			continue
-		}
-		if now.Sub(since) >= core.PluginGoneAfter {
-			m.pluginGone(dir)
-		}
-	}
-	for dir := range m.plugins.missing {
-		if !dirs[dir] {
-			delete(m.plugins.missing, dir)
-		}
-	}
 }
 
 // repick puts the cursor on the plugin picked, in the list read anew. One
@@ -207,14 +110,6 @@ func (m *Model) pickedPlugin(t *core.Tab) (plugin.Plugin, bool) {
 	return list[min(max(m.plugins.cursor, 0), len(list)-1)], true
 }
 
-// pluginUIOf is p's screen in t, if one was started.
-func (m *Model) pluginUIOf(t *core.Tab, p plugin.Plugin) *core.PluginUI {
-	if t == nil {
-		return nil
-	}
-	return m.plugins.uis[core.PluginUIKey(t, p)]
-}
-
 // pluginUIPane is the plugin screen with the keyboard, if one has it: the
 // input router passes keys straight to it.
 func (m *Model) pluginUIPane() *term.Pane {
@@ -226,7 +121,7 @@ func (m *Model) pluginUIPane() *term.Pane {
 	if !ok || core.PluginUIKey(t, p) != m.plugins.uiFocus {
 		return nil
 	}
-	if u := m.pluginUIOf(t, p); u.Running() {
+	if u := m.PluginUIOf(t, p); u.Running() {
 		return u.Pane
 	}
 	return nil
@@ -262,7 +157,7 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "x":
 		if p, ok := m.pickedPlugin(t); ok {
-			m.stopPluginUI(t, p)
+			m.StopPluginUI(t, p)
 		}
 	case "s":
 		if p, ok := m.pickedPlugin(t); ok {
@@ -288,7 +183,7 @@ func (m *Model) togglePluginUI() bool {
 	}
 	t := m.Cur()
 	p, ok := m.pickedPlugin(t)
-	if !ok || !m.pluginUIOf(t, p).Running() {
+	if !ok || !m.PluginUIOf(t, p).Running() {
 		return false
 	}
 	key := core.PluginUIKey(t, p)
@@ -325,7 +220,7 @@ func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 		m.toast(clean.Line(p.Name) + " changed and has no screen to start now")
 		return nil
 	}
-	if u := m.pluginUIOf(t, p); u.Running() && u.Key == key {
+	if u := m.PluginUIOf(t, p); u.Running() && u.Key == key {
 		m.plugins.uiFocus = core.PluginUIKey(t, p)
 		m.setFocus(core.FocusReview)
 		return nil
@@ -503,125 +398,6 @@ func pluginPreview(dir string, n, w int) []string {
 	return out
 }
 
-// startPluginUI starts plugin p's screen in t, in place of one that ended,
-// and gives it the keyboard when focus is set. It is told of a run of the
-// plugin going on.
-func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
-	if len(p.UI) == 0 {
-		m.toast(clean.Line(p.Name) + " has no screen of its own")
-		return nil
-	}
-	hadFocus := m.plugins.uiFocus == core.PluginUIKey(t, p)
-	m.stopPluginUI(t, p)
-	w, h := m.plugins.uiW, m.plugins.uiH
-	if w <= 0 || h <= 0 {
-		w, h = 60, 20
-	}
-	events, err := core.PluginEventsFile(p)
-	if err != nil {
-		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
-		return nil
-	}
-	dropEvents := func() {
-		_ = events.Close()
-		_ = os.Remove(events.Name())
-	}
-	env := append(append(core.ChildEnv(t), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
-	argv := p.Command(p.UI)
-	cmd := exec.Command(argv[0], argv[1:]...)
-	cmd.Env = env
-	dir, err := core.RunDir(t, t.Dir)
-	if err != nil {
-		dropEvents()
-		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
-		return nil
-	}
-	if err := core.PluginCommandIn(cmd, dir, p.Dir, key); err != nil {
-		dir.Close()
-		dropEvents()
-		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
-		return nil
-	}
-	pane, err := term.StartCmd(cmd, w, h, m.Notify)
-	dir.Close()
-	if err != nil {
-		dropEvents()
-		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
-		return nil
-	}
-	if m.plugins.uis == nil {
-		m.plugins.uis = map[string]*core.PluginUI{}
-	}
-	m.plugins.uis[core.PluginUIKey(t, p)] = &core.PluginUI{T: t, Pane: pane, Events: events, Dir: p.Dir, Key: key}
-	if run := m.PluginRunOf(t, p); run.Running() {
-		m.pluginEvent(t, p.Dir, run.StartEvent())
-		if text := strings.Join(run.Lines(), "\n"); text != "" {
-			m.pluginEvent(t, p.Dir, map[string]any{"event": "output", "run": run.Id, "text": text + "\n"})
-		}
-	}
-	if focus || hadFocus {
-		uiKey := core.PluginUIKey(t, p)
-		m.plugins.uiFocus = uiKey
-		if t == m.Cur() && m.focus == core.FocusReview && m.panelPlugins() {
-			m.setFocus(core.FocusReview)
-		}
-	}
-	return nil
-}
-
-// stopPluginUI stops plugin p's screen in t, if it was started.
-func (m *Model) stopPluginUI(t *core.Tab, p plugin.Plugin) {
-	key := core.PluginUIKey(t, p)
-	if u := m.pluginUIOf(t, p); u != nil {
-		delete(m.plugins.uis, key)
-		if m.plugins.uiFocus == key {
-			m.plugins.uiFocus = ""
-		}
-		u.Close()
-	}
-}
-
-// checkPluginUIs stops the screens of the tabs closed, and forgets their
-// runs.
-func (m *Model) checkPluginUIs() {
-	for k, u := range m.plugins.uis {
-		if !slices.Contains(m.Tabs, u.T) {
-			delete(m.plugins.uis, k)
-			if m.plugins.uiFocus == k {
-				m.plugins.uiFocus = ""
-			}
-			u.Close()
-		}
-	}
-	now := time.Now()
-	m.checkPluginsGone(now)
-	m.PumpRuns(now)
-	for k, r := range m.PluginRuns.Runs {
-		if !slices.Contains(m.Tabs, r.T) {
-			if r.Running() {
-				r.Proc.Stop()
-			}
-			delete(m.PluginRuns.Runs, k)
-			// Leave it in byID until endRun, so a client still reads
-			// its result and stopRuns waits for its stop at quitting.
-		}
-	}
-}
-
-// pluginUIPanes are the plugins' screens, to stop when nerdr quits; the
-// agents' runs are stopped there and then.
-func (m *Model) pluginUIPanes() []*term.Pane {
-	m.StopRuns()
-	var out []*term.Pane
-	for _, u := range m.plugins.uis {
-		out = append(out, u.Pane)
-		if u.Events != nil {
-			_ = os.Remove(u.Events.Name())
-		}
-	}
-	return out
-}
-
 // pluginsBody draws the plugins for t, w×h, for the panel's frame.
 func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	list := m.pluginList(t)
@@ -638,7 +414,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		return append(fitLines(lines, w, h-1), ansi.Truncate(keys, w, "…"))
 	}
 	p := list[v.cursor]
-	u := m.pluginUIOf(t, p)
+	u := m.PluginUIOf(t, p)
 	run := m.PluginRunOf(t, p)
 	// What the run printed, when the plugin shows it: below the rest, or
 	// above its screen, a few rows of it.
@@ -671,7 +447,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		switch {
 		case q.Err != "":
 			mark = warn("!")
-		case len(q.UI) > 0 && m.pluginUIOf(t, q).Running():
+		case len(q.UI) > 0 && m.PluginUIOf(t, q).Running():
 			mark = lipgloss.NewStyle().Foreground(lipgloss.Color("71")).Render("▣")
 		case len(q.UI) > 0:
 			mark = "▣"
@@ -786,12 +562,12 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 			return m.openPluginUI(t, p)
 		})
 	out := append(top, rule)
-	v.uiW, v.uiH = w, max(room, 3)
+	m.PluginUIW, m.PluginUIH = w, max(room, 3)
 	if u == nil {
 		return fitLines(out, w, h)
 	}
-	if pw, ph := u.Pane.Size(); pw != v.uiW || ph != v.uiH {
-		u.Pane.Resize(v.uiW, v.uiH)
+	if pw, ph := u.Pane.Size(); pw != m.PluginUIW || ph != m.PluginUIH {
+		u.Pane.Resize(m.PluginUIW, m.PluginUIH)
 	}
 	return fitLines(append(out, u.Pane.Render(0, inUI)...), w, h)
 }
@@ -820,4 +596,22 @@ func (m *Model) pluginsTitle(t *core.Tab) string {
 		return "plugins"
 	}
 	return fmt.Sprintf("plugins (%d)", n)
+}
+
+// startPluginUI starts plugin p's screen in t, as allowed with key, and gives
+// it the keyboard when focus is set.
+func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
+	if m.StartPluginUI(t, p, key) && focus {
+		m.plugins.uiFocus = core.PluginUIKey(t, p)
+		m.pluginUIFocus(t)
+	}
+	return nil
+}
+
+// pluginUIFocus gives the keyboard to the plugin screen just started in t,
+// when it is the one to have it and the plugins have the keyboard.
+func (m *Model) pluginUIFocus(t *core.Tab) {
+	if t == m.Cur() && m.focus == core.FocusReview && m.panelPlugins() {
+		m.setFocus(core.FocusReview)
+	}
 }

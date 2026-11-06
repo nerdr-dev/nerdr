@@ -142,20 +142,15 @@ type (
 	DetectStartMsg struct{}
 	DetectDoneMsg  struct{ Now time.Time }
 
-	// PluginUIMsg is plugin P's screen wanted in T, as allowed with Key.
-	// PluginEventMsg is Ev for the plugin screens of the plugin in Dir; and
-	// PluginRunMsg a run of P's just started by an agent of T.
-	PluginUIMsg struct {
+	// PluginUIStartedMsg is the plugin screen of Key, by PluginUIKey, just
+	// started in T; PluginUIGoneMsg, that it is gone. PluginRunMsg is a run
+	// of P's just started by an agent of T.
+	PluginUIStartedMsg struct {
 		T   *Tab
-		P   plugin.Plugin
 		Key string
 	}
-	PluginEventMsg struct {
-		T   *Tab
-		Dir string
-		Ev  map[string]any
-	}
-	PluginRunMsg struct {
+	PluginUIGoneMsg struct{ Key string }
+	PluginRunMsg    struct {
 		T   *Tab
 		P   plugin.Plugin
 		Run *PluginRun

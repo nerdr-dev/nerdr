@@ -372,10 +372,10 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 		old.Proc.Stop()
 	}
 	if p.Shows(plugin.ShowUI) {
-		m.Tell(PluginUIMsg{T: o, P: p, Key: key})
+		m.EnsurePluginUI(o, p, key)
 	}
 	v.Runs[uiKey], v.ByID[run.Id] = run, run
-	m.Tell(PluginEventMsg{T: o, Dir: p.Dir, Ev: run.StartEvent()})
+	m.PluginEvent(o, p.Dir, run.StartEvent())
 	return run, nil
 }
 
@@ -407,7 +407,7 @@ func (m *Core) PumpRuns(now time.Time) {
 		run.Pumped = next
 		if text != "" {
 			run.Add(text)
-			m.Tell(PluginEventMsg{T: run.T, Dir: run.Dir, Ev: map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)}})
+			m.PluginEvent(run.T, run.Dir, map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)})
 			if run.Watch {
 				m.TellWatcher(run, text, run.Confined)
 			}
@@ -512,7 +512,7 @@ func (m *Core) EndRun(run *PluginRun, exit int, sandboxed bool) {
 		}
 		m.PluginRuns.Finished[run.Id] = run
 	}
-	m.Tell(PluginEventMsg{T: run.T, Dir: run.Dir, Ev: map[string]any{"event": "end", "run": run.Id, "exit": exit}})
+	m.PluginEvent(run.T, run.Dir, map[string]any{"event": "end", "run": run.Id, "exit": exit})
 	if !run.Watch || run.StopBy == "you" || run.From == nil || !slices.Contains(m.AllAgents(), run.From) {
 		return
 	}

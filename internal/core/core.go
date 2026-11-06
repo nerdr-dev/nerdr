@@ -34,6 +34,16 @@ type Core struct {
 
 	// pluginRuns is the runs of plugins by agents; see pluginruns.go.
 	PluginRuns PluginRuns
+	// PluginUIs are the plugins' screens started, by PluginUIKey; and
+	// PluginUIW and PluginUIH the size the client last drew one, for the
+	// next to start at. PluginsGoneAt is when the plugins' folders were last
+	// looked for, and PluginsMissing when each absent folder was first seen:
+	// a plugin.toml written by rename is missing for a moment. See
+	// pluginspanel.go.
+	PluginUIs            map[string]*PluginUI
+	PluginUIW, PluginUIH int
+	PluginsGoneAt        time.Time
+	PluginsMissing       map[string]time.Time
 
 	// claudeLimits is the last of what a claude agent said of its
 	// account's limits, and when; see usage.go.

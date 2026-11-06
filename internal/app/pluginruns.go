@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -60,20 +59,6 @@ func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun)
 		}
 	}
 	return tea.Batch(cmd, m.resize())
-}
-
-// pluginEvent tells the screen of the plugin in folder dir, in t, of an
-// agent's run of it, when the screen runs: a JSON object a line, in the
-// file NERDR_PLUGIN_EVENTS names, which the screen reads as it grows.
-func (m *Model) pluginEvent(t *core.Tab, dir string, ev map[string]any) {
-	u := m.plugins.uis[t.ID+"\x00"+dir]
-	if u == nil || u.Events == nil {
-		return
-	}
-	b, err := json.Marshal(ev)
-	if err == nil {
-		_, _ = u.Events.Write(append(b, '\n'))
-	}
 }
 
 // runState is the light and the words of run, in a list's row: whether it
@@ -218,11 +203,4 @@ func (m *Model) askPluginRun(q *core.Question) {
 	}
 	m.plugins.asking = rq
 	m.dialog = rq.dialog
-}
-
-// ensurePluginUI has p's screen running, as allowed with key, in tab t.
-func (m *Model) ensurePluginUI(t *core.Tab, p plugin.Plugin, key string) {
-	if u := m.pluginUIOf(t, p); !u.Running() || u.Key != key {
-		m.startPluginUI(t, p, false, key)
-	}
 }

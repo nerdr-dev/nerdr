@@ -95,12 +95,16 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.SwitchAskMsg:
 		m.Gen++
 		return toCore(m.openSwitchAgent())
-	case core.PluginUIMsg:
+	case core.PluginUIStartedMsg:
 		m.Gen++
-		m.ensurePluginUI(ev.T, ev.P, ev.Key)
-	case core.PluginEventMsg:
+		if m.plugins.uiFocus == ev.Key {
+			m.pluginUIFocus(ev.T) // started again in place of the one it had
+		}
+	case core.PluginUIGoneMsg:
 		m.Gen++
-		m.pluginEvent(ev.T, ev.Dir, ev.Ev)
+		if m.plugins.uiFocus == ev.Key {
+			m.plugins.uiFocus = ""
+		}
 	case core.PluginRunMsg:
 		m.Gen++
 		return toCore(m.showPluginRun(ev.T, ev.P, ev.Run))

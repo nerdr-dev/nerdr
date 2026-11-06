@@ -457,7 +457,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case core.FrameMsg:
 		m.checkEditor()
 		m.CheckShells()
-		m.checkPluginUIs()
+		m.CheckPluginUIs()
 		m.checkCopied()
 		return nil
 
@@ -1028,7 +1028,7 @@ func (m *Model) stopping() []*term.Pane {
 	if m.editor != nil {
 		panes = append(panes, m.editor)
 	}
-	return append(panes, m.pluginUIPanes()...)
+	return append(panes, m.PluginUIPanes()...)
 }
 
 // onPanelLayout follows F1's file list going beside the diff or back above
