@@ -308,12 +308,13 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 			reply(hooks.Answer{Text: answer})
 			return nil
 		}
-		if m.Asked(AskPluginRun) || m.Client == nil || !m.Client.DialogClosed() {
-			// Asked again once the user is free to answer; with no client,
-			// once there is one: only a user can say yes.
+		if m.Asked(AskPluginRun) || m.HasClient() && !m.Client.DialogClosed() {
+			// Asked again once the user is free to answer.
 			m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " would run the plugin " + p.Name + ", and asks again soon")
 			return decide(RunBusy)
 		}
+		// With no client the question waits for one as long as the agent
+		// waits for its answer: only a user can say yes.
 		q := &Question{Kind: AskPluginRun, A: from, P: p, Vals: vals, Dir: where, Confined: confined, Until: time.Now().Add(RunAskWait)}
 		return m.Ask(q, decide)
 	}

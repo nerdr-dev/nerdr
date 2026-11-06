@@ -46,6 +46,11 @@ type Question struct {
 	Confined bool
 	Until    time.Time
 
+	// Shown is set when a client was there to show the question. One never
+	// shown is answered RunBusy at Until, for the agent to ask again, rather
+	// than RunUnanswered.
+	Shown bool
+
 	then func(answer string) Cmd
 }
 
@@ -59,7 +64,7 @@ type (
 // Ask puts q to the user, then goes on with its answer.
 func (m *Core) Ask(q *Question, then func(answer string) Cmd) Cmd {
 	m.lastAsk++
-	q.ID, q.then = m.lastAsk, then
+	q.ID, q.then, q.Shown = m.lastAsk, then, m.HasClient()
 	m.Asking = append(m.Asking, q)
 	return m.Tell(AskMsg{Q: q})
 }
@@ -89,14 +94,20 @@ func (m *Core) Asked(kind AskKind) bool {
 	return slices.ContainsFunc(m.Asking, func(q *Question) bool { return q.Kind == kind })
 }
 
-// ExpireAsks answers RunUnanswered to the runs asked about too long ago.
+// ExpireAsks answers the runs asked about too long ago: RunUnanswered, or
+// RunBusy when no client was there to show them.
 func (m *Core) ExpireAsks(now time.Time) Cmd {
 	var cmds []Cmd
 	for _, q := range slices.Clone(m.Asking) {
-		if q.Kind == AskPluginRun && now.After(q.Until) {
-			cmds = append(cmds, m.Answer(q, RunUnanswered))
-			m.Toast(m.AgentLabel(q.A.Owner(), q.A) + "'s run of " + q.P.Name + " was not answered in time, and did not run")
+		if q.Kind != AskPluginRun || !now.After(q.Until) {
+			continue
 		}
+		if !q.Shown {
+			cmds = append(cmds, m.Answer(q, RunBusy))
+			continue
+		}
+		cmds = append(cmds, m.Answer(q, RunUnanswered))
+		m.Toast(m.AgentLabel(q.A.Owner(), q.A) + "'s run of " + q.P.Name + " was not answered in time, and did not run")
 	}
 	return Batch(cmds...)
 }

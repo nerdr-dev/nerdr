@@ -263,7 +263,9 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		if m.Quitting {
 			return nil, nil
 		}
-		return m.InfoTick(time.Now()), InfoTickMsg{}
+		now := time.Now()
+		// Also here: with no client, nothing may draw for a frame.
+		return Batch(m.InfoTick(now), m.ExpireAsks(now)), InfoTickMsg{}
 	}
 	if cmd, ok := m.Handle(ev); ok {
 		m.Gen++
