@@ -407,7 +407,9 @@ func (m *Core) PumpRuns(now time.Time) {
 	}
 	for _, run := range m.PluginRuns.ByID {
 		text, next, done, exit := run.Proc.Since(run.Pumped)
-		run.Pumped = next
+		// Not back: a run taken up after a crash is pumped from where its
+		// output had got to, before it is all read again.
+		run.Pumped = max(run.Pumped, next)
 		if text != "" {
 			run.Add(text)
 			m.PluginEvent(run.T, run.Dir, map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)})

@@ -148,14 +148,19 @@ func (m *Core) takeUpPluginUI(t *Tab, p holder.Prog, l Label) {
 
 func (m *Core) takeUpRun(t *Tab, p holder.Prog, l Label) {
 	at := m.Held.taken(p)
-	proc := WatchProc(m.Held.Client.Attach(p, at.Pos), m.Notify)
+	proc := WatchProc(m.Held.Client.Attach(p, at.Pos), int(at.Pos), m.Notify)
 	from := m.AgentByID(l.From)
 	if from == nil {
 		from = t
 	}
 	started := time.Unix(0, p.Started)
+	// What it printed before is read again, for F5 and reads, but was told
+	// of by the core before: only what comes after it goes to the agent
+	// watching and to the plugin's screen. What came in the moment
+	// between the last the core told of and its crash is not told again.
 	run := &PluginRun{Id: l.Run, T: t, Agent: m.AgentLabel(t, from), Dir: l.Plugin, Values: l.Values,
-		Started: started, Proc: proc, From: from, ReadAt: time.Now(), Watch: l.Watch, Confined: l.Confined}
+		Started: started, Proc: proc, From: from, ReadAt: time.Now(), Watch: l.Watch, Confined: l.Confined,
+		Pumped: int(p.Pos)}
 	v := &m.PluginRuns
 	if v.Runs == nil {
 		v.Runs, v.ByID = map[string]*PluginRun{}, map[string]*PluginRun{}
@@ -172,12 +177,27 @@ func (m *Core) HeldLeft() int {
 	}
 	n := 0
 	for _, p := range m.Held.Progs {
-		if l, ok := ParseLabel(p.Label); ok && l.Kind == HeldAgent && l.Agent == "" && m.TabByID(l.Tab) != nil {
-			continue // its tab takes it up when it starts
+		if l, ok := ParseLabel(p.Label); ok && l.Kind == HeldAgent && l.Agent == "" && m.AgentByID(l.Tab) != nil {
+			continue // the agent takes it up when it starts: a tab's own, or one beside it
 		}
 		n++
 	}
 	return n
+}
+
+// HeldAgent reports whether an agent of tab t, its own or one beside it,
+// has a program in the holder waiting to be taken up: the tab is not to
+// sleep, which would leave it running unseen.
+func (m *Core) HeldAgent(t *Tab) bool {
+	if m.Held == nil {
+		return false
+	}
+	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
+		if m.Held.has(func(l Label) bool { return l.Kind == HeldAgent && l.Agent == "" && l.Tab == a.ID }) {
+			return true
+		}
+	}
+	return false
 }
 
 var _ spawn.Proc = (*holder.Proc)(nil)

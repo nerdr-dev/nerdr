@@ -6,6 +6,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/codereview"
@@ -220,8 +221,17 @@ func TestANewCoreTakesUpPluginsFromTheHolder(t *testing.T) {
 	}
 	spawnLabelled(spawn.Spec{Argv: []string{"sh", "-c", "echo screen; exec cat"}, PTY: true, W: 20, H: 4},
 		Label{Kind: HeldPluginUI, Tab: "tab1", Plugin: "/p", Key: "k", Events: events})
-	spawnLabelled(spawn.Spec{Argv: []string{"sh", "-c", "echo ran; exec sleep 60"}},
+	spawnLabelled(spawn.Spec{Argv: []string{"sh", "-c", "echo ran; sleep 2; echo later; exec sleep 60"}},
 		Label{Kind: HeldRun, Tab: "tab1", Plugin: "/p", Key: "k", Run: "r1", From: "tab1", Watch: true})
+	waitFor(t, "the run's first line in the holder", func() bool {
+		progs, _ := clA.List()
+		for _, p := range progs {
+			if l, _ := ParseLabel(p.Label); l.Kind == HeldRun && p.Pos > 0 {
+				return true
+			}
+		}
+		return false
+	})
 	spawnLabelled(spawn.Spec{Argv: []string{"sleep", "60"}}, Label{Kind: HeldShell, Tab: "closed"})
 	clA.Close()
 
@@ -252,6 +262,24 @@ func TestANewCoreTakesUpPluginsFromTheHolder(t *testing.T) {
 		defer run.Proc.Mu.Unlock()
 		return strings.Contains(string(run.Proc.Raw), "ran")
 	})
+	// What it printed before the crash was told of then: only what comes
+	// after goes to the plugin's screen and the agent watching.
+	b.Mu.Lock()
+	b.PumpRuns(time.Now())
+	b.Mu.Unlock()
+	if got, _ := os.ReadFile(events); strings.Contains(string(got), "ran") {
+		t.Fatalf("told again: %q", got)
+	}
+	waitFor(t, "the run's next line", func() bool {
+		b.Mu.Lock()
+		defer b.Mu.Unlock()
+		b.PumpRuns(time.Now())
+		got, _ := os.ReadFile(events)
+		return strings.Contains(string(got), "later")
+	})
+	if got, _ := os.ReadFile(events); strings.Contains(string(got), "ran") {
+		t.Fatalf("told again: %q", got)
+	}
 	if b.HeldLeft() != 1 {
 		t.Errorf("%d programs left, want the closed tab's terminal", b.HeldLeft())
 	}
@@ -335,5 +363,46 @@ func TestNoReviewSavedWithoutAHolder(t *testing.T) {
 	sess, err := state.Load(c.Root)
 	if err != nil || len(sess.Tabs) != 1 || sess.Tabs[0].Review != nil {
 		t.Fatalf("session: %+v %v", sess, err)
+	}
+}
+
+// An agent beside a tab's own, kept by the holder, is the tab's to take
+// up, not a program left over; and so is one of a tab that would sleep.
+func TestHeldAgentsBesideATab(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := agentScript(t, "exec cat\n")
+	a, tabA := heldCore(t, clA, script)
+	extra := &Tab{AgentState: Agent{Tab: state.Tab{ID: "extra1", Name: "a", Dir: tabA.Dir, Agent: agents.Codex}}, PartOf: tabA}
+	tabA.PaneList = append(tabA.Panes(), &PaneTab{Kind: PaneAgent, A: extra})
+	a.Start(extra, false)
+	if extra.Pane == nil {
+		t.Fatalf("not started: %s", extra.Err)
+	}
+	clA.Close()
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, tabB := heldCore(t, clB, script)
+	extraB := &Tab{AgentState: Agent{Tab: extra.Tab}, PartOf: tabB}
+	tabB.PaneList = append(tabB.Panes(), &PaneTab{Kind: PaneAgent, A: extraB})
+	if n := b.HeldLeft(); n != 0 {
+		t.Errorf("%d programs left over", n)
+	}
+	if !b.HeldAgent(tabB) {
+		t.Error("the tab could sleep with its agent running unseen")
+	}
+	b.Start(extraB, true)
+	if extraB.Pane == nil || extraB.Pane.Pid() != extra.Pane.Pid() {
+		t.Fatalf("not taken up: %+v", extraB.Pane)
+	}
+	if b.HeldAgent(tabB) {
+		t.Error("still waiting once taken up")
 	}
 }

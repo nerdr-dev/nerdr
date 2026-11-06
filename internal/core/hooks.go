@@ -182,16 +182,25 @@ func (m *Core) AgentEnv(t *Tab) []string {
 		env = append(env, "NERDR_OPENCODE_HOOK=1")
 	}
 	if t.Agent == agents.Antigravity {
-		// For nerdr's hooks, which report for an agy whose parent is this
-		// nerdr: the one it starts, not one that agent runs. See
-		// hooks.AgyCommand.
-		env = append(env, "NERDR_AGY_HOOK="+strconv.Itoa(os.Getpid()))
+		// For nerdr's hooks, which report for an agy whose parent is the
+		// process that starts the programs: the one nerdr starts, not one
+		// that agent runs. See hooks.AgyCommand.
+		env = append(env, "NERDR_AGY_HOOK="+strconv.Itoa(m.ProgramsParent()))
 	}
 	if t.Agent == agents.Grok {
 		// The same for nerdr's hooks in grok. See hooks.GrokCommand.
-		env = append(env, "NERDR_GROK_HOOK="+strconv.Itoa(os.Getpid()))
+		env = append(env, "NERDR_GROK_HOOK="+strconv.Itoa(m.ProgramsParent()))
 	}
 	return env
+}
+
+// ProgramsParent is the process the tabs' programs are children of: the
+// holder, when nerdr runs over one, else this one.
+func (m *Core) ProgramsParent() int {
+	if m.Held != nil {
+		return m.Held.Client.Pid()
+	}
+	return os.Getpid()
 }
 
 // onHook takes a report from an integration.
