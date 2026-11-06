@@ -159,16 +159,19 @@ func (cl *Client) call(m *Msg, body []byte, files []*os.File, cancel <-chan stru
 
 // Mark is what the holder keeps of a program for a core started later:
 // nothing can change it once the program is spawned.
-type Mark struct {
-	Sandboxed bool
-	Secret    string
-	Label     string
-}
+type Mark = spawn.Mark
 
-// Spawn starts s in the holder, under a new id, marked as sandboxed: what
-// is not known to be otherwise is taken to be.
+// Spawn starts s in the holder as s.ID, or under a new id, with s.Mark, or
+// marked as sandboxed: what is not known to be otherwise is taken to be.
 func (cl *Client) Spawn(s spawn.Spec) (spawn.Proc, error) {
-	return cl.SpawnAs(newID(), s, Mark{Sandboxed: true}, 0)
+	id, mark := s.ID, Mark{Sandboxed: true}
+	if id == "" {
+		id = newID()
+	}
+	if s.Mark != nil {
+		mark = *s.Mark
+	}
+	return cl.SpawnAs(id, s, mark, 0)
 }
 
 // SpawnAs starts s in the holder as id, with mark, keeping ring bytes of

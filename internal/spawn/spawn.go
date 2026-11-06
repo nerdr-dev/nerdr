@@ -35,6 +35,24 @@ type Spec struct {
 	// Files are given to it as descriptors 3 and on. They are the
 	// caller's to close once Spawn has returned.
 	Files []*os.File
+	// ID and Mark are what a holder keeps the program under, for a core
+	// started after a crash to find it and know it by: its id, unique in
+	// the holder, and what nothing can change once it is started. Local
+	// has no use for them. With no ID the holder makes one up; with no
+	// Mark it takes the program to be sandboxed.
+	ID   string
+	Mark *Mark
+}
+
+// Mark is what a holder keeps of a program for a core started later.
+type Mark struct {
+	// Sandboxed is set when the program runs in a sandbox.
+	Sandboxed bool
+	// Secret is what the program's reports to nerdr are known by.
+	Secret string
+	// Label is what the core needs to take the program up again: which
+	// tab it is of, and as what.
+	Label string
 }
 
 // Proc is a program started, and its terminal or output.
