@@ -84,7 +84,7 @@ func TestPanelTakesRowsFromThePane(t *testing.T) {
 		t.Fatalf("pane height %d, want %d", h, full-2)
 	}
 	w, h := m.agentSize()
-	if n := m.paneTop(a.Focused(), w, h); n != 2 {
+	if n := m.paneTop(m.focused(a), w, h); n != 2 {
 		t.Fatalf("panel height %d, want 2: the task and the rule", n)
 	}
 }

@@ -26,7 +26,7 @@ func TestOpenConversation(t *testing.T) {
 	if len(tb.ExtraAgents()) != 1 || tb.ExtraAgents()[0].Agent != agents.Codex || tb.ExtraAgents()[0].SessionID != id {
 		t.Fatalf("a new pane should carry it on: %+v", tb.ExtraAgents())
 	}
-	if tb.Focused().A != tb.ExtraAgents()[0] {
+	if m.focused(tb).A != tb.ExtraAgents()[0] {
 		t.Fatal("and have the keyboard")
 	}
 

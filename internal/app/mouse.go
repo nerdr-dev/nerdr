@@ -229,7 +229,7 @@ func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 		case tea.MouseButtonRight:
 			// Back to sharing the room evenly.
 			for _, p := range t.Panes() {
-				p.Weight = 0
+				m.pl(p).weight = 0
 			}
 			m.resizePanes()
 		}
@@ -240,7 +240,7 @@ func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 		return nil
 	}
 	var cmd tea.Cmd
-	if t != m.Cur() || p != t.Focused() || m.focus != core.FocusAgent {
+	if t != m.Cur() || p != m.focused(t) || m.focus != core.FocusAgent {
 		if ev.Action != tea.MouseActionPress {
 			return nil
 		}
@@ -341,11 +341,11 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 		if release {
 			m.drag = dragNone
 		}
-		if t := m.Cur(); t != nil && t.Screen() != nil {
-			rx, ry, rw, rh := m.paneRect(t, t.Focused())
+		if t := m.Cur(); t != nil && m.screen(t) != nil {
+			rx, ry, rw, rh := m.paneRect(t, m.focused(t))
 			x := min(max(ev.X-rx, 0), rw-1)
 			y := min(max(ev.Y-ry, 0), rh-1)
-			t.Screen().SendMouse(paneMouse(ev, x, y))
+			m.screen(t).SendMouse(paneMouse(ev, x, y))
 		}
 		return nil
 
@@ -368,19 +368,19 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 
 	case dragSelect:
 		t := m.Cur()
-		if t == nil || t.Screen() == nil || t.Screen() != m.selPane {
+		if t == nil || m.screen(t) == nil || m.screen(t) != m.selPane {
 			m.drag = dragNone
 			return nil
 		}
-		p := t.Screen()
-		rx, ry, aw, ah := m.paneRect(t, t.Focused())
+		p := m.screen(t)
+		rx, ry, aw, ah := m.paneRect(t, m.focused(t))
 		x := min(max(ev.X-rx, 0), aw-1)
 		y := ev.Y - ry
 		// Dragging past the top or bottom scrolls on.
 		if y < 0 && m.scrolling {
-			t.Scroll = min(t.Scroll+1, p.ScrollbackLen())
+			m.tl(t).scroll = min(m.tl(t).scroll+1, p.ScrollbackLen())
 		} else if y >= ah && m.scrolling {
-			t.Scroll = max(t.Scroll-1, 0)
+			m.tl(t).scroll = max(m.tl(t).scroll-1, 0)
 		}
 		y = min(max(y, 0), ah-1)
 		m.sel.To = p.PointAt(x, y, m.shownScroll(t))
@@ -405,10 +405,10 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 		m.setFocus(core.FocusAgent)
 		cmd = m.resize()
 	}
-	if t == nil || t.Screen() == nil {
+	if t == nil || m.screen(t) == nil {
 		return cmd
 	}
-	p := t.Screen()
+	p := m.screen(t)
 	if press {
 		p.Select(nil)
 	}
@@ -441,7 +441,7 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 // program on the alternate screen has no scrollback: it gets the arrow
 // keys, as terminals do for the wheel there.
 func (m *Model) wheelScroll(t *core.Tab, n int) {
-	p := t.Screen()
+	p := m.screen(t)
 	sb := p.ScrollbackLen()
 	if sb == 0 {
 		if p.AltScreen() {
@@ -455,14 +455,14 @@ func (m *Model) wheelScroll(t *core.Tab, n int) {
 		}
 		return
 	}
-	t.Scroll = min(max(t.Scroll+n, 0), sb)
-	m.scrolling = t.Scroll > 0
+	m.tl(t).scroll = min(max(m.tl(t).scroll+n, 0), sb)
+	m.scrolling = m.tl(t).scroll > 0
 }
 
 // shownScroll is how far back the tab is shown.
 func (m *Model) shownScroll(t *core.Tab) int {
 	if m.scrolling && t == m.Cur() {
-		return t.Scroll
+		return m.tl(t).scroll
 	}
 	return 0
 }
@@ -510,7 +510,7 @@ func (m *Model) checkCopied() {
 	} else {
 		for _, t := range []*core.Tab{m.Cur(), m.splitTab()} {
 			if t != nil {
-				from = append(from, t.Screen())
+				from = append(from, m.screen(t))
 			}
 		}
 	}

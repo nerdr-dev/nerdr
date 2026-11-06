@@ -28,12 +28,22 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.PaneClosedMsg:
 		m.Gen++
 		m.paneClosed(ev.T, ev.P)
+		delete(m.paneLooks, ev.P)
 	case core.PanesMsg:
 		m.Gen++
 		m.resizePanes()
 	case core.LayoutMsg:
 		m.Gen++
 		return toCore(m.resize())
+	case core.StartedMsg:
+		// Back at the top of a fresh program, which has the keyboard if its
+		// pane does.
+		m.tl(ev.A).scroll = 0
+		if o := ev.A.Owner(); o == m.Cur() && m.focused(o) == ev.A.PaneOf() {
+			if p := ev.A.Pane; p != nil {
+				p.Focus(true)
+			}
+		}
 	case core.TermsMsg:
 		m.Gen++
 		m.focusTerms(ev.T)
@@ -111,7 +121,7 @@ func (m *Model) Layout() core.Layout { return m.layout() }
 
 func (m *Model) Sight() core.Sight {
 	wt, n := m.review.WatchChanges()
-	return core.Sight{Beside: m.splitTab(), IssuesShown: m.issuesShown(), PRsShown: m.prsShown(), WatchWt: wt, WatchN: n}
+	return core.Sight{Keyboard: m.CurAgent(), Beside: m.splitTab(), IssuesShown: m.issuesShown(), PRsShown: m.prsShown(), WatchWt: wt, WatchN: n}
 }
 
 func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.shellSize(t, p) }

@@ -97,7 +97,7 @@ func TestReviewPanePicksAModel(t *testing.T) {
 	out := argvAgent(t, m)
 	tb := reviewOn(t, m)
 	m.runCommand("t r")
-	p := tb.Focused()
+	p := m.focused(tb)
 	for i, k := range m.reviewKinds(tb) {
 		if k == agents.Codex {
 			m.reviewerCursor = i

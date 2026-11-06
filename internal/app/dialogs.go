@@ -402,6 +402,13 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	m.Tabs = append(m.Tabs[:i], m.Tabs[i+1:]...)
 	delete(m.panelScreens, t)
 	delete(m.paneBars, t)
+	for _, p := range t.Panes() {
+		delete(m.paneLooks, p)
+		if p.A != nil {
+			delete(m.tabLooks, p.A)
+		}
+	}
+	delete(m.tabLooks, t)
 	if !wasActive {
 		// Another tab closed (from the inbox, say): you stay where you are.
 		m.Active = max(m.TabIndex(cur), 0)

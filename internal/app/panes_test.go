@@ -54,7 +54,7 @@ func TestPanesFoldTheOldestWhenNarrow(t *testing.T) {
 	m := paneModel(t)
 	tb := m.Cur()
 	m.runCommand("t t")
-	if m.rowShown(tb) || len(tb.Panes()) != 2 || tb.Focused().Kind != core.PaneShell {
+	if m.rowShown(tb) || len(tb.Panes()) != 2 || m.focused(tb).Kind != core.PaneShell {
 		t.Fatal("t t should open a terminal beside the agent, with the keyboard, and no row while none is minimised")
 	}
 	agent := tb.Panes()[0]
@@ -88,21 +88,21 @@ func TestMinimiseAndClose(t *testing.T) {
 	m := paneModel(t)
 	tb := m.Cur()
 	m.runCommand("t t")
-	sh := tb.Focused()
+	sh := m.focused(tb)
 	m.runCommand("t m")
-	if !sh.Small || tb.Focused() == sh || m.paneShown(tb, sh) {
+	if !m.pl(sh).small || m.focused(tb) == sh || m.paneShown(tb, sh) {
 		t.Fatal("t m should minimise the terminal, the keyboard going to the agent")
 	}
 	m.runCommand("t m")
-	if tb.Panes()[0].Small {
+	if m.pl(tb.Panes()[0]).small {
 		t.Fatal("the last pane shown stays")
 	}
 	clickOn(t, m, "▸terminal", tea.MouseButtonLeft)
-	if sh.Small || tb.Focused() != sh {
+	if m.pl(sh).small || m.focused(tb) != sh {
 		t.Fatal("a click on it in the row should bring it back, with the keyboard")
 	}
 	m.runCommand("t x")
-	if len(tb.Panes()) != 1 || m.rowShown(tb) || tb.Focused().A != tb {
+	if len(tb.Panes()) != 1 || m.rowShown(tb) || m.focused(tb).A != tb {
 		t.Fatal("t x should close the terminal, the keyboard back with the agent")
 	}
 	m.runCommand("t x")
@@ -119,11 +119,11 @@ func TestTabCyclesThePanes(t *testing.T) {
 	m.runCommand("t t")
 	m.goToPane(tb, tb.Panes()[0])
 	m.runCommand("tab")
-	if tb.Focused() != tb.Panes()[1] || m.focus != core.FocusAgent {
+	if m.focused(tb) != tb.Panes()[1] || m.focus != core.FocusAgent {
 		t.Fatal("tab should go to the terminal")
 	}
 	m.runCommand("tab")
-	if tb.Focused() != tb.Panes()[0] || m.focus != core.FocusAgent {
+	if m.focused(tb) != tb.Panes()[0] || m.focus != core.FocusAgent {
 		t.Fatal("with the panel closed, tab from the last pane goes round to the first")
 	}
 	m.runCommand("tab")
@@ -135,12 +135,12 @@ func TestTabCyclesThePanes(t *testing.T) {
 		t.Fatal("tab from the last pane should go to the review panel")
 	}
 	m.runCommand("tab")
-	if m.focus != core.FocusAgent || tb.Focused() != tb.Panes()[0] {
+	if m.focus != core.FocusAgent || m.focused(tb) != tb.Panes()[0] {
 		t.Fatal("tab from the panel should go back to the first pane")
 	}
 	m.runCommand("t →")
 	m.runCommand("t →")
-	if tb.Focused() != tb.Panes()[0] {
+	if m.focused(tb) != tb.Panes()[0] {
 		t.Fatal("t → goes round the row")
 	}
 }
@@ -167,7 +167,7 @@ func TestAgentBesideTheTab(t *testing.T) {
 		t.Fatal("no agent beside the tab's")
 	}
 	a := tb.ExtraAgents()[0]
-	if a.PartOf != tb || a.Dir != tb.Dir || a.Pane == nil || tb.Focused().A != a {
+	if a.PartOf != tb || a.Dir != tb.Dir || a.Pane == nil || m.focused(tb).A != a {
 		t.Fatalf("the agent should run in the tab's worktree, with the keyboard: %+v", a.Tab)
 	}
 	if got := m.AgentByHook(a.HookKey()); got != a {
@@ -232,7 +232,7 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 	m.NewAgent(tb, agents.Codex)
 	a := tb.ExtraAgents()[0]
 	m.runCommand("t r")
-	p := tb.Focused()
+	p := m.focused(tb)
 	if p.Kind != core.PaneReview || p.Of != a {
 		t.Fatalf("the review should be of the agent whose pane had the keyboard: %+v", p)
 	}
@@ -260,7 +260,7 @@ func TestExitClosesTheTerminal(t *testing.T) {
 	tb := m.Cur()
 	m.runCommand("t t")
 	m.runCommand("t t")
-	second := tb.Focused()
+	second := m.focused(tb)
 	second.Shell.Input([]byte("exit\r"))
 	deadline := time.Now().Add(3 * time.Second)
 	for len(tb.Panes()) == 3 {
@@ -270,7 +270,7 @@ func TestExitClosesTheTerminal(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 		m.Update(core.FrameMsg{})
 	}
-	if len(tb.Panes()) != 2 || tb.Panes()[1].Kind != core.PaneShell || tb.Focused() != tb.Panes()[1] {
+	if len(tb.Panes()) != 2 || tb.Panes()[1].Kind != core.PaneShell || m.focused(tb) != tb.Panes()[1] {
 		t.Fatal("the other terminal should stay, with the keyboard")
 	}
 }
@@ -476,13 +476,13 @@ func TestPutInGoesToTheAgent(t *testing.T) {
 	tb.Pane = runningTab(t, m).Pane
 	tb.Light = core.StIdle
 	m.runCommand("t r")
-	if tb.Focused().Kind != core.PaneReview {
+	if m.focused(tb).Kind != core.PaneReview {
 		t.Fatal("the review pane should have the keyboard")
 	}
 	tb.Messages = []state.Message{{Text: "fix it"}}
 	m.handleKey(keyMsg("f3"))
 	m.putIn(tb, 0)
-	if tb.Focused() != tb.Panes()[0] || m.focus != core.FocusAgent || m.keyPane() != tb.Pane {
+	if m.focused(tb) != tb.Panes()[0] || m.focus != core.FocusAgent || m.keyPane() != tb.Pane {
 		t.Fatal("the keyboard should go to the agent the task was put in")
 	}
 }
@@ -498,11 +498,11 @@ func TestNewPanesGoLastAndMove(t *testing.T) {
 	tb.Light = core.StIdle
 	m.NewAgent(tb, agents.Codex)
 	m.runCommand("t t")
-	sh := tb.Focused()
+	sh := m.focused(tb)
 	m.goToPane(tb, tb.OwnPane())
 	m.NewAgent(tb, agents.Codex)
 	ps := slices.Clone(tb.Panes())
-	if len(ps) != 4 || ps[2] != sh || ps[3] != tb.Focused() || ps[3].A.Num != 3 {
+	if len(ps) != 4 || ps[2] != sh || ps[3] != m.focused(tb) || ps[3].A.Num != 3 {
 		t.Fatal("the new agent should go last, after the terminal")
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
@@ -514,7 +514,7 @@ func TestNewPanesGoLastAndMove(t *testing.T) {
 	if !slices.Equal(tb.Panes(), []*core.PaneTab{ps[0], ps[3], ps[1], ps[2]}) || m.prefix {
 		t.Fatal("t ⇧← ⇧← ⇧← should move the agent to second, after the tab's own, and enter end it")
 	}
-	if tb.Focused() != ps[3] {
+	if m.focused(tb) != ps[3] {
 		t.Fatal("moving changes the order, not the keyboard")
 	}
 	m.goToPane(tb, ps[0])
@@ -581,7 +581,7 @@ func TestPanelMakesRoomForPanes(t *testing.T) {
 	if !m.reviewOpen || m.focus != core.FocusReview {
 		t.Fatal("an F-key still opens it, for a look")
 	}
-	m.goToPane(tb, tb.Focused())
+	m.goToPane(tb, m.focused(tb))
 	if m.reviewOpen {
 		t.Fatal("back at the panes, it folds again")
 	}
@@ -633,7 +633,7 @@ func TestAgentStartsAnotherAgent(t *testing.T) {
 		t.Fatalf("agents beside: %d", len(tb.ExtraAgents()))
 	}
 	two := tb.ExtraAgents()[0]
-	if tb.Focused().A != tb {
+	if m.focused(tb).A != tb {
 		t.Fatal("the keyboard should stay with the agent it was with")
 	}
 	// The task is waiting for it, already typed in, or given at its start
@@ -685,7 +685,7 @@ func TestTerminalLeavesAColumn(t *testing.T) {
 	m := paneModel(t)
 	tb := m.Cur()
 	m.runCommand("t t")
-	p := tb.Focused()
+	p := m.focused(tb)
 	if p.Kind != core.PaneShell || p.Shell == nil {
 		t.Fatal("t t should open a terminal")
 	}
@@ -814,7 +814,7 @@ func TestCloseBusyTerminal(t *testing.T) {
 	m.Cfg.Shell = "bash --norc --noprofile -i"
 	m.runCommand("t t")
 	tb := m.Cur()
-	p := tb.Focused()
+	p := m.focused(tb)
 	p.Shell.Write([]byte("sleep 60\r"))
 	for end := time.Now().Add(5 * time.Second); !p.Shell.Busy(); {
 		if time.Now().After(end) {

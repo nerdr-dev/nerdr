@@ -358,11 +358,8 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	t.Worked = false
 	t.Tasked = len(first) > 0
 	t.Err = ""
-	t.Scroll = 0
 	t.Changed = time.Now()
-	if o := t.Owner(); o == m.Front() && o.Focused() == t.PaneOf() {
-		p.Focus(true)
-	}
+	m.Tell(StartedMsg{A: t})
 	return nil
 }
 
@@ -392,17 +389,12 @@ type Tab struct {
 	Said          []string
 	SessionUnsure bool
 
-	// Scroll is how many lines back into the scrollback the pane with the
-	// keyboard is shown.
-	Scroll int
-	Err    string
+	Err string
 
-	// PaneList is the tab's panes, its own agent first, and on the one
-	// with the keyboard.
+	// PaneList is the tab's panes, its own agent first.
 	// partOf is, on an agent in another's pane, the tab it is in. See
 	// panes.go.
 	PaneList []*PaneTab
-	On       *PaneTab
 	PartOf   *Tab
 
 	// Info is what the background look at the tab's branches found; see
@@ -485,12 +477,6 @@ func (t *Tab) HookKey() string {
 		t.HookID = hex.EncodeToString(b[:])
 	}
 	return t.HookID
-}
-
-// Screen is the program in the tab's pane with the keyboard: an agent's or
-// a terminal's.
-func (t *Tab) Screen() *term.Pane {
-	return t.Focused().Term()
 }
 
 // Attention ranks how much a tab needs the user: blocked first, then

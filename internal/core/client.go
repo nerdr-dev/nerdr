@@ -37,11 +37,13 @@ type Client interface {
 }
 
 // Sight is what the client shows that core's background work goes by: the
-// tab it keeps beside the one in front (Beside), shown or not; whether it
+// agent the keyboard is with, or the tab's own while it is with a terminal
+// (Keyboard); the tab it keeps beside the one in front (Beside), shown or not; whether it
 // shows the issues, or a list of the pull requests (IssuesShown, PRsShown); the worktree
 // whose files it watches for changes (WatchWt), and how many it has seen
 // (WatchN).
 type Sight struct {
+	Keyboard    *Tab
 	Beside      *Tab
 	IssuesShown bool
 	PRsShown    bool
@@ -102,6 +104,8 @@ type (
 	// panes that may move everything.
 	PanesMsg  struct{}
 	LayoutMsg struct{}
+	// StartedMsg is A's program just started, afresh or again.
+	StartedMsg struct{ A *Tab }
 	// TermsMsg is a change in the programs running in T's panes.
 	TermsMsg struct{ T *Tab }
 	// SwitchedMsg is T's agent switched to another kind.

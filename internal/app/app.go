@@ -28,6 +28,10 @@ type Model struct {
 	// the end of the last Update, laidOut once they are; see Update.
 	laidRows, laidSide int
 	laidOut            bool
+	// tabLooks and paneLooks are how the tabs and panes are shown; see
+	// look.go.
+	tabLooks  map[*core.Tab]*tabLook
+	paneLooks map[*core.PaneTab]*paneLook
 	// herdrBefore is the state reported to herdr when the last look at the
 	// agents began; see flushNotes.
 	herdrBefore string
@@ -715,7 +719,7 @@ func (m *Model) syncInput() {
 		return
 	}
 	p := m.keyPane()
-	f := t.Focused()
+	f := m.focused(t)
 	a := f.A
 	if p == nil || (f.Kind != core.PaneShell && a != nil && p == a.Pane && a.Light == core.StExited) {
 		m.router.Passthrough(nil)
