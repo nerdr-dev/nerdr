@@ -49,6 +49,15 @@ type Sight struct {
 	WatchN      int
 }
 
+// HasClient reports whether a client is there to show what core tells it.
+func (m *Core) HasClient() bool {
+	if m.Client == nil {
+		return false
+	}
+	_, none := m.Client.(NoClient)
+	return !none
+}
+
 // Tell gives the client ev; see Client.Tell.
 func (m *Core) Tell(ev Event) Cmd {
 	if m.Client == nil {

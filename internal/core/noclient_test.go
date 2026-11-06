@@ -43,8 +43,9 @@ func TestNoClientAllowsNothing(t *testing.T) {
 }
 
 // TestNoClientRunsNoPluginForASandboxedAgent: an allowed plugin, asked for by
-// an agent in a sandbox, needs a yes nobody can give. It does not run, and the
-// agent is told to ask again. What only reads is still answered.
+// an agent in a sandbox, needs a yes nobody can give. The question waits in
+// core for a client; unanswered in time, the plugin has not run and the agent
+// is told to ask again. What only reads is still answered.
 func TestNoClientRunsNoPluginForASandboxedAgent(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
@@ -68,10 +69,13 @@ func TestNoClientRunsNoPluginForASandboxedAgent(t *testing.T) {
 
 	tb := &Tab{AgentState: Agent{Tab: state.Tab{ID: "a", Dir: t.TempDir()}, InSandbox: true}}
 	core := &Core{Client: NoClient{}, Tabs: []*Tab{tb}}
-	ask := func(what string) hooks.Answer {
-		t.Helper()
+	send := func(what string) chan hooks.Answer {
 		reply := make(chan hooks.Answer, 1)
 		core.OnPlugin(hooks.Report{Method: hooks.Plugin, What: what, Pane: tb.HookKey(), Name: "free", Dir: tb.Dir, Reply: reply})
+		return reply
+	}
+	wait := func(reply chan hooks.Answer) hooks.Answer {
+		t.Helper()
 		select {
 		case a := <-reply:
 			return a
@@ -80,7 +84,17 @@ func TestNoClientRunsNoPluginForASandboxedAgent(t *testing.T) {
 			return hooks.Answer{}
 		}
 	}
-	if a := ask(hooks.PluginRun); a.Text != RunBusy {
+	ask := func(what string) hooks.Answer { t.Helper(); return wait(send(what)) }
+
+	// The run waits for a client as long as the agent waits for its
+	// answer, then is to be asked again.
+	run := send(hooks.PluginRun)
+	if !core.Asked(AskPluginRun) || len(run) != 0 {
+		t.Fatalf("the run did not wait for a client: asked %v, answered %d", core.Asked(AskPluginRun), len(run))
+	}
+	core.Asking[0].Until = time.Now().Add(-time.Second)
+	core.ExpireAsks(time.Now())
+	if a := wait(run); a.Text != RunBusy || core.Asked(AskPluginRun) {
 		t.Fatalf("run: %+v, want %q", a, RunBusy)
 	}
 	time.Sleep(100 * time.Millisecond)
