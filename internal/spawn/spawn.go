@@ -8,8 +8,10 @@ package spawn
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"os/exec"
+	"strconv"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -44,8 +46,8 @@ type Proc interface {
 	Write(b []byte) (int, error)
 	// Resize changes the size of its terminal.
 	Resize(w, h int) error
-	// Wait waits for it to exit, and says how: an *exec.ExitError when
-	// it did not exit 0. It is called once.
+	// Wait waits for it to exit, and says how: an *ExitError when it did
+	// not exit 0. It is called once.
 	Wait() error
 	// Pid is its process, which leads its process group.
 	Pid() int
@@ -57,6 +59,35 @@ type Proc interface {
 	Signal(pg int, sig syscall.Signal) error
 	// Close lets go of its terminal or output.
 	Close() error
+}
+
+// ExitError is how a program that did not exit 0 ended: the code it
+// exited with, or the signal that ended it. It is told as an
+// *exec.ExitError is, and a holder can send it over a socket.
+type ExitError struct {
+	Code       int
+	Signal     syscall.Signal
+	CoreDumped bool
+}
+
+func (e *ExitError) Error() string {
+	if e.Signal == 0 {
+		return "exit status " + strconv.Itoa(e.Code)
+	}
+	s := "signal: " + e.Signal.String()
+	if e.CoreDumped {
+		s += " (core dumped)"
+	}
+	return s
+}
+
+// Status is its exit status as a shell has it: the code, or 128 and the
+// signal.
+func (e *ExitError) Status() int {
+	if e.Signal != 0 {
+		return 128 + int(e.Signal)
+	}
+	return e.Code
 }
 
 // Spawner starts programs.
@@ -121,7 +152,21 @@ func (l *local) Resize(w, h int) error {
 	return pty.Setsize(l.tty, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
 }
 
-func (l *local) Wait() error { return l.cmd.Wait() }
+func (l *local) Wait() error {
+	err := l.cmd.Wait()
+	var ee *exec.ExitError
+	if !errors.As(err, &ee) {
+		return err
+	}
+	ws, ok := ee.Sys().(syscall.WaitStatus)
+	if !ok {
+		return &ExitError{Code: ee.ExitCode()}
+	}
+	if ws.Signaled() {
+		return &ExitError{Signal: ws.Signal(), CoreDumped: ws.CoreDump()}
+	}
+	return &ExitError{Code: ws.ExitStatus()}
+}
 
 func (l *local) Pid() int {
 	if l.cmd.Process == nil {
