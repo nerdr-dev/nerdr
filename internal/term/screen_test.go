@@ -70,7 +70,7 @@ func TestScreenNeedsNoProgram(t *testing.T) {
 	if !s.appCursor || !s.bracketedPaste || !s.focusEvents {
 		t.Errorf("modes: cursor %v, paste %v, focus %v", s.appCursor, s.bracketedPaste, s.focusEvents)
 	}
-	lines := s.Render(0, false)
+	lines := Draw(s.Frame(0), false, nil)
 	if !strings.Contains(lines[0], "red") || lines[0] == ansi.Strip(lines[0]) {
 		t.Errorf("the first line is not drawn in colour: %q", lines[0])
 	}
@@ -99,7 +99,7 @@ func TestScreenIsTheSameHoweverOutputIsCut(t *testing.T) {
 		bytes = append(bytes, out[i:i+1])
 	}
 	cut, _ := screenOf(t, bytes...)
-	if a, b := whole.Render(0, true), cut.Render(0, true); !slices.Equal(a, b) {
+	if a, b := Draw(whole.Frame(0), true, nil), Draw(cut.Frame(0), true, nil); !slices.Equal(a, b) {
 		t.Errorf("whole:\n%q\ncut:\n%q", a, b)
 	}
 	if a, b := whole.Title(), cut.Title(); a != b {

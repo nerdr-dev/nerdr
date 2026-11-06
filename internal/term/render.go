@@ -1,21 +1,13 @@
 package term
 
 import (
-	"os"
 	"strings"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
-	uv "github.com/charmbracelet/ultraviolet"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
-
-// checkReuse, set by NERDR_CHECK_REUSE and in the tests, draws a pane
-// anew each time Render would give its last drawing again, and panics if
-// the two differ: a change that did not set dirty.
-var checkReuse = os.Getenv("NERDR_CHECK_REUSE") != ""
 
 // frame counts the screens nerdr has drawn; see NextFrame.
 var frame atomic.Uint64
@@ -25,98 +17,6 @@ var frame atomic.Uint64
 // of sight, does not, so a busy agent there does not redraw the screen.
 // Its exit still does.
 func NextFrame() { frame.Add(1) }
-
-// Render draws the screen as w×h lines of styled text. scroll > 0 shows
-// that many lines back into the scrollback. The cursor is drawn as a
-// reverse-video cell when cursor is true and the program has it visible:
-// the real terminal cursor belongs to nerdr's own UI.
-func (s *Screen) Render(scroll int, cursor bool) []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.drawnOn.Store(frame.Load())
-	if !s.dirty && s.drawn.lines != nil && s.drawn.scroll == scroll && s.drawn.cursor == cursor {
-		if checkReuse {
-			if now := s.render(scroll, cursor); strings.Join(now, "\n") != strings.Join(s.drawn.lines, "\n") {
-				panic("pane drawn again from its last drawing, but it has changed:\n--- reused\n" +
-					ansi.Strip(strings.Join(s.drawn.lines, "\n")) + "\n--- now\n" + ansi.Strip(strings.Join(now, "\n")))
-			}
-		}
-		return append([]string(nil), s.drawn.lines...)
-	}
-	lines := s.render(scroll, cursor)
-	s.dirty = false
-	s.drawn.lines, s.drawn.scroll, s.drawn.cursor = lines, scroll, cursor
-	return append([]string(nil), lines...)
-}
-
-func (s *Screen) render(scroll int, cursor bool) []string {
-	w, h := s.emu.Width(), s.emu.Height()
-	sb := s.emu.ScrollbackLen()
-	if s.emu.IsAltScreen() {
-		sb, scroll = 0, 0
-	}
-	scroll = min(max(scroll, 0), sb)
-	top := sb - scroll // index into scrollback+screen of the first row shown
-
-	cur := s.emu.CursorPosition()
-	showCursor := cursor && s.cursorOn && scroll == 0 && !s.exited
-
-	lines := make([]string, h)
-	var b strings.Builder
-	for y := 0; y < h; y++ {
-		b.Reset()
-		idx := top + y
-		var prev uv.Style
-		styled := false
-		for x := 0; x < w; x++ {
-			c := s.cellAt(x, idx, sb)
-			content, width := " ", 1
-			var st uv.Style
-			if c != nil {
-				if c.Width == 0 {
-					continue // the tail of a wide character drawn before it
-				}
-				st = c.Style
-				if c.Content != "" {
-					content, width = cellText(c.Content, c.Width), c.Width
-				}
-			}
-			if showCursor && x == cur.X && idx-sb == cur.Y {
-				st.Attrs ^= uv.AttrReverse
-			}
-			if s.sel != nil && s.sel.contains(idx, x) {
-				st.Attrs ^= uv.AttrReverse
-			}
-			if !st.Equal(&prev) || !styled {
-				if st.IsZero() {
-					if styled {
-						b.WriteString(ansi.ResetStyle)
-					}
-				} else {
-					b.WriteString(ansi.ResetStyle)
-					b.WriteString(st.String())
-				}
-				prev, styled = st, !st.IsZero()
-			}
-			b.WriteString(content)
-			x += width - 1
-		}
-		if styled {
-			b.WriteString(ansi.ResetStyle)
-		}
-		lines[y] = b.String()
-	}
-	return lines
-}
-
-// cellAt is the cell at column x of line idx, counting the sb lines of
-// scrollback first.
-func (s *Screen) cellAt(x, idx, sb int) *uv.Cell {
-	if idx < sb {
-		return s.emu.ScrollbackCellAt(x, idx)
-	}
-	return s.emu.CellAt(x, idx-sb)
-}
 
 // ScrollbackLen is how many lines there are to scroll back through.
 func (s *Screen) ScrollbackLen() int {

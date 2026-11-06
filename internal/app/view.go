@@ -155,7 +155,7 @@ func (m *Model) draw() string {
 		return ""
 	}
 	if m.editor != nil {
-		return strings.Join(fitLines(m.editor.Render(0, true), m.width, m.height), "\n")
+		return strings.Join(fitLines(m.drawPane(m.editor, 0, true), m.width, m.height), "\n")
 	}
 	var bars string
 	if m.sideW() > 0 {

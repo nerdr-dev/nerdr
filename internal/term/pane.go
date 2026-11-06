@@ -129,7 +129,7 @@ func (p *Pane) wait() {
 	}
 	p.mu.Lock()
 	p.exited, p.exitErr = true, err
-	p.dirty = true
+	p.drawGen++
 	p.mu.Unlock()
 	close(p.done)
 	p.dropWrites()
