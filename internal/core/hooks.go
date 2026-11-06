@@ -19,7 +19,7 @@ import (
 // SetHookSocket gives the agents the socket their integrations report to.
 func (m *Core) SetHookSocket(path string) {
 	m.HookSock = path
-	if exe, err := os.Executable(); err == nil {
+	if exe, err := Bin(); err == nil {
 		m.HookBin = exe
 	}
 }

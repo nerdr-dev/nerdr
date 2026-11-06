@@ -160,7 +160,10 @@ handoff the agent writes.
 ## What a sandbox must allow
 
 Each agent receives `NERDR_BIN` (the nerdr executable) and
-`NERDR_DATA_DIR` (the data location). Skills use
+`NERDR_DATA_DIR` (the data location). `NERDR_BIN` is the path nerdr was
+started from, such as `/opt/homebrew/bin/nerdr`, rather than the file a
+link there points to, so an agent that keeps running while nerdr is
+updated still finds it. Skills use
 `"${NERDR_BIN:-nerdr}" why add …`. This reads `NERDR_DATA_DIR` without
 needing access to the config file.
 
@@ -183,7 +186,8 @@ The sandbox must:
 
 - pass the `NERDR_*` variables through, `NERDR_SOCKET` and `NERDR_TAB`
   among them;
-- allow running `$NERDR_BIN`;
+- allow running `$NERDR_BIN`, and the file it links to when it is a
+  link, as Homebrew's is;
 - allow connecting to the socket at `$NERDR_SOCKET`. It is always
   `~/.local/state/nerdr/nerdr.sock` (`$XDG_STATE_HOME/nerdr/nerdr.sock`
   when that is set), whatever folder nerdr starts in, so the rule can
