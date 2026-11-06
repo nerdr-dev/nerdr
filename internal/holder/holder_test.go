@@ -333,3 +333,50 @@ func TestHolderImportsNoCore(t *testing.T) {
 		}
 	}
 }
+
+// An upgrade whose exec fails leaves the holder as it was: the program
+// runs, a read waiting goes on, and the core is told why.
+func TestFailedUpgradeLeavesTheHolderAsItWas(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	h.mu.Lock()
+	h.execArgv = func() ([]string, error) { return []string{"/nonexistent/nerdr", "holder"}, nil }
+	h.upgrade = h.doUpgrade
+	h.mu.Unlock()
+	p, err := cl.Spawn(spawn.Spec{Argv: []string{"sh", "-c", "read x; echo got $x"}, PTY: true, W: 80, H: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	got := make(chan string, 1)
+	go func() {
+		var b []byte
+		buf := make([]byte, 256)
+		for !bytes.Contains(b, []byte("got x")) {
+			n, err := p.Read(buf)
+			b = append(b, buf[:n]...)
+			if err != nil {
+				break
+			}
+		}
+		got <- string(b)
+	}()
+	time.Sleep(50 * time.Millisecond)
+	if err := cl.Upgrade(); err == nil || !strings.Contains(err.Error(), "nonexistent") {
+		t.Fatalf("Upgrade = %v", err)
+	}
+	if _, err := p.Write([]byte("x\r")); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case out := <-got:
+		if !strings.Contains(out, "got x") {
+			t.Errorf("read %q", out)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the read waiting before the upgrade never came")
+	}
+	if err := p.Wait(); err != nil {
+		t.Error(err)
+	}
+}

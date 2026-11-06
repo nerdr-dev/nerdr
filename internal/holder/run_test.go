@@ -38,7 +38,13 @@ func playRole(role string, args []string) int {
 	switch role {
 	case "holder":
 		backoffFirst = 50 * time.Millisecond
+		defaultExecArgv = func() ([]string, error) { return []string{self(), roleArg, "holder"}, nil }
+		if len(args) > 0 && args[0] == resumeArg {
+			return Main(args)
+		}
 		return Main(append([]string{"--", self(), roleArg}, args...))
+	case "core-upgrade":
+		return coreUpgradesTheHolder()
 	case "core-agent":
 		return coreStartsAnAgent()
 	case "core-crash":
@@ -226,5 +232,110 @@ func TestACoreStartedAgainFindsItsPrograms(t *testing.T) {
 	}
 	if err := syscall.Kill(pid1, 0); err != syscall.ESRCH {
 		t.Errorf("%d outlived the holder's shutdown: %v", pid1, err)
+	}
+}
+
+func coreUpgradesTheHolder() int {
+	fail := func(f string, a ...any) int {
+		fmt.Fprintf(os.Stderr, "core: "+f+"\n", a...)
+		return 1
+	}
+	cl, err := FromEnv()
+	if err != nil {
+		return fail("%v", err)
+	}
+	holder := cl.Pid()
+	sh, err := cl.SpawnAs("sh", spawn.Spec{Argv: []string{"sh", "-c", "read x; echo got $x; read y; exit 5"}, PTY: true, W: 80, H: 24},
+		Mark{Sandboxed: true, Secret: "s3cret", Label: "agent"}, 0)
+	if err != nil {
+		return fail("%v", err)
+	}
+	z, err := cl.SpawnAs("z", spawn.Spec{Argv: []string{"true"}}, Mark{}, 0)
+	if err != nil {
+		return fail("%v", err)
+	}
+	<-z.exited // its exit is in, not acked: it stays a zombie
+	if err := cl.Checkpoint("sh", 0, []byte("screen")); err != nil {
+		return fail("%v", err)
+	}
+	// A read waiting in the holder through the upgrades.
+	got := make(chan string, 1)
+	go func() {
+		var b []byte
+		buf := make([]byte, 1024)
+		for !strings.Contains(string(b), "got x") {
+			n, err := sh.Read(buf)
+			b = append(b, buf[:n]...)
+			if err != nil {
+				break
+			}
+		}
+		got <- string(b)
+	}()
+	time.Sleep(100 * time.Millisecond)
+	for i := range 2 {
+		if err := cl.Upgrade(); err != nil {
+			return fail("upgrade %d: %v", i, err)
+		}
+	}
+	args, _ := exec.Command("ps", "-o", "args=", "-p", strconv.Itoa(holder)).Output()
+	if !strings.Contains(string(args), resumeArg) {
+		return fail("holder %d runs %q", holder, args)
+	}
+	if os.Getppid() != holder {
+		return fail("parent %d, holder %d", os.Getppid(), holder)
+	}
+	progs, err := cl.List()
+	if err != nil {
+		return fail("%v", err)
+	}
+	for _, p := range progs {
+		switch p.ID {
+		case "sh":
+			if p.State != Running || p.Pid != sh.Pid() || !p.Sandboxed || p.Secret != "s3cret" || p.Label != "agent" || p.Checkpoint != 0 {
+				return fail("sh after: %+v", p)
+			}
+		case "z":
+			if p.State != Exited {
+				return fail("z after: %+v", p)
+			}
+		}
+	}
+	if syscall.Kill(z.Pid(), 0) != nil {
+		return fail("z was reaped before its exit was acked")
+	}
+	if err := z.Wait(); err != nil {
+		return fail("z: %v", err)
+	}
+	if err := syscall.Kill(z.Pid(), 0); err != syscall.ESRCH {
+		return fail("z not reaped after the ack: %v", err)
+	}
+	if _, err := sh.Write([]byte("x\r")); err != nil {
+		return fail("write: %v", err)
+	}
+	select {
+	case out := <-got:
+		if !strings.Contains(out, "got x") {
+			return fail("read %q", out)
+		}
+	case <-time.After(5 * time.Second):
+		return fail("the read from before the upgrade never came")
+	}
+	sh.Write([]byte("y\r"))
+	if err := sh.Wait(); err == nil || err.Error() != "exit status 5" {
+		return fail("sh: %v", err)
+	}
+	fmt.Println("ok", holder)
+	cl.Shutdown()
+	return 0
+}
+
+// The holder execs itself again with the same PID, and its programs,
+// their terminals, their marks, a read the core was waiting on, an exit
+// not yet acked and the socket to the core are all as they were.
+func TestUpgradeKeepsTheProgramsAsTheyWere(t *testing.T) {
+	out := runHolder(t, "core-upgrade")
+	if !strings.HasPrefix(out, "ok ") {
+		t.Fatalf("core said %q", out)
 	}
 }
