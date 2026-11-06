@@ -158,8 +158,6 @@ const (
 type conn struct {
 	c  *net.UnixConn
 	mu sync.Mutex
-	// fds came with a frame read in part, not yet handed out.
-	oob []byte
 }
 
 func newConn(c *net.UnixConn) *conn { return &conn{c: c} }
@@ -192,6 +190,9 @@ func (c *conn) send(m *Msg, body []byte, files []*os.File) error {
 	binary.BigEndian.PutUint32(frame[0:], uint32(len(h)))
 	binary.BigEndian.PutUint32(frame[4:], uint32(len(body)))
 	frame = append(append(frame, h...), body...)
+	if len(files) > maxFiles {
+		return fmt.Errorf("holder: %d descriptors, at most %d", len(files), maxFiles)
+	}
 	var oob []byte
 	if len(files) > 0 {
 		fds := make([]int, len(files))
@@ -255,7 +256,7 @@ func (c *conn) readFull(b []byte) ([]*os.File, error) {
 	var files []*os.File
 	oob := make([]byte, syscall.CmsgSpace(4*maxFiles))
 	for len(b) > 0 {
-		n, oobn, _, _, err := c.c.ReadMsgUnix(b, oob)
+		n, oobn, flags, _, err := c.c.ReadMsgUnix(b, oob)
 		n, oobn = max(n, 0), max(oobn, 0)
 		if oobn > 0 {
 			got, perr := parseRights(oob[:oobn])
@@ -263,6 +264,11 @@ func (c *conn) readFull(b []byte) ([]*os.File, error) {
 			if perr != nil && err == nil {
 				err = perr
 			}
+		}
+		if flags&syscall.MSG_CTRUNC != 0 && err == nil {
+			// More descriptors came than there was room for, and the
+			// rest are gone: not the frame that was sent.
+			err = fmt.Errorf("holder: more than %d descriptors came", maxFiles)
 		}
 		b = b[n:]
 		if err != nil {
