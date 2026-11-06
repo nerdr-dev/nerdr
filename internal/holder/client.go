@@ -226,6 +226,17 @@ func (cl *Client) Checkpoint(id string, pos int64, block []byte) error {
 	return err
 }
 
+// FetchCheckpoint is the last block the holder was given for id, and the
+// position it is for; -1 and none when it has none. A holder from before
+// fetch was added says it has no such op.
+func (cl *Client) FetchCheckpoint(id string) (int64, []byte, error) {
+	r, body, err := cl.call(&Msg{Op: OpFetch, ID: id}, nil, nil, nil)
+	if err != nil {
+		return -1, nil, err
+	}
+	return r.Pos, body, nil
+}
+
 // Shutdown has the holder stop every program and end.
 func (cl *Client) Shutdown() error {
 	_, _, err := cl.call(&Msg{Op: OpShutdown}, nil, nil, nil)

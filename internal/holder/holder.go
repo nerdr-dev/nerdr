@@ -224,6 +224,16 @@ func (h *Holder) handle(s *sender, gone chan struct{}, m *Msg, body []byte, file
 		answer(s, m, nil, nil, h.ack(m))
 	case OpCheckpoint:
 		answer(s, m, nil, nil, h.checkpoint(m.ID, m.Pos, body))
+	case OpFetch:
+		h.mu.Lock()
+		p, err := h.get(m.ID)
+		var pos int64
+		var data []byte
+		if err == nil {
+			pos, data = p.ckPos, p.ckData
+		}
+		h.mu.Unlock()
+		answer(s, m, &Msg{ID: m.ID, Pos: pos}, data, err)
 	case OpList:
 		progs, err := h.list(m.ID)
 		answer(s, m, &Msg{Progs: progs}, nil, err)
