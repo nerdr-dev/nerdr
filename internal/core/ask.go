@@ -39,7 +39,7 @@ type Question struct {
 	Repos []string
 	Setup map[string]workspace.RepoConfig
 
-	A        *Tab
+	A        TabRef
 	P        plugin.Plugin
 	Vals     map[string]any
 	Dir      string
@@ -54,11 +54,12 @@ type Question struct {
 	then func(answer string) Cmd
 }
 
-// AskMsg tells the client of Q, to show; AnsweredMsg, that Q is answered, by
-// the client or by its time running out, and is to be shown no more.
+// AskMsg tells the client of Q, a copy, to show and answer by its ID;
+// AnsweredMsg, that the question of ID is answered, by the client or by its
+// time running out, and is to be shown no more.
 type (
-	AskMsg      struct{ Q *Question }
-	AnsweredMsg struct{ Q *Question }
+	AskMsg      struct{ Q Question }
+	AnsweredMsg struct{ ID int }
 )
 
 // Ask puts q to the user, then goes on with its answer.
@@ -66,18 +67,19 @@ func (m *Core) Ask(q *Question, then func(answer string) Cmd) Cmd {
 	m.lastAsk++
 	q.ID, q.then, q.Shown = m.lastAsk, then, m.HasClient()
 	m.Asking = append(m.Asking, q)
-	return m.Tell(AskMsg{Q: q})
+	return m.Tell(AskMsg{Q: *q})
 }
 
-// Answer answers q, once: a second answer, or one to a question gone, is
-// nothing.
-func (m *Core) Answer(q *Question, answer string) Cmd {
-	i := slices.Index(m.Asking, q)
+// Answer answers the question of id, once: a second answer, or one to a
+// question gone, is nothing.
+func (m *Core) Answer(id int, answer string) Cmd {
+	i := slices.IndexFunc(m.Asking, func(q *Question) bool { return q.ID == id })
 	if i < 0 {
 		return nil
 	}
+	q := m.Asking[i]
 	m.Asking = slices.Delete(m.Asking, i, i+1)
-	m.Tell(AnsweredMsg{Q: q})
+	m.Tell(AnsweredMsg{ID: id})
 	if q.Kind == AskRepoSetup && answer == AnswerAllowed {
 		file := SetupAllowedFile()
 		for _, r := range q.Repos {
@@ -103,11 +105,13 @@ func (m *Core) ExpireAsks(now time.Time) Cmd {
 			continue
 		}
 		if !q.Shown {
-			cmds = append(cmds, m.Answer(q, RunBusy))
+			cmds = append(cmds, m.Answer(q.ID, RunBusy))
 			continue
 		}
-		cmds = append(cmds, m.Answer(q, RunUnanswered))
-		m.Toast(m.AgentLabel(q.A.Owner(), q.A) + "'s run of " + q.P.Name + " was not answered in time, and did not run")
+		cmds = append(cmds, m.Answer(q.ID, RunUnanswered))
+		if a := m.ByRef(q.A); a != nil {
+			m.Toast(m.AgentLabel(a.Owner(), a) + "'s run of " + q.P.Name + " was not answered in time, and did not run")
+		}
 	}
 	return Batch(cmds...)
 }

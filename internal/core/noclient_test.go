@@ -34,7 +34,7 @@ func TestNoClientAllowsNothing(t *testing.T) {
 		t.Fatal("the question did not wait for a client")
 	}
 	var c Client = NoClient{}
-	if c.AgentVisible(&Tab{}) {
+	if c.AgentVisible(TabRef{Tab: "a"}) {
 		t.Fatal("an agent counted as looked at with nobody there")
 	}
 	if c.DialogClosed() {

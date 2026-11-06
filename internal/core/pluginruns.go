@@ -293,7 +293,7 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 			return nil
 		}
 		reply(hooks.Answer{Text: "started " + run.Id})
-		return m.Tell(PluginRunMsg{T: o, P: p, Run: run})
+		return m.Tell(PluginRunMsg{T: m.Ref(o), P: p, Run: run.Id})
 	}
 	if m.Cfg.ConfirmPluginRuns || p.Confirm || confined {
 		where := r.Dir
@@ -315,7 +315,7 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 		}
 		// With no client the question waits for one as long as the agent
 		// waits for its answer: only a user can say yes.
-		q := &Question{Kind: AskPluginRun, A: from, P: p, Vals: vals, Dir: where, Confined: confined, Until: time.Now().Add(RunAskWait)}
+		q := &Question{Kind: AskPluginRun, A: m.Ref(from), P: p, Vals: vals, Dir: where, Confined: confined, Until: time.Now().Add(RunAskWait)}
 		return m.Ask(q, decide)
 	}
 	return start()

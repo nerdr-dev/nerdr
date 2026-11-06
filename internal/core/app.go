@@ -61,7 +61,7 @@ func (m *Core) Front() *Tab {
 	if m.Client == nil {
 		return nil
 	}
-	return m.Client.Front()
+	return m.ByRef(m.Client.Front())
 }
 
 // SeenAfter is how long a tab must be the active one before it counts as
@@ -98,7 +98,7 @@ func (m *Core) DetectAgent(t *Tab, shown bool, now time.Time) Cmd {
 	if t.Light == StAsleep {
 		return nil // see sleep.go
 	}
-	visible := m.Client.AgentVisible(t)
+	visible := m.Client.AgentVisible(m.Ref(t))
 	was := t.Light
 	t.Classify(visible, now)
 	if t.Light != was && !shown {
@@ -128,7 +128,7 @@ func (m *Core) DetectAgent(t *Tab, shown bool, now time.Time) Cmd {
 	}
 	if t.Light != was {
 		Debugf("agent %s: %s -> %s (visible %v; %s)", m.AgentName(t), was.Label(), t.Light.Label(), visible, t.Why)
-		m.Tell(LightMsg{A: t, Visible: visible, Now: now})
+		m.Tell(LightMsg{A: m.Ref(t), Visible: visible, Now: now})
 		if was.AtWork() {
 			// Whatever the agent did is worth a look in the tab bar.
 			t.Owner().LookAgain(false)

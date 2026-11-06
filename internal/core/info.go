@@ -398,7 +398,7 @@ func (m *Core) MaySkip(t *Tab, now time.Time) (skip bool, watchN int) {
 // InfoEvery is how often t's branches, and its pull requests, are looked
 // at: often while it is on screen or its agent works, seldom otherwise.
 func (m *Core) InfoEvery(t *Tab) (branches, prs time.Duration) {
-	if m.Client != nil && m.Client.TabShown(t) || t.Light == StWorking {
+	if m.Client != nil && m.Client.TabShown(m.Ref(t)) || t.Light == StWorking {
 		return InfoEvery, m.GithubEvery(PrEvery)
 	}
 	return IdleInfoEvery, m.GithubEvery(IdlePREvery)

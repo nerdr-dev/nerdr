@@ -338,7 +338,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 			m.Toast(t.Name + ": " + brief + " — in " + ScreenRef(3) + " for you to send to " + string(t.Agent))
 			t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: run.FixMsg, Says: says}
 		}
-		m.Tell(ReviewNewsMsg{T: t, Text: brief})
+		m.Tell(ReviewNewsMsg{T: m.Ref(t), Text: brief})
 	}
 	m.SaveSession() // with what is still to be told of
 	m.Tell(PanesMsg{})
@@ -387,7 +387,7 @@ func (m *Core) EndReview(t *Tab, brief string, notify bool) {
 	m.Tell(PanesMsg{})
 	m.Toast(t.Name + ": review " + brief)
 	if notify {
-		m.Tell(ReviewNewsMsg{T: t, Text: brief})
+		m.Tell(ReviewNewsMsg{T: m.Ref(t), Text: brief})
 	}
 }
 
@@ -438,11 +438,11 @@ func (m *Core) DetectSeat(t *Tab, s *Seat, now time.Time) Cmd {
 	if t.SeatOf(r) == nil {
 		return nil // let go by a reviewer before it
 	}
-	visible := m.Client.AgentVisible(r)
+	visible := m.Client.AgentVisible(m.Ref(r))
 	was := r.Light
 	r.Classify(visible, now)
 	if r.Light != was && r.Light == StBlocked {
-		m.Tell(LightMsg{A: r, Visible: visible, Now: now})
+		m.Tell(LightMsg{A: m.Ref(r), Visible: visible, Now: now})
 		m.Tell(PanesMsg{}) // the panel says it asks something
 	}
 	if r.Light == StExited && was != StExited {
@@ -461,10 +461,10 @@ func (m *Core) DetectSeat(t *Tab, s *Seat, now time.Time) Cmd {
 		// something in words, it lost the thread, or what it ran to send
 		// it never reached nerdr.
 		if m.CutOff(r) != "" {
-			m.Tell(ReviewNewsMsg{T: t, Text: "waits: " + string(r.Agent) + " could not send its review to nerdr"})
+			m.Tell(ReviewNewsMsg{T: m.Ref(t), Text: "waits: " + string(r.Agent) + " could not send its review to nerdr"})
 			m.TellCutOff(r)
 		} else {
-			m.Tell(ReviewNewsMsg{T: t, Text: "waits: " + string(r.Agent) + " stopped without sending one: see its pane"})
+			m.Tell(ReviewNewsMsg{T: m.Ref(t), Text: "waits: " + string(r.Agent) + " stopped without sending one: see its pane"})
 		}
 		m.Tell(PanesMsg{})
 	}
@@ -775,7 +775,7 @@ func (m *Core) AddReviewer(t *Tab, by Reviewer) Cmd {
 		return cmd
 	}
 	run.Seats = append(run.Seats, &Seat{R: r})
-	m.Tell(TermsMsg{T: t.Owner()})
+	m.Tell(TermsMsg{T: m.Ref(t.Owner())})
 	m.Tell(PanesMsg{}) // the panes say so
 	with := string(k)
 	if model != "" {

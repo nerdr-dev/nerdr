@@ -145,5 +145,5 @@ func (m *Core) kept(t *Tab) bool {
 	if m.Client == nil {
 		return false
 	}
-	return t == m.Client.Front() || t == m.Client.Sight().Beside
+	return t == m.Front() || t == m.ByRef(m.Client.Sight().Beside)
 }

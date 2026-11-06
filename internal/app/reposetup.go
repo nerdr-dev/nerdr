@@ -19,7 +19,7 @@ import (
 // askRepoSetup asks core's question q, whether the .nerdr.toml of each of
 // its repositories may be done. The dialog open, a wizard or the spinoff
 // one, is put back for what core goes on with.
-func (m *Model) askRepoSetup(q *core.Question) {
+func (m *Model) askRepoSetup(q core.Question) {
 	names, ask := q.Repos, q.Setup
 	lines := []string{
 		"The repository asks, in " + workspace.RepoConfigFile + ", for this in the new worktree.",
@@ -50,11 +50,11 @@ func (m *Model) askRepoSetup(q *core.Question) {
 		lines: lines,
 		yes: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return fromCore(m.Answer(q, core.AnswerAllowed))
+			return fromCore(m.Answer(q.ID, core.AnswerAllowed))
 		},
 		no: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return fromCore(m.Answer(q, core.RunDeclined))
+			return fromCore(m.Answer(q.ID, core.RunDeclined))
 		},
 	}
 }

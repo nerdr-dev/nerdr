@@ -148,13 +148,13 @@ func (m *Model) runOutput(run *core.PluginRun, w, n int) []string {
 // question, and the dialog that shows it.
 type runQuestion struct {
 	dialog *confirm
-	q      *core.Question
+	q      core.Question
 }
 
 // answer answers the question with what; core tells of it being answered
 // with AnsweredMsg, which takes it away.
 func (q *runQuestion) answer(m *Model, what string) tea.Cmd {
-	return fromCore(m.Answer(q.q, what))
+	return fromCore(m.Answer(q.q.ID, what))
 }
 
 // answered takes the question away once core has its answer, from the
@@ -172,8 +172,12 @@ func (q *runQuestion) answered(m *Model) {
 // question q says: with what values, in which folder, and, for an agent in
 // a sandbox, that it runs outside: a plugin that builds or runs what is in
 // the folder runs what the agent wrote there.
-func (m *Model) askPluginRun(q *core.Question) {
-	a, p, vals, dir := q.A, q.P, q.Vals, q.Dir
+func (m *Model) askPluginRun(q core.Question) {
+	a, p, vals, dir := m.ByRef(q.A), q.P, q.Vals, q.Dir
+	if a == nil {
+		m.Answer(q.ID, core.RunBusy) // gone already
+		return
+	}
 	o := a.Owner()
 	agent := m.AgentLabel(o, a)
 	bold := lipgloss.NewStyle().Bold(true)

@@ -32,3 +32,32 @@ func TestTabRefIsTheCoresOwn(t *testing.T) {
 		t.Fatal("a tab of another core with the same id taken as this one's")
 	}
 }
+
+// TestRefsFindAgentsAndPanes: every agent is found by its TabRef, a reviewer
+// and another agent in a tab's panes too, and a pane by its PaneRef; one with
+// no id yet is given one.
+func TestRefsFindAgentsAndPanes(t *testing.T) {
+	tb := &Tab{}
+	other := &Tab{PartOf: tb}
+	other.ID = "o"
+	reviewer := &Tab{ReviewOf: tb}
+	reviewer.ID = "r"
+	p := &PaneTab{Kind: PaneAgent, A: other}
+	q := &PaneTab{Kind: PaneReview, A: reviewer, Of: tb}
+	tb.PaneList = []*PaneTab{{Kind: PaneAgent, A: tb}, p, q}
+	c := &Core{Tabs: []*Tab{tb}}
+	if r := c.Ref(tb); r.Tab == "" || c.ByRef(r) != tb {
+		t.Fatalf("a tab with no id: %+v", r)
+	}
+	for _, a := range []*Tab{other, reviewer} {
+		if c.ByRef(c.Ref(a)) != a {
+			t.Errorf("agent %s not found", a.ID)
+		}
+	}
+	if o, got := c.PaneByRef(c.PaneRef(q)); o != tb || got != q {
+		t.Fatalf("pane: %v %v", o, got)
+	}
+	if c.ByRef(TabRef{}) != nil {
+		t.Fatal("the zero TabRef named a tab")
+	}
+}

@@ -200,8 +200,13 @@ func (m *Model) focusTerms(t *core.Tab) {
 
 // paneClosed is p taken out of t's panes by core: the keyboard goes to the
 // one used last when p had it, mostly the one it was opened from.
-func (m *Model) paneClosed(t *core.Tab, p *core.PaneTab) {
-	if m.tl(t).on == p {
+func (m *Model) paneClosed(t *core.Tab, p core.PaneRef) {
+	for q := range m.paneLooks {
+		if m.PaneRef(q) == p {
+			delete(m.paneLooks, q)
+		}
+	}
+	if on := m.tl(t).on; on != nil && m.PaneRef(on) == p {
 		var next *core.PaneTab
 		for _, q := range t.Panes() {
 			if next == nil || m.pl(q).used.After(m.pl(next).used) {

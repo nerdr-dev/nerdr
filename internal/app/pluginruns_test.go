@@ -283,7 +283,7 @@ func TestPluginRunConfirmed(t *testing.T) {
 		t.Fatalf("yes was answered %q, dialog %T", a, m.dialog)
 	}
 	c = askRun(m, tb, "free", vals)
-	m.plugins.asking.q.Until = time.Now().Add(-time.Second)
+	m.Asking[0].Until = time.Now().Add(-time.Second)
 	m.ExpireAsks(time.Now())
 	if a := answered(c); a != core.RunUnanswered || m.dialog != nil {
 		t.Fatalf("a question not answered in time was answered %q, dialog %T", a, m.dialog)

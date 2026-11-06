@@ -100,7 +100,7 @@ func (m *Core) SwitchAgent(t *Tab, k agents.Kind, summary string) Cmd {
 	t.Err = ""
 	// What the old agent was sent is no concern of the new one's.
 	t.AwaitWork, t.QueuePaused = false, false
-	m.Tell(SwitchedMsg{T: t})
+	m.Tell(SwitchedMsg{T: m.Ref(t)})
 	m.SaveSession()
 	m.Tell(PanesMsg{})
 	m.Toast(m.AgentName(t) + ": switched to " + string(k))
@@ -196,7 +196,7 @@ func (m *Core) OnHandoff(r hooks.Report) Cmd {
 	}
 	t.HandoffReady = &HandoffNote{From: t.Agent, Text: r.Handoff, At: time.Now()}
 	if t == m.FrontAgent() && m.Client.DialogClosed() {
-		return m.Tell(SwitchAskMsg{T: t})
+		return m.Tell(SwitchAskMsg{T: m.Ref(t)})
 	}
 	m.Toast(m.AgentName(t) + ": " + string(t.Agent) + " wrote a handoff; " + KeyRef("a s") + " switches the agent")
 	return nil
