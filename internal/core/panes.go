@@ -23,7 +23,7 @@ func (m *Core) FrontAgent() *Tab {
 	if m.Client == nil {
 		return nil
 	}
-	return m.Client.Sight().Keyboard
+	return m.ByRef(m.Client.Sight().Keyboard)
 }
 
 // AllAgents are every agent nerdr runs: the tabs' own, the others beside
@@ -184,7 +184,7 @@ func (m *Core) AddPane(t *Tab, p *PaneTab, quiet bool) Cmd {
 		m.Tell(PanesMsg{})
 		return nil
 	}
-	return m.Tell(PaneOpenedMsg{T: t, P: p})
+	return m.Tell(PaneOpenedMsg{T: m.Ref(t), P: m.PaneRef(p)})
 }
 
 // newShellIn opens a terminal in t's worktree, in a pane of its own,
@@ -202,7 +202,7 @@ func (m *Core) NewShellIn(t *Tab, quiet bool) (*PaneTab, Cmd) {
 	}
 	p := &PaneTab{Kind: PaneShell, N: n}
 	cmd := m.AddPane(t, p, quiet)
-	w, h := m.Client.ShellSize(t, p)
+	w, h := m.Client.ShellSize(m.Ref(t), m.PaneRef(p))
 	env := append(ChildEnv(t), "NERDR_SHELL=1")
 	sh, err := term.Start(m.ShellCommand(), t.Dir, env, w, h, m.Notify)
 	if err != nil {
@@ -211,7 +211,7 @@ func (m *Core) NewShellIn(t *Tab, quiet bool) (*PaneTab, Cmd) {
 		return nil, m.Tell(LayoutMsg{})
 	}
 	p.Shell = sh
-	m.Tell(TermsMsg{T: t})
+	m.Tell(TermsMsg{T: m.Ref(t)})
 	return p, cmd
 }
 
@@ -258,7 +258,7 @@ func (m *Core) NewAgentWith(t *Tab, k agents.Kind, model, task string, quiet, sa
 		m.Toast(t.Name + ": " + a.Err)
 	}
 	m.SaveSession()
-	m.Tell(TermsMsg{T: t})
+	m.Tell(TermsMsg{T: m.Ref(t)})
 	return a, Batch(cmd, start)
 }
 
@@ -426,6 +426,9 @@ const (
 
 // PaneTab is one of a tab's panes.
 type PaneTab struct {
+	// ID names the pane to a client, given the first time it is asked for;
+	// see PaneRef.
+	ID   string
 	Kind PaneKind
 	// A is the agent in the pane: the tab itself in its first pane,
 	// another agent, or the reviewer; nil in a review pane while the
@@ -692,7 +695,7 @@ func (m *Core) DropPane(t *Tab, p *PaneTab) {
 		return
 	}
 	t.PaneList = slices.Delete(ps, i, i+1)
-	m.Tell(PaneClosedMsg{T: t, P: p})
+	m.Tell(PaneClosedMsg{T: m.Ref(t), P: m.PaneRef(p)})
 }
 
 // DropReviewPane takes reviewer r's pane out of its tab.

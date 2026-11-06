@@ -215,7 +215,7 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 			m.PluginEvent(t, p.Dir, map[string]any{"event": "output", "run": run.Id, "text": text + "\n"})
 		}
 	}
-	m.Tell(PluginUIStartedMsg{T: t, Key: PluginUIKey(t, p)})
+	m.Tell(PluginUIStartedMsg{T: m.Ref(t), Key: PluginUIKey(t, p)})
 	return true
 }
 

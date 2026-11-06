@@ -15,20 +15,27 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.NoticeMsg:
 		m.Notice(m.expandKeys(string(ev)))
 	case core.LightMsg:
-		m.notifyChange(ev.A, ev.Visible, ev.Now)
+		if a := m.ByRef(ev.A); a != nil {
+			m.notifyChange(a, ev.Visible, ev.Now)
+		}
 	case core.ReviewNewsMsg:
 		m.Gen++
-		m.notifyReview(ev.T, ev.Text)
+		if t := m.ByRef(ev.T); t != nil {
+			m.notifyReview(t, ev.Text)
+		}
 	case core.ReviewMsg:
 		m.Gen++
 		return toCore(m.pinReview())
 	case core.PaneOpenedMsg:
 		m.Gen++
-		return toCore(m.focusPane(ev.T, ev.P))
+		if t, p := m.PaneByRef(ev.P); t != nil {
+			return toCore(m.focusPane(t, p))
+		}
 	case core.PaneClosedMsg:
 		m.Gen++
-		m.paneClosed(ev.T, ev.P)
-		delete(m.paneLooks, ev.P)
+		if t := m.ByRef(ev.T); t != nil {
+			m.paneClosed(t, ev.P)
+		}
 	case core.PanesMsg:
 		m.Gen++
 		m.resizePanes()
@@ -38,15 +45,21 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.StartedMsg:
 		// Back at the top of a fresh program, which has the keyboard if its
 		// pane does.
-		m.tl(ev.A).scroll = 0
-		if o := ev.A.Owner(); o == m.Cur() && m.focused(o) == ev.A.PaneOf() {
-			if p := ev.A.Pane; p != nil {
+		a := m.ByRef(ev.A)
+		if a == nil {
+			break
+		}
+		m.tl(a).scroll = 0
+		if o := a.Owner(); o == m.Cur() && m.focused(o) == a.PaneOf() {
+			if p := a.Pane; p != nil {
 				p.Focus(true)
 			}
 		}
 	case core.TermsMsg:
 		m.Gen++
-		m.focusTerms(ev.T)
+		if t := m.ByRef(ev.T); t != nil {
+			m.focusTerms(t)
+		}
 	case core.SwitchedMsg:
 		m.Gen++
 		m.stopScrolling()
@@ -86,19 +99,21 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 	case core.AnsweredMsg:
 		m.Gen++
-		if q := m.plugins.asking; q != nil && q.q == ev.Q {
+		if q := m.plugins.asking; q != nil && q.q.ID == ev.ID {
 			q.answered(m)
 		}
 	case core.SpinoffAskMsg:
 		m.Gen++
-		return toCore(m.openSpinoff(ev.T))
+		if t := m.ByRef(ev.T); t != nil {
+			return toCore(m.openSpinoff(t))
+		}
 	case core.SwitchAskMsg:
 		m.Gen++
 		return toCore(m.openSwitchAgent())
 	case core.PluginUIStartedMsg:
 		m.Gen++
-		if m.plugins.uiFocus == ev.Key {
-			m.pluginUIFocus(ev.T) // started again in place of the one it had
+		if t := m.ByRef(ev.T); t != nil && m.plugins.uiFocus == ev.Key {
+			m.pluginUIFocus(t) // started again in place of the one it had
 		}
 	case core.PluginUIGoneMsg:
 		m.Gen++
@@ -107,7 +122,9 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 	case core.PluginRunMsg:
 		m.Gen++
-		return toCore(m.showPluginRun(ev.T, ev.P, ev.Run))
+		if t, run := m.ByRef(ev.T), m.PluginRuns.ByID[ev.Run]; t != nil && run != nil {
+			return toCore(m.showPluginRun(t, ev.P, run))
+		}
 	}
 	return nil
 }
@@ -115,21 +132,38 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 // expandKeys puts the keys in a text of core's, as this TUI has them.
 func (m *Model) expandKeys(s string) string { return core.ExpandKeys(s, m.pk, m.screenKey) }
 
-func (m *Model) Front() *core.Tab { return m.Cur() }
+func (m *Model) Front() core.TabRef { return m.Ref(m.Cur()) }
 
-func (m *Model) TabShown(t *core.Tab) bool { return m.tabShown(t) }
+func (m *Model) TabShown(r core.TabRef) bool {
+	t := m.ByRef(r)
+	return t != nil && m.tabShown(t)
+}
 
-func (m *Model) AgentVisible(a *core.Tab) bool { return m.agentVisible(a) }
+func (m *Model) AgentVisible(r core.TabRef) bool {
+	a := m.ByRef(r)
+	return a != nil && m.agentVisible(a)
+}
 
 func (m *Model) Layout() core.Layout { return m.layout() }
 
 func (m *Model) Sight() core.Sight {
 	wt, n := m.review.WatchChanges()
-	return core.Sight{Keyboard: m.CurAgent(), Beside: m.splitTab(), IssuesShown: m.issuesShown(), PRsShown: m.prsShown(), WatchWt: wt, WatchN: n}
+	return core.Sight{Keyboard: m.Ref(m.CurAgent()), Beside: m.Ref(m.splitTab()), IssuesShown: m.issuesShown(), PRsShown: m.prsShown(), WatchWt: wt, WatchN: n}
 }
 
-func (m *Model) ShellSize(t *core.Tab, p *core.PaneTab) (int, int) { return m.shellSize(t, p) }
+func (m *Model) ShellSize(tr core.TabRef, pr core.PaneRef) (int, int) {
+	t := m.ByRef(tr)
+	if o, p := m.PaneByRef(pr); t != nil && o != nil {
+		return m.shellSize(t, p)
+	}
+	return 0, 0
+}
 
-func (m *Model) TabSize(t *core.Tab) (int, int) { return m.tabSize(t) }
+func (m *Model) TabSize(r core.TabRef) (int, int) {
+	if a := m.ByRef(r); a != nil {
+		return m.tabSize(a)
+	}
+	return 0, 0
+}
 
 func (m *Model) DialogClosed() bool { return m.dialogClosed() }

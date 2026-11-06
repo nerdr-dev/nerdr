@@ -338,7 +338,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 			l.Argv = append(l.Argv, args...)
 		}
 	}
-	w, h := m.Client.TabSize(t)
+	w, h := m.Client.TabSize(m.Ref(t))
 	p, err := term.Start(l.Argv, t.Dir, WithUserEnv(m.AgentEnv(t), l.Env), w, h, m.Notify)
 	if err != nil {
 		t.Messages = append(first, t.Messages...) // for the next start
@@ -359,7 +359,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	t.Tasked = len(first) > 0
 	t.Err = ""
 	t.Changed = time.Now()
-	m.Tell(StartedMsg{A: t})
+	m.Tell(StartedMsg{A: m.Ref(t)})
 	return nil
 }
 

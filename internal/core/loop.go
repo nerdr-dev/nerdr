@@ -280,7 +280,7 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 func (m *Core) DetectAll(now time.Time) Cmd {
 	cmds := []Cmd{m.Tell(DetectStartMsg{})}
 	for _, t := range m.Tabs {
-		shown := m.Client != nil && m.Client.TabShown(t)
+		shown := m.Client != nil && m.Client.TabShown(m.Ref(t))
 		if shown {
 			t.ShownAt = now
 		}

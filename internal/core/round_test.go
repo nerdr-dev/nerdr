@@ -25,7 +25,7 @@ func (w *watcher) Tell(ev Event) Cmd {
 	}
 	return nil
 }
-func (w *watcher) AgentVisible(_ *Tab) bool { return true }
+func (w *watcher) AgentVisible(_ TabRef) bool { return true }
 
 // sendEnterIn runs c and what it leads to, and returns the SendEnter among
 // them. The rest, such as looking in the agent's logs, is left to finish by

@@ -767,7 +767,7 @@ func TestSandboxedPluginRunWaitsForTheUser(t *testing.T) {
 	}
 
 	c = askRun(m, tb, "free", nil)
-	m.plugins.asking.q.Until = time.Now().Add(-time.Second)
+	m.Asking[0].Until = time.Now().Add(-time.Second)
 	m.ExpireAsks(time.Now())
 	if a := answered(c); a != core.RunUnanswered || len(m.PluginRuns.ByID) != 0 {
 		t.Fatalf("not answered in time: answered %q, runs %d", a, len(m.PluginRuns.ByID))
