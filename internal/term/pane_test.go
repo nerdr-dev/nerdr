@@ -24,7 +24,7 @@ func TestPaneRunsAndCapturesScreen(t *testing.T) {
 	if in.Progress != "4;1;50" {
 		t.Fatalf("progress = %q", in.Progress)
 	}
-	lines := p.Render(0, false)
+	lines := Draw(p.Frame(0), false, nil)
 	if len(lines) != 5 || !strings.Contains(lines[0], "red") || !strings.Contains(lines[0], "\x1b[") {
 		t.Fatalf("render = %q", lines)
 	}

@@ -75,11 +75,13 @@ func TestSelectedText(t *testing.T) {
 	defer p.Close()
 	waitScreen(t, p, "third")
 	// Backwards, from the "o" of "second" to the "l" of "line" above it.
-	p.Select(&Selection{From: p.PointAt(3, 1, 0), To: p.PointAt(6, 0, 0)})
-	if got := p.SelectedText(); got != "line\nseco" {
+	f := p.Frame(0)
+	sel := Selection{From: f.PointAt(3, 1), To: f.PointAt(6, 0)}
+	first, rows := p.Rows(sel.To.Line, sel.From.Line)
+	if got := SelectedText(first, rows, sel); got != "line\nseco" {
 		t.Fatalf("selected %q", got)
 	}
-	if lines := p.Render(0, false); !strings.Contains(lines[0], "\x1b[") {
+	if lines := Draw(f, false, &sel); !strings.Contains(lines[0], "\x1b[") {
 		t.Fatalf("selection not drawn: %q", lines[0])
 	}
 }

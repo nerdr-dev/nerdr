@@ -1,8 +1,6 @@
 package term
 
 import (
-	"strings"
-
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -145,7 +143,8 @@ func (s Selection) ordered() (Point, Point) {
 	return s.From, s.To
 }
 
-func (s Selection) contains(line, col int) bool {
+// Contains reports whether the cell at col of line is chosen.
+func (s Selection) Contains(line, col int) bool {
 	a, b := s.ordered()
 	if line < a.Line || line > b.Line {
 		return false
@@ -157,66 +156,6 @@ func (s Selection) contains(line, col int) bool {
 		return false
 	}
 	return true
-}
-
-// PointAt is the cell at (x, y) on the pane as it is drawn scroll lines
-// back into the scrollback.
-func (s *Screen) PointAt(x, y, scroll int) Point {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sb := s.emu.ScrollbackLen()
-	if s.emu.IsAltScreen() {
-		sb, scroll = 0, 0
-	}
-	scroll = min(max(scroll, 0), sb)
-	return Point{Line: sb - scroll + y, Col: x}
-}
-
-// Select shows sel highlighted, or nothing when it is nil.
-func (s *Screen) Select(sel *Selection) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sel = nil
-	if sel != nil {
-		c := *sel // changed only through Select, so Render knows of it
-		s.sel = &c
-	}
-	s.dirty = true
-}
-
-// SelectedText is the text of the selection, trailing blanks trimmed from
-// each line.
-func (s *Screen) SelectedText() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.sel == nil {
-		return ""
-	}
-	a, b := s.sel.ordered()
-	w := s.emu.Width()
-	sb := s.emu.ScrollbackLen()
-	if s.emu.IsAltScreen() {
-		sb = 0
-	}
-	var lines []string
-	for line := a.Line; line <= b.Line; line++ {
-		var sbuf strings.Builder
-		for x := 0; x < w; x++ {
-			if !s.sel.contains(line, x) {
-				continue
-			}
-			c := s.cellAt(x, line, sb)
-			if c == nil || c.Content == "" {
-				if c == nil || c.Width != 0 {
-					sbuf.WriteByte(' ')
-				}
-				continue
-			}
-			sbuf.WriteString(c.Content)
-		}
-		lines = append(lines, strings.TrimRight(sbuf.String(), " "))
-	}
-	return strings.Join(lines, "\n")
 }
 
 // AltScreen reports whether the program is on the alternate screen, which

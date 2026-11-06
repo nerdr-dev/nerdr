@@ -40,20 +40,12 @@ type Screen struct {
 	// The mouse reports the program has asked for; see mouse.go.
 	mouseOn  map[ansi.DECMode]bool
 	mouseSgr bool
-	// sel is the text chosen with the mouse, drawn highlighted.
-	sel *Selection
 	// exited is set when the program has gone: no cursor is drawn then.
 	exited bool
 
-	// dirty is set by whatever changes what Render draws: output, a
-	// resize, a selection, the exit. Until it is, Render gives the lines it
-	// drew last again, for the same scroll and cursor.
-	dirty bool
-	drawn struct {
-		lines  []string
-		scroll int
-		cursor bool
-	}
+	// drawGen counts what changes what a Frame shows: output, a resize,
+	// the exit. See DrawGen.
+	drawGen uint64
 	// gen counts the changes to what Snapshot reads: output, which also
 	// sets the title and progress, and a resize. snap is the snapshot
 	// last taken, at snapGen.
@@ -110,7 +102,7 @@ func (s *Screen) Feed(b []byte) {
 	defer s.mu.Unlock()
 	s.oscOut = s.osc.write(s.oscOut[:0], b, func(t string) { s.title = t })
 	_, _ = s.emu.Write(s.oscOut)
-	s.dirty = true
+	s.drawGen++
 	s.gen++
 	s.lastOutput = time.Now()
 }
@@ -149,7 +141,7 @@ func (s *Screen) resize(w, h int) bool {
 		return false
 	}
 	s.emu.Resize(w, h)
-	s.dirty = true
+	s.drawGen++
 	s.gen++
 	return true
 }

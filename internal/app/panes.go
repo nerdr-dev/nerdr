@@ -553,7 +553,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	if scrolling {
 		scroll = m.tl(t).scroll
 	}
-	lines := fitLines(tp.Render(scroll, keys && m.focus == core.FocusAgent && !m.scrolling && m.dialog == nil), w, h)
+	lines := fitLines(m.drawPane(tp, scroll, keys && m.focus == core.FocusAgent && !m.scrolling && m.dialog == nil), w, h)
 	if p.Kind != core.PaneShell && a.Light == core.StExited {
 		note := " " + string(a.Agent) + " has exited"
 		if a.Err != "" {

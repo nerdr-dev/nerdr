@@ -179,8 +179,13 @@ type Model struct {
 	// its tab and which divider: the one after its dragDiv'th pane shown.
 	dragTab *core.Tab
 	dragDiv int
-	sel     term.Selection
-	selPane *term.Pane
+	// sel is the text being chosen in selPane with the mouse, drawn while
+	// selShown; see drawPane.
+	sel      term.Selection
+	selPane  *term.Pane
+	selShown bool
+	// drawnPanes are the programs' screens as last drawn; see drawPane.
+	drawnPanes map[*term.Pane]*drawnPane
 	// textSel is the text in a dialog being selected; see textsel.go.
 	textSel *textSel
 	// lastWheelStep is when the wheel last stepped to another tab or

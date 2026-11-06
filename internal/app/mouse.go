@@ -383,8 +383,8 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 			m.tl(t).scroll = max(m.tl(t).scroll-1, 0)
 		}
 		y = min(max(y, 0), ah-1)
-		m.sel.To = p.PointAt(x, y, m.shownScroll(t))
-		p.Select(&m.sel)
+		m.sel.To = term.Point{Line: p.TopAt(m.shownScroll(t)) + y, Col: x}
+		m.selShown = true
 		if release {
 			m.drag = dragNone
 			m.copySelection(p)
@@ -409,8 +409,8 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 		return cmd
 	}
 	p := m.screen(t)
-	if press {
-		p.Select(nil)
+	if press && p == m.selPane {
+		m.selShown = false
 	}
 	// With shift held, a program that has the mouse still lets nerdr
 	// select: that is how terminals do it.
@@ -427,7 +427,7 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 	case ev.Button == tea.MouseButtonWheelDown:
 		m.wheelScroll(t, -3)
 	case press && ev.Button == tea.MouseButtonLeft:
-		pt := p.PointAt(x, y, m.shownScroll(t))
+		pt := term.Point{Line: p.TopAt(m.shownScroll(t)) + y, Col: x}
 		m.sel = term.Selection{From: pt, To: pt}
 		m.selPane = p
 		m.drag = dragSelect
@@ -472,8 +472,10 @@ func (m *Model) shownScroll(t *core.Tab) int {
 // you over SSH and through herdr), and the local clipboard's own way too
 // where there is one.
 func (m *Model) copySelection(p *term.Pane) {
-	text := p.SelectedText()
-	p.Select(nil)
+	text := selectedText(p, m.sel)
+	if p == m.selPane {
+		m.selShown = false
+	}
 	m.copyText(text)
 }
 

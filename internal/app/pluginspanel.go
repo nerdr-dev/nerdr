@@ -569,7 +569,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	if pw, ph := u.Pane.Size(); pw != m.PluginUIW || ph != m.PluginUIH {
 		u.Pane.Resize(m.PluginUIW, m.PluginUIH)
 	}
-	return fitLines(append(out, u.Pane.Render(0, inUI)...), w, h)
+	return fitLines(append(out, m.drawPane(u.Pane, 0, inUI)...), w, h)
 }
 
 // pluginKeys is the F5 screen's row of keys, each one a button.
