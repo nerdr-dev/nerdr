@@ -620,14 +620,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return nil // hidden: its setup does not wait for anyone to listen
 
-	case tabClosedMsg:
-		if msg.err != "" {
-			m.toast(msg.err)
-		} else if msg.note != "" {
-			m.toast(msg.note)
-		}
-		return nil
-
 	case quitReadyMsg:
 		return tea.Quit
 	}

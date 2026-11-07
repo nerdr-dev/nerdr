@@ -387,7 +387,6 @@ func (c *closeTab) view(m *Model, w, h int) string {
 	return box("Close tab", lines, w)
 }
 
-type tabClosedMsg struct{ err, note string }
 
 // closeTab removes t from the row, stops its agent and, if asked, deletes
 // its worktrees once the agent is gone. With branchHeads, it deletes the
@@ -399,7 +398,7 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	}
 	group := t.GroupName()
 	beside, wasActive, cur := m.splitTab(), i == m.Active, m.Cur()
-	m.Tabs = append(m.Tabs[:i], m.Tabs[i+1:]...)
+	closed := m.do(core.CloseTab{T: m.Ref(t), Remove: remove, Force: force, BranchHeads: branchHeads})
 	delete(m.panelScreens, t)
 	delete(m.paneBars, t)
 	for _, p := range t.Panes() {
@@ -433,69 +432,10 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	if t == m.split {
 		m.split = nil
 	}
-	if remove {
-		delete(m.GroupNames, t.Dir)
-	}
-	m.ForgetTabPRNews(t.Name)
 	m.resizePanes()
 	m.scrolling = false
-	m.SaveSession()
-	m.FindOverlaps() // the other tabs no longer share files with this one
-	tracked := m.track()
-	for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
-		if a.Review != nil {
-			m.EndReview(a, "stopped", false)
-		}
-	}
-	var progs []*term.Pane
-	for _, p := range t.Panes() {
-		if tp := p.Term(); tp != nil {
-			progs = append(progs, tp)
-		}
-	}
-	dir := t.Dir
-	wts := t.Worktrees
-	name := t.Name
-	cmds := []tea.Cmd{tracked, m.pinReview(), func() tea.Msg {
-		// Every program in the tab's panes stopped before its worktree
-		// goes.
-		for _, p := range progs {
-			p.Close()
-		}
-		if !remove {
-			return tabClosedMsg{note: "closed " + name + " — the worktree is kept"}
-		}
-		deleteBranch := branchHeads != nil
-		if deleteBranch {
-			// The agent may have committed while the dialog was open. It is
-			// stopped now: check every worktree again before removing any.
-			for _, w := range wts {
-				if h := branchHeads[w.Path]; h == "" || workspace.Head(w) != h {
-					return tabClosedMsg{err: "closed " + name + "; kept the worktree and branch: the branch moved after you were asked"}
-				}
-			}
-		}
-		group := ""
-		if len(wts) > 1 {
-			group = dir
-		}
-		if err := workspace.Remove(group, wts, force); err != nil {
-			return tabClosedMsg{err: "could not delete the worktree: " + err.Error()}
-		}
-		if deleteBranch {
-			var errs []string
-			for _, w := range wts {
-				if err := workspace.DeleteBranch(w, branchHeads[w.Path]); err != nil {
-					errs = append(errs, err.Error())
-				}
-			}
-			if len(errs) > 0 {
-				return tabClosedMsg{err: "deleted the worktree, not the branch: " + strings.Join(errs, "; ")}
-			}
-			return tabClosedMsg{note: "closed " + name + ", deleted its worktree" + pluralS(len(wts)) + " and branch"}
-		}
-		return tabClosedMsg{note: "closed " + name + " and deleted its worktree" + pluralS(len(wts))}
-	}}
+	m.saveLayout()
+	cmds := []tea.Cmd{m.track(), m.pinReview(), closed}
 	if len(m.Tabs) == 0 {
 		m.setFocus(core.FocusAgent)
 		cmds = append(cmds, m.openWizard())

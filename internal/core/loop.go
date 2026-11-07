@@ -310,6 +310,13 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return ev.R.Do(m), true
 	case ReposChangedMsg:
 		return m.OnReposChanged(ev), true
+	case TabClosedMsg:
+		if ev.Err != "" {
+			m.Toast(ev.Err)
+		} else if ev.Note != "" {
+			m.Toast(ev.Note)
+		}
+		return nil, true
 	case hooks.Report:
 		return m.OnReport(ev), true
 	case TabMadeMsg:
