@@ -365,4 +365,13 @@ func TestReportsSayWhichProcessSentThem(t *testing.T) {
 	if !r.Peer.Known || len(r.Peer.Chain) < 2 || r.Peer.Chain[0] != os.Getpid() || r.Peer.Chain[1] != os.Getppid() {
 		t.Fatalf("peer %+v, want this process (%d) under its parent (%d)", r.Peer, os.Getpid(), os.Getppid())
 	}
+	// And when each started, which tells a process from one given its id
+	// later.
+	if len(r.Peer.Starts) != len(r.Peer.Chain) || r.Peer.Starts[0] == 0 || r.Peer.StartOf(os.Getpid()) != Started(os.Getpid()) ||
+		r.Peer.StartOf(os.Getppid()) != Started(os.Getppid()) {
+		t.Errorf("starts %v, want %d then %d", r.Peer.Starts, Started(os.Getpid()), Started(os.Getppid()))
+	}
+	if Started(1<<30) != 0 || r.Peer.StartOf(1<<30) != 0 {
+		t.Error("a start time for a process that is not there")
+	}
 }
