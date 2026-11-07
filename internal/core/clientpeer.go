@@ -39,7 +39,10 @@ func (m *Core) ClientRefusal(p hooks.Peer) string {
 		}
 	}
 	for _, a := range m.AllAgents() {
-		if !Vouch(hooks.Report{Peer: p}, &a.AgentState).Unvouched {
+		// By its id alone, not as Vouch places a report: refusing one
+		// given an ended agent's id costs nothing, and a start not known
+		// must not let a client in.
+		if a.Pane != nil && slices.Contains(p.Chain, a.Pane.Pid()) {
 			return why
 		}
 	}

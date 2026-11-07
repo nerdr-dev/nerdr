@@ -21,7 +21,8 @@ func Confined(r hooks.Report, a *Agent, kindSandboxed bool) bool {
 // one r names, nor runs under it, or is one nerdr cannot place. a is nil when
 // no agent reports under that name. Where the kernel cannot be asked at all,
 // the secret is taken alone. A process with the agent's id that started at
-// another time is another, given the id once the agent's had ended.
+// another time is another, given the id once the agent's had ended; one
+// whose start, or the agent's, nerdr cannot tell is not taken for it.
 func Vouch(r hooks.Report, a *Agent) hooks.Report {
 	if !r.Peer.Known {
 		return r
@@ -30,7 +31,7 @@ func Vouch(r hooks.Report, a *Agent) hooks.Report {
 		r.Unvouched = true
 		return r
 	}
-	if start := r.Peer.StartOf(a.Pane.Pid()); a.PidStart != 0 && start != a.PidStart {
+	if start := r.Peer.StartOf(a.Pane.Pid()); a.PidStart == 0 || start != a.PidStart {
 		r.Unvouched = true
 	}
 	return r

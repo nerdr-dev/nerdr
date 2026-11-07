@@ -353,7 +353,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 		return nil
 	}
 	t.Pane = p
-	t.PidStart = hooks.Started(p.Pid())
+	t.PidStart = p.StartTime()
 	t.Gen = lastGen.Add(1)
 	t.StartedAt, t.Said, t.SessionUnsure = time.Now(), nil, l.Unsure
 	t.Hook = HookAuthority{} // a new process: its integration reports afresh

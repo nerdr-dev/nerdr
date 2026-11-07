@@ -36,6 +36,7 @@ func (p *heldProc) Write(b []byte) (int, error)             { return len(b), nil
 func (p *heldProc) Resize(w, h int) error                   { return nil }
 func (p *heldProc) Wait() error                             { <-p.read; return nil }
 func (p *heldProc) Pid() int                                { return 0 }
+func (p *heldProc) StartTime() uint64                       { return 0 }
 func (p *heldProc) Foreground() (int, bool)                 { return 0, false }
 func (p *heldProc) Signal(pg int, sig syscall.Signal) error { return nil }
 func (p *heldProc) Close() error                            { return nil }

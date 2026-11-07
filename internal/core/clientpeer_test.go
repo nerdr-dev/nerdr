@@ -57,4 +57,14 @@ func TestClientRefusal(t *testing.T) {
 	if m.ClientRefusal(under) == "" {
 		t.Error("a client under a reviewer was taken")
 	}
+
+	// Under an agent whose start nerdr has, or that the chain says
+	// started at another time: refused all the same.
+	tab.PidStart = p.StartTime()
+	m.Tabs = []*Tab{tab}
+	for _, peer := range []hooks.Peer{under, {Known: true, Chain: under.Chain, Starts: []uint64{0, tab.PidStart + 1, 1}}} {
+		if m.ClientRefusal(peer) == "" {
+			t.Errorf("a client under an agent taken: %+v", peer)
+		}
+	}
 }

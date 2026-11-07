@@ -66,7 +66,7 @@ type AgentState = Agent
 type Agent struct {
 	state.Tab
 	Pane *term.Pane `json:"-"`
-	// PidStart is when Pane's process started, as hooks.Started has it:
+	// PidStart is when Pane's process started, as spawn.Proc has it:
 	// what tells it from a process given its id once it has ended. 0 when
 	// not known.
 	PidStart uint64 `json:"-"`

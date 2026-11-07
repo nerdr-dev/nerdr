@@ -63,6 +63,7 @@ func (f *fakeProc) Write(b []byte) (int, error)             { return 0, os.ErrIn
 func (f *fakeProc) Resize(w, h int) error                   { return nil }
 func (f *fakeProc) Wait() error                             { return f.exit }
 func (f *fakeProc) Pid() int                                { return 0 }
+func (f *fakeProc) StartTime() uint64                       { return 0 }
 func (f *fakeProc) Foreground() (int, bool)                 { return 0, false }
 func (f *fakeProc) Signal(pg int, sig syscall.Signal) error { return syscall.ESRCH }
 func (f *fakeProc) Close() error                            { return nil }
