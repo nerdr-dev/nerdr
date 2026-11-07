@@ -43,7 +43,11 @@ type Model struct {
 	Active int
 	// Loop runs core on its own goroutine, once the program has started; nil
 	// in tests that drive Update by hand.
-	Loop       *core.Loop
+	Loop *core.Loop
+	// screens keeps copies of core's screens sent as rows, to draw and
+	// send keys to (NERDR_HOLDER=1); nil when the programs are drawn from
+	// core's own. See SetScreens.
+	screens    *core.ScreenClient
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
@@ -372,7 +376,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.laidRows, m.laidSide, m.laidOut = m.barRows(), m.sideW(), true
 	}
 	switch msg.(type) {
-	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg, core.RedrawMsg:
+	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg, core.RedrawMsg, core.ScreensMsg:
 		m.reviewReuse = m.Gen == m.reviewGen
 	default:
 		m.reviewReuse = false
@@ -437,7 +441,14 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			return tea.WindowSize()()
 		}))
 
+	case core.ScreensMsg:
+		m.checkCopied()
+		return nil
+
 	case core.FrameMsg:
+		if m.screens != nil {
+			m.screens.Drop(func(r core.ProgramRef) bool { return m.Program(r) != nil })
+		}
 		m.checkEditor()
 		m.do(core.CheckPrograms{})
 		m.checkCopied()

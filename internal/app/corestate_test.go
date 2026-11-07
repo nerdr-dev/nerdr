@@ -32,7 +32,8 @@ const corePkg = "github.com/nerdr-dev/nerdr/internal/core"
 
 // readsCore are the methods of core's types that only read, which the TUI
 // may call on its copy. Program's are left to the screens (see
-// core.Program), not yet sent as rows. SkillStates, and SkillOn and
+// core.Program): a copy's send what the user does as requests. The
+// ScreenClient's are the TUI's own copies of the screens. SkillStates, and SkillOn and
 // AgentNote by it, read what the agent finds of its skills, kept a moment
 // in SkillLook: in a copy, the copy's own.
 var readsCore = map[string]bool{}
@@ -54,6 +55,7 @@ func init() {
 		*Core.PRNewsByKey *Core.IssueNewsByKey
 
 		*Core.SkillStates *Core.SkillOn *Core.AgentNote
+		*ScreenClient.Program *ScreenClient.Shown *ScreenClient.Drop
 		Request.Do
 
 		*Agent.AutoCount

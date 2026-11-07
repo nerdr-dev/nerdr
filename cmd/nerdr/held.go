@@ -4,6 +4,10 @@ import (
 	"os"
 	"syscall"
 
+	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/nerdr-dev/nerdr/internal/app"
+	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
@@ -37,4 +41,31 @@ func held() (*core.Held, error) {
 		return nil, err
 	}
 	return core.NewHeld(cl)
+}
+
+// screensOverPair has the TUI draw core's programs from their screens
+// sent as rows over a pair of connections, and send what the user does in
+// them back as requests: the protocol of a client in a process of its own,
+// in this one.
+func screensOverPair(model *app.Model, p *tea.Program) error {
+	coreEnd, tuiEnd, err := attach.Pair()
+	if err != nil {
+		return err
+	}
+	model.Screens = core.NewScreenServer(coreEnd, func(r core.Request) {
+		model.Loop.Post(core.RequestEv{R: r})
+	})
+	wake := make(chan struct{}, 1)
+	go func() {
+		for range wake {
+			p.Send(core.ScreensMsg{})
+		}
+	}()
+	model.SetScreens(core.NewScreenClient(tuiEnd, func() {
+		select {
+		case wake <- struct{}{}:
+		default:
+		}
+	}))
+	return nil
 }

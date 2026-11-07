@@ -121,7 +121,7 @@ func (m *Model) pluginUIPane() core.Program {
 		return nil
 	}
 	if u := m.PluginUIOf(t, p); u.Running() {
-		return m.Program(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
+		return m.programOf(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	}
 	return nil
 }
@@ -567,7 +567,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	if u == nil {
 		return fitLines(out, w, h)
 	}
-	pr := m.Program(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
+	pr := m.programOf(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	if pr == nil {
 		return fitLines(out, w, h)
 	}
