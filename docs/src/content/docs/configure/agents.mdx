@@ -105,7 +105,9 @@ A sandboxed agent cannot pretend to be one outside a sandbox. Every agent
 gets its tab's secret in `NERDR_TAB`, and a process in a sandbox may be
 able to read it. So on Linux and macOS, nerdr also asks the kernel which
 process connects to the socket, and takes a request as the agent's only
-if it comes from the agent itself or a process started under it. Any
+if it comes from the agent itself or a process started under it, and
+that started when the kernel says the agent did, so a process given the
+id of an agent that has ended is not taken for it. Any
 other connection is treated as sandboxed: it is restricted as above, and
 refused if the tab it names is not sandboxed. The sandbox can therefore
 reach nerdr's socket without that becoming a way out. On other systems,
@@ -226,3 +228,45 @@ nerdr warns you once and shows the executable and socket paths the
 sandbox must allow. If a reviewer stops this way, its review status line
 reports that its sandbox blocked it from reaching nerdr.
 
+## What a sandbox must deny when the core runs on its own
+
+With `NERDR_HOLDER=1`, an experimental setting, the agents keep working
+when you close nerdr: they run in a nerdr process of their own, the
+core, and the nerdr you see connects to it. This adds two things a
+sandboxed agent must not reach. Everything above still applies.
+
+- **The client socket's folder.** A client can do anything you can,
+  approvals included. Its socket and the key to it are in
+  `$XDG_RUNTIME_DIR/nerdr` on Linux (`~/.cache/nerdr/run` without
+  `XDG_RUNTIME_DIR`) and in `~/Library/Application Support/nerdr/run` on
+  macOS, never under `~/.local/state/nerdr`. The sandbox must deny that
+  folder, not only writing to it: a sandbox that lets the agent read and
+  connect to anything in your home folder is enough without the core,
+  but not with it. nerdr also refuses a client run by one of its own
+  programs, but a process that has left the agent's process tree gets
+  past that.
+- **nerdr's processes.** nerdr's core and the holder, the process that
+  starts every agent and terminal, talk over a socket with no path. A
+  process that may trace them (`ptrace`) or take their descriptors
+  (`pidfd_getfd`) could still take it. On Linux, Yama's
+  `kernel.yama.ptrace_scope` of 1 or more stops that for processes the
+  holder started; at 0 only the sandbox stops it, with a PID namespace of
+  its own or by denying those calls.
+
+When a `sandboxed` agent starts, nerdr checks this from inside its
+sandbox: it runs its own executable through the agent's `command`, in
+place of the agent, with the agent's environment and folder, and tries
+the client socket's folder, the socket, the key, and tracing the holder
+and the core. The agent starts either way. If the check gets through,
+nerdr shows a notice saying what it reached, and writes it to the core's
+log in `~/.local/state/nerdr/`. Each agent and `command` is checked
+once each time the core starts.
+
+nerdr puts the check where the agent's program is in `command`: the last
+word named as the agent is (`claude`, `codex`, `cursor-agent`, …, or the
+section's name for an agent nerdr does not know). If none is, as with a
+single script that starts the sandbox and the agent, or the sandbox
+cannot run `$NERDR_BIN`, nerdr says it could not check, and you should
+check it yourself. The check catches a sandbox set up wrong. It does not
+stop an agent that gets out some other way, and it says nothing about
+D-Bus, sockets in `/run/user/$UID` or services on localhost.
