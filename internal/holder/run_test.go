@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
@@ -84,6 +85,9 @@ type report struct {
 	CoreSockets                    []int
 	ProcOpen                       map[int]string
 	Getfd                          map[int]string
+	// Reached is what nerdr's own check from inside a sandbox found of
+	// the holder and the core: /proc, pidfd_getfd and ptrace.
+	Reached []string
 }
 
 func coreStartsAnAgent() int {
@@ -113,7 +117,7 @@ func coreStartsAnAgent() int {
 		fmt.Fprintf(os.Stderr, "agent said %q\n", out)
 		return 1
 	}
-	r.AgentParent, r.AgentSockets, r.ProcOpen, r.Getfd = a.AgentParent, a.AgentSockets, a.ProcOpen, a.Getfd
+	r.AgentParent, r.AgentSockets, r.ProcOpen, r.Getfd, r.Reached = a.AgentParent, a.AgentSockets, a.ProcOpen, a.Getfd, a.Reached
 	b, _ := json.Marshal(r)
 	fmt.Println(string(b))
 	cl.Shutdown()
@@ -130,6 +134,7 @@ func agentReachesFor(args []string) int {
 		r.ProcOpen[fd] = errString(openThroughProc(core, fd))
 		r.Getfd[fd] = errString(getfd(core, fd))
 	}
+	r.Reached = sandboxcheck.Probe(sandboxcheck.Target{PidNS: sandboxcheck.PidNS(), Pids: []int{os.Getppid(), core}}).Holder
 	b, _ := json.Marshal(r)
 	fmt.Print(string(b))
 	return 0
@@ -228,7 +233,7 @@ func runHolder(t *testing.T, core string) string {
 // A process where an agent is, a child of the holder beside the core,
 // cannot reach the socket the holder and core share: it does not inherit
 // it, cannot open it through the core's /proc entry, nor take it with
-// pidfd_getfd.
+// pidfd_getfd, nor trace the holder or the core.
 func TestAnAgentCannotReachTheHoldersSocket(t *testing.T) {
 	// A socket the holder is given without close-on-exec, as a careless
 	// parent might, does not reach the agent either.
@@ -261,9 +266,12 @@ func TestAnAgentCannotReachTheHoldersSocket(t *testing.T) {
 	}
 	if b, err := os.ReadFile("/proc/sys/kernel/yama/ptrace_scope"); err == nil && strings.TrimSpace(string(b)) == "0" {
 		// Yama does not stop a process of the same user here; a sandbox
-		// must (nerdr is to warn of it, in a later step).
-		t.Logf("ptrace_scope is 0: pidfd_getfd gave %v", r.Getfd)
-		r.Getfd = nil
+		// must, and nerdr warns when its check finds it does not.
+		t.Logf("ptrace_scope is 0: pidfd_getfd gave %v, the check reached %v", r.Getfd, r.Reached)
+		r.Getfd, r.Reached = nil, nil
+	}
+	if len(r.Reached) > 0 {
+		t.Errorf("the agent reached the holder or the core: %v", r.Reached)
 	}
 	for fd, err := range r.Getfd {
 		if err == "GOT IT" {
