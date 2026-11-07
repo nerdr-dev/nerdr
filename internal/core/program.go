@@ -47,18 +47,7 @@ type ProgramRef struct {
 
 // Program is the program r names, nil when there is none running there.
 func (m *Core) Program(r ProgramRef) Program {
-	var tp *term.Pane
-	var typed *TypedLine
-	if r.Plugin != "" {
-		if u := m.PluginUIs[r.Plugin]; u != nil {
-			tp = u.Pane
-		}
-	} else if _, p := m.PaneByRef(r.Pane); p != nil {
-		tp = p.Term()
-		if p.Kind != PaneShell && p.A != nil {
-			typed = p.A.Typed
-		}
-	}
+	tp, typed := m.termOf(r)
 	if tp == nil {
 		return nil // not a nil *term.Pane in a Program
 	}
@@ -78,4 +67,24 @@ type typedProgram struct {
 func (p typedProgram) Input(b []byte) {
 	p.typed.Feed(b)
 	p.Pane.Input(b)
+}
+
+// termOf is the program r names, and what is typed into it is followed by
+// when core follows it.
+func (m *Core) termOf(r ProgramRef) (*term.Pane, *TypedLine) {
+	if r.Plugin != "" {
+		if u := m.PluginUIs[r.Plugin]; u != nil {
+			return u.Pane, nil
+		}
+		return nil, nil
+	}
+	_, p := m.PaneByRef(r.Pane)
+	if p == nil {
+		return nil, nil
+	}
+	var typed *TypedLine
+	if p.Kind != PaneShell && p.A != nil {
+		typed = p.A.Typed
+	}
+	return p.Term(), typed
 }

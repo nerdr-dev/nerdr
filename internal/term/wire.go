@@ -365,3 +365,61 @@ func (w WireStyle) style() (uv.Style, error) {
 // maxWireCells is the most cells a screen sent may have, so a bad message
 // cannot have a client make room for more.
 const maxWireCells = 1 << 22
+
+// RowsMsg is lines of a screen, as Rows gives them, as they are sent: Y of
+// each row is its place after First.
+type RowsMsg struct {
+	First  int         `json:"first"`
+	Styles []WireStyle `json:"styles,omitempty"`
+	Rows   []WireRow   `json:"rows,omitempty"`
+}
+
+// RowsMsgOf is rows, the first of them line first, as they are sent.
+func RowsMsgOf(first int, rows [][]Cell) RowsMsg {
+	var s RowsSender
+	s.styles = map[uv.Style]int{}
+	var sm ScreenMsg
+	out := RowsMsg{First: first}
+	for y, r := range rows {
+		out.Rows = append(out.Rows, s.row(&sm, y, r))
+	}
+	out.Styles = sm.Styles
+	return out
+}
+
+// Cells are the rows m sends, the first of them line First.
+func (m *RowsMsg) Cells() (int, [][]Cell, error) {
+	styles := make([]uv.Style, len(m.Styles))
+	for i, ws := range m.Styles {
+		st, err := ws.style()
+		if err != nil {
+			return 0, nil, err
+		}
+		styles[i] = st
+	}
+	if len(m.Rows) > maxWireCells {
+		return 0, nil, fmt.Errorf("%d rows", len(m.Rows))
+	}
+	out := make([][]Cell, len(m.Rows))
+	for i, r := range m.Rows {
+		if r.Y != i {
+			return 0, nil, fmt.Errorf("row %d at %d", r.Y, i)
+		}
+		w := 0
+		for _, run := range r.Runs {
+			if run.C != nil {
+				w += len(run.C)
+			} else {
+				w += utf8.RuneCountInString(run.T)
+			}
+		}
+		if w > maxWireCells {
+			return 0, nil, fmt.Errorf("row of %d cells", w)
+		}
+		out[i] = make([]Cell, w)
+		if err := setRow(out[i], r.Runs, styles); err != nil {
+			return 0, nil, err
+		}
+	}
+	return m.First, out, nil
+}
