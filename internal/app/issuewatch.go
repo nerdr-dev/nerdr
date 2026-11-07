@@ -47,22 +47,7 @@ func (m *Model) refreshAllIssues(force bool) tea.Cmd {
 	if len(ask) == 0 {
 		return nil
 	}
-	w.AllBusy = true
-	m.applyIssues()
-	return func() tea.Msg { return core.FetchAllIssues(ask) }
-}
-
-// onIssueAll takes a look at repositories' open issues.
-func (m *Model) onIssueAll(msg core.IssueAllMsg) {
-	w := &m.IssueWatch
-	w.AllBusy = false
-	if w.All == nil {
-		w.All = map[string]core.RepoIssues{}
-	}
-	for path, got := range msg.Repos {
-		w.All[path] = got
-	}
-	m.applyIssues()
+	return m.do(core.AskAllIssues{Repos: ask})
 }
 
 // applyIssues shows what is known in the review panel's issue list.

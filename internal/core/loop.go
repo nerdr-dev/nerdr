@@ -310,6 +310,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return ev.R.Do(m), true
 	case ReposChangedMsg:
 		return m.OnReposChanged(ev), true
+	case IssueAllMsg:
+		m.OnIssueAll(ev)
+		return nil, true
 	case FocusFilesMsg:
 		return m.OnFocusFiles(ev), true
 	case SpinoffMsg:

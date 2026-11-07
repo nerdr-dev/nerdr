@@ -39,9 +39,10 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 		if d.news == nil {
 			d.news = map[string]bool{}
 		}
-		for k := range m.TakeIssueNews() {
+		for k := range m.IssueNewsByKey() {
 			d.news[k] = true
 		}
+		m.do(core.ClearIssueNews{})
 		m.review.SetIssueNews(false)
 	}
 	if !entered {
@@ -52,7 +53,7 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	if time.Since(m.IssueWatch.At) < m.GithubEvery(core.IssueAllEvery) {
 		return m.refreshAllIssues(false)
 	}
-	return tea.Batch(fromCore(m.RefreshIssues()), m.refreshAllIssues(false))
+	return tea.Batch(m.do(core.RefreshIssues{}), m.refreshAllIssues(false))
 }
 
 // showIssues shows the issues in the review panel, with the keyboard:

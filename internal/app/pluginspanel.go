@@ -156,11 +156,11 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "x":
 		if p, ok := m.pickedPlugin(t); ok {
-			m.StopPluginUI(t, p)
+			return m.do(core.StopPluginUI{T: m.Ref(t), Dir: p.Dir})
 		}
 	case "s":
 		if p, ok := m.pickedPlugin(t); ok {
-			m.StopPickedRun(t, p)
+			return m.do(core.StopPickedRun{T: m.Ref(t), Dir: p.Dir})
 		}
 	case "a":
 		if p, ok := m.pickedPlugin(t); ok {
@@ -561,7 +561,9 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 			return m.openPluginUI(t, p)
 		})
 	out := append(top, rule)
-	m.PluginUIW, m.PluginUIH = w, max(room, 3)
+	if uh := max(room, 3); w != m.PluginUIW || uh != m.PluginUIH {
+		m.do(core.PluginUISize{W: w, H: uh})
+	}
 	if u == nil {
 		return fitLines(out, w, h)
 	}
@@ -604,11 +606,12 @@ func (m *Model) pluginsTitle(t *core.Tab) string {
 // startPluginUI starts plugin p's screen in t, as allowed with key, and gives
 // it the keyboard when focus is set.
 func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
-	if m.StartPluginUI(t, p, key) && focus {
+	cmd := m.do(core.StartPluginUI{T: m.Ref(t), Dir: p.Dir, Key: key})
+	if focus && m.PluginUIOf(t, p).Running() {
 		m.plugins.uiFocus = core.PluginUIKey(t, p)
 		m.pluginUIFocus(t)
 	}
-	return nil
+	return cmd
 }
 
 // pluginUIFocus gives the keyboard to the plugin screen just started in t,

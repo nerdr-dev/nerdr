@@ -94,12 +94,11 @@ func (m *Model) prDone(msg prActionMsg) tea.Cmd {
 	} else if msg.note != "" {
 		m.toast(msg.note)
 	}
-	msg.t.LookAgain(true)
 	var pr tea.Cmd
 	if msg.t == m.Cur() {
 		pr = m.review.ReloadPR() // F2 shows the new PR at once
 	}
-	return tea.Batch(fromCore(m.RefreshInfo()), pr)
+	return tea.Batch(m.do(core.LookAgain{T: m.Ref(msg.t), PR: true}), pr)
 }
 
 func pushAll(t *core.Tab, wts []workspace.Worktree, hooks bool) prActionMsg {
