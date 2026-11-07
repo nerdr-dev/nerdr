@@ -26,6 +26,9 @@ type PluginUI struct {
 	Events *os.File `json:"-"`
 	// dir is the plugin's folder, and key the content it was started from.
 	Dir, Key string
+	// remoteRuns is, in a copy of core's state, whether core runs the
+	// screen's program, which the copy has no Pane of.
+	remoteRuns bool
 }
 
 // close stops u's program, and takes its events file away.
@@ -44,8 +47,11 @@ const PluginGoneAfter = 5 * time.Second
 
 // running reports whether u's program still runs.
 func (u *PluginUI) Running() bool {
-	if u == nil || u.Pane == nil {
+	if u == nil {
 		return false
+	}
+	if u.Pane == nil {
+		return u.remoteRuns
 	}
 	exited, _, _ := u.Pane.Exited()
 	return !exited

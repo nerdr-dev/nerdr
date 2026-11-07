@@ -531,7 +531,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 		return fitLines(msg, w, h)
 	}
 	a := p.A
-	if p.Kind != core.PaneShell && (a == nil || a.Pane == nil) {
+	if p.Kind != core.PaneShell && (a == nil || !a.HasProgram()) {
 		msg := []string{""}
 		switch {
 		case a == nil:

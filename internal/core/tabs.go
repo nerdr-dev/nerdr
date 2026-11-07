@@ -425,6 +425,9 @@ type Tab struct {
 	// panel.go.
 	GoalLooking bool
 	Typed       *TypedLine `json:"-"`
+	// PromptedInto is the program a prompt was last typed into by TypeIn,
+	// for the enter after it; see PromptEnter.
+	PromptedInto *term.Pane `json:"-"`
 	// LastAt is when Last was set from what was typed, so the agent's log,
 	// read a moment later, cannot put back the prompt before it.
 	LastAt time.Time
@@ -467,7 +470,24 @@ type Tab struct {
 	// wireRef marks a tab read as a reference to another, by its ID alone,
 	// until a Mirror points at the tab itself; see Tab.UnmarshalJSON.
 	wireRef bool
+	// remote is, in a copy of core's state, whether core runs the agent's
+	// program, which the copy has no Pane of; see HasProgram.
+	remote remoteProgram
 }
+
+// remoteProgram is what a copy of core's state knows of an agent's
+// program: none, running, or exited.
+type remoteProgram uint8
+
+const (
+	remoteNone remoteProgram = iota
+	remoteRuns
+	remoteExited
+)
+
+// HasProgram reports whether the agent has a program, running or exited:
+// its Pane, or in a copy of core's state, the one core says it runs.
+func (t *Tab) HasProgram() bool { return t.Pane != nil || t.remote != remoteNone }
 
 // HookKey is the id the tab's agent is given to report to nerdr with, as
 // HERDR_PANE_ID and NERDR_TAB: a secret made for this run, not the tab's

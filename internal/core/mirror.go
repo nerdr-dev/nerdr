@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -57,6 +58,45 @@ type corePart struct {
 	// no longer holds is kept by the copy until it is not here either,
 	// as it may have moved to a tab whose part is still to come.
 	Agents []string `json:"$agents"`
+	// Programs are the programs core runs, which a copy has no
+	// term.Pane of; see ProgramState.
+	Programs []ProgramState `json:"$programs"`
+}
+
+// ProgramState is a program core runs, as a copy of its state knows it:
+// where it runs, the agent whose it is if any, and whether it has exited.
+type ProgramState struct {
+	Ref    ProgramRef
+	Agent  string `json:",omitempty"`
+	Exited bool   `json:",omitempty"`
+}
+
+// programStates are the programs core runs, in the order of the tabs and
+// of the plugins' screens. Mu is held.
+func (m *Core) programStates() []ProgramState {
+	var out []ProgramState
+	for _, t := range m.Tabs {
+		for _, p := range t.Panes() {
+			tp := p.Term()
+			if tp == nil {
+				continue
+			}
+			ps := ProgramState{Ref: ProgramRef{Pane: m.PaneRef(p)}}
+			if p.Kind != PaneShell && p.A != nil {
+				ps.Agent = m.Ref(p.A).Tab
+			}
+			ps.Exited, _, _ = tp.Exited()
+			out = append(out, ps)
+		}
+	}
+	keys := slices.Sorted(maps.Keys(m.PluginUIs))
+	for _, k := range keys {
+		if u := m.PluginUIs[k]; u != nil && u.Pane != nil {
+			exited, _, _ := u.Pane.Exited()
+			out = append(out, ProgramState{Ref: ProgramRef{Plugin: k}, Exited: exited})
+		}
+	}
+	return out
 }
 
 type tabRef struct {
@@ -124,7 +164,7 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 			return nil, err
 		}
 	}
-	if err := add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids}); err != nil {
+	if err := add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids, Programs: m.programStates()}); err != nil {
 		return nil, err
 	}
 	for k := range s.sums {
@@ -159,6 +199,7 @@ type Mirror struct {
 	owner  map[string]string   // the tab each agent is in, by id
 	order  []string
 	listed map[string]bool // the agents core's part says there are
+	progs  []ProgramState  // the programs core's part says run
 }
 
 // NewMirror is a Mirror of nothing yet, into c.
@@ -201,6 +242,7 @@ func (r *Mirror) Apply(p Part) error {
 		}
 	}
 	r.C.Tabs = tabs
+	r.programs()
 	relink(reflect.ValueOf(r.C).Elem(), r.agents, map[uintptr]bool{})
 	for _, a := range r.agents {
 		relink(reflect.ValueOf(a).Elem(), r.agents, map[uintptr]bool{})
@@ -246,7 +288,7 @@ func (r *Mirror) applyCore(body []byte) error {
 		return err
 	}
 	copyWire(reflect.ValueOf(r.C).Elem(), reflect.ValueOf(fresh).Elem())
-	r.order = p.Order
+	r.order, r.progs = p.Order, p.Programs
 	r.listed = map[string]bool{}
 	for _, id := range p.Agents {
 		r.listed[id] = true
@@ -263,6 +305,29 @@ func (r *Mirror) applyCore(body []byte) error {
 		}
 	}
 	return nil
+}
+
+// programs marks in the copy the programs core runs, which it has no
+// term.Pane of: the agents', and the plugins' screens; see Core.Runs.
+func (r *Mirror) programs() {
+	r.C.programs = map[ProgramRef]bool{}
+	for _, a := range r.agents {
+		a.remote = remoteNone
+	}
+	for _, ps := range r.progs {
+		r.C.programs[ps.Ref] = true
+		if a := r.agents[ps.Agent]; a != nil && ps.Agent != "" {
+			a.remote = remoteRuns
+			if ps.Exited {
+				a.remote = remoteExited
+			}
+		}
+		if ps.Ref.Plugin != "" {
+			if u := r.C.PluginUIs[ps.Ref.Plugin]; u != nil {
+				u.remoteRuns = !ps.Exited
+			}
+		}
+	}
 }
 
 // copyWire sets the fields of dst that go as JSON to those of src: not

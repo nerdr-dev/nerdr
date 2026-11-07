@@ -213,7 +213,7 @@ func (m *Model) reviewLine(t *core.Tab) string {
 		case r.Light == core.StBlocked:
 			each = append(each, string(r.Agent)+" needs input to review")
 			waits = true
-		case r.Light == core.StExited || r.Pane == nil:
+		case r.Light == core.StExited || !r.HasProgram():
 			each = append(each, string(r.Agent)+" is not running")
 		case (r.Light == core.StIdle || r.Light == core.StDone) && r.IdleUnasked() && r.Worked && m.CutOff(r) != "":
 			each = append(each, string(r.Agent)+" could not send its review: its sandbox keeps it from nerdr")

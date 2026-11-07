@@ -128,7 +128,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if f.Kind == core.PaneReview && f.A == nil {
 		return m.reviewPickKey(t, f, msg)
 	}
-	if a := f.A; f.Kind != core.PaneShell && a != nil && (a.Light == core.StExited || a.Pane == nil) {
+	if a := f.A; f.Kind != core.PaneShell && a != nil && (a.Light == core.StExited || !a.HasProgram()) {
 		if msg.String() == "enter" || msg.String() == "r" {
 			return m.restart(a)
 		}

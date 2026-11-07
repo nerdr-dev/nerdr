@@ -176,8 +176,11 @@ func (t *Tab) ReadyHandoff(now time.Time) string {
 // AgentRunning reports whether t's agent is up, to be asked for a
 // handoff.
 func (t *Tab) AgentRunning() bool {
-	if t.Pane == nil || t.Light == StExited || t.Light == StStarting {
+	if !t.HasProgram() || t.Light == StExited || t.Light == StStarting {
 		return false
+	}
+	if t.Pane == nil {
+		return t.remote == remoteRuns
 	}
 	exited, _, _ := t.Pane.Exited()
 	return !exited
