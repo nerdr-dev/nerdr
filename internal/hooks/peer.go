@@ -17,8 +17,9 @@ type Peer struct {
 // maxChain is how far up from a peer nerdr looks for an agent.
 const maxChain = 64
 
-// peerOf is the process at the other end of c.
-func peerOf(c net.Conn) Peer {
+// PeerOf is the process at the other end of c: as the hook socket asks it,
+// and the client socket (see internal/attach).
+func PeerOf(c net.Conn) Peer {
 	uc, ok := c.(*net.UnixConn)
 	if !ok {
 		return Peer{}
