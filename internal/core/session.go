@@ -57,6 +57,9 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 		}
 		m.Tabs = append(m.Tabs, t)
 	}
+	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
+		m.Tabs[sess.Active].LastActive = now // entered, the tab in front
+	}
 	m.LoadPRWatch(sess.PRs)
 	m.LoadIssueWatch(sess.Issues)
 	m.GroupNames = sess.GroupNames

@@ -33,23 +33,9 @@ func (m *Model) track() tea.Cmd {
 	if t == nil || t == m.entered {
 		return nil
 	}
-	now := time.Now()
-	var cmds []tea.Cmd
-	if old := m.entered; old != nil && m.TabIndex(old) >= 0 {
-		cmds = append(cmds, fromCore(m.Leave(old, now)))
-		old.FocusVisit = &core.FocusVisit{}
-		cmds = append(cmds, fromCore(core.CaptureFocus(old, old.FocusVisit, false)))
-	}
+	old := m.entered
 	m.entered = t
-	cmds = append(cmds, fromCore(m.Enter(t, now)), fromCore(m.LookUpGoal(t)), fromCore(m.WakeTab(t)))
-	if s := m.splitTab(); s != nil && s != t {
-		cmds = append(cmds, fromCore(m.WakeTab(s)))
-	}
-	t.Unseen = nil
-	if t.FocusVisit != nil {
-		cmds = append(cmds, fromCore(core.CaptureFocus(t, t.FocusVisit, true)))
-	}
-	return tea.Batch(cmds...)
+	return m.do(core.SwitchTab{Left: m.Ref(old), To: m.Ref(t), Beside: m.Ref(m.splitTab())})
 }
 
 // openSummary shows the active tab's last summary again.
@@ -190,12 +176,7 @@ func (d *noteDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "enter":
 		m.dialog = nil
-		if m.TabIndex(d.t) >= 0 {
-			d.t.Note = strings.TrimSpace(d.input.Value())
-			m.SaveSession()
-			m.resizePanes() // the panel above the agent may have changed height
-		}
-		return nil
+		return m.do(core.NoteTab{T: m.Ref(d.t), Note: d.input.Value()})
 	}
 	var cmd tea.Cmd
 	d.input, cmd = d.input.Update(msg)

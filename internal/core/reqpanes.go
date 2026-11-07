@@ -13,14 +13,20 @@ func init() {
 		SendFindings{}, CarryOnConversation{})
 }
 
-// SeeAgent is the user going to agent A's pane: what it did is seen, and
-// its queue, paused by the user's typing, goes on.
-type SeeAgent struct{ A TabRef }
+// SeeAgent is the user going to agent A's pane, or looking at it: what it
+// did is seen, and its queue, paused by the user's typing, goes on, unless
+// they only glanced at it (Glance).
+type SeeAgent struct {
+	A      TabRef
+	Glance bool
+}
 
 func (q SeeAgent) Do(m *Core) Cmd {
 	if a := m.ByRef(q.A); a != nil {
 		a.Seen()
-		a.QueuePaused = false
+		if !q.Glance {
+			a.QueuePaused = false
+		}
 	}
 	return nil
 }
