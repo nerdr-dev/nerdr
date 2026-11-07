@@ -200,22 +200,12 @@ func (m *Core) AddTabBeside(name, dir, group string, wts []workspace.Worktree, k
 // the config's, if any, and task marked as from a sandboxed agent when
 // sandboxed is set.
 func (m *Core) AddTabWith(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, model, task string, sandboxed bool) (*Tab, Cmd) {
-	group = m.RememberGroup(dir, group, wts)
-	t := &Tab{AgentState: Agent{Tab: state.Tab{
-		ID:        NewTabID(),
-		Name:      name,
-		Dir:       dir,
-		Agent:     kind,
-		Model:     model,
-		Worktrees: wts,
-		Group:     group,
-	}}}
-	TrustWorktrees(t)
-	m.Tabs = append(m.Tabs, t)
-	m.AddMessageFrom(t, task, true, sandboxed) // before the start, which may take it
-	cmd := m.Start(t, false)
-	m.SaveSession()
-	return t, Batch(cmd, m.Tell(LayoutMsg{}))
+	return m.addTab(AddTab{ID: NewTabID(), Name: name, Dir: dir, Group: group, Wts: wts, Kind: kind, Model: model, Task: task, Sandboxed: sandboxed})
+}
+
+// newSessionTab is the session's part of a new tab.
+func newSessionTab(id, name, dir string, kind agents.Kind, model, group string, wts []workspace.Worktree) state.Tab {
+	return state.Tab{ID: id, Name: name, Dir: dir, Agent: kind, Model: model, Worktrees: wts, Group: group}
 }
 
 // onSpinoff takes the parts an agent sent.

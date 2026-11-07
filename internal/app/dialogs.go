@@ -387,7 +387,6 @@ func (c *closeTab) view(m *Model, w, h int) string {
 	return box("Close tab", lines, w)
 }
 
-
 // closeTab removes t from the row, stops its agent and, if asked, deletes
 // its worktrees once the agent is gone. With branchHeads, it deletes the
 // branches too, each only if it still points at its head there, by path.

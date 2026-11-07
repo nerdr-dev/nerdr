@@ -444,9 +444,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case core.DetectMsg:
 		return m.detect()
 
-	case core.SpinoffMsg:
-		return m.spinoffMade(msg)
-
 	case usageReadMsg:
 		m.onUsageRead(msg)
 		return nil
