@@ -306,6 +306,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.handleQuitting(ev)
 	}
 	switch ev := ev.(type) {
+	case RequestEv:
+		return ev.R.Do(m), true
 	case hooks.Report:
 		return m.OnReport(ev), true
 	case TabMadeMsg:
@@ -383,6 +385,8 @@ func (m *Core) handleQuitting(ev Event) (Cmd, bool) {
 	case ClaimMsg:
 		m.OnClaim(ev)
 		return nil, true
+	case RequestEv:
+		return nil, true // nothing changes now but what quitting does
 	}
 	return nil, false
 }
