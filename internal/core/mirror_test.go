@@ -2,7 +2,9 @@ package core
 
 import (
 	"bytes"
+	"encoding"
 	"reflect"
+	"slices"
 	"testing"
 	"time"
 
@@ -40,6 +42,7 @@ func mirrored() (*Core, *Tab, *Tab) {
 	b.Summary = &Summary{T: b, Add: 3}
 	m.Tabs = []*Tab{a, b}
 	m.Overlaps = map[string][]Overlap{"a": {{With: b, Files: []string{"x/go.mod"}}}}
+	m.Shared = map[string]map[FileKey][]string{"a": {{Repo: "/r/x", File: "go.mod"}: {"b"}}}
 	run := &PluginRun{Id: "run1", T: a, From: beside, Values: map[string]any{"n": 2}}
 	m.PluginRuns = PluginRuns{Runs: map[string]*PluginRun{"k": run}, ByID: map[string]*PluginRun{"run1": run}}
 	m.PluginUIs = map[string]*PluginUI{"a\x00/p": {T: a, Dir: "/p", Key: "a\x00/p"}}
@@ -90,6 +93,8 @@ func TestMirror(t *testing.T) {
 		t.Error("summary")
 	case c.Overlaps["a"][0].With != b:
 		t.Error("overlap")
+	case !slices.Equal(c.Shared["a"][FileKey{Repo: "/r/x", File: "go.mod"}], []string{"b"}):
+		t.Errorf("shared: %v", c.Shared)
 	case c.PluginRuns.Runs["k"].T != a || c.PluginRuns.ByID["run1"].From != beside:
 		t.Error("plugin run")
 	case c.PluginUIs["a\x00/p"].T != a:
@@ -243,7 +248,16 @@ func TestWireFields(t *testing.T) {
 		switch ty.Kind() {
 		case reflect.Func, reflect.Chan, reflect.Complex64, reflect.Complex128, reflect.UnsafePointer:
 			t.Errorf("%s (%s) cannot go as JSON: mark it json:\"-\"", path, ty)
-		case reflect.Pointer, reflect.Slice, reflect.Array, reflect.Map:
+		case reflect.Map:
+			// A map's keys go as JSON's names: strings, numbers, or text.
+			k := ty.Key()
+			text := k.Implements(reflect.TypeFor[encoding.TextMarshaler]()) &&
+				reflect.PointerTo(k).Implements(reflect.TypeFor[encoding.TextUnmarshaler]())
+			if k.Kind() != reflect.String && (k.Kind() < reflect.Int || k.Kind() > reflect.Uint64) && !text {
+				t.Errorf("%s: a key of %s cannot go as JSON: give it MarshalText and UnmarshalText", path, k)
+			}
+			walk(path, ty.Elem())
+		case reflect.Pointer, reflect.Slice, reflect.Array:
 			walk(path, ty.Elem())
 		case reflect.Struct:
 			for i := range ty.NumField() {
