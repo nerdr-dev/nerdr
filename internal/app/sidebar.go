@@ -127,7 +127,7 @@ func (m *Model) toggleSideSmall() tea.Cmd {
 	} else {
 		m.sideSmall = !m.sideSmall
 	}
-	m.SaveSession()
+	m.saveLayout()
 	return m.resize()
 }
 
