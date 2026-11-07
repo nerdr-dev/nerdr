@@ -196,5 +196,13 @@ func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 	}
 }
 
+// Started reports whether a program came, since it was last asked, that
+// the copy did not know: one the client is to size. C.Mu is held.
+func (cc *CoreConn) Started() bool {
+	s := cc.mirror.started
+	cc.mirror.started = false
+	return s
+}
+
 // Close closes the connection.
 func (cc *CoreConn) Close(reason string) { cc.conn.Close(reason) }

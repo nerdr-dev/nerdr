@@ -203,6 +203,8 @@ type Mirror struct {
 	order  []string
 	listed map[string]bool // the agents core's part says there are
 	progs  []ProgramState  // the programs core's part says run
+	// started is set when a program came that the copy did not know.
+	started bool
 }
 
 // NewMirror is a Mirror of nothing yet, into c.
@@ -313,12 +315,16 @@ func (r *Mirror) applyCore(body []byte) error {
 // programs marks in the copy the programs core runs, which it has no
 // term.Pane of: the agents', and the plugins' screens; see Core.Runs.
 func (r *Mirror) programs() {
+	known := r.C.programs
 	r.C.programs = map[ProgramRef]bool{}
 	for _, a := range r.agents {
 		a.remote = remoteNone
 	}
 	for _, ps := range r.progs {
 		r.C.programs[ps.Ref] = true
+		if !known[ps.Ref] {
+			r.started = true
+		}
 		if a := r.agents[ps.Agent]; a != nil && ps.Agent != "" {
 			a.remote = remoteRuns
 			if ps.Exited {

@@ -38,6 +38,10 @@ handle() {
         --state "$state" --agent-session-id "sess-$state" --seq "$(date +%s)$(printf %04d "$n")" \
         && echo "reported $state" || echo "report failed"
       ;;
+    size)
+      # The size of its terminal, as it is now.
+      echo "size is $(stty size)"
+      ;;
     gap)
       # Working, but with nothing a rule knows as working on screen: the
       # title cleared, the prompt box above still showing. Only the drawing
