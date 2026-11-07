@@ -42,6 +42,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.LayoutMsg:
 		m.Gen++
 		return toCore(m.resize())
+	case core.ReposDoneMsg:
+		if t := m.ByRef(ev.T); t != nil {
+			return toCore(m.reposDone(t, ev.Text))
+		}
 	case core.TypedInMsg:
 		if a := m.ByRef(ev.A); a != nil {
 			return toCore(m.typedIn(a, ev.Enter))

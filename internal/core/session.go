@@ -1,6 +1,11 @@
 package core
 
-import "github.com/nerdr-dev/nerdr/internal/state"
+import (
+	"os"
+	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/state"
+)
 
 // Layout is what the session keeps of the client's: how it shows the tabs.
 type Layout struct {
@@ -34,5 +39,41 @@ func (m *Core) SaveSession() {
 	s.SandboxedDirs = m.SandboxedDirs
 	if err := state.Save(s); err != nil {
 		m.Toast("could not save session: " + err.Error())
+	}
+}
+
+// Restore takes up session sess, as read when nerdr starts: its tabs,
+// their agents not started yet, and what was known of the pull requests,
+// the issues, the groups and where agents ran in a sandbox. now is when
+// it starts.
+func (m *Core) Restore(sess state.Session, now time.Time) {
+	for _, st := range sess.Tabs {
+		t := &Tab{AgentState: Agent{Tab: st, Light: StStarting}}
+		TrustWorktrees(t)
+		t.TakeQueue()
+		m.RestoreAgents(t)
+		if t.LastActive.IsZero() {
+			t.LastActive = now // from before it was kept: not cold on that account
+		}
+		m.Tabs = append(m.Tabs, t)
+	}
+	m.LoadPRWatch(sess.PRs)
+	m.LoadIssueWatch(sess.Issues)
+	m.GroupNames = sess.GroupNames
+	m.SandboxedDirs = sess.SandboxedDirs
+	if m.GroupNames == nil {
+		m.GroupNames = map[string]string{}
+	}
+	if m.SandboxedDirs == nil {
+		m.SandboxedDirs = map[string]bool{}
+	} else {
+		for dir := range m.SandboxedDirs {
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				delete(m.SandboxedDirs, dir)
+			}
+		}
+	}
+	for _, t := range m.Tabs {
+		m.MarkSandboxed(t)
 	}
 }

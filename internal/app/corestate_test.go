@@ -169,7 +169,7 @@ func coreChanges() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c := checker{info: info, pkg: pkg, count: map[string]int{}, alias: map[types.Object]bool{}}
+	c := checker{info: info, pkg: pkg, count: map[string]int{}, alias: map[types.Object]bool{}, fresh: map[types.Object]bool{}}
 	for _, f := range files {
 		ast.Inspect(f, func(n ast.Node) bool { c.aliases(n); return true })
 	}
@@ -197,18 +197,33 @@ type checker struct {
 	// alias are the variables of the functions' own that point into
 	// core's state: a slice, a map or a pointer taken from it.
 	alias map[types.Object]bool
+	// fresh are those that hold a value of core's type made there, from a
+	// composite literal: the function's own until it hands it on.
+	fresh map[types.Object]bool
 }
 
 // aliases marks the variables n sets to point into core's state.
 func (c *checker) aliases(n ast.Node) {
 	mark := func(lhs, rhs ast.Expr) {
 		id, ok := lhs.(*ast.Ident)
-		if !ok || rhs == nil || !c.pointsIntoCore(rhs) {
+		if !ok || rhs == nil {
 			return
 		}
-		if obj := c.info.Defs[id]; obj != nil {
-			c.alias[obj] = true
-		} else if obj := c.info.Uses[id]; obj != nil {
+		obj := c.info.Defs[id]
+		if obj == nil {
+			obj = c.info.Uses[id]
+		}
+		if obj == nil {
+			return
+		}
+		if u, ok := rhs.(*ast.UnaryExpr); ok && u.Op == token.AND {
+			rhs = u.X
+		}
+		if _, ok := rhs.(*ast.CompositeLit); ok {
+			c.fresh[obj] = true
+			return
+		}
+		if c.pointsIntoCore(rhs) {
 			c.alias[obj] = true
 		}
 	}
@@ -302,7 +317,7 @@ var clientFields = map[string]bool{"Gen": true, "Cfg": true, "Client": true}
 // write counts e, written or taken the address of, when it is core's
 // state: reached through core's types, and not a copy of its own.
 func (c *checker) write(file string, e ast.Expr) {
-	if c.clientsOwn(e) {
+	if c.clientsOwn(e) || c.fresh[c.root(e)] {
 		return
 	}
 	if c.throughCore(e) && c.shared(e) {
@@ -353,6 +368,26 @@ func (c *checker) inConfig(e ast.Expr) bool {
 			e = x.X
 		default:
 			return false
+		}
+	}
+}
+
+// root is the variable e is reached from, nil when none.
+func (c *checker) root(e ast.Expr) types.Object {
+	for {
+		switch x := e.(type) {
+		case *ast.SelectorExpr:
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.StarExpr:
+			e = x.X
+		case *ast.ParenExpr:
+			e = x.X
+		case *ast.Ident:
+			return c.info.Uses[x]
+		default:
+			return nil
 		}
 	}
 }

@@ -292,16 +292,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		m.mouse = mouseOff
 	}
 	now := time.Now()
-	for _, st := range sess.Tabs {
-		t := &core.Tab{AgentState: core.Agent{Tab: st, Light: core.StStarting}}
-		core.TrustWorktrees(t)
-		t.TakeQueue()
-		m.RestoreAgents(t)
-		if t.LastActive.IsZero() {
-			t.LastActive = now // from before it was kept: not cold on that account
-		}
-		m.Tabs = append(m.Tabs, t)
-	}
+	m.Restore(sess, now)
 	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
 		m.Active = sess.Active
 	}
@@ -314,26 +305,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 			m.reviewOpen = false
 		}
 	}
-	m.LoadPRWatch(sess.PRs)
-	m.LoadIssueWatch(sess.Issues)
-	m.GroupNames = sess.GroupNames
-	m.SandboxedDirs = sess.SandboxedDirs
 	m.sideWidth = sess.SideWidth
-	if m.GroupNames == nil {
-		m.GroupNames = map[string]string{}
-	}
-	if m.SandboxedDirs == nil {
-		m.SandboxedDirs = map[string]bool{}
-	} else {
-		for dir := range m.SandboxedDirs {
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				delete(m.SandboxedDirs, dir)
-			}
-		}
-	}
-	for _, t := range m.Tabs {
-		m.MarkSandboxed(t)
-	}
 	m.Client = m
 	return m
 }
@@ -610,9 +582,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			msg.d.onChecked(msg)
 		}
 		return nil
-
-	case reposChangedMsg:
-		return m.onReposChanged(msg)
 
 	case closeShowMsg:
 		if m.dialog == msg.c {

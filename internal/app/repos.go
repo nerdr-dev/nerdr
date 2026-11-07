@@ -1,13 +1,10 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
-	"slices"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -36,39 +33,16 @@ type repoDialog struct {
 	cursor int
 	// change is what was picked, once git has been asked about it; the
 	// dialog then asks whether to go ahead.
-	change *repoChange
+	change *core.RepoChange
 	busy   string
 	err    string
-}
-
-// repoChange is the tab's repositories to add and worktrees to delete.
-type repoChange struct {
-	add             workspace.Plan
-	remove          []workspace.Worktree
-	dirty, unpushed []string
-	// nest is set when the tab's one worktree is its folder, to be moved
-	// into it before another goes beside it.
-	nest bool
 }
 
 // repoCheckedMsg is what git said about the change d asked for.
 type repoCheckedMsg struct {
 	d      *repoDialog
-	change *repoChange
+	change *core.RepoChange
 	err    error
-}
-
-// reposChangedMsg is the tab's worktrees once the change was made, as far
-// as it went: err says where it stopped.
-type reposChangedMsg struct {
-	t        *core.Tab
-	wts      []workspace.Worktree
-	added    []workspace.Worktree
-	removed  []workspace.Worktree
-	nested   *workspace.Worktree
-	restart  []*core.Tab
-	warnings []string
-	err      error
 }
 
 // openRepos opens the dialog for the active tab's repositories.
@@ -137,7 +111,7 @@ func (d *repoDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	if c := d.change; c != nil {
-		lose := len(c.dirty) > 0
+		lose := len(c.Dirty) > 0
 		switch k {
 		case "Y":
 			return d.apply(m)
@@ -201,15 +175,15 @@ func (d *repoDialog) check(m *Model) tea.Cmd {
 	dir, branch := t.Dir, t.Worktrees[0].Branch
 	d.busy, d.err = "checking…", ""
 	return func() tea.Msg {
-		c := &repoChange{remove: remove, nest: nest}
+		c := &core.RepoChange{Remove: remove, Nest: nest}
 		if len(add) > 0 {
 			plan, err := workspace.PlanAdd(dir, branch, add)
 			if err != nil {
 				return repoCheckedMsg{d: d, err: err}
 			}
-			c.add = plan
+			c.Add = plan
 		}
-		c.dirty, c.unpushed = workspace.Dirty(remove), workspace.Unpushed(remove)
+		c.Dirty, c.Unpushed = workspace.Dirty(remove), workspace.Unpushed(remove)
 		return repoCheckedMsg{d: d, change: c}
 	}
 }
@@ -224,225 +198,26 @@ func (d *repoDialog) onChecked(msg repoCheckedMsg) {
 	d.change = msg.change
 }
 
-// apply makes the change, once the user has allowed the new repositories'
-// setup. The dialog closes: the tab says how it went.
+// apply has core make the change, once the user has allowed the new
+// repositories' setup. The dialog closes: the tab says how it went.
 func (d *repoDialog) apply(m *Model) tea.Cmd {
-	c, t := d.change, d.t
 	m.dialog = nil
-	if m.TabIndex(t) < 0 {
+	if m.TabIndex(d.t) < 0 {
 		return nil
 	}
-	if len(c.add.Items) == 0 {
-		return m.changeRepos(t, c)
-	}
-	var repos []string
-	for _, it := range c.add.Items {
-		repos = append(repos, it.Repo.Path)
-	}
-	return m.askSetup(repos, func(m *Model) tea.Cmd {
-		m.dialog = nil
-		return m.changeRepos(t, c)
-	})
+	return m.do(core.ChangeRepos{T: m.Ref(d.t), C: *d.change})
 }
 
-// changeRepos makes change c to t's worktrees in the background. A tab
-// whose worktree is moved has every program in it stopped first: its
-// agents, started again once it is done, and its terminals, closed.
-func (m *Model) changeRepos(t *core.Tab, c *repoChange) tea.Cmd {
-	if m.TabIndex(t) < 0 {
-		return nil
-	}
-	if why := m.ReposOff(t); why != "" {
-		// Changed or closed since the dialog asked git: what it found
-		// may no longer be so.
-		m.toast(t.Name + ": " + why)
-		return nil
-	}
-	t.ReposBusy = true
-	var progs []*term.Pane
-	var restart []*core.Tab
-	if c.nest {
-		for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
-			if a.Pane != nil {
-				progs = append(progs, a.Pane)
-				a.Pane = nil
-			}
-			a.Light = core.StStarting
-			restart = append(restart, a)
-		}
-		for _, p := range append([]*core.PaneTab{}, t.Panes()...) {
-			if p.Kind == core.PaneShell {
-				if p.Shell != nil {
-					progs = append(progs, p.Shell)
-				}
-				m.DropPane(t, p)
-			}
-		}
-		m.scrolling = false
-		m.resizePanes()
-	}
-	m.toast(t.Name + ": " + c.doing())
-	wts := append([]workspace.Worktree(nil), t.Worktrees...)
-	allowed := core.SetupAllowedFile()
-	force := len(c.dirty) > 0
-	remove := append([]workspace.Worktree(nil), c.remove...)
-	return func() tea.Msg {
-		for _, p := range progs {
-			p.Close()
-		}
-		out := reposChangedMsg{t: t, wts: wts, restart: restart}
-		if c.nest {
-			w, err := workspace.Nest(wts[0])
-			if err != nil {
-				out.err = err
-				return out
-			}
-			// One let go of in the same change is deleted where it is now.
-			for i := range remove {
-				if core.SamePath(remove[i].Path, wts[0].Path) {
-					remove[i] = w
-				}
-			}
-			out.wts[0], out.nested = w, &w
-		}
-		if len(c.add.Items) > 0 {
-			plan := c.add
-			warnings, err := plan.Sync()
-			out.warnings = append(out.warnings, warnings...)
-			var made []workspace.Worktree
-			if err == nil {
-				made, err = plan.Execute()
-			}
-			if err != nil {
-				out.err = err
-				return out
-			}
-			out.warnings = append(out.warnings, workspace.Prepare(made, plan.SetupIn(), allowed, func(string) {})...)
-			out.wts = append(out.wts, made...)
-			out.added = made
-		}
-		for _, w := range remove {
-			if err := workspace.Remove("", []workspace.Worktree{w}, force); err != nil {
-				out.err = err
-				continue
-			}
-			out.wts = slices.DeleteFunc(out.wts, func(x workspace.Worktree) bool { return core.SamePath(x.Path, w.Path) })
-			out.removed = append(out.removed, w)
-		}
-		return out
-	}
-}
-
-// onReposChanged puts t's worktrees as they are now in place, and brings
-// what shows them up to date: the group, the review panel's screens, the
-// skills, and its agents, which are told.
-func (m *Model) onReposChanged(msg reposChangedMsg) tea.Cmd {
-	t := msg.t
-	t.ReposBusy = false
-	var cmds []tea.Cmd
-	live := m.TabIndex(t) >= 0
-	for _, a := range msg.restart {
-		if live && m.Live(a) {
-			cmds = append(cmds, fromCore(m.Start(a, true)))
-		}
-	}
-	if !live {
-		return tea.Batch(cmds...)
-	}
-	before := len(t.Worktrees)
-	t.Worktrees = msg.wts
-	core.TrustWorktrees(t)
-	for _, a := range t.ExtraAgents() {
-		a.Worktrees = t.Worktrees
-	}
-	switch {
-	case len(t.Worktrees) > 1 && before < 2:
-		t.Group = m.RememberGroup(t.Dir, "", t.Worktrees)
-	case len(t.Worktrees) < 2:
-		t.Group = ""
-	}
-	// F1 is pinned to the worktrees again, F2 shows their branches, and
-	// F4 looks for the skills where the agent starts.
-	t.Info.Stale, t.Info.StalePR = true, true
+// reposDone is t's repositories changed by core: what shows them is
+// brought up to date, and text says how it went.
+func (m *Model) reposDone(t *core.Tab, text string) tea.Cmd {
 	if p := m.branchPanel; p != nil && p.t == t && p.busy == "" {
 		m.branchPanel = nil
 	}
-	m.SkillLook.Key = ""
-	m.InstallProjectSkills(t)
-	if note := msg.note(t); note != "" {
-		for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
-			m.AddMessage(a, note, true)
-		}
-	}
-	m.SaveSession()
-	m.FindOverlaps()
 	m.resizePanes()
 	m.reportHerdr() // its group may have changed
-	switch {
-	case msg.err != nil:
-		m.toast(t.Name + ": " + msg.err.Error())
-	case len(msg.warnings) > 0:
-		m.toast(t.Name + ": " + strings.Join(msg.warnings, "; "))
-	default:
-		m.toast(t.Name + ": " + msg.done())
-	}
-	cmds = append(cmds, m.pinReview(), m.syncPRPanel(), fromCore(m.RefreshInfo()), m.resize())
-	return tea.Batch(cmds...)
-}
-
-// doing says what c is about to do.
-func (c *repoChange) doing() string {
-	var parts []string
-	if c.nest {
-		parts = append(parts, "moving the worktree into the tab's folder")
-	}
-	if n := len(c.add.Items); n > 0 {
-		parts = append(parts, fmt.Sprintf("adding %d repositor%s", n, core.YIes(n)))
-	}
-	if n := len(c.remove); n > 0 {
-		parts = append(parts, fmt.Sprintf("deleting %d worktree%s", n, pluralS(n)))
-	}
-	return strings.Join(parts, ", ") + "…"
-}
-
-// done says what the change did.
-func (msg reposChangedMsg) done() string {
-	var parts []string
-	for _, w := range msg.added {
-		parts = append(parts, "added "+filepath.Base(w.Repo))
-	}
-	for _, w := range msg.removed {
-		parts = append(parts, "removed "+filepath.Base(w.Repo)+", its branch kept")
-	}
-	if len(msg.restart) > 0 {
-		parts = append(parts, "the agent"+pluralS(len(msg.restart))+" started again")
-	}
-	return strings.Join(parts, "; ")
-}
-
-// note is what t's agents are told of the change: it cannot see it
-// otherwise, and its NERDR_WORKTREES is as it was when it started.
-func (msg reposChangedMsg) note(t *core.Tab) string {
-	if len(msg.added) == 0 && len(msg.removed) == 0 && msg.nested == nil {
-		return ""
-	}
-	var b strings.Builder
-	b.WriteString("nerdr: the repositories of this tab have changed.")
-	if w := msg.nested; w != nil {
-		fmt.Fprintf(&b, " The worktree of %s moved to %s; you now start in %s, the folder above it.", filepath.Base(w.Repo), w.Path, t.Dir)
-	}
-	for _, w := range msg.added {
-		fmt.Fprintf(&b, " Added %s: its worktree is %s, on branch %s.", filepath.Base(w.Repo), w.Path, w.Branch)
-	}
-	for _, w := range msg.removed {
-		fmt.Fprintf(&b, " Removed %s: its worktree %s is deleted, its branch %s kept.", filepath.Base(w.Repo), w.Path, w.Branch)
-	}
-	b.WriteString(" The tab's worktrees are now:")
-	for _, w := range t.Worktrees {
-		b.WriteString(" " + w.Path)
-	}
-	b.WriteString(". Nothing to do about it unless your task needs it.")
-	return b.String()
+	m.toast(text)
+	return tea.Batch(m.pinReview(), m.syncPRPanel(), m.resize())
 }
 
 func (d *repoDialog) view(m *Model, w, h int) string {
@@ -494,35 +269,35 @@ func (d *repoDialog) view(m *Model, w, h int) string {
 }
 
 // changeLines asks whether to make change c.
-func (d *repoDialog) changeLines(m *Model, c *repoChange) []string {
+func (d *repoDialog) changeLines(m *Model, c *core.RepoChange) []string {
 	var lines []string
-	if c.nest {
+	if c.Nest {
 		lines = append(lines,
 			"The worktree moves into "+dim(d.t.Dir)+" under its repository's name,",
 			"so the new ones can go beside it. Its agents stop and start again on",
 			"their conversations; its terminals close.", "")
 	}
-	if len(c.add.Items) > 0 {
-		lines = append(lines, "Adds, on "+c.add.Branch+":")
-		for _, l := range c.add.Describe() {
+	if len(c.Add.Items) > 0 {
+		lines = append(lines, "Adds, on "+c.Add.Branch+":")
+		for _, l := range c.Add.Describe() {
 			lines = append(lines, "  "+l)
 		}
 		lines = append(lines, "")
 	}
-	if len(c.remove) > 0 {
+	if len(c.Remove) > 0 {
 		lines = append(lines, "Deletes the worktree, keeping the branch:")
-		for _, w := range c.remove {
+		for _, w := range c.Remove {
 			lines = append(lines, "  "+filepath.Base(w.Repo)+"  "+dim(w.Path))
 		}
-		if len(c.dirty) > 0 {
-			lines = append(lines, warn("uncommitted changes in: "+strings.Join(c.dirty, ", ")+" — they will be lost"))
+		if len(c.Dirty) > 0 {
+			lines = append(lines, warn("uncommitted changes in: "+strings.Join(c.Dirty, ", ")+" — they will be lost"))
 		}
-		if len(c.unpushed) > 0 {
-			lines = append(lines, dim("commits not pushed in: "+strings.Join(c.unpushed, ", ")+" — kept in the branch"))
+		if len(c.Unpushed) > 0 {
+			lines = append(lines, dim("commits not pushed in: "+strings.Join(c.Unpushed, ", ")+" — kept in the branch"))
 		}
 		lines = append(lines, "")
 	}
-	if len(c.dirty) > 0 {
+	if len(c.Dirty) > 0 {
 		return append(lines, m.button("Y", "go ahead anyway")+"   "+m.button("n", "back"))
 	}
 	return append(lines, m.button("y", "go ahead")+dim(" (enter)")+"   "+m.button("n", "back"))
