@@ -554,10 +554,15 @@ func (t *Tab) Lit() Status {
 // AgentLit is agent t's light, unless a reviewer of its work wants more
 // of a look. A reviewer asking something is red over anything, one
 // working yellow over a finished agent's green, one with only a process
-// left running cyan over it: the review is not over.
+// left running cyan over it: the review is not over. A review done whose
+// findings wait for the user to say whether they go to the agent is red
+// too: it is asking something of them.
 func (t *Tab) AgentLit() Status {
 	s := t.Light
-	if t.Review == nil || s == StBlocked {
+	if s == StBlocked || t.FindingsToDecide() {
+		return StBlocked
+	}
+	if t.Review == nil {
 		return s
 	}
 	for _, seat := range t.Review.Seats {
@@ -617,6 +622,12 @@ func (t *Tab) ReviewDoneStale() bool {
 	}
 	i := t.FindMessage(msg)
 	return i < 0 || t.Messages[i].Auto
+}
+
+// FindingsToDecide reports whether a review done in t has findings, or
+// remarks, that wait for the user to say whether they go to t's agent.
+func (t *Tab) FindingsToDecide() bool {
+	return t.ReviewDone != nil && t.ReviewDone.Msg.Text != "" && !t.ReviewDoneStale()
 }
 
 // FindingsWait reports whether a review's findings wait in t's messages
