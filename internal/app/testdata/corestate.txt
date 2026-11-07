@@ -14,30 +14,9 @@ app.go: call *TypedLine.Feed 1
 app.go: write a.Typed 1
 app.go: write m.Quitting 1
 dialogs.go: call *Held.Shutdown 1
-issuelist.go: call *Core.RefreshIssues 1
 issuelist.go: write m.IssueWatch 1
-issuepanel.go: call *Core.RefreshIssues 1
-issuepanel.go: call *Core.TakeIssueNews 1
-issuewatch.go: write m.IssueWatch 2
-issuewatch.go: write w.All 1
-issuewatch.go: write w.AllBusy 2
-issuewatch.go: write w.All[] 1
-pluginruns.go: call *Core.Answer 2
-pluginspanel.go: call *Core.StartPluginUI 1
-pluginspanel.go: call *Core.StopPickedRun 1
-pluginspanel.go: call *Core.StopPluginUI 1
-pluginspanel.go: write m.PluginUIH 1
-pluginspanel.go: write m.PluginUIW 1
-prlist.go: call *Core.RefreshPRs 2
-prmenu.go: call *Core.RefreshInfo 1
-prmenu.go: call *Tab.LookAgain 1
+issuewatch.go: write m.IssueWatch 1
 prompts.go: call *TypedLine.Feed 1
-prpanel.go: call *Core.AddMessage 1
-prpanel.go: call *Core.RefreshInfo 2
-prpanel.go: call *Core.TakePRNews 1
-prpanel.go: call *Tab.LookAgain 2
-reposetup.go: call *Core.Answer 2
-reposetup.go: call *Core.AskSetup 1
 settings.go: config changed, core not told: reloadConfig 1
 setup.go: call *Core.ApplySkills 1
 setup.go: config changed, core not told: save 1

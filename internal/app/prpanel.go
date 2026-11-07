@@ -156,8 +156,7 @@ func (m *Model) branchKey(k string) (tea.Cmd, bool) {
 		return nil, true
 	case "r":
 		// The panel reloads the PR too: the key goes on to it.
-		p.t.LookAgain(true)
-		return fromCore(m.RefreshInfo()), false
+		return m.do(core.LookAgain{T: m.Ref(p.t), PR: true}), false
 	}
 	return nil, false
 }
@@ -174,8 +173,7 @@ func (m *Model) syncPRPanel() tea.Cmd {
 	branch := m.panelBranchPR()
 	if branch && !m.branchShown {
 		if t := m.Cur(); t != nil {
-			t.LookAgain(false)
-			look = fromCore(m.RefreshInfo())
+			look = m.do(core.LookAgain{T: m.Ref(t)})
 		}
 	}
 	m.branchShown = branch
@@ -203,9 +201,10 @@ func (m *Model) syncAllPRs() tea.Cmd {
 		if d.news == nil {
 			d.news = map[string][]string{}
 		}
-		for k, whats := range m.TakePRNews() {
+		for k, whats := range m.PRNewsByKey() {
 			d.news[k] = append(d.news[k], whats...)
 		}
+		m.do(core.ClearPRNews{})
 	}
 	if !entered {
 		return nil
@@ -420,7 +419,7 @@ func (m *Model) onPRAsk(msg prAskMsg) {
 	case m.TabIndex(msg.t) < 0:
 		m.toast(msg.t.Name + " was closed")
 	default:
-		m.AddMessage(msg.t, msg.text, false)
+		m.do(core.AddMessages{To: []core.TabRef{m.Ref(msg.t)}, Text: msg.text})
 		m.toast("in " + msg.t.Name + "'s " + m.screenKey(3) + ": a message to " + msg.what + " — read it there, then send it")
 	}
 }

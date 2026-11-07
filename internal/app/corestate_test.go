@@ -49,6 +49,7 @@ func init() {
 		*Core.SearchRoots *Core.ReviewModel *Core.ReviewerNames
 		*Core.KnownGroupNames *Core.HeldAgent *Core.GroupCount *Core.CutOff
 		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
+		*Core.PRNewsByKey *Core.IssueNewsByKey
 		Request.Do
 
 		*Agent.AutoCount

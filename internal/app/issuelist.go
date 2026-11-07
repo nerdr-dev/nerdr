@@ -107,7 +107,7 @@ func (d *issueList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		if d.all {
 			return m.refreshAllIssues(true)
 		}
-		return fromCore(m.RefreshIssues())
+		return m.do(core.RefreshIssues{})
 	case "a":
 		d.all = !d.all
 		d.fill(m)

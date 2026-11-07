@@ -137,13 +137,16 @@ func SortIssueEntries(entries []IssueEntry) {
 // takeIssueNews is the issues newly assigned and not seen yet, and
 // forgets them: the list they are shown in is where they are seen.
 func (m *Core) TakeIssueNews() map[string]bool {
+	out := m.IssueNewsByKey()
+	ClearIssueNews{}.Do(m)
+	return out
+}
+
+// IssueNewsByKey is the issues newly assigned to you not seen yet, by key.
+func (m *Core) IssueNewsByKey() map[string]bool {
 	out := map[string]bool{}
 	for _, n := range m.IssueWatch.News {
 		out[n.Key] = true
-	}
-	if len(m.IssueWatch.News) > 0 {
-		m.IssueWatch.News = nil
-		m.SaveSession()
 	}
 	return out
 }

@@ -258,6 +258,11 @@ type Model struct {
 	roomAsked bool
 
 	shutdown sync.Once
+
+	// afterSetup is what waits for the user to say whether repositories'
+	// .nerdr.toml may be done, by the token askSetup gave it.
+	afterSetup map[int]func(m *Model) tea.Cmd
+	lastSetup  int
 }
 
 // New builds the model for a session rooted at root.
@@ -519,10 +524,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case review.EditMsg:
 		return m.openEditor(msg)
-
-	case core.IssueAllMsg:
-		m.onIssueAll(msg)
-		return nil
 
 	case wizardPRsMsg:
 		m.onWizardPRs(msg)

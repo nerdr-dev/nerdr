@@ -507,15 +507,18 @@ func (m *Core) KeepPRNews(keep func(state.PRNews) bool) {
 // TakePRNews is the news not seen yet, by pull request, and forgets it:
 // the list it is shown in is where it is seen.
 func (m *Core) TakePRNews() map[string][]string {
+	out := m.PRNewsByKey()
+	ClearPRNews{}.Do(m)
+	return out
+}
+
+// PRNewsByKey is the news of your pull requests not seen yet, by the key
+// of each.
+func (m *Core) PRNewsByKey() map[string][]string {
 	out := map[string][]string{}
 	for _, n := range m.PRWatch.News {
 		out[n.Key] = append(out[n.Key], n.What)
 	}
-	if len(m.PRWatch.News) > 0 {
-		m.PRWatch.News = nil
-		m.SaveSession()
-	}
-	m.Tell(PRMarkMsg{})
 	return out
 }
 

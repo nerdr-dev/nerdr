@@ -50,11 +50,11 @@ func (m *Model) askRepoSetup(q core.Question) {
 		lines: lines,
 		yes: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return fromCore(m.Answer(q.ID, core.AnswerAllowed))
+			return m.do(core.Answer{ID: q.ID, Answer: core.AnswerAllowed})
 		},
 		no: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return fromCore(m.Answer(q.ID, core.RunDeclined))
+			return m.do(core.Answer{ID: q.ID, Answer: core.RunDeclined})
 		},
 	}
 }
@@ -63,5 +63,21 @@ func (m *Model) askRepoSetup(q core.Question) {
 // of each of repos may be done, asking first, through core, about those not
 // yet allowed as they are now.
 func (m *Model) askSetup(repos []string, then func(m *Model) tea.Cmd) tea.Cmd {
-	return fromCore(m.AskSetup(repos, func() core.Cmd { return toCore(then(m)) }))
+	m.lastSetup++
+	if m.afterSetup == nil {
+		m.afterSetup = map[int]func(m *Model) tea.Cmd{}
+	}
+	m.afterSetup[m.lastSetup] = then
+	return m.do(core.AskSetup{Token: m.lastSetup, Repos: repos})
+}
+
+// setupAnswered goes on with what waited for the question of askSetup
+// token.
+func (m *Model) setupAnswered(token int) tea.Cmd {
+	then := m.afterSetup[token]
+	delete(m.afterSetup, token)
+	if then == nil {
+		return nil
+	}
+	return then(m)
 }

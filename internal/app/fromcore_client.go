@@ -42,6 +42,8 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.LayoutMsg:
 		m.Gen++
 		return toCore(m.resize())
+	case core.SetupAnsweredMsg:
+		return toCore(m.setupAnswered(ev.Token))
 	case core.UnseenMsg:
 		if t := m.ByRef(ev.T); t != nil && t == m.Cur() {
 			m.review = m.review.SetUnseen(t.Unseen)

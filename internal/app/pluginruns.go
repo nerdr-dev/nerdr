@@ -154,7 +154,7 @@ type runQuestion struct {
 // answer answers the question with what; core tells of it being answered
 // with AnsweredMsg, which takes it away.
 func (q *runQuestion) answer(m *Model, what string) tea.Cmd {
-	return fromCore(m.Answer(q.q.ID, what))
+	return m.do(core.Answer{ID: q.q.ID, Answer: what})
 }
 
 // answered takes the question away once core has its answer, from the
@@ -175,7 +175,7 @@ func (q *runQuestion) answered(m *Model) {
 func (m *Model) askPluginRun(q core.Question) {
 	a, p, vals, dir := m.ByRef(q.A), q.P, q.Vals, q.Dir
 	if a == nil {
-		m.Answer(q.ID, core.RunBusy) // gone already
+		m.do(core.Answer{ID: q.ID, Answer: core.RunBusy}) // gone already
 		return
 	}
 	o := a.Owner()

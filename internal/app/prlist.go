@@ -53,7 +53,7 @@ func (m *Model) showPRs() tea.Cmd {
 	if time.Since(m.PRWatch.At) < m.GithubEvery(core.PrWatchEvery) {
 		return nil
 	}
-	return fromCore(m.RefreshPRs())
+	return m.do(core.RefreshPRs{})
 }
 
 // apply installs the list, keeping the cursor on the same PR.
@@ -102,7 +102,7 @@ func (d *prList) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		if d.all {
 			return m.refreshAllPRs(true)
 		}
-		return fromCore(m.RefreshPRs())
+		return m.do(core.RefreshPRs{})
 	case "m":
 		d.all = !d.all
 		m.applyPRs()
