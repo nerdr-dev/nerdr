@@ -100,24 +100,48 @@ func getfd(pid int) bool {
 	return false
 }
 
+// beforeStop is called once pid is seized, for a test to send it a signal
+// then.
+var beforeStop = func(pid int) {}
+
 // traces reports whether this process may trace pid. It seizes it, which
-// does not stop it, then lets it go at once: stopped just long enough to
-// be let go of, as the kernel has a tracer do.
+// does not stop it, then stops it just long enough to let it go, as the
+// kernel has a tracer do. A signal pid is sent meanwhile stops it as it
+// comes, and is passed on as it is let go: never lost.
 func traces(pid int) bool {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	if err := unix.PtraceSeize(pid); err != nil {
 		return false
 	}
+	beforeStop(pid)
+	sig := 0
 	if err := unix.PtraceInterrupt(pid); err == nil {
-		var ws unix.WaitStatus
-		for end := time.Now().Add(time.Second); time.Now().Before(end); time.Sleep(time.Millisecond) {
-			if got, err := unix.Wait4(pid, &ws, unix.WALL|unix.WNOHANG, nil); err != nil || got == pid {
-				break
-			}
-		}
+		sig = waitStop(pid)
 	}
 	// Should it fail, the kernel lets pid go when this process ends.
-	_ = unix.PtraceDetach(pid)
+	_, _, _ = unix.Syscall6(unix.SYS_PTRACE, unix.PTRACE_DETACH, uintptr(pid), 0, uintptr(sig), 0, 0)
 	return true
+}
+
+// waitStop waits, a second at most, for seized pid to stop, and is the
+// signal to pass on as it is let go: 0 for the stop asked for, or a stop
+// for its job; the signal for a stop on a signal coming to it.
+func waitStop(pid int) int {
+	var ws unix.WaitStatus
+	for end := time.Now().Add(time.Second); time.Now().Before(end); time.Sleep(time.Millisecond) {
+		got, err := unix.Wait4(pid, &ws, unix.WALL|unix.WNOHANG, nil)
+		switch {
+		case err != nil:
+			return 0
+		case got != pid:
+			continue
+		case !ws.Stopped():
+			return 0 // ended
+		case ws.TrapCause() == unix.PTRACE_EVENT_STOP:
+			return 0
+		}
+		return int(ws.StopSignal())
+	}
+	return 0
 }
