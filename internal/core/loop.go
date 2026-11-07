@@ -72,6 +72,15 @@ func NewLoop(c *Core, forward func(Event)) *Loop {
 
 // Start runs the loop until Stop.
 func (l *Loop) Start() {
+	l.StartSteps()
+	l.every(DetectEvery, detectEv{})
+	l.every(InfoTickN, infoEv{})
+}
+
+// StartSteps runs the loop until Stop, with no looks at the agents or at
+// what goes on in the background of its own: the events posted to it, and
+// a frame when a program has drawn.
+func (l *Loop) StartSteps() {
 	l.guarded(l.run)
 	l.guarded(l.deliver)
 	l.guarded(func() {
@@ -86,8 +95,6 @@ func (l *Loop) Start() {
 			l.Post(frameEv{})
 		}
 	})
-	l.every(DetectEvery, detectEv{})
-	l.every(InfoTickN, infoEv{})
 }
 
 // every posts ev every d until Stop.
