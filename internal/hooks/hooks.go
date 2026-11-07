@@ -408,7 +408,7 @@ func (s *Server) serve(c net.Conn) {
 		s.mu.Unlock()
 		_ = c.Close()
 	}()
-	cl := &client{s: s, peer: peerOf(c)}
+	cl := &client{s: s, peer: PeerOf(c)}
 	sc := bufio.NewScanner(c)
 	// A spinoff carries the prompts for the new agents, which may be long.
 	sc.Buffer(make([]byte, 64*1024), maxRequest)
