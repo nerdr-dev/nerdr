@@ -162,6 +162,16 @@ func main() {
 		case "version":
 			fmt.Println("nerdr", version())
 			return
+		case "core":
+			// nerdr's core with no terminal, as its holder starts it;
+			// see runClient.
+			os.Exit(coreMain())
+		case "connect":
+			if err := runClient(false); err != nil {
+				fmt.Fprintln(os.Stderr, "nerdr:", err)
+				os.Exit(1)
+			}
+			return
 		}
 	}
 	flag.Usage = func() { fmt.Fprintf(os.Stderr, usage, config.DefaultWorktreesDir, config.Path()) }
@@ -179,6 +189,15 @@ func main() {
 		os.Exit(2)
 	}
 
+	if os.Getenv(core.EnvHolder) == "1" && os.Getenv(holder.EnvFD) == "" {
+		// The agents in a core of their own, which the terminal is a
+		// client of.
+		if err := runClient(true); err != nil {
+			fmt.Fprintln(os.Stderr, "nerdr:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if err := overHolder(); err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr: holder:", err)
 		os.Exit(1)

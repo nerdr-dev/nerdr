@@ -168,9 +168,63 @@ func (m *Model) initRemote() tea.Cmd {
 // coreGone is the connection to core closed.
 func (m *Model) coreGone() tea.Cmd {
 	m.remote.Close("")
+	if m.closing {
+		return nil
+	}
 	m.goneErr = "the connection to nerdr's core has closed"
 	return tea.Quit
 }
 
 // GoneErr is why the TUI ended with its core gone, "" when it did not.
 func (m *Model) GoneErr() string { return m.goneErr }
+
+// Close closes the connection to core, when the TUI is a client of one in
+// another process: core works on.
+func (m *Model) Close() {
+	if m.remote != nil {
+		m.remote.Close("")
+	}
+}
+
+// closeOrQuit asks, as a client of a core in another process, whether to
+// close the client, the agents working on, or to quit, stopping them.
+type closeOrQuit struct{}
+
+func (closeOrQuit) key(m *Model, msg tea.KeyMsg) tea.Cmd {
+	switch msg.String() {
+	case "c", "C", "enter":
+		m.dialog = nil
+		return m.closeClient()
+	case "q", "Q":
+		m.dialog = nil
+		return m.quitAll()
+	case "esc", "n", "N", "ctrl+c":
+		m.dialog = nil
+	}
+	return nil
+}
+
+func (closeOrQuit) view(m *Model, w, _ int) string {
+	return box("Close or quit nerdr?", []string{
+		"Close: the agents work on; nerdr in " + m.Root,
+		"shows them again as they are.",
+		"Quit: the agents are stopped. Their tabs and conversations",
+		"are restored the next time you start nerdr there.",
+		"",
+		m.button("c", "close") + "   " + m.button("q", "quit") + "   " + m.button("esc", "cancel"),
+	}, w)
+}
+
+// closeClient ends the TUI, the agents working on in core.
+func (m *Model) closeClient() tea.Cmd {
+	m.closing = true
+	return tea.Quit
+}
+
+// quitAll has core stop every program and end, then ends the TUI.
+func (m *Model) quitAll() tea.Cmd {
+	m.toast("stopping agents…")
+	m.closing = true
+	// Waited for: core has it before the connection closes.
+	return tea.Batch(m.do(core.QuitAll{}), tea.Quit)
+}
