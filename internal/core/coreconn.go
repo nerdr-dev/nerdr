@@ -25,6 +25,7 @@ type CoreConn struct {
 	mu     sync.Mutex
 	inbox  [][]byte
 	closed bool
+	gen    int // of the connection, one more each Reconnect
 	more   chan struct{}
 	lastID int64
 }
@@ -47,15 +48,32 @@ var RunWait = 10 * time.Second
 // InboxMsg and CoreGoneMsg, from a goroutine of the connection's: it must
 // not wait for the client to take them.
 func Connect(conn *attach.Conn, c *Core, tell func(any)) *CoreConn {
-	cc := &CoreConn{C: c, conn: conn, mirror: NewMirror(c), tell: tell, more: make(chan struct{}, 1)}
-	cc.Screens = newScreenClient(conn, tell, cc.got)
+	cc := &CoreConn{C: c, mirror: NewMirror(c), tell: tell, more: make(chan struct{}, 1)}
+	cc.Reconnect(conn)
 	return cc
 }
 
-// got takes a message of core's into the inbox; nil is the connection
-// closed.
-func (cc *CoreConn) got(b []byte) {
+// Reconnect has the client go on over conn, to a core started again: what
+// it sends is taken into the same copy, whose tabs keep their pointers.
+// The screens are copied afresh, in a new Screens. C.Mu is held, but for
+// Connect.
+func (cc *CoreConn) Reconnect(conn *attach.Conn) {
 	cc.mu.Lock()
+	cc.gen++
+	gen := cc.gen
+	cc.conn, cc.inbox, cc.closed = conn, nil, false
+	cc.mu.Unlock()
+	cc.Screens = newScreenClient(conn, cc.tell, func(b []byte) { cc.got(gen, b) })
+}
+
+// got takes a message of core's into the inbox; nil is the connection
+// closed. One from a connection before the last is let go.
+func (cc *CoreConn) got(gen int, b []byte) {
+	cc.mu.Lock()
+	if gen != cc.gen {
+		cc.mu.Unlock()
+		return
+	}
 	if b == nil {
 		cc.closed = true
 	} else {

@@ -123,3 +123,57 @@ func TestRemoteTUI(t *testing.T) {
 	kp.Input([]byte("hello\r"))
 	pump(t, m, told, "what was typed", func(v string) bool { return strings.Contains(v, "got hello") })
 }
+
+// TestRemoteTUIConnectsAgain: when the connection to core closes, the
+// TUI connects again, and goes on with the same tabs.
+func TestRemoteTUIConnectsAgain(t *testing.T) {
+	m, c, _, told := remoteTUI(t, "sh", "-c", `stty -echo; echo ready; while read l; do echo "got $l"; done`)
+	pump(t, m, told, "the agent", func(v string) bool { return strings.Contains(v, "ready") })
+	m.Mu.Lock()
+	tab := m.Cur()
+	m.Mu.Unlock()
+
+	loop := core.NewLoop(c, nil)
+	loop.StartSteps()
+	t.Cleanup(loop.Stop)
+	m.SetRedial(func() (*attach.Conn, error) {
+		a, b, err := attach.Pair()
+		if err != nil {
+			return nil, err
+		}
+		t.Cleanup(func() { a.Close(""); b.Close("") })
+		c.Mu.Lock()
+		c.AttachClient(a, func(ev core.RequestEv) { loop.Post(ev) })
+		c.Mu.Unlock()
+		return b, nil
+	})
+	m.Mu.Lock()
+	m.remote.Close("") // as core gone would
+	m.Mu.Unlock()
+
+	var back tea.Cmd
+	deadline := time.After(5 * time.Second)
+	for back == nil {
+		select {
+		case msg := <-told:
+			if _, ok := msg.(core.CoreGoneMsg); ok {
+				_, back = m.Update(msg)
+			}
+		case <-deadline:
+			t.Fatal("never told core was gone")
+		}
+	}
+	m.Update(back())
+	m.Mu.Lock()
+	m.do(core.RenameTab{T: m.Ref(m.Cur()), Name: "again"})
+	same, name := m.Cur() == tab, m.Cur().Name
+	m.Mu.Unlock()
+	if !same || name != "again" {
+		t.Fatalf("after connecting again: same tab %v, name %q", same, name)
+	}
+	m.Mu.Lock()
+	kp := m.keyPane()
+	m.Mu.Unlock()
+	kp.Input([]byte("hello\r"))
+	pump(t, m, told, "typed after connecting again", func(v string) bool { return strings.Contains(v, "got hello") })
+}

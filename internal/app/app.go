@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
@@ -58,7 +59,11 @@ type Model struct {
 	goneErr string
 	// closing is set once the TUI is ending of its own will: the
 	// connection closing then is no news.
-	closing    bool
+	closing bool
+	// redial connects to core again; coreAway is set while the TUI is
+	// without it. See coreGone.
+	redial     func() (*attach.Conn, error)
+	coreAway   bool
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
@@ -454,6 +459,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case core.CoreGoneMsg:
 		return m.coreGone()
+
+	case coreBackMsg:
+		return m.coreBack(msg.conn)
 
 	case core.ChangedMsg, core.RedrawMsg:
 		return nil // only to draw what core has done

@@ -48,6 +48,10 @@ func (m *Model) Remote() bool { return m.remote != nil }
 // in what came of it: the TUI then sees core as it would have r done in its
 // own process.
 func (m *Model) doRemote(r core.Request) tea.Cmd {
+	if m.coreAway {
+		m.toast("nerdr's core is gone: connecting again…")
+		return nil
+	}
 	m.sayState()
 	evs, err := m.remote.Run(r)
 	cmd := m.told(evs)
@@ -112,6 +116,9 @@ func (m *Model) clientState() core.ClientState {
 // sayState tells core what the TUI shows, when that has changed since it
 // last did.
 func (m *Model) sayState() {
+	if m.coreAway {
+		return
+	}
 	s := m.clientState()
 	if reflect.DeepEqual(s, m.said) {
 		return
@@ -165,15 +172,55 @@ func (m *Model) initRemote() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// coreGone is the connection to core closed.
+// coreGone is the connection to core closed, core having crashed or
+// been ended: its holder starts it again, the agents living on, and the
+// TUI connects to it again when it can. Without a way to (SetRedial) it
+// ends.
 func (m *Model) coreGone() tea.Cmd {
 	m.remote.Close("")
 	if m.closing {
 		return nil
 	}
-	m.goneErr = "the connection to nerdr's core has closed"
-	return tea.Quit
+	if m.redial == nil {
+		m.goneErr = "the connection to nerdr's core has closed"
+		return tea.Quit
+	}
+	m.coreAway = true
+	m.toast("nerdr's core is gone: connecting again…")
+	redial := m.redial
+	return func() tea.Msg {
+		wait := 100 * time.Millisecond
+		for {
+			conn, err := redial()
+			if err == nil {
+				return coreBackMsg{conn}
+			}
+			core.Debugf("core: connecting again: %v", err)
+			time.Sleep(wait)
+			wait = min(2*wait, 2*time.Second)
+		}
+	}
 }
+
+// coreBackMsg is a connection to core again, once it was gone.
+type coreBackMsg struct{ conn *attach.Conn }
+
+// coreBack goes on over conn: core sends all of its state afresh, into the
+// same copy, and is told what the TUI shows.
+func (m *Model) coreBack(conn *attach.Conn) tea.Cmd {
+	m.remote.Reconnect(conn)
+	m.screens = m.remote.Screens
+	m.drawnPanes = nil
+	m.coreAway = false
+	m.said = core.ClientState{}
+	cmd := m.do(core.ClientSays{State: m.clientState()})
+	m.toast("connected to nerdr's core again")
+	return cmd
+}
+
+// SetRedial gives the TUI a way to connect to its core again, should the
+// connection close.
+func (m *Model) SetRedial(f func() (*attach.Conn, error)) { m.redial = f }
 
 // GoneErr is why the TUI ended with its core gone, "" when it did not.
 func (m *Model) GoneErr() string { return m.goneErr }
