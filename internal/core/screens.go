@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -40,13 +39,6 @@ type rowsWire struct {
 	ID int `json:"id"`
 	term.RowsMsg
 }
-
-// askWait is how long a client waits for lines it asks for; timeAfter is
-// time.After, for the tests.
-var (
-	askWait   = 2 * time.Second
-	timeAfter = time.After
-)
 
 // maxAskRows is the most lines a client is sent for one ask.
 const maxAskRows = 10000
@@ -92,11 +84,17 @@ func (q ShowScreens) Do(m *Core) Cmd {
 }
 
 // ScreenServer sends a client the screens it shows. Its requests are
-// posted to core's loop; what it is asked for lines is answered from the
-// screens shown, with Mu not held.
+// posted to core's loop, but for what the user does in a screen shown:
+// the keys, the mouse, focus and size go to its program there and then,
+// with Mu not held, so typing never waits for the loop. Lines asked for
+// are answered from the screens shown the same way.
 type ScreenServer struct {
 	conn *attach.Conn
-	post func(Request)
+	post func(RequestEv)
+	// posted counts the requests of what the user does in a screen still
+	// on their way through the loop: while there are any, the next go that
+	// way too, to keep their order.
+	posted atomic.Int64
 
 	mu    sync.Mutex
 	views map[ProgramRef]int
@@ -109,7 +107,9 @@ type ScreenServer struct {
 type shownScreen struct {
 	ref  ProgramRef
 	pane *term.Pane
-	gen  uint64 // the DrawGen last sent for
+	// typed follows what is typed into it, when core does; see KeysTo.
+	typed *TypedLine
+	gen   uint64 // the DrawGen last sent for
 	// scroll and reset are what build goes by, set by Tick.
 	scroll atomic.Int64
 	reset  atomic.Bool
@@ -121,7 +121,7 @@ type shownScreen struct {
 // NewScreenServer serves conn the screens it asks for, posting the
 // requests it sends with post to be done on core's loop, and reading
 // until the connection closes.
-func NewScreenServer(conn *attach.Conn, post func(Request)) *ScreenServer {
+func NewScreenServer(conn *attach.Conn, post func(RequestEv)) *ScreenServer {
 	s := &ScreenServer{
 		conn:  conn,
 		post:  post,
@@ -146,10 +146,13 @@ func (s *ScreenServer) read() {
 		}
 		switch b[0] {
 		case wireRequest:
-			if r, err := DecodeRequest(b[1:]); err == nil {
-				s.post(r)
-			} else {
+			r, err := DecodeRequest(b[1:])
+			if err != nil {
 				Debugf("client: %v", err)
+				continue
+			}
+			if !s.direct(r) {
+				s.post(RequestEv{R: r})
 			}
 		case wireAsk:
 			var a askWire
@@ -158,6 +161,51 @@ func (s *ScreenServer) read() {
 			}
 		}
 	}
+}
+
+// direct does what the user did in a screen shown, there and then, and
+// reports whether it did: when not, it is for the loop, and counted while
+// it is on its way.
+func (s *ScreenServer) direct(r Request) bool {
+	var ref ProgramRef
+	switch q := r.(type) {
+	case Type:
+		ref = q.Ref
+	case WriteRaw:
+		ref = q.Ref
+	case Mouse:
+		ref = q.Ref
+	case FocusProgram:
+		ref = q.Ref
+	case ResizeProgram:
+		ref = q.Ref
+	default:
+		return false
+	}
+	s.mu.Lock()
+	sc := s.shown[ref]
+	s.mu.Unlock()
+	if sc == nil || s.posted.Load() > 0 {
+		s.posted.Add(1)
+		s.post(RequestEv{R: r, Done: func() { s.posted.Add(-1) }})
+		return true
+	}
+	switch q := r.(type) {
+	case Type:
+		if sc.typed != nil {
+			sc.typed.Feed(q.B)
+		}
+		sc.pane.Input(q.B)
+	case WriteRaw:
+		sc.pane.Write(q.B)
+	case Mouse:
+		sc.pane.SendMouse(q.Ev)
+	case FocusProgram:
+		sc.pane.Focus(q.In)
+	case ResizeProgram:
+		sc.pane.Resize(q.W, q.H)
+	}
+	return true
 }
 
 // stop lets go of the screens once the client has gone.
@@ -203,7 +251,11 @@ func (s *ScreenServer) Tick(m *Core, all bool) {
 		}
 		dirty := all
 		if sc == nil {
-			sc = &shownScreen{ref: ref, pane: tp}
+			// What is typed into it is followed from now on, as when it
+			// is given the keyboard: it is typed into there and then.
+			KeysTo{ref}.Do(m)
+			_, typed := m.termOf(ref)
+			sc = &shownScreen{ref: ref, pane: tp, typed: typed}
 			s.shown[ref] = sc
 			tp.Watch(true)
 			dirty = true
@@ -231,10 +283,47 @@ func (s *ScreenServer) Tick(m *Core, all bool) {
 		}
 	}
 	clear(s.reset)
+	var unseen []*term.Pane
+	if all {
+		unseen = s.unseen(m)
+	}
 	s.mu.Unlock()
+	for _, tp := range unseen {
+		if text := tp.TakeCopied(); text != "" {
+			Debugf("osc 52: %d bytes from a program not shown, not put on the clipboard", len(text))
+		}
+	}
 	for _, sc := range send {
 		s.conn.SendFunc(sc.ref.key(), s.build(sc))
 	}
+}
+
+// unseen are the programs core runs that the client is not sent: what
+// they put on the clipboard is let go, as a client does with what comes
+// from a program not in use, so it is not taken for the user's once the
+// program is shown. Mu and s.mu are held.
+func (s *ScreenServer) unseen(m *Core) []*term.Pane {
+	shown := map[*term.Pane]bool{}
+	for _, sc := range s.shown {
+		shown[sc.pane] = true
+	}
+	var out []*term.Pane
+	add := func(tp *term.Pane) {
+		if tp != nil && !shown[tp] {
+			out = append(out, tp)
+		}
+	}
+	for _, t := range m.Tabs {
+		for _, p := range t.Panes() {
+			add(p.Term())
+		}
+	}
+	for _, u := range m.PluginUIs {
+		if u != nil {
+			add(u.Pane)
+		}
+	}
+	return out
 }
 
 // build makes sc's message as it is to be written: the rows changed since
@@ -291,30 +380,34 @@ func (s *ScreenServer) answer(a askWire) {
 // the user does in them is sent as requests.
 type ScreenClient struct {
 	conn *attach.Conn
-	wake func()
+	tell func(any)
 
 	mu     sync.Mutex
 	copies map[ProgramRef]*term.Copy
 	sent   []ScreenView
 	reset  map[ProgramRef]bool
-	asks   map[int]chan rowsWire
+	asks   map[int]func(int, [][]term.Cell)
 	askN   int
 }
 
-// NewScreenClient keeps copies of the screens conn sends, calling wake
-// when one has changed, from a goroutine of its own; wake must not wait
-// for what the client draws.
-func NewScreenClient(conn *attach.Conn, wake func()) *ScreenClient {
+// NewScreenClient keeps copies of the screens conn sends. It tells the
+// client ScreensMsg when one has changed, by tell, from a goroutine of its
+// own: tell must not wait for the client to take it.
+func NewScreenClient(conn *attach.Conn, tell func(any)) *ScreenClient {
 	c := &ScreenClient{
 		conn:   conn,
-		wake:   wake,
+		tell:   tell,
 		copies: map[ProgramRef]*term.Copy{},
 		reset:  map[ProgramRef]bool{},
-		asks:   map[int]chan rowsWire{},
+		asks:   map[int]func(int, [][]term.Cell){},
 	}
 	go c.read()
 	return c
 }
+
+// Tell gives the client msg as the client's own messages are given it:
+// for what comes of the screens, from the goroutine that reads them.
+func (c *ScreenClient) Tell(msg any) { c.tell(msg) }
 
 // Program is the copy of the screen of the program r names.
 func (c *ScreenClient) Program(r ProgramRef) Program {
@@ -384,11 +477,12 @@ func (c *ScreenClient) send(r Request) {
 func (c *ScreenClient) read() {
 	defer func() {
 		c.mu.Lock()
-		for id, ch := range c.asks {
-			close(ch)
-			delete(c.asks, id)
-		}
+		asks := c.asks
+		c.asks = map[int]func(int, [][]term.Cell){}
 		c.mu.Unlock()
+		for _, done := range asks {
+			done(0, nil)
+		}
 	}()
 	for {
 		b, err := c.conn.Recv()
@@ -418,51 +512,45 @@ func (c *ScreenClient) read() {
 				c.mu.Unlock()
 				c.Shown()
 			}
-			c.wake()
+			c.tell(ScreensMsg{})
 		case wireRows:
 			var w rowsWire
 			if json.Unmarshal(b[1:], &w) != nil {
 				continue
 			}
 			c.mu.Lock()
-			ch := c.asks[w.ID]
+			done := c.asks[w.ID]
 			delete(c.asks, w.ID)
 			c.mu.Unlock()
-			if ch != nil {
-				ch <- w
+			if done == nil {
+				continue
 			}
+			first, rows, err := w.Cells()
+			if err != nil {
+				Debugf("core: rows: %v", err)
+				first, rows = w.First, nil
+			}
+			done(first, rows)
 		}
 	}
 }
 
-// rows asks the core for lines from to to of r's screen, and waits for
-// them a little.
-func (c *ScreenClient) rows(r ProgramRef, from, to int) (int, [][]term.Cell) {
-	ch := make(chan rowsWire, 1)
+// askRows asks the core for lines from to to of r's screen, for done.
+func (c *ScreenClient) askRows(r ProgramRef, from, to int, done func(int, [][]term.Cell)) {
 	c.mu.Lock()
 	c.askN++
 	id := c.askN
-	c.asks[id] = ch
+	c.asks[id] = done
 	c.mu.Unlock()
-	c.conn.Send("", wire(wireAsk, askWire{ID: id, Ref: r, From: from, To: to}))
-	select {
-	case w, ok := <-ch:
-		if !ok {
-			return from, nil
+	if !c.conn.Send("", wire(wireAsk, askWire{ID: id, Ref: r, From: from, To: to})) {
+		c.mu.Lock()
+		_, still := c.asks[id]
+		delete(c.asks, id)
+		c.mu.Unlock()
+		if still {
+			done(from, nil)
 		}
-		first, rows, err := w.Cells()
-		if err != nil {
-			Debugf("core: rows: %v", err)
-			return from, nil
-		}
-		return first, rows
-	case <-c.conn.Done():
-	case <-timeAfter(askWait):
 	}
-	c.mu.Lock()
-	delete(c.asks, id)
-	c.mu.Unlock()
-	return from, nil
 }
 
 // copyOut sends what the user does in the copy of r's screen.
@@ -479,8 +567,8 @@ func (o copyOut) Mouse(ev term.MouseEvent) {
 func (o copyOut) Focus(in bool)     { o.c.send(FocusProgram{Ref: o.ref, In: in}) }
 func (o copyOut) Resize(w, h int)   { o.c.send(ResizeProgram{Ref: o.ref, W: w, H: h}) }
 func (o copyOut) Scroll(scroll int) {} // see Shown
-func (o copyOut) Rows(from, to int) (int, [][]term.Cell) {
-	return o.c.rows(o.ref, from, to)
+func (o copyOut) AskRows(from, to int, done func(int, [][]term.Cell)) {
+	o.c.askRows(o.ref, from, to, done)
 }
 
 var _ Program = (*term.Copy)(nil)

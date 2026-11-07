@@ -445,6 +445,14 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.checkCopied()
 		return nil
 
+	case selectionMsg:
+		if !msg.whole {
+			m.toast("the text chosen could not be read from nerdr's core: try again")
+			return nil
+		}
+		m.copyText(msg.text)
+		return nil
+
 	case core.FrameMsg:
 		if m.screens != nil {
 			m.screens.Drop(m.Runs)

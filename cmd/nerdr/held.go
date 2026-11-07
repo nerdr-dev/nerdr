@@ -52,17 +52,19 @@ func screensOverPair(model *app.Model, p *tea.Program) error {
 	if err != nil {
 		return err
 	}
-	model.Screens = core.NewScreenServer(coreEnd, func(r core.Request) {
-		model.Loop.Post(core.RequestEv{R: r})
-	})
+	model.Screens = core.NewScreenServer(coreEnd, func(ev core.RequestEv) { model.Loop.Post(ev) })
 	wake := make(chan struct{}, 1)
 	go func() {
 		for range wake {
 			p.Send(core.ScreensMsg{})
 		}
 	}()
-	model.SetScreens(core.NewScreenClient(tuiEnd, func() {
-		select {
+	model.SetScreens(core.NewScreenClient(tuiEnd, func(msg any) {
+		if _, ok := msg.(core.ScreensMsg); !ok {
+			go p.Send(msg)
+			return
+		}
+		select { // one is enough to draw them all
 		case wake <- struct{}{}:
 		default:
 		}

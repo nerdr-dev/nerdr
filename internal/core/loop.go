@@ -313,7 +313,7 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	}
 	switch ev := ev.(type) {
 	case RequestEv:
-		return ev.R.Do(m), true
+		return ev.Run(m), true
 	case ReposChangedMsg:
 		return m.OnReposChanged(ev), true
 	case IssueAllMsg:
@@ -408,6 +408,9 @@ func (m *Core) handleQuitting(ev Event) (Cmd, bool) {
 		m.OnClaim(ev)
 		return nil, true
 	case RequestEv:
+		if ev.Done != nil {
+			ev.Done()
+		}
 		return nil, true // nothing changes now but what quitting does
 	}
 	return nil, false

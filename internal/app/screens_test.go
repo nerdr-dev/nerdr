@@ -16,18 +16,23 @@ import (
 // withScreens has m draw core's programs from their screens sent as rows
 // over a pair of connections, as with NERDR_HOLDER=1; the loop's ticks are
 // played by the test.
-func withScreens(t *testing.T, m *Model) {
+func withScreens(t *testing.T, m *Model) chan any {
 	t.Helper()
+	told := make(chan any, 8)
 	a, b, err := attach.Pair()
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.Screens = core.NewScreenServer(a, func(r core.Request) {
+	m.Screens = core.NewScreenServer(a, func(ev core.RequestEv) {
 		m.Mu.Lock()
-		r.Do(&m.Core)
+		ev.Run(&m.Core)
 		m.Mu.Unlock()
 	})
-	m.SetScreens(core.NewScreenClient(b, func() {}))
+	m.SetScreens(core.NewScreenClient(b, func(msg any) {
+		if _, ok := msg.(core.ScreensMsg); !ok {
+			told <- msg
+		}
+	}))
 	stop, done := make(chan struct{}), make(chan struct{})
 	t.Cleanup(func() {
 		close(stop)
@@ -50,6 +55,7 @@ func withScreens(t *testing.T, m *Model) {
 			}
 		}
 	}()
+	return told
 }
 
 // viewUntil draws m until what it shows has s.
@@ -83,7 +89,7 @@ func TestTUIDrawsFromRows(t *testing.T) {
 	m.Mu.Lock()
 	login.Pane, login.Light = pane, core.StIdle
 	m.Mu.Unlock()
-	withScreens(t, m)
+	told := withScreens(t, m)
 	m.Update(tea.WindowSizeMsg{Width: 110, Height: 28})
 
 	viewUntil(t, m, "row 59")
@@ -111,4 +117,32 @@ func TestTUIDrawsFromRows(t *testing.T) {
 	want := pane.Frame(m.tl(login).scroll)
 	// The first row has the scrollback's note over it.
 	viewUntil(t, m, strings.TrimRight(ansi.Strip(term.Draw(want, false, nil)[1]), " "))
+
+	// Lines scrolled past, which the copy does not have, are copied once
+	// core has sent them; the TUI waits for nothing meanwhile.
+	var copied string
+	was := toClipboard
+	toClipboard = func(s string) bool { copied = s; return true }
+	defer func() { toClipboard = was }()
+	m.sel = term.Selection{From: term.Point{Line: 0}, To: term.Point{Line: 1, Col: 59}}
+	m.copySelection(kp)
+	if copied != "" {
+		t.Fatalf("copied %q before the lines came", copied)
+	}
+	select {
+	case msg := <-told:
+		m.Update(msg)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the lines asked for never came")
+	}
+	if copied != "row 0\nrow 1" {
+		t.Fatalf("copied %q", copied)
+	}
+	// Lines shown are copied there and then.
+	top := m.screen(login).TopAt(m.tl(login).scroll)
+	m.sel = term.Selection{From: term.Point{Line: top + 1}, To: term.Point{Line: top + 1, Col: 59}}
+	m.copySelection(kp)
+	if copied != strings.TrimRight(ansi.Strip(term.Draw(want, false, nil)[1]), " ") {
+		t.Fatalf("copied %q from what is shown", copied)
+	}
 }

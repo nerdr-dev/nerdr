@@ -56,6 +56,7 @@ func init() {
 
 		*Core.SkillStates *Core.SkillOn *Core.AgentNote
 		*ScreenClient.Program *ScreenClient.Shown *ScreenClient.Drop
+		*ScreenClient.Tell
 		Request.Do
 
 		*Agent.AutoCount
