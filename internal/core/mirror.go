@@ -3,6 +3,7 @@ package core
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -129,7 +130,8 @@ type Sent struct {
 func (s *Sent) Reset() { s.sums = nil }
 
 // Parts are the parts of core's state that changed since s, and s marked
-// as sent them. Mu is held.
+// as sent them. A part that cannot be encoded is left out, and its error
+// returned with the rest. Mu is held.
 func (m *Core) Parts(s *Sent) ([]Part, error) {
 	if s.sums == nil {
 		s.sums = map[string][32]byte{}
@@ -150,6 +152,7 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 	}
 	order := make([]string, 0, len(m.Tabs))
 	var ids []string
+	var errs []error
 	live := map[string]bool{PartCore: true}
 	for _, t := range m.Tabs {
 		var p tabPart
@@ -163,19 +166,16 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 		}
 		order = append(order, t.ID)
 		live[PartTab(t.ID)] = true
-		if err := add(PartTab(t.ID), p); err != nil {
-			return nil, err
-		}
+		// A tab that cannot be sent is left out, not every tab with it.
+		errs = append(errs, add(PartTab(t.ID), p))
 	}
-	if err := add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids, Programs: m.programStates()}); err != nil {
-		return nil, err
-	}
+	errs = append(errs, add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids, Programs: m.programStates()}))
 	for k := range s.sums {
 		if !live[k] {
 			delete(s.sums, k) // closed: should it be back, it goes again
 		}
 	}
-	return out, nil
+	return out, errors.Join(errs...)
 }
 
 // agentsOf is tab t and the agents in it, reviewers too, each once: also
