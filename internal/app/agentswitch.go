@@ -34,9 +34,9 @@ func (m *Model) openSwitchAgent() tea.Cmd {
 		m.dialog = &menu{title: "Switch " + m.AgentName(t) + " to " + string(w.To), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
 			{label: "Waiting for " + string(t.Agent) + "'s handoff"},
 			{label: "Switch now: " + string(w.To) + " reads " + string(t.Agent) + "'s conversation", key: "1",
-				run: func(m *Model) tea.Cmd { return fromCore(m.SwitchAgent(t, w.To, "")) }},
+				run: func(m *Model) tea.Cmd { return m.do(core.SwitchAgent{A: m.Ref(t), Kind: w.To}) }},
 			{label: "Cancel the switch", key: "2",
-				run: func(m *Model) tea.Cmd { m.CancelHandoff(t); return nil }},
+				run: func(m *Model) tea.Cmd { return m.do(core.CancelHandoff{A: m.Ref(t)}) }},
 		}}
 		return nil
 	}
@@ -74,10 +74,10 @@ func (m *Model) pickAgent(t *core.Tab, k agents.Kind) tea.Cmd {
 		return nil
 	}
 	if text := t.ReadyHandoff(time.Now()); text != "" {
-		return fromCore(m.SwitchAgent(t, k, text))
+		return m.do(core.SwitchAgent{A: m.Ref(t), Kind: k, Handoff: true})
 	}
 	if !t.AgentRunning() || t.QueuePaused {
-		return fromCore(m.SwitchAgent(t, k, ""))
+		return m.do(core.SwitchAgent{A: m.Ref(t), Kind: k})
 	}
 	// Asking costs the old agent a turn and the user a wait, and is no use
 	// when it is out of tokens: the user knows which, nerdr does not.
@@ -85,9 +85,9 @@ func (m *Model) pickAgent(t *core.Tab, k agents.Kind) tea.Cmd {
 	m.dialog = &menu{title: "Switch " + m.AgentName(t) + " to " + string(k), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
 		{label: string(k) + " is told what " + string(old) + " did"},
 		{label: "Switch now: " + string(k) + " reads " + string(old) + "'s conversation", key: "1",
-			run: func(m *Model) tea.Cmd { return fromCore(m.SwitchAgent(t, k, "")) }},
+			run: func(m *Model) tea.Cmd { return m.do(core.SwitchAgent{A: m.Ref(t), Kind: k}) }},
 		{label: "Ask " + string(old) + " for a handoff first", key: "2",
-			run: func(m *Model) tea.Cmd { m.AskHandoff(t, k); return nil }},
+			run: func(m *Model) tea.Cmd { return m.do(core.AskHandoff{A: m.Ref(t), Kind: k}) }},
 	}}
 	return nil
 }

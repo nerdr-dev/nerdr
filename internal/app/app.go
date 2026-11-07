@@ -296,9 +296,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
 		m.Active = sess.Active
 	}
-	if t := m.Cur(); t != nil {
-		m.entered, t.LastActive = t, now // as enter does
-	}
+	m.entered = m.Cur() // as enter does; core marks it active
 	for i, t := range m.Tabs {
 		if sess.Split != "" && t.ID == sess.Split && i != m.Active && t.GroupName() == m.curGroup() {
 			m.split, m.splitLeft = t, sess.SplitLeft
@@ -456,9 +454,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.onSearchRead(msg)
 		return nil
 
-	case core.FocusFilesMsg:
-		m.focusFiles(msg)
-		return nil
 	case core.InfoTickMsg:
 		m.toastDenied()
 		// Core has looked at what goes on in the background; see core.InfoTick.
@@ -483,7 +478,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if t := m.Cur(); t != nil {
 			m.focusTerms(t)
 			if m.dwelt() {
-				t.Seen()
+				m.do(core.SeeAgent{A: m.Ref(t), Glance: true})
 			}
 		}
 		m.reportHerdr()
@@ -951,8 +946,8 @@ func (m *Model) look() {
 		return
 	}
 	m.looking = false
-	t.Seen()
-	t.QueuePaused = false // the user has seen what became of the last message
+	// The user has seen what became of the last message too.
+	m.do(core.SeeAgent{A: m.Ref(t)})
 }
 
 // dwelt reports whether the active tab has been so long enough to count as
