@@ -7,10 +7,14 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -69,13 +73,97 @@ func start(t *testing.T, bin, root string, env []string) *harness {
 	// nerdr checks that the review panel it draws again from its last
 	// drawing has not changed meanwhile; see reuseCheck in app.
 	env = append(env[:len(env):len(env)], "NERDR_CHECK_REUSE=1")
+	env = isolated(t, env)
 	p, err := term.Start([]string{bin}, root, env, 160, 40, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
 	h := &harness{t: t, p: p, root: root, env: env}
+	if !ending[t] {
+		ending[t] = true
+		t.Cleanup(func() { delete(ending, t); endAll(t, bin, root) })
+	}
 	t.Cleanup(func() { p.Close() })
 	return h
+}
+
+// ending are the tests that end what they started once they are done;
+// see endAll.
+var ending = map[*testing.T]bool{}
+
+// isolated is env as a nerdr under test is to have it: its state, and
+// the sockets of its core and holder, in the test's own temporary
+// folders, never the user's, where it could reach the user's own nerdr.
+// The client sockets are in a folder of the test's when env names none.
+func isolated(t *testing.T, env []string) []string {
+	t.Helper()
+	get := func(name string) (string, bool) {
+		v, ok := "", false
+		for _, kv := range env {
+			if k, val, _ := strings.Cut(kv, "="); k == name {
+				v, ok = val, true // the last wins, as exec has it
+			}
+		}
+		return v, ok
+	}
+	if _, ok := get("NERDR_CLIENT_DIR"); !ok {
+		env = append(env, "NERDR_CLIENT_DIR="+filepath.Join(t.TempDir(), "run"))
+	}
+	tmp, _ := filepath.EvalSymlinks(os.TempDir())
+	for _, name := range []string{"XDG_STATE_HOME", "NERDR_CLIENT_DIR"} {
+		v, ok := get(name)
+		real, _ := filepath.EvalSymlinks(filepath.Dir(v))
+		if !ok || !strings.HasPrefix(v, os.TempDir()) && !strings.HasPrefix(real, tmp) {
+			t.Fatalf("%s is %q: a nerdr under test must have it in a temporary folder of its own", name, v)
+		}
+	}
+	return env
+}
+
+// endAll ends what nerdr at bin, started in root, left running once the
+// test is done: its holders are told to stop their programs and end, and
+// what has not ended after a while is killed and the test failed. With
+// /proc, a process in root's folder, an agent or a terminal, counts too.
+func endAll(t *testing.T, bin, root string) {
+	mine := "^" + regexp.QuoteMeta(bin) + "( |$)"
+	for _, pid := range pgrep("-f", "^"+regexp.QuoteMeta(bin)+" holder") {
+		_ = syscall.Kill(pid, syscall.SIGTERM)
+	}
+	left := func() []int { return append(pgrep("-f", mine), inFolder(filepath.Dir(root))...) }
+	deadline := time.Now().Add(15 * time.Second)
+	for len(left()) > 0 && time.Now().Before(deadline) {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if pids := left(); len(pids) > 0 {
+		var what []string
+		for _, pid := range pids {
+			cmd, _ := os.ReadFile(fmt.Sprintf("/proc/%d/cmdline", pid))
+			what = append(what, fmt.Sprintf("%d %s", pid, strings.ReplaceAll(string(cmd), "\x00", " ")))
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+		}
+		t.Errorf("left running after the test:\n%s", strings.Join(what, "\n"))
+	}
+}
+
+// inFolder are the processes, other than this one, whose working folder
+// is in dir; none where there is no /proc.
+func inFolder(dir string) []int {
+	ents, err := os.ReadDir("/proc")
+	if err != nil {
+		return nil
+	}
+	var out []int
+	for _, e := range ents {
+		pid, err := strconv.Atoi(e.Name())
+		if err != nil || pid == os.Getpid() {
+			continue
+		}
+		cwd, err := os.Readlink(filepath.Join("/proc", e.Name(), "cwd"))
+		if err == nil && (cwd == dir || strings.HasPrefix(cwd, dir+string(filepath.Separator))) {
+			out = append(out, pid)
+		}
+	}
+	return out
 }
 
 func (h *harness) screen() string { return h.p.Snapshot().Screen }
