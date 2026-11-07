@@ -170,8 +170,7 @@ func (r *renamer) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		m.dialog = nil
 		if name := strings.TrimSpace(r.input.Value()); name != "" && m.TabIndex(r.t) >= 0 {
-			r.t.Name = name
-			m.SaveSession()
+			m.do(core.RenameTab{T: m.Ref(r.t), Name: name})
 			m.reportHerdr()
 		}
 		return nil
@@ -237,20 +236,12 @@ func (m *Model) renameGroup(g, name string) {
 	}
 	moved := false
 	for _, i := range m.GroupTabs(g) {
-		t := m.Tabs[i]
-		if len(t.Worktrees) < 2 {
-			continue
-		}
-		t.Group, moved = name, true
-		if name == "" {
-			delete(m.GroupNames, t.Dir)
-		} else {
-			m.RememberGroup(t.Dir, name, t.Worktrees)
-		}
+		moved = moved || len(m.Tabs[i].Worktrees) >= 2
 	}
 	if !moved {
 		return
 	}
+	m.do(core.RenameGroup{G: g, Name: name})
 	to := name
 	if to == "" {
 		to = core.MultiGroup
@@ -258,7 +249,6 @@ func (m *Model) renameGroup(g, name string) {
 	if id, ok := m.lastInGroup[g]; ok && m.lastInGroup[to] == (core.TabRef{}) {
 		m.lastInGroup[to] = id
 	}
-	m.SaveSession()
 }
 
 func branchOf(t *core.Tab) string {
@@ -281,10 +271,10 @@ func (m *Model) moveTab(delta int) tea.Cmd {
 			return nil
 		}
 		j := idx[to]
-		m.Tabs[i], m.Tabs[j] = m.Tabs[j], m.Tabs[i]
+		a, b := m.Ref(m.Tabs[i]), m.Ref(m.Tabs[j])
 		m.Active = j
-		m.SaveSession()
-		return nil
+		l := m.layout()
+		return m.do(core.SwapTabs{A: a, B: b, Layout: &l})
 	}
 	return nil
 }

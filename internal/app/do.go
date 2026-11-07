@@ -12,3 +12,10 @@ import (
 func (m *Model) do(r core.Request) tea.Cmd {
 	return fromCore(r.Do(&m.Core))
 }
+
+// saveLayout has core save the session, with how the TUI lays out the
+// tabs now.
+func (m *Model) saveLayout() {
+	l := m.layout()
+	m.do(core.Save{Layout: &l})
+}

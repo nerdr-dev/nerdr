@@ -75,7 +75,7 @@ func (m *Model) toggleSplit() tea.Cmd {
 			return m.resize()
 		}
 		m.split = nil
-		m.SaveSession()
+		m.saveLayout()
 		return m.resize()
 	}
 	t := m.Cur()
@@ -93,8 +93,8 @@ func (m *Model) splitWith(left, right *core.Tab) tea.Cmd {
 	m.reviewOpen, m.reviewZoom = false, false
 	m.setFocus(core.FocusAgent)
 	cmd := m.selectTab(m.TabIndex(left))
-	m.SaveSession()
-	return tea.Batch(cmd, fromCore(m.WakeTab(right)), m.resize())
+	m.saveLayout()
+	return tea.Batch(cmd, m.do(core.WakeTab{T: m.Ref(right)}), m.resize())
 }
 
 // swapSides moves the two tabs of the split to each other's side.
@@ -103,7 +103,7 @@ func (m *Model) swapSides() tea.Cmd {
 		return nil
 	}
 	m.splitLeft = !m.splitLeft
-	m.SaveSession()
+	m.saveLayout()
 	return m.resize()
 }
 
