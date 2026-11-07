@@ -34,54 +34,15 @@ func pgrep(args ...string) []int {
 func TestCoreOfItsOwn(t *testing.T) {
 	bin := build(t)
 	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
 	fake, _ := filepath.Abs("fakeagent.sh")
-	cfgDir := filepath.Join(scratch, "config")
-	_ = os.MkdirAll(filepath.Join(cfgDir, "nerdr"), 0o755)
-	_ = os.WriteFile(filepath.Join(cfgDir, "nerdr", "config.toml"),
-		[]byte("worktrees_dir = \"worktrees\"\ntab_bar = \"top\"\ninstall = \"off\"\n[agents.claude]\ncommand = [\""+fake+"\"]\n"), 0o644)
-	var env []string
-	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "HERDR_") && !strings.HasPrefix(kv, "NERDR") {
-			env = append(env, kv)
-		}
-	}
 	runDir := filepath.Join(scratch, "run")
-	env = append(env,
-		"XDG_CONFIG_HOME="+cfgDir,
-		"XDG_STATE_HOME="+filepath.Join(scratch, "state"),
-		"NERDR_CLIENT_DIR="+runDir,
-		"FAKE_LOG="+filepath.Join(scratch, "agent.log"),
-		"TERM=xterm-256color",
-		"NERDR_HOLDER=1",
-	)
 	holders := func() []int { return pgrep("-f", "^"+bin+" holder") }
-	t.Cleanup(func() {
-		for _, pid := range holders() {
-			_ = syscall.Kill(pid, syscall.SIGTERM)
-		}
-	})
 	coreOf := func(holder int) []int { return pgrep("-P", strconv.Itoa(holder), "-f", " core$") }
-	closeClient := func(h *harness) {
-		t.Helper()
-		h.keys(prefix + "q")
-		h.waitFor("Close or quit nerdr?", 2*time.Second)
-		h.keys("c")
-		select {
-		case <-h.p.Done():
-		case <-time.After(10 * time.Second):
-			t.Fatalf("did not close; screen:\n%s", h.screen())
-		}
-	}
+	closeClient := func(h *harness) { t.Helper(); endClient(t, h, "c") }
 
 	h := start(t, bin, root, env)
-	h.waitFor("Repositories in", 15*time.Second)
-	h.keys(" ")
-	h.keys("\r")
-	h.waitFor("branch:", 2*time.Second)
-	h.keys("crash\r")
-	h.waitFor("Agent:", 2*time.Second)
-	h.keys("\r")
-	h.waitFor("? for shortcuts", 10*time.Second)
+	newCrashTab(h)
 	h.keys("work\r")
 	h.waitFor("done", 5*time.Second)
 
@@ -147,5 +108,60 @@ func TestCoreOfItsOwn(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("agent or holder still running after quitting:\n%s", readFile(filepath.Join(scratch, "state", "nerdr", filepath.Base(runDir))))
 		}
+	}
+}
+
+// holderEnv is the environment of nerdr with NERDR_HOLDER=1 in scratch,
+// its agent the fake; the holders bin starts are ended after the test.
+func holderEnv(t *testing.T, bin, scratch string) []string {
+	t.Helper()
+	fake, _ := filepath.Abs("fakeagent.sh")
+	cfgDir := filepath.Join(scratch, "config")
+	_ = os.MkdirAll(filepath.Join(cfgDir, "nerdr"), 0o755)
+	_ = os.WriteFile(filepath.Join(cfgDir, "nerdr", "config.toml"),
+		[]byte("worktrees_dir = \"worktrees\"\ntab_bar = \"top\"\ninstall = \"off\"\n[agents.claude]\ncommand = [\""+fake+"\"]\n"), 0o644)
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "HERDR_") && !strings.HasPrefix(kv, "NERDR") {
+			env = append(env, kv)
+		}
+	}
+	t.Cleanup(func() {
+		for _, pid := range pgrep("-f", "^"+bin+" holder") {
+			_ = syscall.Kill(pid, syscall.SIGTERM)
+		}
+	})
+	return append(env,
+		"XDG_CONFIG_HOME="+cfgDir,
+		"XDG_STATE_HOME="+filepath.Join(scratch, "state"),
+		"NERDR_CLIENT_DIR="+filepath.Join(scratch, "run"),
+		"FAKE_LOG="+filepath.Join(scratch, "agent.log"),
+		"TERM=xterm-256color",
+		"NERDR_HOLDER=1",
+	)
+}
+
+// newCrashTab makes the first tab, "crash", in the first repository.
+func newCrashTab(h *harness) {
+	h.waitFor("Repositories in", 15*time.Second)
+	h.keys(" ")
+	h.keys("\r")
+	h.waitFor("branch:", 2*time.Second)
+	h.keys("crash\r")
+	h.waitFor("Agent:", 2*time.Second)
+	h.keys("\r")
+	h.waitFor("? for shortcuts", 10*time.Second)
+}
+
+// endClient closes the client (key "c") or quits (key "q").
+func endClient(t *testing.T, h *harness, key string) {
+	t.Helper()
+	h.keys(prefix + "q")
+	h.waitFor("Close or quit nerdr?", 2*time.Second)
+	h.keys(key)
+	select {
+	case <-h.p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatalf("did not end; screen:\n%s", h.screen())
 	}
 }
