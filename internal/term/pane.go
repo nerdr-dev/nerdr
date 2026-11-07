@@ -346,6 +346,15 @@ func (p *Pane) Pid() int {
 	return p.proc.Pid()
 }
 
+// StartTime is when the program's process started, as spawn.Proc has
+// it; 0 when not known.
+func (p *Pane) StartTime() uint64 {
+	if p.proc == nil {
+		return 0
+	}
+	return p.proc.StartTime()
+}
+
 // Stop hangs up the program's process group and the terminal's foreground
 // job, then kills what remains after grace. Interactive shells put jobs in
 // their own group, so stopping only the shell's group can leave a server alive.

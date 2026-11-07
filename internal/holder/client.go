@@ -212,6 +212,9 @@ func (cl *Client) Attach(p Prog, pos int64) *Proc {
 
 func (cl *Client) attach(id string, pid int, pty bool, pos int64) *Proc {
 	p := &Proc{cl: cl, id: id, pid: pid, pty: pty, pos: pos, exited: make(chan struct{}), closed: make(chan struct{})}
+	if _, start, err := spawn.ProcInfo(pid); err == nil {
+		p.start = start
+	}
 	cl.mu.Lock()
 	cl.procs[id] = p
 	e, ok := cl.exits[id]
@@ -265,6 +268,9 @@ type Proc struct {
 	id  string
 	pid int
 	pty bool
+	// start is when the process started, read before the core can have
+	// it reaped: the holder waits for its ack.
+	start uint64
 
 	rmu  sync.Mutex // one Read at a time
 	pos  int64
@@ -373,6 +379,8 @@ func (p *Proc) Wait() error {
 }
 
 func (p *Proc) Pid() int { return p.pid }
+
+func (p *Proc) StartTime() uint64 { return p.start }
 
 func (p *Proc) Foreground() (int, bool) {
 	if !p.pty {

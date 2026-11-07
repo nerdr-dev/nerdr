@@ -448,3 +448,47 @@ func TestTheSandboxMarkOutlivesACrash(t *testing.T) {
 	}
 
 }
+
+// An agent that ended while no core ran is taken up with when it started,
+// read before the new core has the holder reap it: a process later given
+// its id is not taken for it.
+func TestAnAgentThatEndedIsTakenUpWithItsStart(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := agentScript(t, "exit 0\n")
+	a, tabA := heldCore(t, clA, script)
+	a.Start(tabA, false)
+	if tabA.Pane == nil || tabA.PidStart == 0 {
+		t.Fatalf("not started, or no start: %s", tabA.Err)
+	}
+	pid, start := tabA.Pane.Pid(), tabA.PidStart
+	clA.Close() // the core is gone before it saw the exit, so it is not reaped
+	time.Sleep(100 * time.Millisecond)
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, tabB := heldCore(t, clB, script)
+	b.Mu.Lock()
+	b.Start(tabB, true)
+	b.Mu.Unlock()
+	if tabB.Pane == nil || tabB.Pane.Pid() != pid {
+		t.Fatalf("agent not taken up: %+v", tabB.Pane)
+	}
+	waitFor(t, "its exit", func() bool { exited, _, _ := tabB.Pane.Exited(); return exited })
+	if tabB.PidStart != start {
+		t.Errorf("start %d, was %d", tabB.PidStart, start)
+	}
+	stranger := hooks.Peer{Known: true, Chain: []int{pid, 1}, Starts: []uint64{start + 1, 1}}
+	b.Mu.Lock()
+	r := b.Vouch(hooks.Report{Pane: tabB.HookKey(), Peer: stranger})
+	b.Mu.Unlock()
+	if !r.Unvouched {
+		t.Error("a process with the ended agent's id vouched for")
+	}
+}

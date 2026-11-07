@@ -69,6 +69,10 @@ type Proc interface {
 	Wait() error
 	// Pid is its process, which leads its process group.
 	Pid() int
+	// StartTime is when its process started, as ProcInfo has it, read
+	// before it could be reaped: what tells it from a process given its
+	// id once it has ended. 0 when not known.
+	StartTime() uint64
 	// Foreground is the foreground process group of its terminal.
 	Foreground() (int, bool)
 	// Signal sends sig to process group pg, its own or the foreground one
@@ -126,7 +130,7 @@ func (Local) Spawn(s Spec) (Proc, error) {
 		if denied.Err(err) != nil {
 			return nil, err
 		}
-		return &local{cmd: cmd, out: f, tty: f}, nil
+		return &local{cmd: cmd, out: f, tty: f, start: startOf(cmd)}, nil
 	}
 	pr, pw, err := os.Pipe()
 	if err != nil {
@@ -143,16 +147,31 @@ func (Local) Spawn(s Spec) (Proc, error) {
 		return nil, err
 	}
 	pw.Close()
-	return &local{cmd: cmd, out: pr}, nil
+	return &local{cmd: cmd, out: pr, start: startOf(cmd)}, nil
+}
+
+// startOf is when cmd's process started; it is not reaped before Wait.
+func startOf(cmd *exec.Cmd) uint64 {
+	if cmd.Process == nil {
+		return 0
+	}
+	_, start, err := ProcInfo(cmd.Process.Pid)
+	if err != nil {
+		return 0
+	}
+	return start
 }
 
 // local is a program Local started: out is its terminal, tty too, or the
 // pipe it prints to, tty nil.
 type local struct {
-	cmd *exec.Cmd
-	out *os.File
-	tty *os.File
+	cmd   *exec.Cmd
+	out   *os.File
+	tty   *os.File
+	start uint64
 }
+
+func (l *local) StartTime() uint64 { return l.start }
 
 func (l *local) Read(b []byte) (int, error) { return l.out.Read(b) }
 

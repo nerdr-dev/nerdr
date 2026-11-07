@@ -728,6 +728,14 @@ func TestVouchPlacesTheProcess(t *testing.T) {
 		t.Errorf("the sandboxed agent's secret from elsewhere: %+v, refusal %q", r, m.SandboxRefusal(r))
 	}
 
+	// An agent whose start nerdr could not read vouches for none.
+	start := codex.PidStart
+	codex.PidStart = 0
+	if r := m.Vouch(hooks.Report{Pane: key, Peer: chain(codex.Pane.Pid(), 1)}); !r.Unvouched {
+		t.Error("an agent of unknown start vouched for a report")
+	}
+	codex.PidStart = start
+
 	pane := codex.Pane
 	codex.Pane = nil
 	defer func() { codex.Pane = pane }()

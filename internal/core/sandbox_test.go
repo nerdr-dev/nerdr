@@ -15,10 +15,11 @@ func TestSandboxDecisions(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer p.Close()
-	outside := &Agent{Pane: p}
-	inside := &Agent{Pane: p, InSandbox: true}
+	start := p.StartTime()
+	outside := &Agent{Pane: p, PidStart: start}
+	inside := &Agent{Pane: p, InSandbox: true, PidStart: start}
 	const stray = 1 << 30
-	under := hooks.Peer{Known: true, Chain: []int{stray, p.Pid(), 1}}
+	under := hooks.Peer{Known: true, Chain: []int{stray, p.Pid(), 1}, Starts: []uint64{0, start, hooks.Started(1)}}
 	stranger := hooks.Peer{Known: true, Chain: []int{stray, 1}}
 
 	for _, c := range []struct {
@@ -33,6 +34,7 @@ func TestSandboxDecisions(t *testing.T) {
 		{"an agent with no program", &Agent{}, under, true, true},
 		{"a stranger with a sandboxed agent's secret", inside, stranger, true, false},
 		{"a system that cannot say", outside, hooks.Peer{}, false, false},
+		{"an agent whose start is not known", &Agent{Pane: p}, under, true, true},
 	} {
 		r := Vouch(hooks.Report{Peer: c.peer}, c.a)
 		if r.Unvouched != c.unvouched {
