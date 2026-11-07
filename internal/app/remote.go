@@ -179,14 +179,19 @@ func (m *Model) initRemote() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
-// coreGone is the connection to core closed, core having crashed or
-// been ended: its holder starts it again, the agents living on, and the
-// TUI connects to it again when it can. Without a way to (SetRedial) it
-// ends.
-func (m *Model) coreGone() tea.Cmd {
+// coreGone is the connection to core closed, why being what core said:
+// core having crashed or been ended, its holder starts it again, the
+// agents living on, and the TUI connects to it again when it can. Without
+// a way to (SetRedial) it ends; and when another nerdr took over, as the
+// two would take it from each other without end.
+func (m *Model) coreGone(why string) tea.Cmd {
 	m.remote.Close("")
 	if m.closing {
 		return nil
+	}
+	if why == attach.ByeTakenOver {
+		m.goneErr = why
+		return tea.Quit
 	}
 	if m.redial == nil {
 		m.goneErr = "the connection to nerdr's core has closed"

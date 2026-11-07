@@ -202,3 +202,20 @@ func TestRemoteTUIQuiet(t *testing.T) {
 		t.Errorf("core changed %d times for a TUI drawing again", moved)
 	}
 }
+
+// TestRemoteTUITakenOver: a TUI another nerdr took over from ends, and
+// does not take core back, which the other would do in its turn.
+func TestRemoteTUITakenOver(t *testing.T) {
+	m, _, _, _ := remoteTUI(t, "sh", "-c", `echo ready; sleep 30`)
+	m.SetRedial(func() (*attach.Conn, error) {
+		t.Error("connected again")
+		return nil, attach.ErrNoCore
+	})
+	_, cmd := m.Update(core.CoreGoneMsg{Why: attach.ByeTakenOver})
+	if cmd == nil {
+		t.Fatal("no command")
+	}
+	if _, ok := cmd().(tea.QuitMsg); !ok || m.GoneErr() != attach.ByeTakenOver {
+		t.Fatalf("not ended: %q", m.GoneErr())
+	}
+}

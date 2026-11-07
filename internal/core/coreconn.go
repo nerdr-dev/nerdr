@@ -33,8 +33,10 @@ type CoreConn struct {
 // InboxMsg tells the client core has sent what is to be taken in (Take).
 type InboxMsg struct{}
 
-// CoreGoneMsg tells the client the connection to core has closed.
-type CoreGoneMsg struct{}
+// CoreGoneMsg tells the client the connection to core has closed; Why is
+// what core said as it closed it, "" when it said nothing, as when it
+// crashed.
+type CoreGoneMsg struct{ Why string }
 
 // ErrCoreGone is what waiting for core comes to once the connection has
 // closed.
@@ -63,12 +65,12 @@ func (cc *CoreConn) Reconnect(conn *attach.Conn) {
 	gen := cc.gen
 	cc.conn, cc.inbox, cc.closed = conn, nil, false
 	cc.mu.Unlock()
-	cc.Screens = newScreenClient(conn, cc.tell, func(b []byte) { cc.got(gen, b) })
+	cc.Screens = newScreenClient(conn, cc.tell, func(b []byte) { cc.got(gen, conn, b) })
 }
 
-// got takes a message of core's into the inbox; nil is the connection
-// closed. One from a connection before the last is let go.
-func (cc *CoreConn) got(gen int, b []byte) {
+// got takes a message of core's over conn into the inbox; nil is the
+// connection closed. One from a connection before the last is let go.
+func (cc *CoreConn) got(gen int, conn *attach.Conn, b []byte) {
 	cc.mu.Lock()
 	if gen != cc.gen {
 		cc.mu.Unlock()
@@ -86,7 +88,7 @@ func (cc *CoreConn) got(gen int, b []byte) {
 	default:
 	}
 	if b == nil {
-		cc.tell(CoreGoneMsg{})
+		cc.tell(CoreGoneMsg{Why: conn.Why()})
 	} else if first {
 		cc.tell(InboxMsg{})
 	}
