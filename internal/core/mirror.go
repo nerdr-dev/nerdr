@@ -53,6 +53,10 @@ type tabPart struct {
 type corePart struct {
 	*coreFields
 	Order []string `json:"$order"`
+	// Agents are the ids of every agent in every tab: one a tab's part
+	// no longer holds is kept by the copy until it is not here either,
+	// as it may have moved to a tab whose part is still to come.
+	Agents []string `json:"$agents"`
 }
 
 type tabRef struct {
@@ -105,12 +109,14 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 		return nil
 	}
 	order := make([]string, 0, len(m.Tabs))
+	var ids []string
 	live := map[string]bool{PartCore: true}
 	for _, t := range m.Tabs {
 		var p tabPart
 		for _, a := range agentsOf(t) {
 			m.Ref(a) // an id to be known by
 			p.Agents = append(p.Agents, (*tabFields)(a))
+			ids = append(ids, a.ID)
 		}
 		order = append(order, t.ID)
 		live[PartTab(t.ID)] = true
@@ -118,7 +124,7 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 			return nil, err
 		}
 	}
-	if err := add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order}); err != nil {
+	if err := add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids}); err != nil {
 		return nil, err
 	}
 	for k := range s.sums {
@@ -152,11 +158,12 @@ type Mirror struct {
 	in     map[string][]string // the ids of the agents in each tab
 	owner  map[string]string   // the tab each agent is in, by id
 	order  []string
+	listed map[string]bool // the agents core's part says there are
 }
 
 // NewMirror is a Mirror of nothing yet, into c.
 func NewMirror(c *Core) *Mirror {
-	return &Mirror{C: c, tabs: map[string]*Tab{}, agents: map[string]*Tab{}, in: map[string][]string{}, owner: map[string]string{}}
+	return &Mirror{C: c, tabs: map[string]*Tab{}, agents: map[string]*Tab{}, in: map[string][]string{}, owner: map[string]string{}, listed: map[string]bool{}}
 }
 
 // Apply takes part p into the copy. C.Mu is held.
@@ -178,6 +185,14 @@ func (r *Mirror) Apply(p Part) error {
 		}
 	default:
 		return fmt.Errorf("no part %q", p.Key)
+	}
+	// An agent no tab holds and core does not list is gone; one core
+	// still lists has moved to a tab whose part is to come, and keeps
+	// its pointer for it.
+	for id := range r.agents {
+		if _, held := r.owner[id]; !held && !r.listed[id] {
+			delete(r.agents, id)
+		}
 	}
 	tabs := make([]*Tab, 0, len(r.order))
 	for _, id := range r.order {
@@ -215,8 +230,7 @@ func (r *Mirror) applyTab(id string, body []byte) error {
 	}
 	for _, old := range r.in[id] {
 		if !slices.Contains(ids, old) && r.owner[old] == id {
-			// Gone, not moved to another tab.
-			delete(r.agents, old)
+			// Gone, or moved to a tab whose part is to come.
 			delete(r.owner, old)
 		}
 	}
@@ -233,11 +247,14 @@ func (r *Mirror) applyCore(body []byte) error {
 	}
 	copyWire(reflect.ValueOf(r.C).Elem(), reflect.ValueOf(fresh).Elem())
 	r.order = p.Order
+	r.listed = map[string]bool{}
+	for _, id := range p.Agents {
+		r.listed[id] = true
+	}
 	for id := range r.tabs {
 		if !slices.Contains(p.Order, id) {
 			for _, a := range r.in[id] {
 				if r.owner[a] == id {
-					delete(r.agents, a)
 					delete(r.owner, a)
 				}
 			}

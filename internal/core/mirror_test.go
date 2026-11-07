@@ -178,27 +178,53 @@ func TestMirrorChanges(t *testing.T) {
 // TestMirrorAgentMoves: an agent moved from one tab to another stays in
 // the copy, whichever tab's part comes first.
 func TestMirrorAgentMoves(t *testing.T) {
-	m, a, b := mirrored()
-	var sent Sent
-	parts, _ := m.Parts(&sent)
-	r := NewMirror(&Core{})
-	applyAll(t, r, parts)
-	moved := r.C.Tabs[0].PaneList[1].A
+	// The parts come as Parts gives them, a's then b's then core's; b's
+	// first; or, a client behind and its queue coalesced, core's before
+	// b's.
+	orders := map[string][]int{"in order": {0, 1, 2}, "b first": {2, 1, 0}, "core before b": {0, 2, 1}}
+	for name, order := range orders {
+		t.Run(name, func(t *testing.T) {
+			m, a, b := mirrored()
+			var sent Sent
+			parts, _ := m.Parts(&sent)
+			r := NewMirror(&Core{})
+			applyAll(t, r, parts)
+			moved := r.C.Tabs[0].PaneList[1].A
 
-	p := a.PaneList[1]
-	a.PaneList = slicesDelete(a.PaneList, 1)
-	p.A.PartOf = b
-	b.PaneList = []*PaneTab{{ID: "q1", Kind: PaneAgent, A: b}, p}
-	parts, _ = m.Parts(&sent)
-	// b's part first, then a's, which no longer has it.
-	for i := len(parts) - 1; i >= 0; i-- {
-		if err := r.Apply(parts[i]); err != nil {
-			t.Fatal(err)
-		}
+			p := a.PaneList[1]
+			a.PaneList = slicesDelete(a.PaneList, 1)
+			p.A.PartOf = b
+			b.PaneList = []*PaneTab{{ID: "q1", Kind: PaneAgent, A: b}, p}
+			parts, _ = m.Parts(&sent)
+			if len(parts) != 3 || parts[0].Key != PartTab(a.ID) || parts[1].Key != PartTab(b.ID) || parts[2].Key != PartCore {
+				t.Fatalf("parts: %v", keys(parts))
+			}
+			for _, i := range order {
+				if err := r.Apply(parts[i]); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if got := r.C.Tabs[1].PaneList[1].A; got != moved || got.PartOf != r.C.Tabs[1] {
+				t.Errorf("moved agent: %+v", got)
+			}
+
+			// Closed, it is let go of.
+			b.PaneList = b.PaneList[:1]
+			parts, _ = m.Parts(&sent)
+			applyAll(t, r, parts)
+			if _, ok := r.agents[moved.ID]; ok {
+				t.Error("closed agent still kept")
+			}
+		})
 	}
-	if got := r.C.Tabs[1].PaneList[1].A; got != moved || got.PartOf != r.C.Tabs[1] {
-		t.Errorf("moved agent: %+v", got)
+}
+
+func keys(ps []Part) []string {
+	var out []string
+	for _, p := range ps {
+		out = append(out, p.Key)
 	}
+	return out
 }
 
 func slicesDelete(s []*PaneTab, i int) []*PaneTab { return append(s[:i:i], s[i+1:]...) }

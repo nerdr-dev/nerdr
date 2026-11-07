@@ -15,11 +15,13 @@ func init() {
 // MsgRef names a message waiting for an agent: in agent A's list, or, with
 // Inactive, in tab A's of agents whose panes were closed. It holds the
 // message as the client saw it, so that one changed or moved since is not
-// taken for it.
+// taken for it, and where it saw it, I, so that of two the same it is the
+// one the user picked.
 type MsgRef struct {
 	A        TabRef
 	Inactive bool
 	Msg      state.Message
+	I        int
 }
 
 // MsgRefOf is the MsgRef of task r of tab o.
@@ -29,6 +31,7 @@ func (m *Core) MsgRefOf(o *Tab, r TaskRef) MsgRef {
 	if ref.Inactive {
 		ref.A = m.Ref(o)
 	}
+	ref.I = r.I
 	if r.I >= 0 && r.I < len(list) {
 		ref.Msg = list[r.I]
 	}
@@ -46,7 +49,11 @@ func (r MsgRef) find(m *Core) (*Tab, *[]state.Message, int) {
 	if r.Inactive {
 		list = &a.Inactive
 	}
-	i := IndexOf(*list, r.Msg)
+	i := r.I
+	if i < 0 || i >= len(*list) || (*list)[i] != r.Msg {
+		// Moved since the client saw it.
+		i = IndexOf(*list, r.Msg)
+	}
 	if i < 0 {
 		return a, nil, -1
 	}

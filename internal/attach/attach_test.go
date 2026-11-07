@@ -2,6 +2,7 @@ package attach
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -349,6 +350,35 @@ func TestSlowClient(t *testing.T) {
 	c.mu.Unlock()
 	if bytes > QueueLimit {
 		t.Errorf("%d bytes waiting, over the limit", bytes)
+	}
+	if behind.Load() == 0 {
+		t.Error("never told it fell behind")
+	}
+}
+
+// TestSlowClientGrowing: keyed messages that grow while the client does
+// not read are held to the limit too.
+func TestSlowClientGrowing(t *testing.T) {
+	a, b := net.Pipe()
+	defer b.Close()
+	c := newConn(a)
+	defer c.Close("")
+	var behind atomic.Int32
+	c.OnBehind(func() { behind.Add(1) })
+
+	small := make([]byte, 1<<10)
+	for i := range 64 {
+		c.Send(fmt.Sprint("screen ", i), small)
+	}
+	big := make([]byte, 1<<20)
+	for i := range 64 {
+		c.Send(fmt.Sprint("screen ", i), big)
+		c.mu.Lock()
+		bytes := c.bytes
+		c.mu.Unlock()
+		if bytes > QueueLimit {
+			t.Fatalf("%d bytes waiting, over the limit", bytes)
+		}
 	}
 	if behind.Load() == 0 {
 		t.Error("never told it fell behind")

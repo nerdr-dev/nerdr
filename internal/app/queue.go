@@ -46,9 +46,11 @@ type messageDialog struct {
 	note string
 	// auto is whether the message is typed in by itself when the agent is
 	// idle, or kept in F3 until it is put in; not for several tabs, where
-	// it always is. editing is the message being changed, if one is.
+	// it always is. editing is the message being changed, if one is, and
+	// editAt where it was in its list.
 	auto    bool
 	editing *state.Message
+	editAt  int
 	// from is the agent whose message editing is, nil for one of the
 	// tab's inactive ones.
 	from *core.Tab
@@ -231,9 +233,9 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		m.autoMessage = d.auto
 		var cmd tea.Cmd
 		if d.editing != nil {
-			ref := core.MsgRef{A: m.Ref(d.tab), Inactive: true, Msg: *d.editing}
+			ref := core.MsgRef{A: m.Ref(d.tab), Inactive: true, Msg: *d.editing, I: d.editAt}
 			if d.from != nil {
-				ref = core.MsgRef{A: m.Ref(d.from), Msg: *d.editing}
+				ref = core.MsgRef{A: m.Ref(d.from), Msg: *d.editing, I: d.editAt}
 			}
 			from := d.tab.Inactive
 			if d.from != nil {
