@@ -167,6 +167,11 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 	}
 	hello := attach.Hello{Version: version()}
 	conn, w, err := attach.Dial(sock, keyFile, hello)
+	// A core quitting is waited for, to start one afresh.
+	for deadline := time.Now().Add(coreStartWait); quitting(err) && start && time.Now().Before(deadline); {
+		time.Sleep(100 * time.Millisecond)
+		conn, w, err = attach.Dial(sock, keyFile, hello)
+	}
 	if errors.Is(err, attach.ErrNoCore) && start {
 		if err := startCore(root); err != nil {
 			return nil, err
@@ -188,6 +193,12 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 	}
 	coreVersion = w.Version
 	return conn, nil
+}
+
+// quitting reports whether err is a core refusing a client as it quits.
+func quitting(err error) bool {
+	var r *attach.RefusedError
+	return errors.As(err, &r) && r.Reason == core.RefusedQuitting
 }
 
 // startCore starts the holder and the core of root, in a session of their

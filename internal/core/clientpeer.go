@@ -7,6 +7,10 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
+// RefusedQuitting is why a core that is quitting takes no client: one
+// started once it has ended is.
+const RefusedQuitting = "nerdr's core is quitting"
+
 // ClientRefusal is why a client connecting to the client socket from
 // peer p is refused, "" when it is not; see internal/attach. Mu is held.
 //
@@ -17,6 +21,9 @@ import (
 // counting as in a sandbox. A program that has left the tree gets past
 // this, so the socket's folder and key guard it too.
 func (m *Core) ClientRefusal(p hooks.Peer) string {
+	if m.Quitting {
+		return RefusedQuitting
+	}
 	const why = "nerdr takes no client from a program it runs: connect from your own terminal"
 	if !p.Known || len(p.Chain) == 0 {
 		return "nerdr cannot tell which program connected, and takes no client it cannot place"
