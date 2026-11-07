@@ -25,10 +25,13 @@ func pgrep(args ...string) []int {
 	return pids
 }
 
-// TestCoreCrashOverHolder: with NERDR_HOLDER=1, killing nerdr's core
-// leaves the agent running in the holder; the core started again takes it
-// up, with its screen, and quitting stops it and the holder.
-func TestCoreCrashOverHolder(t *testing.T) {
+// TestCoreOfItsOwn is phase 4 of the core: with NERDR_HOLDER=1 the agents
+// run in a core of their own, which nerdr starts and is a client of.
+// Closing the client leaves the agent at work, its hooks still reaching
+// core; nerdr started again shows it as it is, the same process. Killing
+// the core leaves the agent running in the holder; the client connects to
+// the core started again, which takes it up. Quitting stops it all.
+func TestCoreOfItsOwn(t *testing.T) {
 	bin := build(t)
 	root, scratch := setup(t)
 	fake, _ := filepath.Abs("fakeagent.sh")
@@ -38,19 +41,40 @@ func TestCoreCrashOverHolder(t *testing.T) {
 		[]byte("worktrees_dir = \"worktrees\"\ntab_bar = \"top\"\ninstall = \"off\"\n[agents.claude]\ncommand = [\""+fake+"\"]\n"), 0o644)
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "HERDR_") {
+		if !strings.HasPrefix(kv, "HERDR_") && !strings.HasPrefix(kv, "NERDR") {
 			env = append(env, kv)
 		}
 	}
+	runDir := filepath.Join(scratch, "run")
 	env = append(env,
 		"XDG_CONFIG_HOME="+cfgDir,
 		"XDG_STATE_HOME="+filepath.Join(scratch, "state"),
+		"NERDR_CLIENT_DIR="+runDir,
 		"FAKE_LOG="+filepath.Join(scratch, "agent.log"),
 		"TERM=xterm-256color",
 		"NERDR_HOLDER=1",
 	)
+	holders := func() []int { return pgrep("-f", "^"+bin+" holder") }
+	t.Cleanup(func() {
+		for _, pid := range holders() {
+			_ = syscall.Kill(pid, syscall.SIGTERM)
+		}
+	})
+	coreOf := func(holder int) []int { return pgrep("-P", strconv.Itoa(holder), "-f", " core$") }
+	closeClient := func(h *harness) {
+		t.Helper()
+		h.keys(prefix + "q")
+		h.waitFor("Close or quit nerdr?", 2*time.Second)
+		h.keys("c")
+		select {
+		case <-h.p.Done():
+		case <-time.After(10 * time.Second):
+			t.Fatalf("did not close; screen:\n%s", h.screen())
+		}
+	}
+
 	h := start(t, bin, root, env)
-	h.waitFor("Repositories in", 10*time.Second)
+	h.waitFor("Repositories in", 15*time.Second)
 	h.keys(" ")
 	h.keys("\r")
 	h.waitFor("branch:", 2*time.Second)
@@ -61,52 +85,67 @@ func TestCoreCrashOverHolder(t *testing.T) {
 	h.keys("work\r")
 	h.waitFor("done", 5*time.Second)
 
-	holderPid := h.p.Pid()
-	cores := pgrep("-P", strconv.Itoa(holderPid), "-x", "nerdr")
+	hs := holders()
 	agents := pgrep("-f", fake)
-	if len(cores) != 1 || len(agents) != 1 {
-		t.Fatalf("cores %v, agents %v under holder %d", cores, agents, holderPid)
+	if len(hs) != 1 || len(agents) != 1 || len(coreOf(hs[0])) != 1 {
+		t.Fatalf("holders %v, agents %v", hs, agents)
 	}
-	// Let the screen go quiet and be sent to the holder.
-	time.Sleep(2500 * time.Millisecond)
-	if err := syscall.Kill(cores[0], syscall.SIGKILL); err != nil {
-		t.Fatal(err)
-	}
+	holderPid, corePid := hs[0], coreOf(hs[0])[0]
 
-	var again []int
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(100 * time.Millisecond) {
-		again = pgrep("-P", strconv.Itoa(holderPid), "-x", "nerdr")
-		if len(again) == 1 && again[0] != cores[0] {
-			break
-		}
+	// Closed while the agent works and reports by its hooks: it goes on.
+	h.keys("hooked\r")
+	h.waitFor("thinking quietly", 3*time.Second)
+	closeClient(h)
+	if err := syscall.Kill(agents[0], 0); err != nil {
+		t.Fatalf("agent gone with the client: %v", err)
 	}
-	if len(again) != 1 || again[0] == cores[0] {
-		t.Fatalf("core not started again: %v", again)
-	}
+	time.Sleep(5 * time.Second) // the agent's work ends meanwhile
+
+	h = start(t, bin, root, env)
 	h.waitTabBar("1:crash", 10*time.Second)
-	h.waitFor("done", 5*time.Second)
+	h.waitFor("hooked over", 5*time.Second)
 	if now := pgrep("-f", fake); len(now) != 1 || now[0] != agents[0] {
 		t.Fatalf("agent %v, was %v", now, agents)
+	}
+	if now := coreOf(holderPid); len(now) != 1 || now[0] != corePid {
+		t.Fatalf("core %v, was %d: connecting started another", now, corePid)
 	}
 	if strings.Count(readFile(filepath.Join(scratch, "agent.log")), "\n") != 1 {
 		t.Fatalf("agent started again:\n%s", readFile(filepath.Join(scratch, "agent.log")))
 	}
-	// It goes on as it was: typing reaches it through the new core, which
-	// draws what it shows; nothing of it was on the screen before.
+
+	// The core killed: the agent lives on in the holder, and the client
+	// goes on with the core started again.
+	time.Sleep(2500 * time.Millisecond) // the screen goes to the holder
+	if err := syscall.Kill(corePid, syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("connected to nerdr's core again", 15*time.Second)
+	if now := coreOf(holderPid); len(now) != 1 || now[0] == corePid {
+		t.Fatalf("core not started again: %v", now)
+	}
+	if now := pgrep("-f", fake); len(now) != 1 || now[0] != agents[0] {
+		t.Fatalf("agent %v, was %v", now, agents)
+	}
 	h.keys("ask\r")
-	h.waitFor("Do you want to proceed?", 3*time.Second)
+	h.waitFor("Do you want to proceed?", 5*time.Second)
 	h.keys("1\r")
 	h.waitFor("answered 1", 3*time.Second)
 
 	h.keys(prefix + "q")
-	h.waitFor("Quit nerdr?", 2*time.Second)
-	h.keys("y")
+	h.waitFor("Close or quit nerdr?", 2*time.Second)
+	h.keys("q")
 	select {
 	case <-h.p.Done():
 	case <-time.After(15 * time.Second):
 		t.Fatalf("did not quit; screen:\n%s", h.screen())
 	}
-	if err := syscall.Kill(agents[0], 0); err != syscall.ESRCH {
-		t.Fatalf("agent %d still running after quitting: %v", agents[0], err)
+	for deadline := time.Now().Add(15 * time.Second); ; time.Sleep(100 * time.Millisecond) {
+		if syscall.Kill(agents[0], 0) == syscall.ESRCH && syscall.Kill(holderPid, 0) == syscall.ESRCH {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("agent or holder still running after quitting:\n%s", readFile(filepath.Join(scratch, "state", "nerdr", filepath.Base(runDir))))
+		}
 	}
 }
