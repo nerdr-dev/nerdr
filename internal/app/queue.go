@@ -216,32 +216,38 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.dialog = nil
+		var to []core.TabRef
+		for _, t := range ts {
+			to = append(to, m.Ref(t))
+		}
 		if d.broadcast {
-			m.Enqueue(ts, d.input.Value())
+			cmd := m.do(core.AddMessages{To: to, Text: d.input.Value(), Auto: true})
 			m.toast("queued for " + core.Plural(len(ts), "tab") + ": sent to each when it is idle")
 			if d.picked[m.Ref(m.Cur())] {
-				return m.openMessages()
+				return tea.Batch(cmd, m.openMessages())
 			}
-			return nil
+			return cmd
 		}
 		m.autoMessage = d.auto
+		var cmd tea.Cmd
 		if d.editing != nil {
-			from := &d.tab.Inactive
+			ref := core.MsgRef{A: m.Ref(d.tab), Inactive: true, Msg: *d.editing}
 			if d.from != nil {
-				from = &d.from.Messages
+				ref = core.MsgRef{A: m.Ref(d.from), Msg: *d.editing}
 			}
-			if i := core.IndexOf(*from, *d.editing); i >= 0 {
-				if len(ts) == 1 && ts[0] == d.from {
-					(*from)[i] = state.Message{Text: strings.TrimSpace(d.input.Value()), Auto: d.auto}
-					m.SaveSession()
-					return m.openMessages()
-				}
-				// For another agent now: it goes to the end of its list.
-				*from = core.DropFrom(*from, i)
-			} // sent while it was being changed: kept as a new one
-		}
-		for _, t := range ts {
-			m.AddMessage(t, d.input.Value(), d.auto)
+			from := d.tab.Inactive
+			if d.from != nil {
+				from = d.from.Messages
+			}
+			inPlace := core.IndexOf(from, *d.editing) >= 0 && len(ts) == 1 && ts[0] == d.from
+			// For another agent, it goes to the end of its list; one sent
+			// while it was being changed is kept as a new one.
+			cmd = m.do(core.EditMessage{M: ref, To: to, Text: d.input.Value(), Auto: d.auto})
+			if inPlace {
+				return tea.Batch(cmd, m.openMessages())
+			}
+		} else {
+			cmd = m.do(core.AddMessages{To: to, Text: d.input.Value(), Auto: d.auto})
 		}
 		who := m.AgentName(ts[0])
 		if d.all && len(ts) > 1 {
@@ -253,7 +259,7 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			m.toast("kept for " + who + " in " + m.screenKey(3) + ": put it in when you want")
 		}
 		// F3 shows it among the tab's tasks, so what became of it is seen.
-		return m.openMessages()
+		return tea.Batch(cmd, m.openMessages())
 	}
 	if d.inList {
 		switch k {
