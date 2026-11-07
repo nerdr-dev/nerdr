@@ -183,3 +183,53 @@ func TestRestoredAgentSize(t *testing.T) {
 	h.keys("size\r")
 	h.waitFor("size is "+size, 3*time.Second)
 }
+
+// TestASecondClientTakesOver: a nerdr started while another is connected
+// to the core takes over, in a terminal of another size: the first ends,
+// saying why, and the agent, the same process, gets the second's size.
+func TestASecondClientTakesOver(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
+	fake, _ := filepath.Abs("fakeagent.sh")
+	first := start(t, bin, root, env)
+	newCrashTab(first)
+	first.keys("size\r")
+	first.waitFor("size is", 3*time.Second)
+	agents := pgrep("-f", fake)
+	if len(agents) != 1 {
+		t.Fatalf("agents %v", agents)
+	}
+	_, was, _ := strings.Cut(first.screen(), "size is ")
+	was, _, _ = strings.Cut(was, " ")
+
+	second := startAt(t, bin, root, env, 120, 30)
+	select {
+	case <-first.p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatalf("the first client did not end; screen:\n%s", first.screen())
+	}
+	if !strings.Contains(first.screen(), "took over") {
+		t.Errorf("the first client did not say why it ended:\n%s", first.screen())
+	}
+	second.waitTabBar("1:crash", 15*time.Second)
+	second.waitFor("size is", 3*time.Second) // the screen as it was
+	second.keys("size\r")
+	var now string
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(50 * time.Millisecond) {
+		scr := second.screen()
+		if strings.Count(scr, "size is ") < 2 {
+			continue
+		}
+		now = scr[strings.LastIndex(scr, "size is ")+len("size is "):]
+		now, _, _ = strings.Cut(now, " ")
+		break
+	}
+	if now == was || now == "" {
+		t.Errorf("the agent's rows are %q, with the first client %q; screen:\n%s", now, was, second.screen())
+	}
+	if got := pgrep("-f", fake); len(got) != 1 || got[0] != agents[0] {
+		t.Errorf("agent %v, was %v", got, agents)
+	}
+	endClient(t, second, "q")
+}

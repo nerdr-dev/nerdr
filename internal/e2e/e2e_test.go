@@ -70,21 +70,27 @@ func setup(t *testing.T) (root, scratch string) {
 
 func start(t *testing.T, bin, root string, env []string) *harness {
 	t.Helper()
+	return startAt(t, bin, root, env, 160, 40)
+}
+
+// startAt is start in a terminal w×h.
+func startAt(t *testing.T, bin, root string, env []string, w, h int) *harness {
+	t.Helper()
 	// nerdr checks that the review panel it draws again from its last
 	// drawing has not changed meanwhile; see reuseCheck in app.
 	env = append(env[:len(env):len(env)], "NERDR_CHECK_REUSE=1")
 	env = isolated(t, env)
-	p, err := term.Start([]string{bin}, root, env, 160, 40, func() {})
+	p, err := term.Start([]string{bin}, root, env, w, h, func() {})
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := &harness{t: t, p: p, root: root, env: env}
+	hs := &harness{t: t, p: p, root: root, env: env}
 	if !ending[t] {
 		ending[t] = true
 		t.Cleanup(func() { delete(ending, t); endAll(t, bin, root) })
 	}
 	t.Cleanup(func() { p.Close() })
-	return h
+	return hs
 }
 
 // ending are the tests that end what they started once they are done;
