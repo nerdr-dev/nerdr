@@ -472,6 +472,10 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case coreBackMsg:
 		return m.coreBack(msg.conn)
 
+	case coreEndedMsg:
+		m.goneErr = "nerdr's core has ended and did not come back (" + msg.err.Error() + "): start nerdr again"
+		return tea.Quit
+
 	case core.ChangedMsg, core.RedrawMsg:
 		return nil // only to draw what core has done
 

@@ -202,17 +202,29 @@ func (m *Model) coreGone(why string) tea.Cmd {
 	redial := m.redial
 	return func() tea.Msg {
 		wait := 100 * time.Millisecond
+		deadline := time.Now().Add(coreGoneWait)
 		for {
 			conn, err := redial()
 			if err == nil {
 				return coreBackMsg{conn}
 			}
 			core.Debugf("core: connecting again: %v", err)
+			if time.Now().After(deadline) {
+				return coreEndedMsg{err}
+			}
 			time.Sleep(wait)
 			wait = min(2*wait, 2*time.Second)
 		}
 	}
 }
+
+// coreGoneWait is how long the TUI tries to connect to its core again
+// before it ends: a core that crashed is started again by its holder at
+// once, but one whose holder has ended too never comes back.
+var coreGoneWait = 20 * time.Second
+
+// coreEndedMsg is core not back within coreGoneWait, err the last try.
+type coreEndedMsg struct{ err error }
 
 // coreBackMsg is a connection to core again, once it was gone.
 type coreBackMsg struct{ conn *attach.Conn }
