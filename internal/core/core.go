@@ -87,6 +87,10 @@ type Core struct {
 	// SandboxedDirs are the worktree folders where a sandboxed agent has
 	// run, kept across tab close and reopen.
 	SandboxedDirs map[string]bool
+	// SandboxChecks are the agents' commands checked from inside their
+	// sandbox since the core started, by kind and command; see
+	// CheckSandbox.
+	SandboxChecks map[string]bool `json:"-"`
 	// hookSock is the socket herdr's integrations in the agents report to,
 	// and hookBin nerdr itself, for those that report through the CLI.
 	HookSock, HookBin string

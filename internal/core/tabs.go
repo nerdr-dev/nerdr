@@ -366,7 +366,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	t.Err = ""
 	t.Changed = time.Now()
 	m.Tell(StartedMsg{A: m.Ref(t)})
-	return nil
+	return m.CheckSandbox(t, spec.Env)
 }
 
 // Tab is one agent in one set of worktrees.

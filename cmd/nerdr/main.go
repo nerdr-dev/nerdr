@@ -22,6 +22,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/store"
 
@@ -69,6 +70,11 @@ config: %s
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == core.PluginExecArg {
 		os.Exit(core.ExecPlugin(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == sandboxcheck.Arg {
+		// The core's look from inside an agent's sandbox; see
+		// core.CheckSandbox.
+		os.Exit(sandboxcheck.Main(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "holder" {
 		os.Exit(holder.Main(os.Args[2:]))

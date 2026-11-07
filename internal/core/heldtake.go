@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"slices"
+	"syscall"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
@@ -121,6 +122,19 @@ func (m *Core) TakeUpHeld() {
 		}
 	}
 	m.takeUpReviews()
+	// A check from inside a sandbox that the core before did not see the
+	// end of is ended: nothing waits for its answer now.
+	for {
+		p, _, ok := m.Held.take(func(l Label) bool { return l.Kind == HeldCheck })
+		if !ok {
+			break
+		}
+		proc := m.Held.Client.Attach(p, p.Pos)
+		go func() {
+			_ = proc.Signal(proc.Pid(), syscall.SIGKILL)
+			_ = proc.Close()
+		}()
+	}
 }
 
 func (m *Core) takeUpShell(t *Tab, p holder.Prog, l Label) {
