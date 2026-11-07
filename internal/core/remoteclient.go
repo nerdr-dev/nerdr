@@ -24,7 +24,7 @@ const (
 	wireParts  byte = 'P' // core: []Part
 	wireEvent  byte = 'E' // core: an event, as EncodeEvent makes it
 	wireDone   byte = 'D' // core: the request of an id is done, doneWire
-	wireBehind byte = 'B' // core: what waited was dropped; all comes afresh
+	wireBehind byte = 'B' // core: what waited was dropped, all came afresh; behindWire
 	wireAsked  byte = 'q' // client: a request to be told when done, askedWire
 )
 
@@ -35,6 +35,13 @@ type askedWire struct {
 
 type doneWire struct {
 	ID int64 `json:"id"`
+}
+
+// behindWire follows the parts sent afresh to a client that fell behind:
+// Done is the last of its requests core has done, whose done may have
+// been among what was dropped.
+type behindWire struct {
+	Done int64 `json:"done"`
 }
 
 // ClientState is what a client in a process of its own shows, as
@@ -130,6 +137,9 @@ type RemoteClient struct {
 	// notices are what core had to show with no client there, kept for
 	// the next to connect.
 	notices [][]byte
+	// lastDone is the id of the last request asked with an id that core
+	// has done.
+	lastDone int64
 	// partsErr is the last a part could not be sent for, logged once.
 	partsErr string
 	// post hands the loop a request; partsAt is when the parts were last
@@ -193,7 +203,10 @@ func (rc *RemoteClient) read(b []byte, post func(RequestEv)) {
 			Debugf("client: %v", err)
 			r = noRequest{}
 		}
-		post(RequestEv{R: r, Done: func() { rc.out = append(rc.out, done) }})
+		post(RequestEv{R: r, Done: func() {
+			rc.out = append(rc.out, done)
+			rc.lastDone = max(rc.lastDone, a.ID)
+		}})
 	}
 }
 
@@ -213,7 +226,6 @@ func (rc *RemoteClient) flush(m *Core) {
 	behind := rc.behind.Swap(false)
 	if behind {
 		rc.sent.Reset()
-		rc.conn.Send("", []byte{wireBehind})
 	}
 	// The parts are looked at again when core changed (Gen), when the
 	// client is told something, or every PartsEvery: a program drawing
@@ -236,6 +248,10 @@ func (rc *RemoteClient) flush(m *Core) {
 	}
 	if len(parts) > 0 {
 		rc.conn.Send("", wire(wireParts, parts))
+	}
+	if behind {
+		// After the parts: a request it says is done shows in them.
+		rc.conn.Send("", wire(wireBehind, behindWire{Done: rc.lastDone}))
 	}
 	for _, b := range rc.out {
 		rc.conn.Send("", b)
