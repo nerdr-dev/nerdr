@@ -197,7 +197,7 @@ func TestSecretAloneIsNotEnough(t *testing.T) {
 			t.Fatal("a terminal was opened")
 		}
 	}
-	under := hooks.Peer{Known: true, Chain: []int{1 << 30, codex.Pane.Pid(), 1}}
+	under := chain(1<<30, codex.Pane.Pid(), 1)
 	if a, _ := askNerdr(m, codex, hooks.Report{Method: hooks.Terminal, Text: "true", Peer: under}); a.Err != "" {
 		t.Fatalf("run under codex: %+v", a)
 	}
@@ -674,6 +674,16 @@ func TestConfigTurnedOffStillConfinesARunningAgent(t *testing.T) {
 	}
 }
 
+// chain is a peer of the processes pids, the first first, with when each
+// started, as the kernel says: 0 for one not there.
+func chain(pids ...int) hooks.Peer {
+	p := hooks.Peer{Known: true, Chain: pids}
+	for _, pid := range pids {
+		p.Starts = append(p.Starts, hooks.Started(pid))
+	}
+	return p
+}
+
 // TestVouchPlacesTheProcess: a report is the agent's only when the kernel
 // puts the process under that agent. Knowing a secret, even with another
 // agent's process behind it, is not enough.
@@ -693,13 +703,17 @@ func TestVouchPlacesTheProcess(t *testing.T) {
 		peer      hooks.Peer
 		unvouched bool
 	}{
-		{"the agent itself", key, hooks.Peer{Known: true, Chain: []int{codex.Pane.Pid(), 1}}, false},
-		{"a process under the agent", key, hooks.Peer{Known: true, Chain: []int{stray, codex.Pane.Pid(), 1}}, false},
-		{"a process under another agent", key, hooks.Peer{Known: true, Chain: []int{stray, tb.Pane.Pid(), 1}}, true},
+		{"the agent itself", key, chain(codex.Pane.Pid(), 1), false},
+		{"a process under the agent", key, chain(stray, codex.Pane.Pid(), 1), false},
+		{"a process under another agent", key, chain(stray, tb.Pane.Pid(), 1), true},
 		{"a process the kernel would not name", key, hooks.Peer{Known: true}, true},
-		{"a secret nobody has", "no such secret", hooks.Peer{Known: true, Chain: []int{codex.Pane.Pid(), 1}}, true},
+		{"a secret nobody has", "no such secret", chain(codex.Pane.Pid(), 1), true},
 		// Where the kernel cannot be asked, the secret is taken alone.
 		{"a system that cannot say", key, hooks.Peer{}, false},
+		// The agent's id, given to another process once the agent's ended.
+		{"a process with the agent's id, started at another time", key,
+			hooks.Peer{Known: true, Chain: []int{codex.Pane.Pid(), 1}, Starts: []uint64{hooks.Started(codex.Pane.Pid()) + 1, hooks.Started(1)}}, true},
+		{"a process with the agent's id, started when nerdr cannot tell", key, hooks.Peer{Known: true, Chain: []int{codex.Pane.Pid(), 1}}, true},
 	} {
 		got := m.Vouch(hooks.Report{Pane: c.pane, Peer: c.peer})
 		if got.Unvouched != c.unvouched {
@@ -717,7 +731,7 @@ func TestVouchPlacesTheProcess(t *testing.T) {
 	pane := codex.Pane
 	codex.Pane = nil
 	defer func() { codex.Pane = pane }()
-	if r := m.Vouch(hooks.Report{Pane: key, Peer: hooks.Peer{Known: true, Chain: []int{pane.Pid(), 1}}}); !r.Unvouched {
+	if r := m.Vouch(hooks.Report{Pane: key, Peer: chain(pane.Pid(), 1)}); !r.Unvouched {
 		t.Error("an agent no longer running vouched for a report")
 	}
 }
@@ -738,7 +752,7 @@ func TestQuittingTakesNoConversationFromAStranger(t *testing.T) {
 	if codex.SessionID != "before" {
 		t.Fatalf("a stranger set the conversation: %q", codex.SessionID)
 	}
-	under := hooks.Peer{Known: true, Chain: []int{1 << 30, codex.Pane.Pid(), 1}}
+	under := chain(1<<30, codex.Pane.Pid(), 1)
 	m.Update(hooks.Report{Method: hooks.ReportAgentSession, Pane: codex.HookKey(), SessionID: "real", Peer: under})
 	if codex.SessionID != "real" {
 		t.Fatalf("the agent's own report was not taken: %q", codex.SessionID)

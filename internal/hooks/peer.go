@@ -12,6 +12,33 @@ type Peer struct {
 	Known bool
 	// Chain is the process, then its parent, and so on up to the first.
 	Chain []int
+	// Starts are when each process in Chain started, by the kernel's
+	// clock: a process given the id of one that has ended has another.
+	Starts []uint64
+}
+
+// Started is when the process pid started, as Peer's Starts have it;
+// 0 when nerdr cannot tell.
+func Started(pid int) uint64 {
+	if pid <= 0 {
+		return 0
+	}
+	_, start, err := procInfo(pid)
+	if err != nil {
+		return 0
+	}
+	return start
+}
+
+// StartOf is when the process pid in p's Chain started, 0 when it is not
+// there or nerdr cannot tell.
+func (p Peer) StartOf(pid int) uint64 {
+	for i, c := range p.Chain {
+		if c == pid && i < len(p.Starts) {
+			return p.Starts[i]
+		}
+	}
+	return 0
 }
 
 // maxChain is how far up from a peer nerdr looks for an agent.
@@ -35,12 +62,10 @@ func PeerOf(c net.Conn) Peer {
 	}
 	p := Peer{Known: true}
 	for len(p.Chain) < maxChain && pid > 0 {
+		next, start, err := procInfo(pid)
 		p.Chain = append(p.Chain, pid)
-		if pid == 1 {
-			break
-		}
-		next, err := parentPid(pid)
-		if err != nil || next == pid {
+		p.Starts = append(p.Starts, start) // 0 when not known
+		if err != nil || pid == 1 || next == pid {
 			break
 		}
 		pid = next

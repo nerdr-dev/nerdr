@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"os"
 	"slices"
 	"syscall"
@@ -72,6 +73,8 @@ func (m *Core) takeUpAgent(t *Tab) bool {
 	}
 	w, h := m.Client.TabSize(m.Ref(t))
 	t.Pane = m.attachHeld(p, w, h)
+	// Not reaped before the core has its exit, so the process is still its.
+	t.PidStart = hooks.Started(p.Pid)
 	t.HookID = p.Secret
 	t.InSandbox = p.Sandboxed
 	if t.InSandbox {

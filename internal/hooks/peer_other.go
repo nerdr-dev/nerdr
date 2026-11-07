@@ -9,4 +9,4 @@ const peerSupported = false
 
 func peerPid(int) (int, error) { return 0, errors.ErrUnsupported }
 
-func parentPid(int) (int, error) { return 0, errors.ErrUnsupported }
+func procInfo(int) (int, uint64, error) { return 0, 0, errors.ErrUnsupported }
