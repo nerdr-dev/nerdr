@@ -1,6 +1,9 @@
 package core
 
 import (
+	"fmt"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -239,5 +242,43 @@ func TestCoreGoneSaysWhy(t *testing.T) {
 		case <-deadline:
 			t.Fatal("never told core was gone")
 		}
+	}
+}
+
+// TestASlowClientDoesNotGrowCore: a client that reads nothing, while core
+// tells it far more than the client socket's queue holds, costs core no
+// more memory than that queue: it is dropped, and sent afresh, not kept.
+func TestASlowClientDoesNotGrowCore(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	a, b, err := attach.Pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { a.Close(""); b.Close("") })
+	tb := &Tab{}
+	tb.ID, tb.Name = "a", "parser"
+	c := &Core{Tabs: []*Tab{tb}}
+	c.Mu.Lock()
+	c.AttachClient(a, func(RequestEv) {})
+	c.Mu.Unlock()
+
+	heap := func() uint64 {
+		runtime.GC()
+		var ms runtime.MemStats
+		runtime.ReadMemStats(&ms)
+		return ms.HeapAlloc
+	}
+	before := heap()
+	big := strings.Repeat("x", 64<<10)
+	const n = 2000 // 128 MiB told
+	for i := range n {
+		c.Mu.Lock()
+		c.Tell(NoticeMsg(fmt.Sprint(i, big)))
+		tb.Name = fmt.Sprint("parser ", i, big) // and the tab changing
+		c.FlushClient()
+		c.Mu.Unlock()
+	}
+	if grew := int64(heap()) - int64(before); grew > 3*attach.QueueLimit {
+		t.Errorf("core grew %d MiB for a client that reads nothing", grew>>20)
 	}
 }

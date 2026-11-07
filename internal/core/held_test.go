@@ -406,3 +406,45 @@ func TestHeldAgentsBesideATab(t *testing.T) {
 		t.Error("still waiting once taken up")
 	}
 }
+
+// An agent started in a sandbox stays in one for a core started after a
+// crash, the config since turned the other way: the holder's mark is
+// what counts, not the config. (A program the holder has no mark of
+// counts as in one: see the holder's TestSpawnKeepsTheSpecsIDAndMark.)
+func TestTheSandboxMarkOutlivesACrash(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	script := agentScript(t, "exec cat\n")
+	a, tabA := heldCore(t, clA, script)
+	a.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{script}, Sandboxed: true}
+	a.Start(tabA, false)
+	if tabA.Pane == nil || !tabA.InSandbox {
+		t.Fatalf("not started in a sandbox: %s", tabA.Err)
+	}
+	pid := tabA.Pane.Pid()
+	clA.Close() // crashed
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, tabB := heldCore(t, clB, script) // sandboxed = false now
+	b.Mu.Lock()
+	b.TakeUpHeld()
+	cmd := b.Start(tabB, true)
+	b.Mu.Unlock()
+	if tabB.Pane == nil || tabB.Pane.Pid() != pid {
+		t.Fatalf("agent not taken up: %+v", tabB.Pane)
+	}
+	if !tabB.InSandbox || !b.Confined(hooks.Report{}, tabB) {
+		t.Error("the agent lost its sandbox with the crash")
+	}
+	if cmd != nil {
+		t.Error("an agent taken up is checked again") // it was, when it started
+	}
+
+}
