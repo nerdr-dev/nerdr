@@ -71,7 +71,7 @@ func TestMirror(t *testing.T) {
 	applyAll(t, r, append(parts[len(parts)-1:], parts[:len(parts)-1]...))
 
 	c := r.C
-	if len(c.Tabs) != 2 || c.Tabs[0].Name != "parser" || c.Tabs[1].Name != "docs" || c.Gen != 7 || c.Root != "/repos" {
+	if len(c.Tabs) != 2 || c.Tabs[0].Name != "parser" || c.Tabs[1].Name != "docs" || c.Root != "/repos" {
 		t.Fatalf("copy: %+v", c.Tabs)
 	}
 	a, b := c.Tabs[0], c.Tabs[1]
@@ -101,7 +101,13 @@ func TestMirror(t *testing.T) {
 		t.Error("question")
 	}
 
-	// The copy sends what core sent.
+	// The copy counts its changes in a Gen of its own.
+	if c.Gen != uint64(len(parts)) {
+		t.Errorf("Gen %d after %d parts", c.Gen, len(parts))
+	}
+
+	// The copy sends what core sent, but for its Gen.
+	c.Gen = m.Gen
 	again, err := c.Parts(&Sent{})
 	if err != nil {
 		t.Fatal(err)

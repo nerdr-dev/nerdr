@@ -40,9 +40,9 @@ func (m *Model) newReviewPane() tea.Cmd {
 	}
 	of := m.focused(t).Agent()
 	m.reviewerCursor = 0
-	cmds := []tea.Cmd{fromCore(m.AddPane(t, &core.PaneTab{Kind: core.PaneReview, Of: of}, false))}
+	cmds := []tea.Cmd{m.do(core.OpenReviewPane{T: m.Ref(t), Of: m.Ref(of)})}
 	for _, k := range m.reviewKinds(of) {
-		cmds = append(cmds, fromCore(m.AskModels(k)))
+		cmds = append(cmds, m.do(core.AskModels{Kind: k}))
 	}
 	return tea.Batch(cmds...)
 }
@@ -50,10 +50,7 @@ func (m *Model) newReviewPane() tea.Cmd {
 // startReviewWith starts by reviewing of's work, or adds it to the
 // review going on.
 func (m *Model) startReviewWith(of *core.Tab, by core.Reviewer) tea.Cmd {
-	if of.Review != nil {
-		return tea.Batch(fromCore(m.AddReviewer(of, by)), m.resize())
-	}
-	return fromCore(m.LookAtTree(of, core.TreeHand, by))
+	return m.do(core.StartReview{Of: m.Ref(of), By: by})
 }
 
 // reviewPickKey handles a key in review pane p while it lists the agents
@@ -66,8 +63,7 @@ func (m *Model) reviewPickKey(t *core.Tab, p *core.PaneTab, msg tea.KeyMsg) tea.
 	}
 	switch k {
 	case "esc", "q":
-		m.DropPane(t, p)
-		return m.resize()
+		return tea.Batch(m.do(core.DropPane{P: m.PaneRef(p)}), m.resize())
 	case "-", "left":
 		return m.setRounds(of, -1)
 	case "+", "=", "right":
@@ -194,7 +190,7 @@ func (m *Model) reviewerButtons(t *core.Tab, p *core.PaneTab) string {
 	if len(run.Seats) == 1 {
 		label = " stop the review "
 	}
-	s := m.onClick(buttonStyle.Render(label), func(m *Model) tea.Cmd { return fromCore(m.ClosePane(t, p)) })
+	s := m.onClick(buttonStyle.Render(label), func(m *Model) tea.Cmd { return m.do(core.ClosePane{P: m.PaneRef(p)}) })
 	if run.Phase == core.Reviewing {
 		s += " " + m.onClick(buttonStyle.Render(" + reviewer "), func(m *Model) tea.Cmd {
 			cmd := m.goToPane(t, p)
@@ -224,8 +220,7 @@ func (m *Model) stopReview() tea.Cmd {
 	if a == nil || a.Review == nil {
 		return nil
 	}
-	m.EndReview(a, "stopped", false)
-	return m.resize()
+	return m.do(core.StopReview{A: m.Ref(a)})
 }
 
 // reviewKinds are the agents t's work can be reviewed by: the one the
@@ -253,16 +248,18 @@ const maxRounds = 9
 // never below the round it is in.
 func (m *Model) setRounds(t *core.Tab, d int) tea.Cmd {
 	n := min(max(max(m.Cfg.Review.Rounds, 1)+d, 1), maxRounds)
+	var cmd tea.Cmd
 	if t != nil && t.Review != nil {
 		n = min(max(t.Review.Rounds+d, t.Review.Round, 1), maxRounds)
-		t.Review.Rounds = n
+		cmd = m.do(core.SetRounds{A: m.Ref(t), N: n})
 	}
 	if n == m.Cfg.Review.Rounds {
-		return nil
+		return cmd
 	}
 	m.Cfg.Review.Rounds = n
+	cmd = tea.Batch(cmd, m.do(core.SetConfig{Cfg: m.Cfg}))
 	if err := config.SaveReviewRounds(n); err != nil {
 		m.toast("rounds: " + strconv.Itoa(n) + " for now; not saved: " + err.Error())
 	}
-	return nil
+	return cmd
 }

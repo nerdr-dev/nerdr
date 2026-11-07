@@ -6,7 +6,6 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/state"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -123,14 +122,9 @@ func (m *Model) openConversation(c *agents.Conversation) tea.Cmd {
 	// In the folder the conversation was had in, which may be one of the
 	// tab's repositories rather than the tab's own folder: the agent finds
 	// its conversations by folder, and its paths are from there.
-	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: core.NewTabID(), Name: t.Name, Dir: c.Dir, Agent: c.Kind, Worktrees: t.Worktrees,
-		Num: t.NextNum(), SessionID: c.ID}, Light: core.StStarting}, PartOf: t}
-	cmd := m.AddPane(t, &core.PaneTab{Kind: core.PaneAgent, A: a}, false)
-	start := m.Start(a, true)
-	m.SaveSession()
+	cmd := m.do(core.CarryOnConversation{T: m.Ref(t), ID: core.NewTabID(), Kind: c.Kind, Session: c.ID, Dir: c.Dir})
 	m.focusTerms(t)
-	m.toast(t.Name + ": " + m.AgentLabel(t, a) + " carries on the conversation")
-	return tea.Batch(sel, fromCore(cmd), fromCore(start), m.resize())
+	return tea.Batch(sel, cmd, m.resize())
 }
 
 // selectTabCmd goes to t, if it is not the active tab.

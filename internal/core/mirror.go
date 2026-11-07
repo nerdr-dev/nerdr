@@ -160,7 +160,13 @@ func NewMirror(c *Core) *Mirror {
 }
 
 // Apply takes part p into the copy. C.Mu is held.
+//
+// The copy's Gen is its own: a change taken in counts in it, as the
+// client's own changes do (see Core.Gen), and core's is not taken, so it
+// never goes back to a number already drawn at.
 func (r *Mirror) Apply(p Part) error {
+	gen := r.C.Gen
+	defer func() { r.C.Gen = gen + 1 }()
 	switch {
 	case p.Key == PartCore:
 		if err := r.applyCore(p.Body); err != nil {

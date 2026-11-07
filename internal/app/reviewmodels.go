@@ -48,7 +48,7 @@ func (m *Model) openModelPick(k agents.Kind) tea.Cmd {
 			}
 		}
 	}
-	return tea.Batch(textinput.Blink, fromCore(m.AskModels(k)))
+	return tea.Batch(textinput.Blink, m.do(core.AskModels{Kind: k}))
 }
 
 // pickModel starts of's review by kind with model, and keeps it in the
@@ -72,6 +72,7 @@ func (m *Model) pickModel(of *core.Tab, k agents.Kind, model string) tea.Cmd {
 		if err := config.SetKey("review.models", string(k), value); err != nil {
 			m.toast(string(k) + ": " + cmp.Or(model, "its own model") + " for now; not saved: " + err.Error())
 		}
+		return tea.Batch(m.do(core.SetConfig{Cfg: m.Cfg}), m.startReviewWith(of, core.Reviewer{Kind: k, Model: model}))
 	}
 	return m.startReviewWith(of, core.Reviewer{Kind: k, Model: model})
 }
