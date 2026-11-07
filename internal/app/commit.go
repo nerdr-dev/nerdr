@@ -58,7 +58,7 @@ const commitFilesShown = 12
 // openCommit opens the dialog for committing t's changes, and looks them
 // up.
 func (m *Model) openCommit(t *core.Tab) tea.Cmd {
-	m.MarkSandboxed(t)
+	m.do(core.MarkSandboxed{T: m.Ref(t)})
 	in := newTextArea("what the change does", min(max(m.width-16, 30), 80))
 	in.SetHeight(4)
 	d := &commitDialog{t: t, wts: append([]workspace.Worktree(nil), t.Worktrees...), input: in}
@@ -130,7 +130,7 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 		}
 		t := d.t
-		m.MarkSandboxed(t)
+		m.do(core.MarkSandboxed{T: m.Ref(t)})
 		hooks := !t.HasSandboxed()
 		p := m.curBranchPanel()
 		if p == nil || p.t != t {

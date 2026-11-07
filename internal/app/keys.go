@@ -689,13 +689,8 @@ func (m *Model) restart(t *core.Tab) tea.Cmd {
 	if m.ReposHold(t) {
 		return nil
 	}
-	if t.Pane != nil {
-		old := t.Pane
-		go old.Close()
-	}
-	t.FallbackTried = false
 	m.scrolling = false
-	return fromCore(m.Start(t, true))
+	return m.do(core.Restart{A: m.Ref(t)})
 }
 
 // keyBytes encodes a key the way a terminal would have sent it. It is

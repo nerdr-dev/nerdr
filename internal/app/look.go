@@ -17,6 +17,19 @@ import (
 type tabLook struct {
 	on     *core.PaneTab
 	scroll int
+	// notified is the state last notified of, and when; see notify.go.
+	notified   core.Status
+	notifiedAt time.Time
+	// goal is the task wrapped for the panel; see panel.go.
+	goal *goalWrap
+}
+
+// goalWrap is the last message wrapped for one width, kept since the panel
+// is measured on every resize and mouse motion, and wrapping is not free.
+type goalWrap struct {
+	w           int
+	goal, reply string
+	rows        []string
 }
 
 // paneLook is how the TUI shows a pane: small while it is minimised by hand,

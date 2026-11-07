@@ -96,3 +96,67 @@ func (m *Core) OnFocusFiles(msg FocusFilesMsg) Cmd {
 	}
 	return m.Tell(UnseenMsg{T: m.Ref(t)})
 }
+
+func init() { registerRequests(StartRestored{}, Restart{}, MarkSandboxed{}) }
+
+// StartRestored starts the agents of the tabs restored at start, spaced
+// StartSpacing apart, tab Front first; those of tabs gone cold, but for
+// Front and Beside, sleep until visited.
+type StartRestored struct{ Front, Beside TabRef }
+
+func (q StartRestored) Do(m *Core) Cmd {
+	now := time.Now()
+	front, beside := m.ByRef(q.Front), m.ByRef(q.Beside)
+	order := make([]*Tab, 0, len(m.Tabs))
+	if front != nil {
+		order = append(order, front)
+	}
+	for _, t := range m.Tabs {
+		if t != front {
+			order = append(order, t)
+		}
+	}
+	var cmds []Cmd
+	n := 0
+	for _, t := range order {
+		if t != front && t != beside && m.Cold(t, now) && !TabHasAuto(t) && !m.HeldAgent(t) {
+			for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
+				a.Light = StAsleep
+			}
+			cmds = append(cmds, m.LookUpGoal(t), m.CountSkills(t))
+			continue
+		}
+		cmds = append(cmds, StartLater(time.Duration(n)*StartSpacing, m.Start(t, true)), m.LookUpGoal(t), m.CountSkills(t))
+		n++
+		for _, a := range t.ExtraAgents() {
+			cmds = append(cmds, StartLater(time.Duration(n)*StartSpacing, m.Start(a, true)), m.LookUpGoal(a))
+			n++
+		}
+	}
+	return Batch(cmds...)
+}
+
+// Restart starts agent A again, carrying on its conversation.
+type Restart struct{ A TabRef }
+
+func (q Restart) Do(m *Core) Cmd {
+	t := m.ByRef(q.A)
+	if t == nil || m.ReposHold(t) {
+		return nil
+	}
+	if t.Pane != nil {
+		old := t.Pane
+		go old.Close()
+	}
+	t.FallbackTried = false
+	return m.Start(t, true)
+}
+
+// MarkSandboxed brings up to date whether tab T has had an agent in a
+// sandbox; see Core.MarkSandboxed.
+type MarkSandboxed struct{ T TabRef }
+
+func (q MarkSandboxed) Do(m *Core) Cmd {
+	m.MarkSandboxed(m.ByRef(q.T))
+	return nil
+}

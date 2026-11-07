@@ -13,7 +13,6 @@ app.go: call *Loop.Stop 1
 app.go: call *TypedLine.Feed 1
 app.go: write a.Typed 1
 app.go: write m.Quitting 1
-commit.go: call *Core.MarkSandboxed 2
 dialogs.go: call *Held.Shutdown 1
 issuelist.go: call *Core.RefreshIssues 1
 issuelist.go: write m.IssueWatch 1
@@ -23,11 +22,6 @@ issuewatch.go: write m.IssueWatch 2
 issuewatch.go: write w.All 1
 issuewatch.go: write w.AllBusy 2
 issuewatch.go: write w.All[] 1
-keys.go: call *Core.Start 1
-keys.go: write t.FallbackTried 1
-notify.go: write t.Notified 1
-notify.go: write t.NotifiedAt 1
-panel.go: write t.GoalWrap 1
 pluginruns.go: call *Core.Answer 2
 pluginspanel.go: call *Core.StartPluginUI 1
 pluginspanel.go: call *Core.StopPickedRun 1
@@ -63,9 +57,5 @@ skillspanel.go: config changed, core not told: skillsKey 1
 skillspanel.go: write m.SkillLook.At 1
 skilluse.go: call *Core.SkillStates 1
 skilluse.go: write m.SkillUse 1
-sleep.go: call *Core.CountSkills 2
-sleep.go: call *Core.LookUpGoal 3
-sleep.go: call *Core.Start 2
-sleep.go: write a.Light 1
 usage.go: write m.ClaudeAt 1
 usage.go: write m.ClaudeLimits 1
