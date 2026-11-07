@@ -54,6 +54,12 @@ func runCore(h *core.Held) error {
 	defer release()
 	sess, loadErr := state.Load(root)
 
+	core.Logf = func(format string, args ...any) {
+		core.Debugf(format, args...)
+		fmt.Fprintf(os.Stderr, "%s nerdr core: %s\n", time.Now().Format(time.TimeOnly), fmt.Sprintf(format, args...))
+	}
+	core.Logf("started for %s, %d tabs from the saved session", root, len(sess.Tabs))
+
 	c := &core.Core{
 		Cfg:    cfg,
 		Root:   root,
@@ -141,10 +147,15 @@ func runCore(h *core.Held) error {
 		Version: version(),
 		Check: func(p hooks.Peer) string {
 			c.Mu.Lock()
-			defer c.Mu.Unlock()
-			return c.ClientRefusal(p)
+			why := c.ClientRefusal(p)
+			c.Mu.Unlock()
+			if why != "" {
+				core.Logf("client refused (%v): %s", p.Chain, why)
+			}
+			return why
 		},
 		Client: func(conn *attach.Conn, _ attach.Hello) {
+			core.Logf("client: connected")
 			c.Mu.Lock()
 			c.AttachClient(conn, attachPost)
 			c.Mu.Unlock()
@@ -171,6 +182,7 @@ func runCore(h *core.Held) error {
 	signal.Ignore(syscall.SIGHUP)
 	select {
 	case <-quit:
+		core.Logf("quit by its client")
 		return nil
 	case p := <-panicked:
 		fmt.Fprintln(os.Stderr, "nerdr core: panic:", p.String())

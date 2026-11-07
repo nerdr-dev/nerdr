@@ -170,7 +170,7 @@ func (rc *RemoteClient) flush(m *Core) {
 	}
 	parts, err := m.Parts(&rc.sent)
 	if err != nil {
-		Debugf("client: parts: %v", err)
+		Logf("client: parts left out: %v", err)
 	}
 	if len(parts) > 0 {
 		rc.conn.Send("", wire(wireParts, parts))
