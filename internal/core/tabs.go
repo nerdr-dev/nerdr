@@ -413,10 +413,6 @@ type Tab struct {
 	// see cutOff.
 	Reports, Heard, ToldCutOff bool
 
-	// Notified is the state last notified of, and when; see notify.go.
-	Notified   Status
-	NotifiedAt time.Time
-
 	// What was going on when you last left the tab, what its agent did
 	// while you were away, and the summary made when you came to it, for
 	// H; see attention.go.
@@ -424,10 +420,9 @@ type Tab struct {
 	Away    AwayLog
 	Summary *Summary
 
-	// The task wrapped for the panel; whether its agent's log is being
-	// read for it; and what is typed to an agent whose log is not read,
-	// to take the task from. See panel.go.
-	GoalWrap    *GoalWrap
+	// Whether its agent's log is being read for the task; and what is
+	// typed to an agent whose log is not read, to take the task from. See
+	// panel.go.
 	GoalLooking bool
 	Typed       *TypedLine `json:"-"`
 	// LastAt is when Last was set from what was typed, so the agent's log,

@@ -41,11 +41,12 @@ func (m *Model) notifyChange(t *core.Tab, visible bool, now time.Time) {
 		core.Debugf("notify %s: not sent, notify = %q", name, m.Cfg.Notify)
 		return
 	}
-	if t.Notified == t.Light && now.Sub(t.NotifiedAt) < core.NotifyAgain {
-		core.Debugf("notify %s: not sent, notified of %s %s ago", name, what, now.Sub(t.NotifiedAt).Round(time.Second))
+	tl := m.tl(t)
+	if tl.notified == t.Light && now.Sub(tl.notifiedAt) < core.NotifyAgain {
+		core.Debugf("notify %s: not sent, notified of %s %s ago", name, what, now.Sub(tl.notifiedAt).Round(time.Second))
 		return
 	}
-	t.Notified, t.NotifiedAt = t.Light, now
+	tl.notified, tl.notifiedAt = t.Light, now
 	// The news is of the tab the agent is in: that is where n goes.
 	o := t.Owner()
 	if !m.blurred {

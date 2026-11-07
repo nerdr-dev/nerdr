@@ -171,14 +171,6 @@ func (m *Core) SetGoal(t *Tab, goal string) {
 	m.Tell(PanesMsg{}) // the panel takes rows above the agent
 }
 
-// GoalWrap is the last message wrapped for one width, kept since the panel
-// is measured on every resize and mouse motion, and wrapping is not free.
-type GoalWrap struct {
-	W           int
-	Goal, Reply string
-	Rows        []string
-}
-
 // briefWords and briefRunes are the most a prompt has of each to be a
 // brief one: an answer such as "yes" or "ok, do it", not a request.
 const (

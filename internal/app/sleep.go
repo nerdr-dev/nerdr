@@ -1,8 +1,6 @@
 package app
 
 import (
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
@@ -25,32 +23,5 @@ import (
 // startSpacing apart, the tab shown first; those of tabs gone cold sleep
 // until visited.
 func (m *Model) restoreStarts() []tea.Cmd {
-	now := time.Now()
-	order := make([]*core.Tab, 0, len(m.Tabs))
-	if t := m.Cur(); t != nil {
-		order = append(order, t)
-	}
-	for _, t := range m.Tabs {
-		if t != m.Cur() {
-			order = append(order, t)
-		}
-	}
-	var cmds []tea.Cmd
-	n := 0
-	for _, t := range order {
-		if t != m.Cur() && t != m.splitTab() && m.Cold(t, now) && !core.TabHasAuto(t) && !m.HeldAgent(t) {
-			for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
-				a.Light = core.StAsleep
-			}
-			cmds = append(cmds, fromCore(m.LookUpGoal(t)), fromCore(m.CountSkills(t)))
-			continue
-		}
-		cmds = append(cmds, fromCore(core.StartLater(time.Duration(n)*core.StartSpacing, toCore(fromCore(m.Start(t, true))))), fromCore(m.LookUpGoal(t)), fromCore(m.CountSkills(t)))
-		n++
-		for _, a := range t.ExtraAgents() {
-			cmds = append(cmds, fromCore(core.StartLater(time.Duration(n)*core.StartSpacing, toCore(fromCore(m.Start(a, true))))), fromCore(m.LookUpGoal(a)))
-			n++
-		}
-	}
-	return cmds
+	return []tea.Cmd{m.do(core.StartRestored{Front: m.Ref(m.Cur()), Beside: m.Ref(m.splitTab())})}
 }

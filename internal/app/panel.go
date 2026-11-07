@@ -69,10 +69,11 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 		label, g, reply = "recap:", r, ""
 	}
 	if g != "" {
-		if c := t.GoalWrap; c == nil || c.W != textW || c.Goal != g || c.Reply != reply {
-			t.GoalWrap = &core.GoalWrap{W: textW, Goal: g, Reply: reply, Rows: wrapWithReply(g, reply, textW, core.LastMaxLines)}
+		tl := m.tl(t)
+		if c := tl.goal; c == nil || c.w != textW || c.goal != g || c.reply != reply {
+			tl.goal = &goalWrap{w: textW, goal: g, reply: reply, rows: wrapWithReply(g, reply, textW, core.LastMaxLines)}
 		}
-		for i, r := range t.GoalWrap.Rows {
+		for i, r := range tl.goal.rows {
 			rows = append(rows, core.PanelRow{Label: core.OnOff(i == 0, label, ""), Text: r})
 		}
 	}
