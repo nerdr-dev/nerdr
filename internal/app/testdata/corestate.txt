@@ -5,8 +5,5 @@ app.go: call *Core.SaveSession 1
 app.go: call *Core.ShutdownHolder 1
 app.go: call *Loop.Start 1
 app.go: call *Loop.Stop 1
-app.go: call *TypedLine.Feed 1
-app.go: write a.Typed 1
 app.go: write m.Quitting 1
 dialogs.go: call *Held.Shutdown 1
-prompts.go: call *TypedLine.Feed 1

@@ -677,7 +677,7 @@ func (m *Model) syncInput() {
 	p := m.keyPane()
 	f := m.focused(t)
 	a := f.A
-	if p == nil || (f.Kind != core.PaneShell && a != nil && p == a.Pane && a.Light == core.StExited) {
+	if p == nil || (f.Kind != core.PaneShell && a != nil && a.Light == core.StExited) {
 		m.router.Passthrough(nil)
 		return
 	}
@@ -685,18 +685,11 @@ func (m *Model) syncInput() {
 		m.router.Passthrough(nil)
 		return
 	}
-	if f.Kind != core.PaneShell && a != nil && p == a.Pane && a.Agent != agents.Claude {
-		// Claude's prompts are read from its log; the other agents' are
-		// taken from what is typed.
-		if a.Typed == nil {
-			a.Typed = &core.TypedLine{}
-		}
-		typed := a.Typed
-		m.router.Passthrough(func(b []byte) {
-			typed.Feed(b)
-			p.Input(b)
-		})
-		return
+	if f.Kind != core.PaneShell && a != nil {
+		// Core follows what is typed to an agent but Claude, whose
+		// prompts it reads from its log: the program it gives then does.
+		m.do(core.KeysTo{Ref: core.ProgramRef{Pane: m.PaneRef(f)}})
+		p = m.keyPane()
 	}
 	m.router.PassFKeys(f.Kind == core.PaneShell && p.AltScreen())
 	m.router.Passthrough(p.Input)
