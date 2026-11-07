@@ -122,3 +122,40 @@ func TestRemoteClient(t *testing.T) {
 	}
 	cc.C.Mu.Unlock()
 }
+
+// TestStartWhenSized: a core of its own starts the agents restored once a
+// client says how large it shows them, not before; at once when one has
+// said so already; and at StartWaiting with none.
+func TestStartWhenSized(t *testing.T) {
+	sized := ClientState{Fresh: PaneSize{W: 80, H: 24}}
+	for _, c := range []struct {
+		name   string
+		before ClientState // what the client said before
+		then   Request     // what comes after StartWhenSized
+	}{
+		{"client says", ClientState{}, ClientSays{State: sized}},
+		{"client said", sized, nil},
+		{"no client", ClientState{}, StartWaiting{}},
+	} {
+		m := &Core{}
+		m.Client = &RemoteClient{state: c.before}
+		StartWhenSized{}.Do(m)
+		if c.then == nil {
+			if m.waitingStart != nil {
+				t.Errorf("%s: waits though the client said its size", c.name)
+			}
+			continue
+		}
+		if m.waitingStart == nil {
+			t.Fatalf("%s: started before a client said its size", c.name)
+		}
+		ClientSays{State: ClientState{}}.Do(m)
+		if c.name == "client says" && m.waitingStart == nil {
+			t.Errorf("%s: started on a client saying no size", c.name)
+		}
+		c.then.Do(m)
+		if m.waitingStart != nil {
+			t.Errorf("%s: still waiting", c.name)
+		}
+	}
+}

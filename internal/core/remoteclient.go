@@ -62,7 +62,9 @@ type PaneSize struct {
 	W, H int
 }
 
-func init() { registerRequests(ClientSays{}, clientGone{}, noRequest{}) }
+func init() {
+	registerRequests(ClientSays{}, clientGone{}, noRequest{}, StartWhenSized{}, StartWaiting{})
+}
 
 // ClientSays is what the client shows now.
 type ClientSays struct{ State ClientState }
@@ -71,7 +73,40 @@ func (q ClientSays) Do(m *Core) Cmd {
 	if rc, ok := m.Client.(*RemoteClient); ok {
 		rc.state = q.State
 	}
+	if q.State.sized() {
+		return StartWaiting{}.Do(m)
+	}
 	return nil
+}
+
+// sized reports whether s says how large the client shows the agents.
+func (s ClientState) sized() bool { return s.Fresh.W > 0 || len(s.Sizes) > 0 }
+
+// StartWhenSized is StartRestored in a core of its own, which no client
+// may have connected to yet: the agents start once one says how large it
+// shows them, or at StartWaiting, for none to start at a size made up.
+type StartWhenSized StartRestored
+
+func (q StartWhenSized) Do(m *Core) Cmd {
+	r := StartRestored(q)
+	m.waitingStart = &r
+	if rc, ok := m.Client.(*RemoteClient); ok && rc.state.sized() {
+		return StartWaiting{}.Do(m) // a client said before this came
+	}
+	return nil
+}
+
+// StartWaiting starts the agents StartWhenSized has waiting, if they still
+// are.
+type StartWaiting struct{}
+
+func (StartWaiting) Do(m *Core) Cmd {
+	r := m.waitingStart
+	if r == nil {
+		return nil
+	}
+	m.waitingStart = nil
+	return r.Do(m)
 }
 
 // RemoteClient is a client in a process of its own, as core sees it: what
