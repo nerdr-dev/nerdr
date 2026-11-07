@@ -65,11 +65,13 @@ func (h *Holder) onHangup() {
 	signal.Notify(sig, syscall.SIGHUP, syscall.SIGTERM)
 	go func() {
 		defer signal.Stop(sig)
+		var got os.Signal
 		select {
-		case <-sig:
+		case got = <-sig:
 		case <-h.shut:
 			return
 		}
+		fmt.Fprintf(os.Stderr, "%s nerdr holder: %v: the programs are stopped in %v unless the core shuts down first\n", time.Now().Format(time.TimeOnly), got, hangupGrace)
 		select {
 		case <-h.shut:
 		case <-time.After(hangupGrace):

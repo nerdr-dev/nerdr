@@ -31,3 +31,8 @@ func Debugf(format string, args ...any) {
 	defer f.Close()
 	fmt.Fprintf(f, "%s %s\n", time.Now().Format("15:04:05.000"), fmt.Sprintf(format, args...))
 }
+
+// Logf says what a user should be able to look up after: a client
+// connecting or gone, a part of core's state it could not be sent. It
+// goes to the debug log; a core of its own also writes it to its log.
+var Logf = Debugf

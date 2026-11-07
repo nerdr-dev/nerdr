@@ -156,14 +156,17 @@ type clientParts struct {
 }
 
 func (s *ScreenServer) read() {
+	var err error
 	defer func() {
 		s.stop()
 		if s.rest != nil {
+			Logf("client: gone: %v", err)
 			s.rest.gone()
 		}
 	}()
 	for {
-		b, err := s.conn.Recv()
+		var b []byte
+		b, err = s.conn.Recv()
 		if err != nil {
 			return
 		}
