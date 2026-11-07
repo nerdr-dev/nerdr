@@ -8,7 +8,6 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -44,10 +43,7 @@ type usageReadMsg struct {
 
 func (m *Model) openUsage() tea.Cmd {
 	if m.ClaudeLimits == nil {
-		if s, ok := usage.LoadClaude(state.Dir()); ok {
-			r := s.Report
-			m.ClaudeLimits, m.ClaudeAt = &r, s.At
-		}
+		m.do(core.ReadClaudeLimits{})
 	}
 	d := &usageDialog{}
 	m.dialog = d

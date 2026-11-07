@@ -1,12 +1,7 @@
-app.go: call *Core.ApplySkills 1
-app.go: call *Core.CheckPluginUIs 1
-app.go: call *Core.CheckShells 1
-app.go: call *Core.DetectAll 1
 app.go: call *Core.Handle 2
-app.go: call *Core.KeepAwake 1
 app.go: call *Core.PluginUIPanes 1
 app.go: call *Core.Restore 1
-app.go: call *Core.SaveSession 2
+app.go: call *Core.SaveSession 1
 app.go: call *Core.ShutdownHolder 1
 app.go: call *Loop.Start 1
 app.go: call *Loop.Stop 1
@@ -14,27 +9,4 @@ app.go: call *TypedLine.Feed 1
 app.go: write a.Typed 1
 app.go: write m.Quitting 1
 dialogs.go: call *Held.Shutdown 1
-issuelist.go: write m.IssueWatch 1
-issuewatch.go: write m.IssueWatch 1
 prompts.go: call *TypedLine.Feed 1
-settings.go: config changed, core not told: reloadConfig 1
-setup.go: call *Core.ApplySkills 1
-setup.go: config changed, core not told: save 1
-setup.go: write m.WtRoot 1
-skillcontext.go: call *Core.AgentNote 1
-skillcontext.go: write c.Exists 1
-skillcontext.go: write c.Shown 1
-skillcontext.go: write c.Text 1
-skillcontext.go: write v.At 1
-skillcontext.go: write v.Key 1
-skillcontext.go: write v.Rows 4
-skillcontext.go: write v.Shown 1
-skillspanel.go: call *Core.ApplySkills 1
-skillspanel.go: call *Core.SkillOn 1
-skillspanel.go: call *Core.SkillStates 1
-skillspanel.go: config changed, core not told: skillsKey 1
-skillspanel.go: write m.SkillLook.At 1
-skilluse.go: call *Core.SkillStates 1
-skilluse.go: write m.SkillUse 1
-usage.go: write m.ClaudeAt 1
-usage.go: write m.ClaudeLimits 1

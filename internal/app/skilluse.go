@@ -23,7 +23,7 @@ import (
 // all of them or no tab is open. The file is read the first time.
 func (m *Model) skillTotals(t *core.Tab) map[string]*core.SkillTotal {
 	if m.SkillUse.Convs == nil {
-		m.SkillUse = core.LoadSkillUse()
+		m.do(core.ReadSkillUse{})
 	}
 	if m.skills.allTabs || t == nil {
 		return m.SkillUse.Totals("")

@@ -671,6 +671,7 @@ func (m *Model) reloadConfig() tea.Cmd {
 	c.Prefix, c.WorktreesDir, c.Layout, c.Mouse = old.Prefix, old.WorktreesDir, old.Layout, old.Mouse
 	c.Install, c.DataDir, c.EnabledSkills, c.FPS = old.Install, old.DataDir, old.EnabledSkills, old.FPS
 	m.Cfg = c
+	m.do(core.SetConfig{Cfg: c})
 	browser.Setting = c.Browser
 	lightSymbols = c.StatusLights == "symbols"
 	editor.File, editor.Worktree = c.Editor, c.WorktreeEditor
