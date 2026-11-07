@@ -219,7 +219,7 @@ func (m *Model) coreBack(conn *attach.Conn) tea.Cmd {
 	m.screens = m.remote.Screens
 	m.drawnPanes = nil
 	m.coreAway = false
-	m.said = core.ClientState{}
+	m.said, m.keysTo = core.ClientState{}, keysTarget{}
 	cmd := m.do(core.ClientSays{State: m.clientState()})
 	// A core started again took up the programs at sizes it could not
 	// know: they get the TUI's again.

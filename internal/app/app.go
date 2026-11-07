@@ -62,8 +62,11 @@ type Model struct {
 	closing bool
 	// redial connects to core again; coreAway is set while the TUI is
 	// without it. See coreGone.
-	redial     func() (*attach.Conn, error)
-	coreAway   bool
+	redial   func() (*attach.Conn, error)
+	coreAway bool
+	// keysTo is the agent core was last told has the keyboard (KeysTo):
+	// told again only when that changes, not after every message.
+	keysTo     keysTarget
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
@@ -747,11 +750,21 @@ func (m *Model) syncInput() {
 	if f.Kind != core.PaneShell && a != nil {
 		// Core follows what is typed to an agent but Claude, whose
 		// prompts it reads from its log: the program it gives then does.
-		m.do(core.KeysTo{Ref: core.ProgramRef{Pane: m.PaneRef(f)}})
-		p = m.keyPane()
+		if to := (keysTarget{m.PaneRef(f), a.ID}); to != m.keysTo {
+			m.keysTo = to
+			m.do(core.KeysTo{Ref: core.ProgramRef{Pane: to.pane}})
+			p = m.keyPane()
+		}
 	}
 	m.router.PassFKeys(f.Kind == core.PaneShell && p.AltScreen())
 	m.router.Passthrough(p.Input)
+}
+
+// keysTarget is an agent with the keyboard: its pane, and which agent is in
+// it.
+type keysTarget struct {
+	pane  core.PaneRef
+	agent string
 }
 
 // detect refreshes every agent's traffic light and passes the result on.
