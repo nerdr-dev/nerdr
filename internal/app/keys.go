@@ -519,6 +519,10 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	case "q":
+		if m.remote != nil {
+			m.dialog = closeOrQuit{}
+			return nil
+		}
 		m.dialog = &confirm{
 			title: "Quit nerdr?",
 			lines: []string{

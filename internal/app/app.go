@@ -55,7 +55,10 @@ type Model struct {
 	said    core.ClientState
 	pending []core.Event
 	// goneErr is why the TUI ended, its core gone; see GoneErr.
-	goneErr    string
+	goneErr string
+	// closing is set once the TUI is ending of its own will: the
+	// connection closing then is no news.
+	closing    bool
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.

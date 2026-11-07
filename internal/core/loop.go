@@ -167,6 +167,9 @@ func (l *Loop) handle(ev Event) (Cmd, Event) {
 	return cmd, tell
 }
 
+// Run runs cmd away from the loop; what comes of it comes back to Post.
+func (l *Loop) Run(cmd Cmd) { l.runCmd(cmd) }
+
 // runCmd runs cmd away from the loop. What comes of it comes back to Post.
 func (l *Loop) runCmd(cmd Cmd) {
 	if cmd == nil {

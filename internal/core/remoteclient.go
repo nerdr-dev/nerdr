@@ -87,6 +87,9 @@ type RemoteClient struct {
 	// for it was dropped.
 	gone   atomic.Bool
 	behind atomic.Bool
+	// notices are what core had to show with no client there, kept for
+	// the next to connect.
+	notices [][]byte
 }
 
 var _ Client = (*RemoteClient)(nil)
@@ -99,6 +102,7 @@ func (m *Core) AttachClient(conn *attach.Conn, post func(RequestEv)) *RemoteClie
 	if old, ok := m.Client.(*RemoteClient); ok {
 		rc.state = old.state // what the last showed, until this one says
 		old.gone.Store(true)
+		rc.out, old.notices = old.notices, nil
 	}
 	parts := &clientParts{
 		behind: func() { rc.behind.Store(true) },
@@ -186,8 +190,10 @@ func (m *Core) FlushClient() {
 func (rc *RemoteClient) There() bool { return !rc.gone.Load() }
 
 // Tell sends ev after the next parts; nothing comes back of it to do here.
+// A notice told with no client there waits for the next.
 func (rc *RemoteClient) Tell(ev Event) Cmd {
-	if rc.gone.Load() {
+	_, notice := ev.(NoticeMsg)
+	if rc.gone.Load() && !notice {
 		return nil
 	}
 	b, err := EncodeEvent(ev)
@@ -195,7 +201,12 @@ func (rc *RemoteClient) Tell(ev Event) Cmd {
 		Debugf("client: %v", err)
 		return nil
 	}
-	rc.out = append(rc.out, append([]byte{wireEvent}, b...))
+	b = append([]byte{wireEvent}, b...)
+	if rc.gone.Load() {
+		rc.notices = append(rc.notices, b)
+		return nil
+	}
+	rc.out = append(rc.out, b)
 	return nil
 }
 
