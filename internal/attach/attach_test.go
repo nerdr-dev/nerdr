@@ -399,3 +399,37 @@ func TestFrameLimit(t *testing.T) {
 		t.Error("wrote a frame over the limit")
 	}
 }
+
+// TestSendFunc: a body made as it is written is made once, the newest
+// with its key; the ends of a Pair hear each other.
+func TestSendFunc(t *testing.T) {
+	a, b, err := Pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close("")
+	defer b.Close("")
+	var built atomic.Int32
+	block := make(chan struct{})
+	a.SendFunc("first", func() []byte { <-block; return []byte("first") })
+	for i := range 10 {
+		a.SendFunc("screen", func() []byte { built.Add(1); return fmt.Appendf(nil, "screen %d", i) })
+	}
+	a.Send("screen", []byte("sent"))
+	a.SendFunc("screen", func() []byte { built.Add(1); return []byte("newest") })
+	a.SendFunc("none", func() []byte { return nil })
+	a.Send("", []byte("last"))
+	close(block)
+	for _, want := range []string{"first", "newest", "last"} {
+		if got := recv(t, b); got != want {
+			t.Fatalf("got %q, want %q", got, want)
+		}
+	}
+	if n := built.Load(); n != 1 {
+		t.Fatalf("built %d times", n)
+	}
+	b.Send("", []byte("back"))
+	if got := recv(t, a); got != "back" {
+		t.Fatalf("back: %q", got)
+	}
+}

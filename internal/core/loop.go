@@ -254,8 +254,14 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 			m.CheckPluginUIs()
 			cmd = m.ExpireAsks(time.Now())
 		}
+		if m.Screens != nil {
+			m.Screens.Tick(m, false)
+		}
 		return cmd, FrameMsg{}
 	case detectEv:
+		if m.Screens != nil {
+			m.Screens.Tick(m, true)
+		}
 		if m.Quitting {
 			return nil, nil
 		}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	uv "github.com/charmbracelet/ultraviolet"
@@ -28,6 +29,8 @@ type Copy struct {
 	w, h   int
 	copied string
 	out    CopyOut
+	// drawnOn is the frame the copy was last drawn on; see Drawn.
+	drawnOn atomic.Uint64
 }
 
 // CopyOut is where a Copy sends what the user does in it.
@@ -176,6 +179,7 @@ func setRow(row []Cell, runs []WireRun, styles []uv.Style) error {
 
 // DrawGen counts the messages the copy has taken.
 func (c *Copy) DrawGen() uint64 {
+	c.drawnOn.Store(frame.Load())
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.gen
@@ -192,6 +196,7 @@ func (c *Copy) Frame(scroll int) Frame {
 // back once that has been sent: a scroll other than the one asked for last
 // is asked for.
 func (c *Copy) FrameInto(f *Frame, scroll int) {
+	c.drawnOn.Store(frame.Load())
 	c.mu.Lock()
 	src := &c.view.Frame
 	rows := f.Rows
@@ -209,6 +214,15 @@ func (c *Copy) FrameInto(f *Frame, scroll int) {
 	if ask {
 		c.out.Scroll(scroll)
 	}
+}
+
+// Drawn reports whether the copy was drawn on the frame drawn last (see
+// NextFrame), and how many lines back: the screens a client shows, which
+// are all it is sent.
+func (c *Copy) Drawn() (bool, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.drawnOn.Load() == frame.Load(), c.scroll
 }
 
 // Rows are lines from to to, as Screen.Rows gives them: from the copy

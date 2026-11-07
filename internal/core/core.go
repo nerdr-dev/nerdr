@@ -103,6 +103,9 @@ type Core struct {
 	CodexHooks []string
 	CodexAsked bool
 	Wake       chan struct{} `json:"-"`
+	// Screens sends the screens to a client in a process of its own, when
+	// one is there; see ScreenServer.
+	Screens *ScreenServer `json:"-"`
 }
 
 // Toast shows a short message to the user, if a client is there to show it.

@@ -42,6 +42,9 @@ type Conn struct {
 type pending struct {
 	key  string
 	body []byte
+	// build makes the body just before it is written, when set; see
+	// SendFunc.
+	build func() []byte
 }
 
 func newConn(c net.Conn) *Conn {
@@ -79,7 +82,7 @@ func (c *Conn) Send(key string, body []byte) bool {
 		return true
 	}
 	if p != nil {
-		p.body, c.bytes = body, rest+len(body)
+		p.body, p.build, c.bytes = body, nil, rest+len(body)
 		c.mu.Unlock()
 		return true
 	}
@@ -90,6 +93,31 @@ func (c *Conn) Send(key string, body []byte) bool {
 	}
 	c.bytes += len(body)
 	c.mu.Unlock()
+	c.cond.Signal()
+	return true
+}
+
+// SendFunc is Send of what build makes, when it comes to be written: what
+// it makes is then as new as can be, and one that differs from the last
+// one written need only say how. Called on the writer's goroutine, build
+// must not wait on anything that waits for a Send; a nil body is not
+// written. One waiting with the same key is replaced, by key as in Send.
+func (c *Conn) SendFunc(key string, build func() []byte) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.bye != nil {
+		return false
+	}
+	if p := c.keyed[key]; p != nil {
+		c.bytes -= len(p.body)
+		p.body, p.build = nil, build
+		return true
+	}
+	p := &pending{key: key, build: build}
+	c.queue = append(c.queue, p)
+	if key != "" {
+		c.keyed[key] = p
+	}
 	c.cond.Signal()
 	return true
 }
@@ -189,8 +217,14 @@ func (c *Conn) write() {
 		}
 		c.bytes -= len(p.body)
 		c.mu.Unlock()
+		body := p.body
+		if p.build != nil {
+			if body = p.build(); body == nil {
+				continue
+			}
+		}
 		_ = c.c.SetWriteDeadline(time.Now().Add(writeTimeout))
-		if err := writeFrame(c.c, frameMsg, p.body); err != nil {
+		if err := writeFrame(c.c, frameMsg, body); err != nil {
 			c.shut()
 			return
 		}
