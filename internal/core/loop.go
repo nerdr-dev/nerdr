@@ -308,6 +308,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	switch ev := ev.(type) {
 	case RequestEv:
 		return ev.R.Do(m), true
+	case ReposChangedMsg:
+		return m.OnReposChanged(ev), true
 	case hooks.Report:
 		return m.OnReport(ev), true
 	case TabMadeMsg:
