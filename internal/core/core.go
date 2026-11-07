@@ -112,6 +112,9 @@ type Core struct {
 	// programs are, in a copy of core's state, the programs core runs,
 	// which the copy has no term.Pane of; see Runs.
 	programs map[ProgramRef]bool
+	// waitingStart are the agents restored, waiting to start until a
+	// client says how large it shows them; see StartWhenSized.
+	waitingStart *StartRestored
 }
 
 // Toast shows a short message to the user, if a client is there to show it.

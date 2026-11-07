@@ -25,6 +25,10 @@ import (
 // help.
 type errStarting struct{ error }
 
+// startUnsized is how long the core waits for a client to say how large
+// it shows the agents, before it starts them anyway.
+const startUnsized = 5 * time.Second
+
 // runCore is nerdr's core with no terminal, over holder h: it keeps the
 // tabs and their agents in the folder it was started in, and a client in a
 // process of its own shows them, by the client socket. It returns once a
@@ -168,7 +172,10 @@ func runCore(h *core.Held) error {
 
 	loop.Start()
 	defer loop.Stop()
-	loop.Post(core.RequestEv{R: core.StartRestored{Front: front, Beside: beside}})
+	// The client that started the core connects at once, and says how
+	// large it shows the agents; without one they start after a while.
+	loop.Post(core.RequestEv{R: core.StartWhenSized{Front: front, Beside: beside}})
+	time.AfterFunc(startUnsized, func() { loop.Post(core.RequestEv{R: core.StartWaiting{}}) })
 	if cfg.Install != "" {
 		loop.Post(core.RequestEv{R: core.ApplySkills{}})
 	}
