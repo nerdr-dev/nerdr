@@ -58,6 +58,9 @@ func (m *Core) HasClient() bool {
 	if m.Client == nil {
 		return false
 	}
+	if c, ok := m.Client.(interface{ There() bool }); ok {
+		return c.There()
+	}
 	_, none := m.Client.(NoClient)
 	return !none
 }

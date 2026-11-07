@@ -153,6 +153,9 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 	live := map[string]bool{PartCore: true}
 	for _, t := range m.Tabs {
 		var p tabPart
+		for _, pane := range t.Panes() {
+			m.PaneRef(pane) // an id to be known by
+		}
 		for _, a := range agentsOf(t) {
 			m.Ref(a) // an id to be known by
 			p.Agents = append(p.Agents, (*tabFields)(a))

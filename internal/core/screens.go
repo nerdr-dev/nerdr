@@ -91,6 +91,7 @@ func (q ShowScreens) Do(m *Core) Cmd {
 type ScreenServer struct {
 	conn *attach.Conn
 	post func(RequestEv)
+	rest *clientParts
 	// posted counts the requests of what the user does in a screen still
 	// on their way through the loop: while there are any, the next go that
 	// way too, to keep their order.
@@ -122,20 +123,45 @@ type shownScreen struct {
 // requests it sends with post to be done on core's loop, and reading
 // until the connection closes.
 func NewScreenServer(conn *attach.Conn, post func(RequestEv)) *ScreenServer {
+	return serveScreens(conn, post, nil)
+}
+
+// serveScreens is NewScreenServer, giving what it does not read itself to
+// the client's other parts (see RemoteClient), which say when the client
+// fell behind and when it has gone.
+func serveScreens(conn *attach.Conn, post func(RequestEv), rest *clientParts) *ScreenServer {
 	s := &ScreenServer{
 		conn:  conn,
 		post:  post,
+		rest:  rest,
 		views: map[ProgramRef]int{},
 		reset: map[ProgramRef]bool{},
 		shown: map[ProgramRef]*shownScreen{},
 	}
-	conn.OnBehind(s.behind)
+	conn.OnBehind(func() {
+		s.behind()
+		if rest != nil {
+			rest.behind()
+		}
+	})
 	go s.read()
 	return s
 }
 
+// clientParts are what a client's connection carries besides screens.
+type clientParts struct {
+	other  func(b []byte) // a message of another kind
+	behind func()         // what waited for the client was dropped
+	gone   func()         // the connection has closed
+}
+
 func (s *ScreenServer) read() {
-	defer s.stop()
+	defer func() {
+		s.stop()
+		if s.rest != nil {
+			s.rest.gone()
+		}
+	}()
 	for {
 		b, err := s.conn.Recv()
 		if err != nil {
@@ -158,6 +184,10 @@ func (s *ScreenServer) read() {
 			var a askWire
 			if json.Unmarshal(b[1:], &a) == nil {
 				s.answer(a)
+			}
+		default:
+			if s.rest != nil {
+				s.rest.other(b)
 			}
 		}
 	}
@@ -379,8 +409,9 @@ func (s *ScreenServer) answer(a askWire) {
 // those drawn are the ones the core is told to send (see Shown), and what
 // the user does in them is sent as requests.
 type ScreenClient struct {
-	conn *attach.Conn
-	tell func(any)
+	conn  *attach.Conn
+	tell  func(any)
+	other func([]byte)
 
 	mu     sync.Mutex
 	copies map[ProgramRef]*term.Copy
@@ -394,9 +425,16 @@ type ScreenClient struct {
 // client ScreensMsg when one has changed, by tell, from a goroutine of its
 // own: tell must not wait for the client to take it.
 func NewScreenClient(conn *attach.Conn, tell func(any)) *ScreenClient {
+	return newScreenClient(conn, tell, nil)
+}
+
+// newScreenClient is NewScreenClient, giving other a message of another
+// kind, and nil once the connection has closed.
+func newScreenClient(conn *attach.Conn, tell func(any), other func([]byte)) *ScreenClient {
 	c := &ScreenClient{
 		conn:   conn,
 		tell:   tell,
+		other:  other,
 		copies: map[ProgramRef]*term.Copy{},
 		reset:  map[ProgramRef]bool{},
 		asks:   map[int]func(int, [][]term.Cell){},
@@ -475,6 +513,9 @@ func (c *ScreenClient) send(r Request) {
 }
 
 func (c *ScreenClient) read() {
+	if c.other != nil {
+		defer c.other(nil)
+	}
 	defer func() {
 		c.mu.Lock()
 		asks := c.asks
@@ -531,6 +572,10 @@ func (c *ScreenClient) read() {
 				first, rows = w.First, nil
 			}
 			done(first, rows)
+		default:
+			if c.other != nil {
+				c.other(b)
+			}
 		}
 	}
 }
