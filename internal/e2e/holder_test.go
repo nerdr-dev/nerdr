@@ -112,7 +112,7 @@ func TestCoreOfItsOwn(t *testing.T) {
 }
 
 // holderEnv is the environment of nerdr with NERDR_HOLDER=1 in scratch,
-// its agent the fake; the holders bin starts are ended after the test.
+// its agent the fake; start ends the holders bin starts after the test.
 func holderEnv(t *testing.T, bin, scratch string) []string {
 	t.Helper()
 	fake, _ := filepath.Abs("fakeagent.sh")
@@ -126,11 +126,6 @@ func holderEnv(t *testing.T, bin, scratch string) []string {
 			env = append(env, kv)
 		}
 	}
-	t.Cleanup(func() {
-		for _, pid := range pgrep("-f", "^"+bin+" holder") {
-			_ = syscall.Kill(pid, syscall.SIGTERM)
-		}
-	})
 	return append(env,
 		"XDG_CONFIG_HOME="+cfgDir,
 		"XDG_STATE_HOME="+filepath.Join(scratch, "state"),
