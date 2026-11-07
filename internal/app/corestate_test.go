@@ -70,6 +70,22 @@ func init() {
 	}
 }
 
+// makesNew are the methods of core's that give a slice or map made anew,
+// not one of core's own.
+var makesNew = map[string]bool{}
+
+func init() {
+	for _, s := range strings.Fields(`
+		*Core.CallRows *Core.Groups *Core.GroupTabs *Core.Waiting
+		*Core.ColdTabs *Core.AllAgents *Core.KnownGroupNames
+		*Core.SearchRoots *Core.UsedModels *Core.SpinoffKinds
+		*Core.OtherRepos *Tab.TaskRefs *Tab.TaskAgents *Tab.ExtraAgents
+		*Tab.AgentsIn
+	`) {
+		makesNew[s] = true
+	}
+}
+
 func TestTUIChangesCoreByRequest(t *testing.T) {
 	if testing.Short() {
 		t.Skip("type-checks the package")
@@ -153,10 +169,18 @@ func coreChanges() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	c := checker{info: info, pkg: pkg, count: map[string]int{}}
+	c := checker{info: info, pkg: pkg, count: map[string]int{}, alias: map[types.Object]bool{}}
+	for _, f := range files {
+		ast.Inspect(f, func(n ast.Node) bool { c.aliases(n); return true })
+	}
 	for _, f := range files {
 		file := filepath.Base(fset.Position(f.Pos()).Filename)
 		ast.Inspect(f, func(n ast.Node) bool { c.node(file, n); return true })
+		for _, d := range f.Decls {
+			if fd, ok := d.(*ast.FuncDecl); ok && fd.Body != nil {
+				c.configTold(file, fd)
+			}
+		}
 	}
 	var ls []string
 	for k, n := range c.count {
@@ -170,6 +194,70 @@ type checker struct {
 	info  *types.Info
 	pkg   *types.Package
 	count map[string]int
+	// alias are the variables of the functions' own that point into
+	// core's state: a slice, a map or a pointer taken from it.
+	alias map[types.Object]bool
+}
+
+// aliases marks the variables n sets to point into core's state.
+func (c *checker) aliases(n ast.Node) {
+	mark := func(lhs, rhs ast.Expr) {
+		id, ok := lhs.(*ast.Ident)
+		if !ok || rhs == nil || !c.pointsIntoCore(rhs) {
+			return
+		}
+		if obj := c.info.Defs[id]; obj != nil {
+			c.alias[obj] = true
+		} else if obj := c.info.Uses[id]; obj != nil {
+			c.alias[obj] = true
+		}
+	}
+	switch x := n.(type) {
+	case *ast.AssignStmt:
+		if len(x.Lhs) == len(x.Rhs) {
+			for i := range x.Lhs {
+				mark(x.Lhs[i], x.Rhs[i])
+			}
+		}
+	case *ast.ValueSpec:
+		if len(x.Names) == len(x.Values) {
+			for i := range x.Names {
+				mark(x.Names[i], x.Values[i])
+			}
+		}
+	}
+}
+
+// pointsIntoCore reports whether e is a slice, a map or a pointer into
+// core's state: reached through it, or given by a method of core's.
+func (c *checker) pointsIntoCore(e ast.Expr) bool {
+	tv, ok := c.info.Types[e]
+	if !ok || tv.Type == nil {
+		return false
+	}
+	switch tv.Type.Underlying().(type) {
+	case *types.Slice, *types.Map, *types.Pointer:
+	default:
+		return false
+	}
+	switch x := e.(type) {
+	case *ast.UnaryExpr:
+		return x.Op == token.AND && c.throughCore(x.X)
+	case *ast.CallExpr:
+		if se, ok := x.Fun.(*ast.SelectorExpr); ok {
+			if sel := c.info.Selections[se]; sel != nil && sel.Kind() == types.MethodVal {
+				fn := sel.Obj().(*types.Func)
+				recv := fn.Type().(*types.Signature).Recv()
+				if recv == nil || !isCore(recv.Type()) || isCore(tv.Type) {
+					return false
+				}
+				name := types.TypeString(recv.Type(), func(*types.Package) string { return "" }) + "." + fn.Name()
+				return !makesNew[name]
+			}
+		}
+		return false
+	}
+	return c.throughCore(e) && !isCore(tv.Type)
 }
 
 func (c *checker) node(file string, n ast.Node) {
@@ -206,20 +294,114 @@ func (c *checker) node(file string, n ast.Node) {
 	}
 }
 
+// clientFields are core.Core's fields that are the client's own in its
+// copy: Gen counts its changes too, it reads the config itself (and has
+// core read it again when it changes it), and it is the copy's client.
+var clientFields = map[string]bool{"Gen": true, "Cfg": true, "Client": true}
+
 // write counts e, written or taken the address of, when it is core's
 // state: reached through core's types, and not a copy of its own.
 func (c *checker) write(file string, e ast.Expr) {
+	if c.clientsOwn(e) {
+		return
+	}
 	if c.throughCore(e) && c.shared(e) {
 		c.count[file+": write "+exprString(e)]++
 	}
 }
 
+// configTold counts function fd when it changes the config but does not
+// tell core so, by core.SetConfig.
+func (c *checker) configTold(file string, fd *ast.FuncDecl) {
+	changes, tells := false, false
+	ast.Inspect(fd.Body, func(n ast.Node) bool {
+		switch x := n.(type) {
+		case *ast.AssignStmt:
+			for _, l := range x.Lhs {
+				changes = changes || c.inConfig(l)
+			}
+		case *ast.IncDecStmt:
+			changes = changes || c.inConfig(x.X)
+		case *ast.CompositeLit:
+			if n, ok := types.Unalias(c.info.Types[x].Type).(*types.Named); ok &&
+				n.Obj().Name() == "SetConfig" && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == corePkg {
+				tells = true
+			}
+		}
+		return true
+	})
+	if changes && !tells {
+		c.count[file+": config changed, core not told: "+fd.Name.Name]++
+	}
+}
+
+// inConfig reports whether e is the config of core.Core, or within it.
+func (c *checker) inConfig(e ast.Expr) bool {
+	for {
+		switch x := e.(type) {
+		case *ast.SelectorExpr:
+			if sel := c.info.Selections[x]; sel != nil && sel.Kind() == types.FieldVal &&
+				x.Sel.Name == "Cfg" && sel.Obj().Pkg() != nil && sel.Obj().Pkg().Path() == corePkg {
+				return true
+			}
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.StarExpr:
+			e = x.X
+		case *ast.ParenExpr:
+			e = x.X
+		default:
+			return false
+		}
+	}
+}
+
+// clientsOwn reports whether e is within one of clientFields.
+func (c *checker) clientsOwn(e ast.Expr) bool {
+	for {
+		switch x := e.(type) {
+		case *ast.SelectorExpr:
+			if sel := c.info.Selections[x]; sel != nil && sel.Kind() == types.FieldVal {
+				if p := sel.Obj().Pkg(); p != nil && p.Path() == corePkg && clientFields[x.Sel.Name] {
+					if _, ok := sel.Recv().Underlying().(*types.Pointer); ok || isCoreCore(sel.Recv()) {
+						return true
+					}
+				}
+			}
+			e = x.X
+		case *ast.IndexExpr:
+			e = x.X
+		case *ast.StarExpr:
+			e = x.X
+		case *ast.ParenExpr:
+			e = x.X
+		default:
+			return false
+		}
+	}
+}
+
+func isCoreCore(t types.Type) bool {
+	if p, ok := t.(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	n, ok := types.Unalias(t).(*types.Named)
+	return ok && n.Obj().Name() == "Core" && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == corePkg
+}
+
 func (c *checker) throughCore(e ast.Expr) bool {
 	switch x := e.(type) {
+	case *ast.Ident:
+		obj := c.info.Uses[x]
+		return obj != nil && c.alias[obj]
 	case *ast.SelectorExpr:
 		sel := c.info.Selections[x]
 		if sel == nil || sel.Kind() != types.FieldVal {
 			return false
+		}
+		if p := sel.Obj().Pkg(); p != nil && p.Path() == corePkg {
+			return true // a field of core's, also one of core.Core's in Model
 		}
 		return isCore(c.info.Types[x.X].Type) || c.throughCore(x.X)
 	case *ast.IndexExpr:

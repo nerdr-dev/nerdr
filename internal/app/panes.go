@@ -178,13 +178,13 @@ func (m *Model) focusPane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 	m.tl(t).on = p
 	m.pl(p).small = false
 	m.pl(p).used = time.Now()
+	var seen tea.Cmd
 	if a := p.A; a != nil && p.Kind != core.PaneShell {
-		a.Seen()
-		a.QueuePaused = false
+		seen = m.do(core.SeeAgent{A: m.Ref(a)})
 	}
 	m.setFocus(core.FocusAgent)
 	m.focusTerms(t)
-	return m.resize()
+	return tea.Batch(seen, m.resize())
 }
 
 // focusTerms tells t's programs which of them has the keyboard, for those
@@ -272,13 +272,13 @@ func (m *Model) askClosePane() tea.Cmd {
 				if m.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
 					return nil
 				}
-				return fromCore(m.ClosePane(t, p))
+				return m.do(core.ClosePane{P: m.PaneRef(p)})
 			},
 		}
 		return nil
 	}
 	if p.Kind == core.PaneShell || p.A == nil || !p.A.Light.AtWork() || p == t.OwnPane() {
-		return fromCore(m.ClosePane(t, p))
+		return m.do(core.ClosePane{P: m.PaneRef(p)})
 	}
 	m.dialog = &confirm{
 		title: "Stop " + m.PaneName(t, p) + "?",
@@ -287,7 +287,7 @@ func (m *Model) askClosePane() tea.Cmd {
 			if m.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
 				return nil
 			}
-			return fromCore(m.ClosePane(t, p))
+			return m.do(core.ClosePane{P: m.PaneRef(p)})
 		},
 	}
 	return nil
@@ -303,7 +303,7 @@ func (m *Model) openNewAgent() tea.Cmd {
 	var items []menuItem
 	for _, k := range agents.Available(m.Cfg.Agents) {
 		items = append(items, menuItem{label: string(k), key: strconv.Itoa(len(items) + 1),
-			run: func(m *Model) tea.Cmd { return fromCore(m.NewAgent(t, k)) }})
+			run: func(m *Model) tea.Cmd { return m.do(core.NewAgent{T: m.Ref(t), Kind: k}) }})
 	}
 	if len(items) == 0 {
 		m.toast("no agent on PATH")
@@ -378,7 +378,7 @@ func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 			return run(m)
 		}), tip+" · "+m.pk(keys))
 	}
-	return btn("terminal", "t t", "A terminal in the worktree, in a new pane", func(m *Model) tea.Cmd { return fromCore(m.newShell()) }) + sp +
+	return btn("terminal", "t t", "A terminal in the worktree, in a new pane", func(m *Model) tea.Cmd { return m.newShell() }) + sp +
 		btn("agent", "t a", "Another agent in the same worktree, in a new conversation", (*Model).openNewAgent) + sp +
 		btn("review", "t r", "A second agent reviews the work of the agent whose pane has the keyboard", (*Model).newReviewPane) + sp
 }
@@ -433,7 +433,7 @@ func (m *Model) openPaneMenu(t *core.Tab, p *core.PaneTab, x, y int) {
 		{label: small, key: "t m", run: func(m *Model) tea.Cmd { return m.minimisePane(t, p) }},
 		{label: "Close", key: "t x", run: func(m *Model) tea.Cmd { return m.askClosePane() }},
 		{label: "New panes"},
-		{label: "Terminal", key: "t t", run: func(m *Model) tea.Cmd { return fromCore(m.newShell()) }},
+		{label: "Terminal", key: "t t", run: func(m *Model) tea.Cmd { return m.newShell() }},
 		{label: "Agent…", key: "t a", run: func(m *Model) tea.Cmd { return m.openNewAgent() }},
 		{label: "Code review", key: "t r", run: func(m *Model) tea.Cmd { return m.newReviewPane() }, off: m.commandOff("t r")},
 	}
@@ -668,21 +668,17 @@ func (m *Model) movePane(d int) core.Cmd {
 	if j < 1 || j >= len(ps) {
 		return nil
 	}
-	ps[i], ps[j] = ps[j], ps[i]
-	m.SaveSession()
-	m.Gen++
-	return toCore(m.resize())
+	return toCore(m.do(core.MovePane{P: m.PaneRef(ps[i]), By: d}))
 }
 
 // newShell opens a terminal in the active tab's worktree, in a pane of
 // its own, last.
-func (m *Model) newShell() core.Cmd {
+func (m *Model) newShell() tea.Cmd {
 	t := m.Cur()
 	if t == nil {
 		return nil
 	}
-	_, cmd := m.NewShellIn(t, false)
-	return cmd
+	return m.do(core.NewShell{T: m.Ref(t)})
 }
 
 // paneCols are the panes of t shown in w columns: the one with the

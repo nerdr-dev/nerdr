@@ -529,7 +529,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	case "t t":
-		return fromCore(m.newShell())
+		return m.newShell()
 	case "t a":
 		return m.openNewAgent()
 	case "t r", "a c":

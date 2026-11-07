@@ -46,23 +46,20 @@ func (m *Model) askReviewDone() {
 	if cur == nil || m.prefix || m.dialog != nil || m.editor != nil {
 		return
 	}
-	dropped := false
+	var drop []core.TabRef
 	for _, a := range append([]*core.Tab{cur}, cur.ExtraAgents()...) {
 		if a.ReviewDone != nil && a.ReviewDoneStale() {
-			a.ReviewDone = nil
-			dropped = true
+			drop = append(drop, m.Ref(a))
 		}
 	}
 	t, d := cur.ReviewToTell()
-	if t == nil {
-		if dropped {
-			m.SaveSession()
-		}
-		return
+	if t != nil {
+		drop = append(drop, m.Ref(t))
+		m.dialog = &reviewDoneDialog{t: t, d: d}
 	}
-	t.ReviewDone = nil
-	m.SaveSession()
-	m.dialog = &reviewDoneDialog{t: t, d: d}
+	if len(drop) > 0 {
+		m.do(core.DropReviewDone{A: drop})
+	}
 }
 
 // notifyReview tells of a review's conclusion as a finished turn is told
