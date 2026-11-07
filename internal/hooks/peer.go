@@ -1,6 +1,10 @@
 package hooks
 
-import "net"
+import (
+	"net"
+
+	"github.com/nerdr-dev/nerdr/internal/spawn"
+)
 
 // Peer is the process at the other end of a connection to the socket,
 // and those it runs under. The kernel says which process it is, so one
@@ -23,7 +27,7 @@ func Started(pid int) uint64 {
 	if pid <= 0 {
 		return 0
 	}
-	_, start, err := procInfo(pid)
+	_, start, err := spawn.ProcInfo(pid)
 	if err != nil {
 		return 0
 	}
@@ -62,7 +66,7 @@ func PeerOf(c net.Conn) Peer {
 	}
 	p := Peer{Known: true}
 	for len(p.Chain) < maxChain && pid > 0 {
-		next, start, err := procInfo(pid)
+		next, start, err := spawn.ProcInfo(pid)
 		p.Chain = append(p.Chain, pid)
 		p.Starts = append(p.Starts, start) // 0 when not known
 		if err != nil || pid == 1 || next == pid {
