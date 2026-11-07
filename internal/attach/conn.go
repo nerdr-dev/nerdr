@@ -61,13 +61,13 @@ func (c *Conn) Send(key string, body []byte) bool {
 		c.mu.Unlock()
 		return false
 	}
-	if p := c.keyed[key]; p != nil {
-		c.bytes += len(body) - len(p.body)
-		p.body = body
-		c.mu.Unlock()
-		return true
+	p := c.keyed[key]
+	// What would wait besides this message.
+	others, rest := len(c.queue), c.bytes
+	if p != nil {
+		others, rest = others-1, rest-len(p.body)
 	}
-	if len(c.queue) > 0 && c.bytes+len(body) > QueueLimit {
+	if others > 0 && rest+len(body) > QueueLimit {
 		// Too far behind: what waits is dropped, this with it, and
 		// everything is sent afresh.
 		c.queue, c.keyed, c.bytes = nil, map[string]*pending{}, 0
@@ -78,7 +78,12 @@ func (c *Conn) Send(key string, body []byte) bool {
 		}
 		return true
 	}
-	p := &pending{key: key, body: body}
+	if p != nil {
+		p.body, c.bytes = body, rest+len(body)
+		c.mu.Unlock()
+		return true
+	}
+	p = &pending{key: key, body: body}
 	c.queue = append(c.queue, p)
 	if key != "" {
 		c.keyed[key] = p

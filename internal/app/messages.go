@@ -125,7 +125,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 // putIn types message i into t's agent, as a paste and without enter, and
 // gives the agent the keyboard: to change it, or send it as it is.
 func (m *Model) putIn(t *core.Tab, i int) tea.Cmd {
-	return m.do(core.PutIn{M: core.MsgRef{A: m.Ref(t), Msg: t.Messages[i]}})
+	return m.do(core.PutIn{M: core.MsgRef{A: m.Ref(t), Msg: t.Messages[i], I: i}})
 }
 
 // editMessage opens task r of tab o to be changed, and given to another
@@ -137,7 +137,7 @@ func (m *Model) editMessage(o *core.Tab, r core.TaskRef) tea.Cmd {
 		return cmd
 	}
 	msg := (*r.List(o))[r.I]
-	d.editing, d.from = &msg, r.A
+	d.editing, d.editAt, d.from = &msg, r.I, r.A
 	if r.A != nil {
 		d.agent = r.A
 	} // an inactive one goes to the agent with the keyboard, unless changed
