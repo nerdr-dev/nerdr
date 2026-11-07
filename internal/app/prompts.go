@@ -8,7 +8,6 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/prompts"
-	"github.com/nerdr-dev/nerdr/internal/term"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,10 +32,9 @@ type savedView struct {
 }
 
 // promptEnterMsg presses enter after a saved prompt typed into t's pane;
-// not into another program started in t since.
+// not into another program started in t since (see core.PromptEnter).
 type promptEnterMsg struct {
-	t    *core.Tab
-	pane *term.Pane
+	t *core.Tab
 }
 
 // loadPrompts reads the saved prompts anew, as they may have been changed
@@ -104,19 +102,15 @@ func (m *Model) typedIn(a *core.Tab, enter bool) tea.Cmd {
 		return cmd
 	}
 	// As in the queue, the agent takes the paste in as text before enter.
-	pane := a.Pane
-	return tea.Batch(cmd, tea.Tick(core.EnterAfter, func(time.Time) tea.Msg { return promptEnterMsg{t: a, pane: pane} }))
+	return tea.Batch(cmd, tea.Tick(core.EnterAfter, func(time.Time) tea.Msg { return promptEnterMsg{t: a} }))
 }
 
 // promptEnter presses enter after a saved prompt, if the agent it was
 // typed into still runs in t: restarted or switched, the program there
 // now never had it.
-func (m *Model) promptEnter(t *core.Tab, pane *term.Pane) {
-	if !m.Live(t) || t.Pane == nil || t.Pane != pane {
-		return
-	}
-	if pr := m.program(t.PaneOf()); pr != nil {
-		pr.Input([]byte("\r")) // followed, as typed, when core follows it
+func (m *Model) promptEnter(t *core.Tab) {
+	if m.Live(t) {
+		m.do(core.PromptEnter{A: m.Ref(t)})
 	}
 }
 

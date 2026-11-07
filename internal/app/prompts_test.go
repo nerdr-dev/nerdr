@@ -53,7 +53,7 @@ func TestSavedPromptPicked(t *testing.T) {
 		t.Fatalf("enter uses the one found: %q", tb.Said)
 	}
 	before = tb.Pane.Inputs()
-	m.Update(promptEnterMsg{t: tb, pane: tb.Pane})
+	m.Update(promptEnterMsg{t: tb})
 	if tb.Pane.Inputs() != before+1 || cmd == nil {
 		t.Fatal("enter is pressed after a prompt that says so")
 	}
@@ -175,7 +175,7 @@ func TestSavedPromptEnterToItsAgent(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("enter is to follow")
 	}
-	msg := promptEnterMsg{t: tb, pane: tb.Pane}
+	msg := promptEnterMsg{t: tb}
 	m.handleKey(keyMsg("f3")) // the keyboard to the panel
 	before := tb.Pane.Inputs()
 	m.Update(msg)

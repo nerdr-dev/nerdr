@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 // mirrored is a core of two tabs pointing at each other in every way a
@@ -255,4 +256,75 @@ func TestWireFields(t *testing.T) {
 	}
 	walk("Core", reflect.TypeFor[Core]())
 	walk("Tab", reflect.TypeFor[Tab]())
+}
+
+// TestMirrorKnowsThePrograms: a copy has no program of core's, but knows
+// which run, so a client draws them from the screens it is sent: an
+// agent's, a terminal's and a plugin's screen, running or exited; and
+// learns when one stops.
+func TestMirrorKnowsThePrograms(t *testing.T) {
+	m, a, _ := mirrored()
+	start := func(argv ...string) *term.Pane {
+		p, err := term.Start(argv, t.TempDir(), nil, 40, 10, func() {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(p.Close)
+		return p
+	}
+	a.Pane = start("sleep", "30")
+	beside := a.PaneList[1].A
+	beside.Pane = start("true")
+	a.PaneList[3].Shell = start("sleep", "30")
+	m.PluginUIs["a\x00/p"].Pane = start("sleep", "30")
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
+		if ex, _, _ := beside.Pane.Exited(); ex {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("true never exited")
+		}
+	}
+	a.Light, beside.Light = StWorking, StIdle
+
+	c := &Core{}
+	r := NewMirror(c)
+	var sent Sent
+	parts, err := m.Parts(&sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyAll(t, r, parts)
+	ca := c.ByRef(m.Ref(a))
+	cb := c.ByRef(m.Ref(beside))
+	cs := c.ByRef(m.Ref(m.Tabs[1]))
+	if ca.Pane != nil || !ca.HasProgram() || !ca.AgentRunning() {
+		t.Error("the tab's agent runs")
+	}
+	if !cb.HasProgram() || cb.AgentRunning() {
+		t.Error("the agent beside has exited")
+	}
+	if cs.HasProgram() {
+		t.Error("the other tab's agent has no program")
+	}
+	shell := ProgramRef{Pane: c.PaneRef(c.Tabs[0].PaneList[3])}
+	if c.Program(shell) != nil || !c.Runs(shell) {
+		t.Error("the terminal runs, with no program in the copy")
+	}
+	if !c.Runs(ProgramRef{Plugin: "a\x00/p"}) || !c.PluginUIs["a\x00/p"].Running() {
+		t.Error("the plugin's screen runs")
+	}
+	if c.Runs(ProgramRef{Pane: c.PaneRef(c.Tabs[0].PaneList[2])}) {
+		t.Error("the reviewer starting has no program")
+	}
+
+	a.Pane = nil
+	parts, err = m.Parts(&sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyAll(t, r, parts)
+	if ca.HasProgram() || ca.AgentRunning() {
+		t.Error("the tab's agent has stopped")
+	}
 }

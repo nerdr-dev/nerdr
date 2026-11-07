@@ -88,3 +88,13 @@ func (m *Core) termOf(r ProgramRef) (*term.Pane, *TypedLine) {
 	}
 	return p.Term(), typed
 }
+
+// Runs reports whether a program runs where r names: core's own, or in a
+// copy of core's state, one core says it runs. A client draws the program
+// from its own copy of the screen then.
+func (m *Core) Runs(r ProgramRef) bool {
+	if tp, _ := m.termOf(r); tp != nil {
+		return true
+	}
+	return m.programs[r]
+}

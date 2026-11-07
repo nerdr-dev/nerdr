@@ -9,7 +9,7 @@ import (
 // The requests about the messages waiting for the agents: F3's tasks.
 
 func init() {
-	registerRequests(MoveMessage{}, ToggleAuto{}, DropMessage{}, PutIn{}, TypeIn{}, EditMessage{}, AddMessages{})
+	registerRequests(MoveMessage{}, ToggleAuto{}, DropMessage{}, PutIn{}, TypeIn{}, PromptEnter{}, EditMessage{}, AddMessages{})
 }
 
 // MsgRef names a message waiting for an agent: in agent A's list, or, with
@@ -152,7 +152,24 @@ func (q TypeIn) Do(m *Core) Cmd {
 	if a == nil || !m.TypeIn(a, q.Text) {
 		return nil
 	}
+	a.PromptedInto = a.Pane
 	return m.Tell(TypedInMsg{A: q.A, Enter: q.Enter})
+}
+
+// PromptEnter presses enter after a prompt typed into agent A by TypeIn,
+// when the program it was typed into still runs there: restarted or
+// switched, the program there now never had it.
+type PromptEnter struct{ A TabRef }
+
+func (q PromptEnter) Do(m *Core) Cmd {
+	a := m.ByRef(q.A)
+	if a == nil || a.Pane == nil || a.Pane != a.PromptedInto {
+		return nil
+	}
+	if p := m.Program(ProgramRef{Pane: m.PaneRef(a.PaneOf())}); p != nil {
+		p.Input([]byte("\r")) // followed, as typed, when core follows it
+	}
+	return nil
 }
 
 // EditMessage changes a waiting message to Text, for the agents To: in

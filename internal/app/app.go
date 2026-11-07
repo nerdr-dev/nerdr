@@ -447,7 +447,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case core.FrameMsg:
 		if m.screens != nil {
-			m.screens.Drop(func(r core.ProgramRef) bool { return m.Program(r) != nil })
+			m.screens.Drop(m.Runs)
 		}
 		m.checkEditor()
 		m.do(core.CheckPrograms{})
@@ -593,7 +593,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 
 	case promptEnterMsg:
-		m.promptEnter(msg.t, msg.pane)
+		m.promptEnter(msg.t)
 		return nil
 
 	case prActionMsg:
@@ -768,7 +768,7 @@ func (m *Model) resizePanes() {
 				if pr := m.program(p); pr != nil {
 					pr.Resize(m.shellSize(t, p))
 				}
-			case p.A != nil && p.A.Pane != nil:
+			case p.A != nil && p.A.HasProgram():
 				if pr := m.program(p); pr != nil {
 					pr.Resize(m.paneSize(p.A))
 				}

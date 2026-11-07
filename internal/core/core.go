@@ -106,6 +106,9 @@ type Core struct {
 	// Screens sends the screens to a client in a process of its own, when
 	// one is there; see ScreenServer.
 	Screens *ScreenServer `json:"-"`
+	// programs are, in a copy of core's state, the programs core runs,
+	// which the copy has no term.Pane of; see Runs.
+	programs map[ProgramRef]bool
 }
 
 // Toast shows a short message to the user, if a client is there to show it.
