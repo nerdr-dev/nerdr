@@ -429,7 +429,7 @@ type Tab struct {
 	// to take the task from. See panel.go.
 	GoalWrap    *GoalWrap
 	GoalLooking bool
-	Typed       *TypedLine
+	Typed       *TypedLine `json:"-"`
 	// LastAt is when Last was set from what was typed, so the agent's log,
 	// read a moment later, cannot put back the prompt before it.
 	LastAt time.Time
@@ -468,6 +468,10 @@ type Tab struct {
 	// the background (see repos.go): nothing else may start in, close or
 	// change its worktrees until it is done.
 	ReposBusy bool
+
+	// wireRef marks a tab read as a reference to another, by its ID alone,
+	// until a Mirror points at the tab itself; see Tab.UnmarshalJSON.
+	wireRef bool
 }
 
 // HookKey is the id the tab's agent is given to report to nerdr with, as

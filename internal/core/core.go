@@ -13,7 +13,7 @@ import (
 // Core is nerdr with no user interface: the tabs, and what goes on in them.
 type Core struct {
 	// Mu guards all of Core; see Loop.
-	Mu sync.Mutex
+	Mu sync.Mutex `json:"-"`
 	// Quitting is set once the program is on its way out.
 	Quitting bool
 	// Gen counts the changes that can change what a client draws: the
@@ -26,7 +26,7 @@ type Core struct {
 	// "" for the one on this machine.
 	ID string
 	// Client is told what the user is to see; see Client.
-	Client Client
+	Client Client `json:"-"`
 	// Asking is what waits for the user to answer, the first asked first;
 	// see Asked.
 	Asking  []*Question
@@ -61,14 +61,14 @@ type Core struct {
 
 	// Spawner starts the programs of the tabs: agents, terminals and
 	// plugins. Nil is spawn.Local, or Held's holder; see Programs.
-	Spawner spawn.Spawner
+	Spawner spawn.Spawner `json:"-"`
 	// Held is the holder the programs run in, when nerdr runs over one;
 	// see held.go.
-	Held *Held
+	Held *Held `json:"-"`
 
-	Cfg         config.Config
-	Root        string // the folder nerdr was started in
-	Tabs        []*Tab
+	Cfg         config.Config `json:"-"`
+	Root        string        // the folder nerdr was started in
+	Tabs        []*Tab        `json:"-"`
 	AgentModels map[agents.Kind]ModelList
 	// IssueWatch is the watching of the issues assigned to you; see
 	// issuewatch.go.
@@ -76,7 +76,7 @@ type Core struct {
 	// Awake keeps the machine awake while keep_awake asks, made the first
 	// time it is wanted; AwakeErr is why it could not, as last told; and
 	// LastBusy when an agent last worked. See KeepAwake.
-	Awake    Keeper
+	Awake    Keeper `json:"-"`
 	AwakeErr string
 	LastBusy time.Time
 	// PRWatch is the watching of your pull requests; see prwatch.go.
@@ -102,7 +102,7 @@ type Core struct {
 	// codexHookArgs.
 	CodexHooks []string
 	CodexAsked bool
-	Wake       chan struct{}
+	Wake       chan struct{} `json:"-"`
 }
 
 // Toast shows a short message to the user, if a client is there to show it.
