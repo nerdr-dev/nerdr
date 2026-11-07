@@ -335,8 +335,8 @@ func (m *Model) Init() tea.Cmd {
 			then = (*Model).openWizard
 		}
 		cmds = append(cmds, m.openSetup(then))
-	} else if note := m.ApplySkills(); note != "" {
-		m.toast(note)
+	} else {
+		m.do(core.ApplySkills{})
 	}
 	if len(m.Tabs) == 0 {
 		if m.dialog == nil {
@@ -439,8 +439,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case core.FrameMsg:
 		m.checkEditor()
-		m.CheckShells()
-		m.CheckPluginUIs()
+		m.do(core.CheckPrograms{})
 		m.checkCopied()
 		return nil
 
@@ -704,7 +703,7 @@ func (m *Model) syncInput() {
 }
 
 // detect refreshes every agent's traffic light and passes the result on.
-func (m *Model) detect() tea.Cmd { return fromCore(m.DetectAll(time.Now())) }
+func (m *Model) detect() tea.Cmd { return m.do(core.Detect{}) }
 
 // tabShown reports whether t is on screen: in front, or beside it.
 func (m *Model) tabShown(t *core.Tab) bool {
@@ -721,7 +720,7 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 			}
 		}
 	}
-	m.KeepAwake(now, func() time.Time { return m.lastInput(now) })
+	m.do(core.KeepAwake{LastInput: m.lastInput(now)})
 	m.reportHerdr()
 	m.flushNotes(m.herdrBefore)
 	return nil
@@ -930,7 +929,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	if m.split != nil || splitEnded {
 		m.resizePanes() // the tab may have changed sides, or have the window
 	}
-	m.SaveSession()
+	m.saveLayout()
 	m.reportHerdr()
 	var ask tea.Cmd
 	if m.dialog == nil && t.Spinoff != nil {

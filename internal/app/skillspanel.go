@@ -107,9 +107,7 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.Cfg.EnabledSkills = enabled
-		note := m.ApplySkills()
-		m.SkillLook.At = time.Time{}
-		m.toast(strings.TrimSpace(skillsChangedNote + " " + note))
+		return tea.Batch(m.do(core.SetConfig{Cfg: m.Cfg}), m.do(core.ApplySkills{Say: skillsChangedNote}))
 	case "s":
 		return m.openSettingsAt("install")
 	case "pgdown", "ctrl+d":

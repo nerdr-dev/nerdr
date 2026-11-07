@@ -32,7 +32,9 @@ const corePkg = "github.com/nerdr-dev/nerdr/internal/core"
 
 // readsCore are the methods of core's types that only read, which the TUI
 // may call on its copy. Program's are left to the screens (see
-// core.Program), not yet sent as rows.
+// core.Program), not yet sent as rows. SkillStates, and SkillOn and
+// AgentNote by it, read what the agent finds of its skills, kept a moment
+// in SkillLook: in a copy, the copy's own.
 var readsCore = map[string]bool{}
 
 func init() {
@@ -50,6 +52,8 @@ func init() {
 		*Core.KnownGroupNames *Core.HeldAgent *Core.GroupCount *Core.CutOff
 		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
 		*Core.PRNewsByKey *Core.IssueNewsByKey
+
+		*Core.SkillStates *Core.SkillOn *Core.AgentNote
 		Request.Do
 
 		*Agent.AutoCount
@@ -218,7 +222,10 @@ func (c *checker) aliases(n ast.Node) {
 			return
 		}
 		if u, ok := rhs.(*ast.UnaryExpr); ok && u.Op == token.AND {
-			rhs = u.X
+			if _, lit := u.X.(*ast.CompositeLit); lit || !c.throughCore(u.X) {
+				c.fresh[obj] = true // made here, or the TUI's own
+				return
+			}
 		}
 		if _, ok := rhs.(*ast.CompositeLit); ok {
 			c.fresh[obj] = true
@@ -418,7 +425,24 @@ func (c *checker) clientsOwn(e ast.Expr) bool {
 	}
 }
 
+// embedded is the type the field sel selects is promoted from, the first
+// embedded field on its way.
+func (c *checker) embedded(sel *types.Selection) types.Type {
+	t := sel.Recv()
+	if p, ok := t.Underlying().(*types.Pointer); ok {
+		t = p.Elem()
+	}
+	st, ok := t.Underlying().(*types.Struct)
+	if !ok {
+		return nil
+	}
+	return st.Field(sel.Index()[0]).Type()
+}
+
 func isCoreCore(t types.Type) bool {
+	if t == nil {
+		return false
+	}
 	if p, ok := t.(*types.Pointer); ok {
 		t = p.Elem()
 	}
@@ -436,8 +460,8 @@ func (c *checker) throughCore(e ast.Expr) bool {
 		if sel == nil || sel.Kind() != types.FieldVal {
 			return false
 		}
-		if p := sel.Obj().Pkg(); p != nil && p.Path() == corePkg {
-			return true // a field of core's, also one of core.Core's in Model
+		if p := sel.Obj().Pkg(); p != nil && p.Path() == corePkg && len(sel.Index()) > 1 && isCoreCore(c.embedded(sel)) {
+			return true // a field of core.Core's, in Model
 		}
 		return isCore(c.info.Types[x.X].Type) || c.throughCore(x.X)
 	case *ast.IndexExpr:

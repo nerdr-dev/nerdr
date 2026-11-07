@@ -1,6 +1,11 @@
 package core
 
-import "github.com/nerdr-dev/nerdr/internal/config"
+import (
+	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/store"
+)
 
 // The requests a client may make of core; see Request. Each is done with
 // Mu held, the tabs it names looked up afresh.
@@ -13,11 +18,21 @@ func init() {
 }
 
 // SetConfig is the config as the client changed it, and saved it when
-// it could: core goes by it from now on.
-type SetConfig struct{ Cfg config.Config }
+// it could: core goes by it from now on. WtRoot, when set, is where new
+// worktrees go now, the setup having asked before any tab was made.
+type SetConfig struct {
+	Cfg    config.Config
+	WtRoot string
+}
 
 func (q SetConfig) Do(m *Core) Cmd {
+	if q.Cfg.DataDir != m.Cfg.DataDir {
+		store.SetDataDir(q.Cfg.DataDir)
+	}
 	m.Cfg = q.Cfg
+	if q.WtRoot != "" {
+		m.WtRoot = q.WtRoot
+	}
 	return nil
 }
 
@@ -35,5 +50,31 @@ func (q Save) Do(m *Core) Cmd {
 		k.KeepLayout(*q.Layout)
 	}
 	m.SaveSession()
+	return nil
+}
+
+func init() { registerRequests(CheckPrograms{}, Detect{}, KeepAwake{}) }
+
+// CheckPrograms looks at the terminals' and plugin screens' programs, for
+// those that have ended: once a frame.
+type CheckPrograms struct{}
+
+func (CheckPrograms) Do(m *Core) Cmd {
+	m.CheckShells()
+	m.CheckPluginUIs()
+	return nil
+}
+
+// Detect looks at every agent now.
+type Detect struct{}
+
+func (Detect) Do(m *Core) Cmd { return m.DetectAll(time.Now()) }
+
+// KeepAwake keeps the machine awake while keep_awake asks, the client's
+// user having last typed at LastInput.
+type KeepAwake struct{ LastInput time.Time }
+
+func (q KeepAwake) Do(m *Core) Cmd {
+	m.KeepAwake(time.Now(), func() time.Time { return q.LastInput })
 	return nil
 }

@@ -62,7 +62,7 @@ func (d *issueList) fill(m *Model) {
 		e := d.entries[d.cursor]
 		cur = core.IssueKey(e.Repo.Path, e.Issue.Number)
 	}
-	w := &m.IssueWatch
+	w := m.IssueWatch
 	in := map[string]bool{}
 	for _, r := range d.scope {
 		in[filepath.Clean(r.Path)] = true

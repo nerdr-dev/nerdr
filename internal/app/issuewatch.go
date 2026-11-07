@@ -34,7 +34,7 @@ func (m *Model) issuesShown() bool {
 // of them when force is set.
 func (m *Model) refreshAllIssues(force bool) tea.Cmd {
 	d := m.issuePanel
-	w := &m.IssueWatch
+	w := m.IssueWatch
 	if !m.panelIssues() || d == nil || !d.all || w.AllBusy {
 		return nil
 	}

@@ -141,6 +141,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		enabled = append(enabled, sk.Name)
 	}
 	var notes *string
+	wtRoot := ""
 	if !d.notesSet {
 		v := strings.TrimSpace(d.notes.Value())
 		notes = &v
@@ -161,7 +162,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		// Asked before any tab is made, so the new worktrees go there
 		// from now on, not only from the next start.
 		m.Cfg.WorktreesDir = config.ExpandHome(v)
-		m.WtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
+		wtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
 		d.worktreesSet = true
 	}
 	m.Cfg.EnabledSkills = enabled
@@ -171,11 +172,8 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		store.SetDataDir(*notes)
 	}
 	m.dialog = nil
-	if note := m.ApplySkills(); note != "" {
-		m.toast(note)
-	} else {
-		m.toast("saved in " + config.Path())
-	}
+	m.do(core.SetConfig{Cfg: m.Cfg, WtRoot: wtRoot})
+	m.do(core.ApplySkills{Otherwise: "saved in " + config.Path()})
 	return d.next(m)
 }
 
