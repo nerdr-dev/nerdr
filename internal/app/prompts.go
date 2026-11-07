@@ -88,11 +88,18 @@ func (m *Model) savePrompts() {
 
 // usePrompt types saved prompt p into agent a, and gives it the keyboard.
 func (m *Model) usePrompt(a *core.Tab, p prompts.Prompt) tea.Cmd {
-	if a == nil || !m.TypeIn(a, p.Text) {
+	if a == nil {
 		return nil
 	}
+	return m.do(core.TypeIn{A: m.Ref(a), Text: p.Text, Enter: p.Enter})
+}
+
+// typedIn gives the keyboard to agent a, just typed in to at the TUI's
+// request (see core.TypedInMsg), and presses enter after it when enter
+// says to.
+func (m *Model) typedIn(a *core.Tab, enter bool) tea.Cmd {
 	cmd := tea.Batch(m.goToAgent(a), m.resize())
-	if !p.Enter {
+	if !enter {
 		m.toast("put in: enter sends it")
 		return cmd
 	}

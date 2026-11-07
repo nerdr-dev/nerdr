@@ -48,7 +48,8 @@ func init() {
 		*Core.UsedModels *Core.Toast *Core.TabFor *Core.SpinoffKinds
 		*Core.SearchRoots *Core.ReviewModel *Core.ReviewerNames
 		*Core.KnownGroupNames *Core.HeldAgent *Core.GroupCount *Core.CutOff
-		*Core.CountStatus *Core.Program
+		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
+		Request.Do
 
 		*Agent.AutoCount
 		*Tab.AgentLit *Tab.AgentRunning *Tab.AgentsIn *Tab.Attention

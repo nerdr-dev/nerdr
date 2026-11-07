@@ -81,33 +81,20 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 	case "K", "shift+up":
 		// Within the agent's own list: which agent it is for is e's.
 		if has && i > 0 && refs[i-1].A == r.A {
-			l := *list
-			l[r.I-1], l[r.I] = l[r.I], l[r.I-1]
 			m.msgCursor--
-			m.SaveSession()
+			return m.do(core.MoveMessage{M: m.MsgRefOf(o, r), By: -1})
 		}
 	case "J", "shift+down":
 		if has && i+1 < len(refs) && refs[i+1].A == r.A {
-			l := *list
-			l[r.I+1], l[r.I] = l[r.I], l[r.I+1]
 			m.msgCursor++
-			m.SaveSession()
+			return m.do(core.MoveMessage{M: m.MsgRefOf(o, r), By: 1})
 		}
 	case " ", "x":
 		switch {
 		case has && r.A == nil:
 			m.InactiveToast(o.Inactive[r.I])
 		case has:
-			a := r.A
-			old := a.Messages[r.I]
-			a.Messages[r.I].Auto = !a.Messages[r.I].Auto
-			if a.Messages[r.I].Auto && !a.InSandbox {
-				a.Messages[r.I].Sandboxed = false
-			}
-			if run := a.Review; run != nil && run.FixMsg == old {
-				run.FixMsg = a.Messages[r.I]
-			}
-			m.SaveSession()
+			return m.do(core.ToggleAuto{M: m.MsgRefOf(o, r)})
 		}
 	case "enter":
 		switch {
@@ -128,9 +115,8 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "d", "delete", "backspace":
 		if has {
-			*list = core.DropFrom(*list, r.I)
 			m.msgCursor = min(i, len(refs)-2)
-			m.SaveSession()
+			return m.do(core.DropMessage{M: m.MsgRefOf(o, r)})
 		}
 	}
 	return nil
@@ -139,15 +125,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 // putIn types message i into t's agent, as a paste and without enter, and
 // gives the agent the keyboard: to change it, or send it as it is.
 func (m *Model) putIn(t *core.Tab, i int) tea.Cmd {
-	if !m.TypeIn(t, t.Messages[i].Text) {
-		return nil
-	}
-	t.DropMessage(i)
-	m.SaveSession()
-	// The keyboard goes to the agent it was put in, whichever pane had it.
-	cmd := m.goToAgent(t)
-	m.toast("put in: enter sends it")
-	return tea.Batch(cmd, m.resize())
+	return m.do(core.PutIn{M: core.MsgRef{A: m.Ref(t), Msg: t.Messages[i]}})
 }
 
 // editMessage opens task r of tab o to be changed, and given to another

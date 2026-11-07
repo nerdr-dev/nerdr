@@ -42,6 +42,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.LayoutMsg:
 		m.Gen++
 		return toCore(m.resize())
+	case core.TypedInMsg:
+		if a := m.ByRef(ev.A); a != nil {
+			return toCore(m.typedIn(a, ev.Enter))
+		}
 	case core.StartedMsg:
 		// Back at the top of a fresh program, which has the keyboard if its
 		// pane does.
