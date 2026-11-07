@@ -44,6 +44,9 @@ type Pane struct {
 	base int64
 
 	notify func()
+	// watched is set while a client in another process is sent the
+	// screen: it is told of every change, drawn here or not. See Watch.
+	watched atomic.Bool
 }
 
 // Start launches argv in dir inside a pty of the given size. notify is
@@ -156,7 +159,7 @@ func (p *Pane) readLoop() {
 		n, err := p.proc.Read(buf)
 		if n > 0 {
 			p.Feed(buf[:n])
-			if p.drawnOn.Load() == frame.Load() {
+			if p.drawnOn.Load() == frame.Load() || p.watched.Load() {
 				p.notify()
 			}
 		}
@@ -203,6 +206,11 @@ func (p *Pane) wait() {
 
 // Done is closed when the program exits.
 func (p *Pane) Done() <-chan struct{} { return p.done }
+
+// Watch has the pane call its notify on every change while on, as it
+// otherwise does only for one drawn on the last frame (see NextFrame): its
+// screen is sent to a client in another process, which draws it there.
+func (p *Pane) Watch(on bool) { p.watched.Store(on) }
 
 // Exited reports whether the program has exited, how, and how long it ran.
 func (p *Pane) Exited() (bool, error, time.Duration) {
