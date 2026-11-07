@@ -3,6 +3,7 @@ package core
 import (
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -27,16 +28,22 @@ func echoer(t *testing.T) *term.Pane {
 // connections, the loop's ticks played by the test.
 func screensOver(t *testing.T, c *Core) *ScreenClient {
 	t.Helper()
+	return screensPosting(t, c, func(ev RequestEv) {
+		c.Mu.Lock()
+		ev.Run(c)
+		c.Mu.Unlock()
+	})
+}
+
+// screensPosting is screensOver, the requests for the loop given to post.
+func screensPosting(t *testing.T, c *Core, post func(RequestEv)) *ScreenClient {
+	t.Helper()
 	a, b, err := attach.Pair()
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { a.Close(""); b.Close("") })
-	c.Screens = NewScreenServer(a, func(r Request) {
-		c.Mu.Lock()
-		r.Do(c)
-		c.Mu.Unlock()
-	})
+	c.Screens = NewScreenServer(a, post)
 	stop := make(chan struct{})
 	done := make(chan struct{})
 	t.Cleanup(func() { close(stop); <-done })
@@ -55,7 +62,7 @@ func screensOver(t *testing.T, c *Core) *ScreenClient {
 			}
 		}
 	}()
-	return NewScreenClient(b, func() {})
+	return NewScreenClient(b, func(any) {})
 }
 
 // draw draws p scroll lines back as the TUI does, and tells the core.
@@ -123,7 +130,22 @@ func TestScreensOverAConnection(t *testing.T) {
 	if strings.Join(textOf(f), "\n") != strings.Join(textOf(want), "\n") {
 		t.Fatalf("scrolled back:\n%s\nwant\n%s", strings.Join(textOf(f), "\n"), strings.Join(textOf(want), "\n"))
 	}
-	first, rows := cp.Rows(0, 2)
+	if _, rows := cp.Rows(0, 2); len(rows) != 0 {
+		t.Fatalf("lines not sent taken from the copy: %q", textOf(term.Frame{Rows: rows}))
+	}
+	type got struct {
+		first int
+		rows  [][]term.Cell
+	}
+	came := make(chan got, 1)
+	cp.(*term.Copy).RowsLater(0, 2, func(first int, rows [][]term.Cell) { came <- got{first, rows} })
+	var g got
+	select {
+	case g = <-came:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the lines asked for never came")
+	}
+	first, rows := g.first, g.rows
 	if first != 0 || len(rows) != 3 || textOf(term.Frame{Rows: rows})[1] != "line 1" {
 		t.Fatalf("lines asked for: %d %q", first, textOf(term.Frame{Rows: rows}))
 	}
@@ -177,4 +199,95 @@ func TestScreensSentOnlyWhenShown(t *testing.T) {
 		t.Fatal("a screen not shown was sent")
 	}
 	until(t, "drawn again", cl, cp, 0, func(f term.Frame) bool { return shows(f, "got unseen") })
+}
+
+// TestKeysWaitForNoLoop: what is typed into a screen shown goes to its
+// program however busy the loop, and what was on its way through the loop
+// before goes first.
+func TestKeysWaitForNoLoop(t *testing.T) {
+	p := echoer(t)
+	tb := &Tab{Pane: p}
+	tb.Agent = agents.Codex
+	c := &Core{Tabs: []*Tab{tb}}
+	ref := ProgramRef{Pane: c.PaneRef(tb.OwnPane())}
+	busy := make(chan struct{})
+	var held []RequestEv
+	var mu sync.Mutex
+	cl := screensPosting(t, c, func(ev RequestEv) {
+		if _, ok := ev.R.(ShowScreens); ok {
+			c.Mu.Lock()
+			ev.Run(c)
+			c.Mu.Unlock()
+			return
+		}
+		select {
+		case <-busy:
+			c.Mu.Lock()
+			ev.Run(c)
+			c.Mu.Unlock()
+		default: // the loop is busy: held until it is not
+			mu.Lock()
+			held = append(held, ev)
+			mu.Unlock()
+		}
+	})
+	cp := cl.Program(ref)
+
+	cp.Input([]byte("before it was shown\r")) // for the loop: held
+	until(t, "the program's lines", cl, cp, 0, func(f term.Frame) bool { return shows(f, "line 39") })
+	cp.Input([]byte("after the one held\r"))
+	time.Sleep(100 * time.Millisecond)
+	if shows(p.Frame(0), "got after") {
+		t.Fatal("typed before what was held for the loop")
+	}
+	mu.Lock()
+	if len(held) != 2 {
+		t.Fatalf("%d held for the loop, want both", len(held))
+	}
+	close(busy)
+	for _, ev := range held {
+		c.Mu.Lock()
+		ev.Run(c)
+		c.Mu.Unlock()
+	}
+	mu.Unlock()
+	until(t, "both, in order", cl, cp, 0, func(f term.Frame) bool {
+		s := strings.Join(textOf(f), "\n")
+		i, j := strings.Index(s, "got before"), strings.Index(s, "got after")
+		return i >= 0 && j > i
+	})
+
+	c.Mu.Lock() // the loop is held now: typing still gets there
+	defer c.Mu.Unlock()
+	cp.Input([]byte("with the loop held\r"))
+	deadline := time.Now().Add(5 * time.Second)
+	for !shows(p.Frame(0), "got with the loop held") {
+		if time.Now().After(deadline) {
+			t.Fatal("typing waited for the loop")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	if tb.Typed == nil || tb.Typed.Take() != "with the loop held" {
+		t.Error("what was typed straight in was not followed")
+	}
+}
+
+// TestCopiedUnseenLetGo: what a program not shown puts on the clipboard is
+// let go, not taken for the user's once it is shown.
+func TestCopiedUnseenLetGo(t *testing.T) {
+	p, err := term.Start([]string{"sh", "-c", `printf '\033]52;c;aGlkZGVu\007'; sleep 30`}, t.TempDir(), os.Environ(), 40, 10, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.Close)
+	tb := &Tab{Pane: p}
+	c := &Core{Tabs: []*Tab{tb}}
+	screensOver(t, c)
+	time.Sleep(200 * time.Millisecond)
+	c.Mu.Lock()
+	c.Screens.Tick(c, true)
+	c.Mu.Unlock()
+	if s := p.TakeCopied(); s != "" {
+		t.Fatalf("%q kept for when it is shown", s)
+	}
 }

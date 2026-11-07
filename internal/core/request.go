@@ -69,5 +69,16 @@ func DecodeRequest(b []byte) (Request, error) {
 }
 
 // RequestEv is a request from a client in a process of its own, for the
-// loop to do.
-type RequestEv struct{ R Request }
+// loop to do; Done, when set, is called once it is done, or dropped.
+type RequestEv struct {
+	R    Request
+	Done func()
+}
+
+// Run does the request, with Mu held, and calls Done.
+func (ev RequestEv) Run(m *Core) Cmd {
+	if ev.Done != nil {
+		defer ev.Done()
+	}
+	return ev.R.Do(m)
+}

@@ -14,13 +14,13 @@ import (
 // for.
 type noOut struct{ scrolls []int }
 
-func (*noOut) Input([]byte)                  {}
-func (*noOut) Write([]byte)                  {}
-func (*noOut) Mouse(MouseEvent)              {}
-func (*noOut) Focus(bool)                    {}
-func (*noOut) Resize(int, int)               {}
-func (o *noOut) Scroll(n int)                { o.scrolls = append(o.scrolls, n) }
-func (*noOut) Rows(int, int) (int, [][]Cell) { return 0, nil }
+func (*noOut) Input([]byte)                                  {}
+func (*noOut) Write([]byte)                                  {}
+func (*noOut) Mouse(MouseEvent)                              {}
+func (*noOut) Focus(bool)                                    {}
+func (*noOut) Resize(int, int)                               {}
+func (o *noOut) Scroll(n int)                                { o.scrolls = append(o.scrolls, n) }
+func (*noOut) AskRows(from, _ int, done func(int, [][]Cell)) { done(from, nil) }
 
 // sendTo has snd make the next message of s at scroll, and c take it as
 // it comes out of JSON; it is the message's size.

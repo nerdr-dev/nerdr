@@ -4,6 +4,7 @@ import (
 	"encoding/base64"
 	"os"
 	"slices"
+	"sync"
 	"time"
 	"unicode/utf8"
 
@@ -472,11 +473,55 @@ func (m *Model) shownScroll(t *core.Tab) int {
 // you over SSH and through herdr), and the local clipboard's own way too
 // where there is one.
 func (m *Model) copySelection(p core.Program) {
-	text := selectedText(p, m.sel)
+	if c, ok := p.(*term.Copy); ok && m.screens != nil {
+		m.copyFromCopy(c)
+	} else {
+		m.copyText(selectedText(p, m.sel))
+	}
 	if p == m.selPane {
 		m.selShown = false
 	}
-	m.copyText(text)
+}
+
+// copyFromCopy is copySelection from the copy of a screen of core's in
+// another process: lines it does not have, scrolled past, are asked of
+// core, and the text is copied when they come (selectionMsg), the TUI
+// waiting for nothing meanwhile.
+func (m *Model) copyFromCopy(c *term.Copy) {
+	sel := m.sel
+	from, to := sel.From.Line, sel.To.Line
+	if to < from {
+		from, to = to, from
+	}
+	var mu sync.Mutex
+	asked := false
+	var now *string
+	c.RowsLater(from, to, func(first int, rows [][]term.Cell) {
+		text := term.SelectedText(first, rows, sel)
+		mu.Lock()
+		later := asked
+		if !later {
+			now = &text
+		}
+		mu.Unlock()
+		if later {
+			m.screens.Tell(selectionMsg{text: text, whole: rows != nil})
+		}
+	})
+	mu.Lock()
+	asked = true
+	got := now
+	mu.Unlock()
+	if got != nil {
+		m.copyText(*got)
+	}
+}
+
+// selectionMsg is the text chosen in a copy of a screen, once the lines
+// asked for have come; whole is unset when they did not.
+type selectionMsg struct {
+	text  string
+	whole bool
 }
 
 // copyText puts text on the clipboard, as copySelection does.

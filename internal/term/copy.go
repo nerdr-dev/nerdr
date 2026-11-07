@@ -43,9 +43,10 @@ type CopyOut interface {
 	Resize(w, h int)
 	// Scroll asks for the screen scroll lines back.
 	Scroll(scroll int)
-	// Rows asks for lines from to to, as Screen.Rows gives them, and waits
-	// for them a little; nil when they do not come.
-	Rows(from, to int) (int, [][]Cell)
+	// AskRows asks for lines from to to, as Screen.Rows gives them, and
+	// gives them to done when they come, on a goroutine of its own; nil
+	// when they do not.
+	AskRows(from, to int, done func(int, [][]Cell))
 }
 
 // NewCopy is a copy with nothing in it yet, w×h, which sends to out.
@@ -225,21 +226,33 @@ func (c *Copy) Drawn() (bool, int) {
 	return c.drawnOn.Load() == frame.Load(), c.scroll
 }
 
-// Rows are lines from to to, as Screen.Rows gives them: from the copy
-// when it has them all, else asked for.
+// Rows are lines from to to, as Screen.Rows gives them, of those the copy
+// has: the screen sent. RowsLater has the others too.
 func (c *Copy) Rows(from, to int) (int, [][]Cell) {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	f := &c.view.Frame
-	if from >= f.Top && to < f.Top+len(f.Rows) && from <= to {
-		out := make([][]Cell, 0, to-from+1)
-		for line := from; line <= to; line++ {
-			out = append(out, append([]Cell(nil), f.Rows[line-f.Top]...))
-		}
-		c.mu.Unlock()
-		return from, out
+	from, to = max(from, f.Top), min(to, f.Top+len(f.Rows)-1)
+	var out [][]Cell
+	for line := from; line <= to; line++ {
+		out = append(out, append([]Cell(nil), f.Rows[line-f.Top]...))
 	}
+	return from, out
+}
+
+// RowsLater gives done lines from to to, as Screen.Rows gives them: there
+// and then when the copy has them all, else once they have been asked for
+// and come, on another goroutine. It never waits for them.
+func (c *Copy) RowsLater(from, to int, done func(int, [][]Cell)) {
+	c.mu.Lock()
+	f := &c.view.Frame
+	all := from >= f.Top && to < f.Top+len(f.Rows) && from <= to
 	c.mu.Unlock()
-	return c.out.Rows(from, to)
+	if all {
+		done(c.Rows(from, to))
+		return
+	}
+	c.out.AskRows(from, to, done)
 }
 
 // TopAt is the index of the first row a frame shows scroll lines back.
