@@ -1,0 +1,125 @@
+package app
+
+import (
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
+
+	"github.com/nerdr-dev/nerdr/internal/attach"
+	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
+)
+
+// remoteTUI is a TUI as a client in a process of its own, of a core with
+// one tab whose agent runs argv; the core's loop runs as in its own
+// process. What the TUI is told outside Update comes to told.
+func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, chan any) {
+	t.Helper()
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	c := &core.Core{Root: t.TempDir(), Wake: make(chan struct{}, 1)}
+	pane, err := term.Start(argv, t.TempDir(), os.Environ(), 80, 20, c.Notify)
+	if err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(pane.Close)
+	tb := &core.Tab{Tab: state.Tab{ID: "1", Name: "login", Agent: "codex", Dir: "/w/login",
+		Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/login", Branch: "login"}}}}
+	tb.Pane, tb.Light = pane, core.StIdle
+	c.Tabs = []*core.Tab{tb}
+	a, b, err := attach.Pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	loop := core.NewLoop(c, nil)
+	c.Mu.Lock()
+	c.AttachClient(a, func(ev core.RequestEv) { loop.Post(ev) })
+	c.Mu.Unlock()
+	loop.StartSteps()
+	t.Cleanup(func() {
+		loop.Stop()
+		a.Close("")
+		b.Close("")
+	})
+
+	yes, no := true, false
+	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes, Install: "x"}
+	told := make(chan any, 64)
+	m, err := NewRemote(cfg, c.Root, nil, state.Session{}, b, func(msg any) {
+		select {
+		case told <- msg:
+		default:
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Init()
+	m.Update(tea.WindowSizeMsg{Width: 110, Height: 28})
+	return m, c, tb, told
+}
+
+// pump has m take in what came, as the program does on InboxMsg, until
+// ok, drawing meanwhile.
+func pump(t *testing.T, m *Model, told chan any, what string, ok func(v string) bool) string {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		select {
+		case msg := <-told:
+			m.Update(msg)
+		case <-time.After(5 * time.Millisecond):
+		}
+		v := ansi.Strip(m.View())
+		if ok(v) {
+			return v
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("%s: never shown:\n%s", what, v)
+		}
+	}
+}
+
+// TestRemoteTUI: a TUI in a process of its own shows core's tabs and its
+// agent's screen, has core do what it asks and sees it done, types into
+// the agent, and core goes by what it shows.
+func TestRemoteTUI(t *testing.T) {
+	m, c, tb, told := remoteTUI(t, "sh", "-c", `stty -echo; echo ready; while read l; do echo "got $l"; done`)
+	pump(t, m, told, "the tab and its agent", func(v string) bool {
+		return strings.Contains(v, "login") && strings.Contains(v, "ready")
+	})
+
+	m.Mu.Lock()
+	m.do(core.RenameTab{T: m.Ref(m.Cur()), Name: "signin"})
+	name := m.Cur().Name
+	m.Mu.Unlock()
+	if name != "signin" {
+		t.Fatalf("the copy shows %q once core has done it", name)
+	}
+	c.Mu.Lock()
+	if tb.Name != "signin" {
+		t.Errorf("core has %q", tb.Name)
+	}
+	front := c.Client.Front()
+	w, h := c.Client.TabSize(front)
+	c.Mu.Unlock()
+	if front.Tab != "1" || w == 0 || h == 0 {
+		t.Errorf("core goes by front %+v, %d×%d", front, w, h)
+	}
+
+	m.Mu.Lock()
+	kp := m.keyPane()
+	m.Mu.Unlock()
+	if kp == nil {
+		t.Fatal("no program for the keys")
+	}
+	kp.Input([]byte("hello\r"))
+	pump(t, m, told, "what was typed", func(v string) bool { return strings.Contains(v, "got hello") })
+}

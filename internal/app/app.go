@@ -47,7 +47,15 @@ type Model struct {
 	// screens keeps copies of core's screens sent as rows, to draw and
 	// send keys to (NERDR_HOLDER=1); nil when the programs are drawn from
 	// core's own. See SetScreens.
-	screens    *core.ScreenClient
+	screens *core.ScreenClient
+	// remote is the connection to core, when it runs in a process of its
+	// own (see remote.go); said what the TUI last told it it shows, and
+	// pending what core told it before the program started.
+	remote  *core.CoreConn
+	said    core.ClientState
+	pending []core.Event
+	// goneErr is why the TUI ended, its core gone; see GoneErr.
+	goneErr    string
 	prefixPage int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
@@ -302,6 +310,13 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	}
 	now := time.Now()
 	m.Restore(sess, now)
+	m.restoreLayout(sess)
+	m.Client = m
+	return m
+}
+
+// restoreLayout lays the tabs out as sess was left.
+func (m *Model) restoreLayout(sess state.Session) {
 	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
 		m.Active = sess.Active
 	}
@@ -313,8 +328,6 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		}
 	}
 	m.sideWidth = sess.SideWidth
-	m.Client = m
-	return m
 }
 
 // Init starts the restored tabs' agents, or the new-tab wizard when there
@@ -322,6 +335,9 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 func (m *Model) Init() tea.Cmd {
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
+	if m.remote != nil {
+		return m.initRemote()
+	}
 	// Core's own ticks wait on Mu until this is done.
 	if m.Loop != nil {
 		m.Loop.Start()
@@ -414,6 +430,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.review, shown = m.review.SetShown(m.reviewZoom || m.reviewOpen && !m.splitShown())
 	m.review = m.review.SetAlone(m.reviewZoom)
 	m.syncInput()
+	if m.remote != nil {
+		m.sayState()
+	}
 	return m, tea.Batch(cmd, shown, m.syncMouse())
 }
 
@@ -421,10 +440,18 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	if m.Quitting {
 		return m.whileQuitting(msg)
 	}
-	if cmd, ok := m.Handle(msg); ok {
-		return fromCore(cmd)
+	if m.remote == nil {
+		if cmd, ok := m.Handle(msg); ok {
+			return fromCore(cmd)
+		}
 	}
 	switch msg := msg.(type) {
+	case core.InboxMsg:
+		return m.told(m.remote.Take())
+
+	case core.CoreGoneMsg:
+		return m.coreGone()
+
 	case core.ChangedMsg, core.RedrawMsg:
 		return nil // only to draw what core has done
 
@@ -458,7 +485,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 			m.screens.Drop(m.Runs)
 		}
 		m.checkEditor()
-		m.do(core.CheckPrograms{})
+		if m.remote == nil { // core looks at its programs itself
+			m.do(core.CheckPrograms{})
+		}
 		m.checkCopied()
 		return nil
 
@@ -732,7 +761,7 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 			}
 		}
 	}
-	m.do(core.KeepAwake{LastInput: m.lastInput(now)})
+	m.tellCore(core.KeepAwake{LastInput: m.lastInput(now)})
 	m.reportHerdr()
 	m.flushNotes(m.herdrBefore)
 	return nil

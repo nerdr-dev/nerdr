@@ -10,6 +10,9 @@ import (
 // than only what the TUI shows. With core in this process it is done there
 // and then, Mu held as in Update; see core.Request.
 func (m *Model) do(r core.Request) tea.Cmd {
+	if m.remote != nil {
+		return m.doRemote(r)
+	}
 	return fromCore(r.Do(&m.Core))
 }
 
