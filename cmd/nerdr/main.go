@@ -346,6 +346,11 @@ func run(h *core.Held) error {
 	router.SetSend(func(m any) { p.Send(m) })
 	model.Loop = core.NewLoop(&model.Core, func(ev core.Event) { p.Send(ev) })
 	if h != nil {
+		// Over the holder, the TUI draws the programs as a client in a
+		// process of its own will: from their screens sent as rows.
+		if err := screensOverPair(model, p); err != nil {
+			return err
+		}
 		model.Mu.Lock()
 		model.TakeUpHeld()
 		if n := model.HeldLeft(); n > 0 {

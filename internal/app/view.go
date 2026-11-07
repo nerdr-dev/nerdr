@@ -139,6 +139,9 @@ func (m *Model) View() string {
 	m.zoneFns, m.zoneTips = m.zoneFns[:0], m.zoneTips[:0]
 	m.dialogZones, m.hintZones = noZones, noZones
 	frame, rects := scanZones(m.draw())
+	if m.screens != nil {
+		m.screens.Shown()
+	}
 	m.zoneRects = rects
 	if m.hover.shown {
 		frame = strings.Join(m.drawTip(strings.Split(frame, "\n")), "\n")

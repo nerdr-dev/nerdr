@@ -88,7 +88,17 @@ func (m *Model) program(p *core.PaneTab) core.Program {
 	if p == nil {
 		return nil
 	}
-	return m.Program(core.ProgramRef{Pane: m.PaneRef(p)})
+	return m.programOf(core.ProgramRef{Pane: m.PaneRef(p)})
+}
+
+// programOf is the program r names, nil when none runs there: core's
+// own, or with core's screens sent as rows, the copy kept of its screen.
+func (m *Model) programOf(r core.ProgramRef) core.Program {
+	p := m.Program(r)
+	if p == nil || m.screens == nil {
+		return p
+	}
+	return m.screens.Program(r)
 }
 
 // share is p's weight, 1 when it has none of its own.
@@ -98,3 +108,8 @@ func (m *Model) share(p *core.PaneTab) float64 {
 	}
 	return 1
 }
+
+// SetScreens has the TUI draw core's programs from the copies c keeps of
+// their screens, and send what the user does in them by c, as a client in
+// a process of its own does.
+func (m *Model) SetScreens(c *core.ScreenClient) { m.screens = c }
