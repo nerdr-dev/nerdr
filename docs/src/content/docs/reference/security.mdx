@@ -24,6 +24,9 @@ about it, and what is left for your sandbox to do.
 - **Keep nerdr's own files out of reach.** A sandbox must not let its
   agent write to `~/.config/nerdr`, `~/.local/state/nerdr`, or the main
   checkout's `.git/config` and `.git/hooks`.
+  With nerdr's core running on its own (`NERDR_HOLDER=1`), it must also
+  deny the client socket's folder; see
+  [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
 
 ## What nerdr does not take from the worktree
 
