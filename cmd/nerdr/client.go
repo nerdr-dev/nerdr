@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -195,10 +196,12 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 	return conn, nil
 }
 
-// quitting reports whether err is a core refusing a client as it quits.
+// quitting reports whether err is a core refusing a client as it quits,
+// or closing on it as it ends.
 func quitting(err error) bool {
 	var r *attach.RefusedError
-	return errors.As(err, &r) && r.Reason == core.RefusedQuitting
+	return errors.As(err, &r) && r.Reason == core.RefusedQuitting ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF)
 }
 
 // startCore starts the holder and the core of root, in a session of their
