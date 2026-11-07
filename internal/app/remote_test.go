@@ -12,6 +12,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -52,7 +53,9 @@ func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, cha
 	yes, no := true, false
 	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes, Install: "x"}
 	told := make(chan any, 64)
-	m, err := NewRemote(cfg, c.Root, nil, state.Session{}, b, func(msg any) {
+	// A router, as in a terminal: what has the keyboard is told core.
+	router := input.New(strings.NewReader(""), 0x11)
+	m, err := NewRemote(cfg, c.Root, router, state.Session{}, b, func(msg any) {
 		select {
 		case told <- msg:
 		default:
@@ -176,4 +179,26 @@ func TestRemoteTUIConnectsAgain(t *testing.T) {
 	m.Mu.Unlock()
 	kp.Input([]byte("hello\r"))
 	pump(t, m, told, "typed after connecting again", func(v string) bool { return strings.Contains(v, "got hello") })
+}
+
+// TestRemoteTUIQuiet: a TUI with nothing happening asks nothing of core;
+// one telling core of the keyboard after every message had core change,
+// which brought it a message, and so on without end.
+func TestRemoteTUIQuiet(t *testing.T) {
+	m, c, _, told := remoteTUI(t, "sh", "-c", `echo ready; sleep 30`)
+	pump(t, m, told, "the agent", func(v string) bool { return strings.Contains(v, "ready") })
+	time.Sleep(200 * time.Millisecond)
+	c.Mu.Lock()
+	gen := c.Gen
+	c.Mu.Unlock()
+	for range 5 {
+		m.Update(core.RedrawMsg{})
+		m.View()
+	}
+	c.Mu.Lock()
+	moved := c.Gen - gen
+	c.Mu.Unlock()
+	if moved != 0 {
+		t.Errorf("core changed %d times for a TUI drawing again", moved)
+	}
 }
