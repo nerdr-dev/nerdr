@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"slices"
 	"sync/atomic"
 
@@ -93,6 +94,8 @@ type RemoteClient struct {
 	// notices are what core had to show with no client there, kept for
 	// the next to connect.
 	notices [][]byte
+	// partsErr is the last a part could not be sent for, logged once.
+	partsErr string
 }
 
 var _ Client = (*RemoteClient)(nil)
@@ -169,8 +172,11 @@ func (rc *RemoteClient) flush(m *Core) {
 		rc.conn.Send("", []byte{wireBehind})
 	}
 	parts, err := m.Parts(&rc.sent)
-	if err != nil {
-		Logf("client: parts left out: %v", err)
+	if why := fmt.Sprint(err); err != nil && why != rc.partsErr {
+		Logf("client: parts left out: %s", why)
+		rc.partsErr = why
+	} else if err == nil {
+		rc.partsErr = ""
 	}
 	if len(parts) > 0 {
 		rc.conn.Send("", wire(wireParts, parts))

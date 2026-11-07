@@ -1,6 +1,7 @@
 package core
 
 import (
+	"fmt"
 	"path"
 	"path/filepath"
 	"slices"
@@ -406,6 +407,19 @@ func (m *Core) InfoEvery(t *Tab) (branches, prs time.Duration) {
 
 // FileKey is a file of repository Repo, its main checkout.
 type FileKey struct{ Repo, File string }
+
+// MarshalText is k as a name in JSON: Repo and File, a NUL between, as
+// neither has one.
+func (k FileKey) MarshalText() ([]byte, error) { return []byte(k.Repo + "\x00" + k.File), nil }
+
+func (k *FileKey) UnmarshalText(b []byte) error {
+	repo, file, ok := strings.Cut(string(b), "\x00")
+	if !ok {
+		return fmt.Errorf("file key %q: no NUL", b)
+	}
+	k.Repo, k.File = repo, file
+	return nil
+}
 
 // SetInfo takes a finished look and works out the overlaps again.
 func (m *Core) SetInfo(msg InfoMsg) {
