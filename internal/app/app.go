@@ -458,7 +458,13 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case core.InboxMsg:
-		return m.told(m.remote.Take())
+		cmd := m.told(m.remote.Take())
+		if m.remote.Started() {
+			// A program core started at the size the TUI last said: it
+			// gets the size it is shown at now.
+			m.resizePanes()
+		}
+		return cmd
 
 	case core.CoreGoneMsg:
 		return m.coreGone()

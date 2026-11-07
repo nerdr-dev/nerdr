@@ -165,3 +165,26 @@ func endClient(t *testing.T, h *harness, key string) {
 		t.Fatalf("did not end; screen:\n%s", h.screen())
 	}
 }
+
+// TestRestoredAgentSize: started again just after quitting, nerdr's core
+// restores the agent, which gets the size it is shown at, though core
+// started it before it knew that.
+func TestRestoredAgentSize(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
+	h := start(t, bin, root, env)
+	newCrashTab(h)
+	h.keys("size\r")
+	h.waitFor("size is", 3*time.Second)
+	_, size, _ := strings.Cut(h.screen(), "size is ")
+	size, _, _ = strings.Cut(size, " │")
+	size = strings.TrimSpace(size)
+	endClient(t, h, "q")
+
+	h = start(t, bin, root, env)
+	h.waitTabBar("1:crash", 15*time.Second)
+	h.waitFor("resumed conversation", 10*time.Second)
+	h.keys("size\r")
+	h.waitFor("size is "+size, 3*time.Second)
+}
