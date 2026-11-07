@@ -42,6 +42,14 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.LayoutMsg:
 		m.Gen++
 		return toCore(m.resize())
+	case core.SpinoffFailedMsg:
+		if t := m.ByRef(ev.T); t != nil {
+			m.spinoffFailed(t, ev.Branch, ev.Err)
+		}
+	case core.SpinoffNextMsg:
+		if t := m.ByRef(ev.T); t != nil {
+			return toCore(m.spinoffMoved(t, ev.Left))
+		}
 	case core.ReposDoneMsg:
 		if t := m.ByRef(ev.T); t != nil {
 			return toCore(m.reposDone(t, ev.Text))

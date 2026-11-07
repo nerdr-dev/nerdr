@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -83,7 +82,7 @@ func (m *Model) spinoffNoAgent(t *core.Tab) tea.Cmd {
 	}
 	m.toast(t.Name + ": an agent in a sandbox sent a part to spin off, and no agent is set sandboxed to run it")
 	return m.spinoffNext(t, spinoff.Outcome{Part: t.Spinoff.Next[0],
-		Err: "no agent is set sandboxed = true to run it in, and you run in a sandbox"}, false)
+		Err: "no agent is set sandboxed = true to run it in, and you run in a sandbox"})
 }
 
 // reset fills the dialog in for the part now first in line: its branch,
@@ -316,59 +315,18 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 		return nil
 	}
 	d.err = ""
-	var paths []string
-	for _, r := range repos {
-		paths = append(paths, r.Path)
-	}
-	return m.askSetup(paths, func(m *Model) tea.Cmd {
-		return fromCore(m.SpinoffCreate(t, pt, kind, name, reuse, elsewhere, group, repos, own))
-	})
+	return m.do(core.SpinoffCreate{T: m.Ref(t), Part: pt, Kind: kind, Name: name, Reuse: reuse, Elsewhere: elsewhere,
+		Group: group, Repos: repos, Own: own})
 }
 
-// spinoffMade takes the result of making a part's tab: the tab is opened
-// beside its parent, the part is done, and the next one is asked about.
-func (m *Model) spinoffMade(msg core.SpinoffMsg) tea.Cmd {
-	t := msg.T
-	t.SpinoffBusy = ""
-	d, shown := m.dialog.(*spinoffDialog)
-	shown = shown && d.t == t
-	if msg.Err != nil {
-		if shown {
-			d.err = msg.Err.Error()
-		} else {
-			m.toast("spinoff " + msg.Outcome.Branch + ": " + msg.Err.Error())
-		}
-		return nil
+// spinoffFailed is the tab for t's first part not made: said in the
+// dialog when it is open for t, else in a toast.
+func (m *Model) spinoffFailed(t *core.Tab, branch, err string) {
+	if d, ok := m.dialog.(*spinoffDialog); ok && d.t == t {
+		d.err = err
+		return
 	}
-	var cmds []tea.Cmd
-	parent := spinoff.Parent{Name: t.Name, Dir: t.Dir}
-	if len(t.Worktrees) > 0 {
-		parent.Branch = t.Worktrees[0].Branch
-	}
-	if pt := msg.Outcome.Part; pt.Sandboxed && !m.SandboxedKind(msg.Kind) {
-		// The config changed while the worktree was made.
-		msg.Outcome.Err = string(msg.Kind) + " is no longer set sandboxed; the worktree is made, with no agent in it"
-		m.toast("spinoff " + msg.Outcome.Branch + ": " + msg.Outcome.Err)
-		return m.spinoffNext(t, msg.Outcome, shown)
-	}
-	if m.TabIndex(t) >= 0 {
-		nt, cmd := m.AddTabWith(msg.Plan.Branch, msg.Plan.Dir, msg.Group, msg.Wts, msg.Kind, "",
-			spinoff.Prompt(msg.Outcome.Part, parent, msg.Outcome), msg.Outcome.Part.Sandboxed)
-		nt.Goal = msg.Outcome.Part.Summary
-		msg.Outcome.Tab = nt.ID
-		m.resizePanes()
-		cmds = append(cmds, fromCore(cmd))
-	}
-	note := "made " + msg.Plan.Branch
-	if msg.Outcome.PickFailed != "" {
-		note += ": its commits did not apply cleanly, so its agent brings them in"
-	}
-	if len(msg.Warnings) > 0 {
-		note += "; " + strings.Join(msg.Warnings, "; ")
-	}
-	m.toast(note)
-	cmds = append(cmds, m.spinoffNext(t, msg.Outcome, shown))
-	return tea.Batch(cmds...)
+	m.toast("spinoff " + branch + ": " + err)
 }
 
 // spinoffSkip leaves the part asked about without a tab, or with all set,
@@ -376,7 +334,7 @@ func (m *Model) spinoffMade(msg core.SpinoffMsg) tea.Cmd {
 func (m *Model) spinoffSkip(t *core.Tab, all bool) tea.Cmd {
 	var cmd tea.Cmd
 	for t.Spinoff != nil && len(t.Spinoff.Next) > 0 {
-		cmd = m.spinoffNext(t, spinoff.Outcome{Part: t.Spinoff.Next[0], Skipped: true}, true)
+		cmd = m.spinoffNext(t, spinoff.Outcome{Part: t.Spinoff.Next[0], Skipped: true})
 		if !all {
 			break
 		}
@@ -384,36 +342,33 @@ func (m *Model) spinoffSkip(t *core.Tab, all bool) tea.Cmd {
 	return cmd
 }
 
-// spinoffNext records what became of t's first part, and moves on: to the
-// next part, in the dialog when it is shown, or, with none left, to
-// telling the agent that sent them.
-func (m *Model) spinoffNext(t *core.Tab, o spinoff.Outcome, shown bool) tea.Cmd {
-	p := t.Spinoff
-	if p == nil || len(p.Next) == 0 {
-		return nil
-	}
-	p.Done = append(p.Done, o)
-	p.Next = p.Next[1:]
-	if len(p.Next) > 0 {
-		m.SaveSession()
-		if d, ok := m.dialog.(*spinoffDialog); ok && d.t == t {
-			if !d.reset(m) {
-				return m.spinoffNoAgent(t)
-			}
-			return d.branch.Focus()
-		}
-		if shown || (m.dialog == nil && t == m.Cur()) {
-			return m.openSpinoff(t)
+// spinoffNext has core record what became of t's first part, and move on.
+func (m *Model) spinoffNext(t *core.Tab, o spinoff.Outcome) tea.Cmd {
+	return m.do(core.SpinoffNext{T: m.Ref(t), Outcome: o})
+}
+
+// spinoffMoved is t's first part done with, left more to go through: the
+// next is asked about, in the dialog when it is shown or when nothing else
+// is; with none left, the dialog closes.
+func (m *Model) spinoffMoved(t *core.Tab, left int) tea.Cmd {
+	d, shown := m.dialog.(*spinoffDialog)
+	shown = shown && d.t == t
+	if left == 0 {
+		if shown {
+			m.dialog = nil
 		}
 		return nil
 	}
-	if d, ok := m.dialog.(*spinoffDialog); ok && d.t == t {
-		m.dialog = nil
+	if shown {
+		if !d.reset(m) {
+			return m.spinoffNoAgent(t)
+		}
+		return d.branch.Focus()
 	}
-	t.Spinoff = nil
-	t.SpinoffReport, t.SpinoffSince = append(t.SpinoffReport, p.Done...), time.Time{}
-	m.SaveSession()
-	return m.detect() // the light is the agent's again, and the report may go
+	if m.dialog == nil && t == m.Cur() {
+		return m.openSpinoff(t)
+	}
+	return nil
 }
 
 func (d *spinoffDialog) view(m *Model, width, height int) string {

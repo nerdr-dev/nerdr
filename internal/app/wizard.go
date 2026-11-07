@@ -11,7 +11,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
-	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -808,18 +807,21 @@ func (m *Model) createdBehind(msg wizardMsg) tea.Cmd {
 	if len(m.Tabs) == 0 {
 		return m.createdTab(msg) // nothing else to be busy with
 	}
-	t, cmd := m.AddTabBeside(msg.plan.Branch, msg.plan.Dir, msg.group, msg.wts, msg.agent, msg.task)
-	m.toast(t.Name + " is ready in a tab of its own")
-	m.setUpCreated(t, msg)
-	return fromCore(cmd)
+	id := core.NewTabID()
+	cmd := m.do(core.AddTab{ID: id, Name: msg.plan.Branch, Dir: msg.plan.Dir, Group: msg.group, Wts: msg.wts,
+		Kind: msg.agent, Task: msg.task, Goal: msg.task})
+	if t := m.ByRef(core.TabRef{Core: m.ID, Tab: id}); t != nil {
+		m.toast(t.Name + " is ready in a tab of its own")
+		m.setUpCreated(t, msg)
+	}
+	return cmd
 }
 
 // setUpCreated shows a tab made from the wizard its task, which addTab
 // gave its agent.
 func (m *Model) setUpCreated(t *core.Tab, msg wizardMsg) {
 	if strings.TrimSpace(msg.task) != "" {
-		t.Goal = strings.TrimSpace(msg.task)
-		m.resizePanes() // the panel takes rows above the agent
+		m.resizePanes() // the panel takes rows above the agent, its goal the task
 	}
 	if len(msg.warnings) > 0 {
 		m.toast(t.Name + ": " + strings.Join(msg.warnings, "; "))
@@ -837,27 +839,15 @@ func (m *Model) setUpCreated(t *core.Tab, msg wizardMsg) {
 // The group is kept for the folder: a tab opened on it again with no group
 // given, from the list of existing worktrees, goes in the same one.
 func (m *Model) addTab(name, dir, group string, wts []workspace.Worktree, kind agents.Kind, carryOn bool, task string) (*core.Tab, tea.Cmd) {
-	group = m.RememberGroup(dir, group, wts)
-	t := &core.Tab{AgentState: core.Agent{Tab: state.Tab{
-		ID:        core.NewTabID(),
-		Name:      name,
-		Dir:       dir,
-		Agent:     kind,
-		Worktrees: wts,
-		Group:     group,
-	}}}
-	core.TrustWorktrees(t)
-	m.Tabs = append(m.Tabs, t)
-	m.Active = len(m.Tabs) - 1
-	m.setFocus(core.FocusAgent)
-	m.AddMessage(t, task, true) // before the start, which may take it
-	var cmd tea.Cmd
-	if carryOn {
-		cmd = fromCore(m.CarryOn(t))
-	} else {
-		cmd = fromCore(m.Start(t, false))
+	id := core.NewTabID()
+	cmd := m.do(core.AddTab{ID: id, Name: name, Dir: dir, Group: group, Wts: wts, Kind: kind, Task: task, Goal: task, CarryOn: carryOn})
+	t := m.ByRef(core.TabRef{Core: m.ID, Tab: id})
+	if t == nil {
+		return nil, cmd
 	}
-	m.SaveSession()
+	m.Active = m.TabIndex(t)
+	m.setFocus(core.FocusAgent)
+	m.saveLayout()
 	return t, tea.Batch(cmd, m.selectTab(m.Active), m.resize())
 }
 
