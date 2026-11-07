@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"slices"
 	"sync/atomic"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 )
@@ -63,7 +64,7 @@ type PaneSize struct {
 }
 
 func init() {
-	registerRequests(ClientSays{}, clientGone{}, noRequest{}, StartWhenSized{}, StartWaiting{})
+	registerRequests(ClientSays{}, clientGone{}, noRequest{}, StartWhenSized{}, StartWaiting{}, flushParts{})
 }
 
 // ClientSays is what the client shows now.
@@ -131,6 +132,13 @@ type RemoteClient struct {
 	notices [][]byte
 	// partsErr is the last a part could not be sent for, logged once.
 	partsErr string
+	// post hands the loop a request; partsAt is when the parts were last
+	// looked at, at Gen partsGen, and later is set while a flushParts is
+	// on its way.
+	post     func(RequestEv)
+	partsAt  time.Time
+	partsGen uint64
+	later    bool
 }
 
 var _ Client = (*RemoteClient)(nil)
@@ -139,7 +147,7 @@ var _ Client = (*RemoteClient)(nil)
 // sent all of core's state, and what core tells it, from here; its requests
 // go to post, to be done on core's loop. Mu is held.
 func (m *Core) AttachClient(conn *attach.Conn, post func(RequestEv)) *RemoteClient {
-	rc := &RemoteClient{conn: conn}
+	rc := &RemoteClient{conn: conn, post: post}
 	if old, ok := m.Client.(*RemoteClient); ok {
 		rc.state = old.state // what the last showed, until this one says
 		old.gone.Store(true)
@@ -202,10 +210,23 @@ func (rc *RemoteClient) flush(m *Core) {
 		rc.out = nil
 		return
 	}
-	if rc.behind.Swap(false) {
+	behind := rc.behind.Swap(false)
+	if behind {
 		rc.sent.Reset()
 		rc.conn.Send("", []byte{wireBehind})
 	}
+	// The parts are looked at again when core changed (Gen), when the
+	// client is told something, or every PartsEvery: a program drawing
+	// changes little else, and looking at every part each frame costs.
+	now := time.Now()
+	if !behind && m.Gen == rc.partsGen && len(rc.out) == 0 && now.Sub(rc.partsAt) < PartsEvery {
+		if !rc.later && rc.post != nil {
+			rc.later = true
+			time.AfterFunc(PartsEvery-now.Sub(rc.partsAt), func() { rc.post(RequestEv{R: flushParts{rc: rc}}) })
+		}
+		return
+	}
+	rc.partsAt, rc.partsGen = now, m.Gen
 	parts, err := m.Parts(&rc.sent)
 	if why := fmt.Sprint(err); err != nil && why != rc.partsErr {
 		Logf("client: parts left out: %s", why)
@@ -220,6 +241,20 @@ func (rc *RemoteClient) flush(m *Core) {
 		rc.conn.Send("", b)
 	}
 	rc.out = nil
+}
+
+// PartsEvery is how long the parts of core's state may wait to be looked
+// at again while only programs drew.
+var PartsEvery = 100 * time.Millisecond
+
+// flushParts is a client's parts due to be looked at again. Core's own,
+// never sent.
+type flushParts struct{ rc *RemoteClient }
+
+// Done as a request, it moves Gen on, and the flush after looks.
+func (q flushParts) Do(*Core) Cmd {
+	q.rc.later = false
+	return nil
 }
 
 // FlushClient sends a client in a process of its own what changed, after
