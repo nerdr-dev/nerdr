@@ -159,3 +159,34 @@ func TestStartWhenSized(t *testing.T) {
 		}
 	}
 }
+
+// TestPartsLater: what changed with no Gen of its own, as a program
+// drawing changes, is not looked for on every flush, but comes all the
+// same, with nothing after to flush it.
+func TestPartsLater(t *testing.T) {
+	tb := &Tab{}
+	tb.ID, tb.Name = "a", "parser"
+	c := &Core{Tabs: []*Tab{tb}}
+	cc, _ := remoteCore(t, c)
+	c.Mu.Lock()
+	tb.Name = "lexer"
+	c.FlushClient() // just after the first: not looked at yet
+	c.Mu.Unlock()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		cc.C.Mu.Lock()
+		cc.Take()
+		name := ""
+		if len(cc.C.Tabs) == 1 {
+			name = cc.C.Tabs[0].Name
+		}
+		cc.C.Mu.Unlock()
+		if name == "lexer" {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("the copy has %q", name)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
