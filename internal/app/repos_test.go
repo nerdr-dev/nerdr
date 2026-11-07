@@ -72,10 +72,6 @@ func TestReposDirtyAsksAgain(t *testing.T) {
 	}
 }
 
-
-
-
-
 // TestReposOneChangeAtATime covers a second change asked for while one
 // runs: refused, as is closing the tab, until the first is done.
 func TestReposOneChangeAtATime(t *testing.T) {

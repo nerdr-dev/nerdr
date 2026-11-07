@@ -28,12 +28,7 @@ attention.go: write d.t.Note 1
 attention.go: write old.FocusVisit 1
 attention.go: write t.Unseen 1
 commit.go: call *Core.MarkSandboxed 2
-dialogs.go: call *Core.EndReview 1
-dialogs.go: call *Core.FindOverlaps 1
-dialogs.go: call *Core.ForgetTabPRNews 1
-dialogs.go: call *Core.SaveSession 1
 dialogs.go: call *Held.Shutdown 1
-dialogs.go: write m.Tabs 1
 focuschanges.go: write t.Unseen 1
 focuschanges.go: write t.Unseen[] 1
 focuschanges.go: write t.Unseen[][] 2
