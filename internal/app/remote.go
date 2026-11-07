@@ -89,6 +89,13 @@ func (m *Model) told(evs []core.Event) tea.Cmd {
 // clientState is what the TUI shows, as core asks it; see core.Client.
 func (m *Model) clientState() core.ClientState {
 	s := core.ClientState{Front: m.Front(), DialogClosed: m.DialogClosed(), Layout: m.Layout(), Sight: m.Sight()}
+	// As a new tab's agent would be shown, in a tab made for the asking.
+	fresh := &core.Tab{}
+	s.Fresh.W, s.Fresh.H = m.paneSize(fresh)
+	delete(m.tabLooks, fresh)
+	for _, p := range fresh.PaneList {
+		delete(m.paneLooks, p)
+	}
 	for _, t := range m.Tabs {
 		tr := m.Ref(t)
 		if m.TabShown(tr) {
@@ -214,6 +221,9 @@ func (m *Model) coreBack(conn *attach.Conn) tea.Cmd {
 	m.coreAway = false
 	m.said = core.ClientState{}
 	cmd := m.do(core.ClientSays{State: m.clientState()})
+	// A core started again took up the programs at sizes it could not
+	// know: they get the TUI's again.
+	m.resizePanes()
 	m.toast("connected to nerdr's core again")
 	return cmd
 }

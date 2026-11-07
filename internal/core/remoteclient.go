@@ -45,8 +45,11 @@ type ClientState struct {
 	Visible      []TabRef
 	DialogClosed bool
 	Sizes        []PaneSize
-	Layout       Layout
-	Sight        Sight
+	// Fresh is the size of the program of a tab's agent the client has
+	// not shown yet, as a new tab's: core asks it as it starts one.
+	Fresh  PaneSize
+	Layout Layout
+	Sight  Sight
 }
 
 // PaneSize is the size a program gets: agent A's, or with P, the program
@@ -235,13 +238,16 @@ func (rc *RemoteClient) TabSize(a TabRef) (int, int) {
 			return s.W, s.H
 		}
 	}
-	return 0, 0
+	return rc.state.Fresh.W, rc.state.Fresh.H
 }
 func (rc *RemoteClient) ShellSize(t TabRef, p PaneRef) (int, int) {
 	for _, s := range rc.state.Sizes {
 		if s.T == t && s.P == p {
 			return s.W, s.H
 		}
+	}
+	if rc.state.Fresh.W > 0 {
+		return max(rc.state.Fresh.W-ShellMargin, 1), rc.state.Fresh.H
 	}
 	return 0, 0
 }
