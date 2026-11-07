@@ -48,15 +48,34 @@ type ProgramRef struct {
 // Program is the program r names, nil when there is none running there.
 func (m *Core) Program(r ProgramRef) Program {
 	var tp *term.Pane
+	var typed *TypedLine
 	if r.Plugin != "" {
 		if u := m.PluginUIs[r.Plugin]; u != nil {
 			tp = u.Pane
 		}
 	} else if _, p := m.PaneByRef(r.Pane); p != nil {
 		tp = p.Term()
+		if p.Kind != PaneShell && p.A != nil {
+			typed = p.A.Typed
+		}
 	}
 	if tp == nil {
 		return nil // not a nil *term.Pane in a Program
 	}
+	if typed != nil {
+		return typedProgram{tp, typed}
+	}
 	return tp
+}
+
+// typedProgram is an agent's program, what is typed into which is followed
+// (see KeysTo).
+type typedProgram struct {
+	*term.Pane
+	typed *TypedLine
+}
+
+func (p typedProgram) Input(b []byte) {
+	p.typed.Feed(b)
+	p.Pane.Input(b)
 }

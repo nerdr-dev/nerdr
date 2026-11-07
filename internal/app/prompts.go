@@ -116,10 +116,7 @@ func (m *Model) promptEnter(t *core.Tab, pane *term.Pane) {
 		return
 	}
 	if pr := m.program(t.PaneOf()); pr != nil {
-		pr.Input([]byte("\r"))
-	}
-	if t.Typed != nil {
-		t.Typed.Feed([]byte("\r"))
+		pr.Input([]byte("\r")) // followed, as typed, when core follows it
 	}
 }
 
