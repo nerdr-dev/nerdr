@@ -467,7 +467,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return cmd
 
 	case core.CoreGoneMsg:
-		return m.coreGone()
+		return m.coreGone(msg.Why)
 
 	case coreBackMsg:
 		return m.coreBack(msg.conn)

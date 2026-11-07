@@ -215,3 +215,29 @@ func TestBehindIsNoDone(t *testing.T) {
 		t.Fatalf("done before the parts: %d tabs", len(c.Tabs))
 	}
 }
+
+// TestCoreGoneSaysWhy: a client is told why core closed its connection,
+// another client taking over too.
+func TestCoreGoneSaysWhy(t *testing.T) {
+	a, b, err := attach.Pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { b.Close("") })
+	told := make(chan any, 8)
+	Connect(b, &Core{}, func(msg any) { told <- msg })
+	a.Close(attach.ByeTakenOver)
+	for deadline := time.After(5 * time.Second); ; {
+		select {
+		case msg := <-told:
+			if g, ok := msg.(CoreGoneMsg); ok {
+				if g.Why != attach.ByeTakenOver {
+					t.Fatalf("told %q", g.Why)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("never told core was gone")
+		}
+	}
+}

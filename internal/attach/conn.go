@@ -35,6 +35,8 @@ type Conn struct {
 	closed bool
 	bye    *Bye // to write once the queue is dropped, then close
 	behind func()
+	// why is what the other end said as it closed, "" if it said nothing.
+	why string
 
 	done chan struct{}
 }
@@ -153,6 +155,9 @@ func (c *Conn) Recv() ([]byte, error) {
 	case frameBye:
 		var b Bye
 		_ = json.Unmarshal(body, &b)
+		c.mu.Lock()
+		c.why = b.Reason
+		c.mu.Unlock()
 		c.shut()
 		return nil, &ByeError{b}
 	}
@@ -174,6 +179,14 @@ func (c *Conn) Close(reason string) {
 	}
 	c.mu.Unlock()
 	c.cond.Signal()
+}
+
+// Why is the reason the other end gave as it closed the connection: ""
+// while it is open, or when it closed without one, as a crash does.
+func (c *Conn) Why() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.why
 }
 
 // Done is closed once the connection is.
