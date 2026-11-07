@@ -114,7 +114,7 @@ type PluginRun struct {
 	Partial string
 	Pumped  int
 
-	Proc *RunProc
+	Proc *RunProc `json:"-"`
 	// from is the agent that runs it; readAt when its command last read
 	// what it printed.
 	From   *Tab

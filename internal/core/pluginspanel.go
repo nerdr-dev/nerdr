@@ -21,9 +21,9 @@ const PluginsCheckEvery = 2 * time.Second
 // pluginUI is a plugin's screen, started in tab t.
 type PluginUI struct {
 	T    *Tab
-	Pane *term.Pane
+	Pane *term.Pane `json:"-"`
 	// events is where it is told of agents' runs of the plugin.
-	Events *os.File
+	Events *os.File `json:"-"`
 	// dir is the plugin's folder, and key the content it was started from.
 	Dir, Key string
 }

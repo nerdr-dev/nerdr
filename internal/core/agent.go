@@ -65,7 +65,7 @@ type AgentState = Agent
 // what it is doing.
 type Agent struct {
 	state.Tab
-	Pane *term.Pane
+	Pane *term.Pane `json:"-"`
 	// Gen names the program it runs, different for each program started, so
 	// that work for one started before is not done to the one running now,
 	// not even by an agent since replaced by another with the same ID, as a
@@ -95,7 +95,7 @@ type Agent struct {
 	Begun bool
 	// Reading is the last reading of the agent's screen, kept while the
 	// screen is the same; see ReadScreen.
-	Reading ScreenReading
+	Reading ScreenReading `json:"-"`
 
 	// AwaitWork is set when a queued message has been sent, until the
 	// agent is seen working on it (or SentAt is long past), so the next

@@ -442,7 +442,7 @@ type PaneTab struct {
 	// Shell is the terminal's program; n numbers the tab's terminals;
 	// command is the last command an agent ran in it (nerdr terminal), to
 	// run again.
-	Shell   *term.Pane
+	Shell   *term.Pane `json:"-"`
 	N       int
 	Command string
 	// Opened is when the pane came with its tab, made or taken up from the

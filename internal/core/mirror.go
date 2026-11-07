@@ -1,0 +1,332 @@
+package core
+
+import (
+	"crypto/sha256"
+	"encoding/json"
+	"fmt"
+	"reflect"
+	"slices"
+	"strings"
+)
+
+// A client in a process of its own keeps a copy of core's state: the same
+// types, filled from the Parts core sends it, so it reads what it shows the
+// way it would read core in its own process. What it does to that state is
+// not core's: changes go to core as requests, and come back in Parts.
+//
+// The state goes as JSON, in parts a client may get the newest of alone:
+// one per tab, with the agents in it, and one for the rest of core, with
+// the order of the tabs. What is core's alone, the programs above all, is
+// marked json:"-" and not sent: the client gets screens another way. A tab
+// pointing at a tab, as a reviewer at the agent it reviews, goes as the
+// tab's id, and the copy points at its own tab of that id again.
+
+// Part is a piece of core's state for a client; its Key says which, and a
+// newer part of the same key takes the place of the one before.
+type Part struct {
+	Key  string
+	Body json.RawMessage
+}
+
+// The keys of the parts: the rest of core, and the tab of an id.
+const (
+	PartCore   = "core"
+	partTabPre = "tab:"
+)
+
+// PartTab is the key of the part of the tab of id.
+func PartTab(id string) string { return partTabPre + id }
+
+// tabFields is a Tab as JSON: all of it. A *Tab within it is only a
+// reference, by Tab.MarshalJSON.
+type tabFields Tab
+
+// coreFields is a Core as JSON, but for its tabs.
+type coreFields Core
+
+type tabPart struct {
+	// Agents are the tab's own first, then the others in it, reviewers
+	// too.
+	Agents []*tabFields `json:"agents"`
+}
+
+type corePart struct {
+	*coreFields
+	Order []string `json:"$order"`
+}
+
+type tabRef struct {
+	Ref string `json:"$ref"`
+}
+
+// MarshalJSON writes a tab met within core's state as its id alone: the
+// tab itself goes in a part of its own. See Part.
+func (t *Tab) MarshalJSON() ([]byte, error) { return json.Marshal(tabRef{Ref: t.ID}) }
+
+// UnmarshalJSON reads a tab's id, for a Mirror to point at its own tab of
+// that id.
+func (t *Tab) UnmarshalJSON(b []byte) error {
+	var r tabRef
+	if err := json.Unmarshal(b, &r); err != nil {
+		return err
+	}
+	*t = Tab{}
+	t.ID, t.wireRef = r.Ref, true
+	return nil
+}
+
+// Sent is what a client has been sent of core's state, to send it only
+// what changed. The zero Sent has been sent nothing.
+type Sent struct {
+	sums map[string][32]byte
+}
+
+// Reset forgets what was sent: the next Parts are all of it.
+func (s *Sent) Reset() { s.sums = nil }
+
+// Parts are the parts of core's state that changed since s, and s marked
+// as sent them. Mu is held.
+func (m *Core) Parts(s *Sent) ([]Part, error) {
+	if s.sums == nil {
+		s.sums = map[string][32]byte{}
+	}
+	var out []Part
+	add := func(key string, v any) error {
+		b, err := json.Marshal(v)
+		if err != nil {
+			return fmt.Errorf("%s: %w", key, err)
+		}
+		sum := sha256.Sum256(b)
+		if old, ok := s.sums[key]; ok && old == sum {
+			return nil
+		}
+		s.sums[key] = sum
+		out = append(out, Part{Key: key, Body: b})
+		return nil
+	}
+	order := make([]string, 0, len(m.Tabs))
+	live := map[string]bool{PartCore: true}
+	for _, t := range m.Tabs {
+		var p tabPart
+		for _, a := range agentsOf(t) {
+			m.Ref(a) // an id to be known by
+			p.Agents = append(p.Agents, (*tabFields)(a))
+		}
+		order = append(order, t.ID)
+		live[PartTab(t.ID)] = true
+		if err := add(PartTab(t.ID), p); err != nil {
+			return nil, err
+		}
+	}
+	if err := add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order}); err != nil {
+		return nil, err
+	}
+	for k := range s.sums {
+		if !live[k] {
+			delete(s.sums, k) // closed: should it be back, it goes again
+		}
+	}
+	return out, nil
+}
+
+// agentsOf is tab t and the agents in it, reviewers too, each once: also
+// a reviewer still starting, in a pane but not yet at its seat.
+func agentsOf(t *Tab) []*Tab {
+	out := t.AgentsIn()
+	for _, p := range t.Panes() {
+		if p.A != nil && !slices.Contains(out, p.A) {
+			out = append(out, p.A)
+		}
+	}
+	return out
+}
+
+// Mirror keeps a copy of a core's state in C, from the Parts that core
+// sends. A tab or agent stays the same *Tab from one part to the next, so a
+// client may keep what it shows of one by its pointer.
+type Mirror struct {
+	C *Core
+
+	tabs   map[string]*Tab     // the tabs by id
+	agents map[string]*Tab     // every agent by id, the tabs too
+	in     map[string][]string // the ids of the agents in each tab
+	owner  map[string]string   // the tab each agent is in, by id
+	order  []string
+}
+
+// NewMirror is a Mirror of nothing yet, into c.
+func NewMirror(c *Core) *Mirror {
+	return &Mirror{C: c, tabs: map[string]*Tab{}, agents: map[string]*Tab{}, in: map[string][]string{}, owner: map[string]string{}}
+}
+
+// Apply takes part p into the copy. C.Mu is held.
+func (r *Mirror) Apply(p Part) error {
+	switch {
+	case p.Key == PartCore:
+		if err := r.applyCore(p.Body); err != nil {
+			return err
+		}
+	case strings.HasPrefix(p.Key, partTabPre):
+		if err := r.applyTab(strings.TrimPrefix(p.Key, partTabPre), p.Body); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("no part %q", p.Key)
+	}
+	tabs := make([]*Tab, 0, len(r.order))
+	for _, id := range r.order {
+		if t := r.tabs[id]; t != nil {
+			tabs = append(tabs, t)
+		}
+	}
+	r.C.Tabs = tabs
+	relink(reflect.ValueOf(r.C).Elem(), r.agents, map[uintptr]bool{})
+	for _, a := range r.agents {
+		relink(reflect.ValueOf(a).Elem(), r.agents, map[uintptr]bool{})
+	}
+	return nil
+}
+
+func (r *Mirror) applyTab(id string, body []byte) error {
+	var p tabPart
+	if err := json.Unmarshal(body, &p); err != nil {
+		return err
+	}
+	if len(p.Agents) == 0 || p.Agents[0].ID != id {
+		return fmt.Errorf("tab part %s does not start with the tab", id)
+	}
+	var ids []string
+	for _, f := range p.Agents {
+		a := r.agents[f.ID]
+		if a == nil {
+			a = (*Tab)(f)
+			r.agents[f.ID] = a
+		} else {
+			*a = Tab(*f)
+		}
+		ids = append(ids, f.ID)
+		r.owner[f.ID] = id
+	}
+	for _, old := range r.in[id] {
+		if !slices.Contains(ids, old) && r.owner[old] == id {
+			// Gone, not moved to another tab.
+			delete(r.agents, old)
+			delete(r.owner, old)
+		}
+	}
+	r.in[id] = ids
+	r.tabs[id] = r.agents[id]
+	return nil
+}
+
+func (r *Mirror) applyCore(body []byte) error {
+	fresh := &Core{}
+	p := corePart{coreFields: (*coreFields)(fresh)}
+	if err := json.Unmarshal(body, &p); err != nil {
+		return err
+	}
+	copyWire(reflect.ValueOf(r.C).Elem(), reflect.ValueOf(fresh).Elem())
+	r.order = p.Order
+	for id := range r.tabs {
+		if !slices.Contains(p.Order, id) {
+			for _, a := range r.in[id] {
+				if r.owner[a] == id {
+					delete(r.agents, a)
+					delete(r.owner, a)
+				}
+			}
+			delete(r.in, id)
+			delete(r.tabs, id)
+		}
+	}
+	return nil
+}
+
+// copyWire sets the fields of dst that go as JSON to those of src: not
+// the lock, nor the client, nor anything else core keeps to itself.
+func copyWire(dst, src reflect.Value) {
+	ty := dst.Type()
+	for i := range ty.NumField() {
+		f := ty.Field(i)
+		if !f.IsExported() || f.Tag.Get("json") == "-" {
+			continue
+		}
+		dst.Field(i).Set(src.Field(i))
+	}
+}
+
+var tabType = reflect.TypeFor[Tab]()
+
+// relink points every reference to a tab within v, as Tab.UnmarshalJSON
+// left it, at the agent of its id in agents. One whose agent is not there
+// yet, its tab's part still to come, stays a reference, a tab of an id
+// alone, until it is. It does not go into the agents, which are relinked
+// each on their own.
+func relink(v reflect.Value, agents map[string]*Tab, seen map[uintptr]bool) {
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() {
+			return
+		}
+		if v.Type().Elem() == tabType {
+			if t := v.Interface().(*Tab); t.wireRef && v.CanSet() {
+				if a := agents[t.ID]; a != nil {
+					v.Set(reflect.ValueOf(a))
+				}
+			}
+			return
+		}
+		if seen[v.Pointer()] {
+			return
+		}
+		seen[v.Pointer()] = true
+		relink(v.Elem(), agents, seen)
+	case reflect.Struct:
+		ty := v.Type()
+		for i := range ty.NumField() {
+			f := ty.Field(i)
+			if !f.IsExported() || f.Tag.Get("json") == "-" {
+				continue
+			}
+			relink(v.Field(i), agents, seen)
+		}
+	case reflect.Slice, reflect.Array:
+		for i := range v.Len() {
+			relink(v.Index(i), agents, seen)
+		}
+	case reflect.Map:
+		if v.IsNil() || !holdsTabs(v.Type().Elem(), map[reflect.Type]bool{}) {
+			return
+		}
+		iter := v.MapRange()
+		for iter.Next() {
+			e := reflect.New(v.Type().Elem()).Elem()
+			e.Set(iter.Value())
+			relink(e, agents, seen)
+			v.SetMapIndex(iter.Key(), e)
+		}
+	}
+}
+
+// holdsTabs reports whether a value of type ty may point at a tab, through
+// what goes as JSON.
+func holdsTabs(ty reflect.Type, seen map[reflect.Type]bool) bool {
+	if seen[ty] {
+		return false
+	}
+	seen[ty] = true
+	switch ty.Kind() {
+	case reflect.Pointer:
+		return ty.Elem() == tabType || holdsTabs(ty.Elem(), seen)
+	case reflect.Slice, reflect.Array, reflect.Map:
+		return holdsTabs(ty.Elem(), seen)
+	case reflect.Struct:
+		for i := range ty.NumField() {
+			f := ty.Field(i)
+			if f.IsExported() && f.Tag.Get("json") != "-" && holdsTabs(f.Type, seen) {
+				return true
+			}
+		}
+	}
+	return false
+}
