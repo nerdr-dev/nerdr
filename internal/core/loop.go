@@ -155,7 +155,9 @@ func (l *Loop) step(ev Event) {
 func (l *Loop) handle(ev Event) (Cmd, Event) {
 	l.c.Mu.Lock()
 	defer l.c.Mu.Unlock()
-	return l.c.loopEvent(ev)
+	cmd, tell := l.c.loopEvent(ev)
+	l.c.FlushClient()
+	return cmd, tell
 }
 
 // runCmd runs cmd away from the loop. What comes of it comes back to Post.
