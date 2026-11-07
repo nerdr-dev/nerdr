@@ -190,3 +190,28 @@ func TestPartsLater(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// TestBehindIsNoDone: a client that fell behind takes the request it
+// waits for as done only once core says it has done it, with the parts
+// sent afresh before; not on a mark of an earlier fall.
+func TestBehindIsNoDone(t *testing.T) {
+	c := &Core{}
+	cc := &CoreConn{C: c, mirror: NewMirror(c), more: make(chan struct{}, 1)}
+	tb := &Tab{}
+	tb.ID, tb.Name = "a", "parser"
+	parts, err := (&Core{Tabs: []*Tab{tb}}).Parts(&Sent{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc.inbox = [][]byte{wire(wireBehind, behindWire{Done: 4})}
+	if _, done := cc.takeUntil(5); done {
+		t.Fatal("done on the mark of an earlier fall")
+	}
+	cc.inbox = [][]byte{wire(wireParts, parts), wire(wireBehind, behindWire{Done: 5})}
+	if _, done := cc.takeUntil(5); !done {
+		t.Fatal("not done once core said so")
+	}
+	if len(c.Tabs) != 1 || c.Tabs[0].Name != "parser" {
+		t.Fatalf("done before the parts: %d tabs", len(c.Tabs))
+	}
+}

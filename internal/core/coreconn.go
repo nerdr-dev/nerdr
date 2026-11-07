@@ -188,8 +188,10 @@ func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 			}
 		case wireBehind:
 			// What core told meanwhile is lost, a done among it maybe:
-			// what is waited for counts as done, and all comes afresh.
-			if id != 0 {
+			// the parts before this came afresh, and it says which
+			// requests core had done by then.
+			var bw behindWire
+			if json.Unmarshal(b[1:], &bw) == nil && id != 0 && bw.Done >= id {
 				return evs, true
 			}
 		}
