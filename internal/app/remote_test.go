@@ -219,3 +219,23 @@ func TestRemoteTUITakenOver(t *testing.T) {
 		t.Fatalf("not ended: %q", m.GoneErr())
 	}
 }
+
+// TestRemoteTUICoreEnded: a TUI whose core does not come back ends,
+// saying so, rather than trying for ever.
+func TestRemoteTUICoreEnded(t *testing.T) {
+	m, _, _, _ := remoteTUI(t, "sh", "-c", `echo ready; sleep 30`)
+	defer func(w time.Duration) { coreGoneWait = w }(coreGoneWait)
+	coreGoneWait = 50 * time.Millisecond
+	m.SetRedial(func() (*attach.Conn, error) { return nil, attach.ErrNoCore })
+	_, cmd := m.Update(core.CoreGoneMsg{})
+	if cmd == nil {
+		t.Fatal("no command")
+	}
+	_, quit := m.Update(cmd())
+	if quit == nil || !strings.Contains(m.GoneErr(), "did not come back") {
+		t.Fatalf("not ended: %q", m.GoneErr())
+	}
+	if _, ok := quit().(tea.QuitMsg); !ok {
+		t.Fatal("not quit")
+	}
+}
