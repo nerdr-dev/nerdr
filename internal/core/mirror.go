@@ -270,7 +270,9 @@ func (r *Mirror) applyTab(id string, body []byte) error {
 			a = (*Tab)(f)
 			r.agents[f.ID] = a
 		} else {
+			panes := a.PaneList
 			*a = Tab(*f)
+			keepPanes(a, panes)
 		}
 		ids = append(ids, f.ID)
 		r.owner[f.ID] = id
@@ -284,6 +286,24 @@ func (r *Mirror) applyTab(id string, body []byte) error {
 	r.in[id] = ids
 	r.tabs[id] = r.agents[id]
 	return nil
+}
+
+// keepPanes has t's panes that were in old, by id, be the same panes as
+// before, taking in what changed: a client keeps how it shows each pane,
+// and which has its keyboard, by the pane.
+func keepPanes(t *Tab, old []*PaneTab) {
+	for i, p := range t.PaneList {
+		if p.ID == "" {
+			continue
+		}
+		for _, o := range old {
+			if o.ID == p.ID {
+				*o = *p
+				t.PaneList[i] = o
+				break
+			}
+		}
+	}
 }
 
 func (r *Mirror) applyCore(body []byte) error {

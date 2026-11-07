@@ -137,6 +137,7 @@ func TestMirrorChanges(t *testing.T) {
 	r := NewMirror(&Core{})
 	applyAll(t, r, parts)
 	ra, rb, rbeside := r.C.Tabs[0], r.C.Tabs[1], r.C.Tabs[0].PaneList[1].A
+	rpanes := slices.Clone(ra.PaneList)
 
 	if parts, _ := m.Parts(&sent); len(parts) != 0 {
 		t.Errorf("%d parts with nothing changed", len(parts))
@@ -157,6 +158,10 @@ func TestMirrorChanges(t *testing.T) {
 	}
 	if rb.Summary.T != rb || r.C.Overlaps["a"][0].With != rb {
 		t.Error("pointers into a tab sent again")
+	}
+	// A client knows its panes by pointer: they stay the same panes.
+	if !slices.Equal(ra.PaneList, rpanes) || ra.PaneList[1].A != rbeside {
+		t.Error("the copy's panes were not kept")
 	}
 
 	// A tab closed goes from the copy, its agents with it; sent again
