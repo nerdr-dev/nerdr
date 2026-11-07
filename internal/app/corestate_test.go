@@ -59,7 +59,7 @@ func init() {
 		*Core.SkillStates *Core.SkillOn *Core.AgentNote
 		*ScreenClient.Program *ScreenClient.Shown *ScreenClient.Drop
 		*ScreenClient.Tell
-		*CoreConn.Take *CoreConn.Run *CoreConn.Send *CoreConn.Close
+		*CoreConn.Take *CoreConn.Run *CoreConn.Send *CoreConn.Close *CoreConn.Reconnect
 		Request.Do
 
 		*Agent.AutoCount

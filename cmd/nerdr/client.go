@@ -25,6 +25,9 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
+// coreVersion is the version of the core last connected to.
+var coreVersion string
+
 // coreStartWait is how long a client waits for the core it started to
 // take connections.
 const coreStartWait = 15 * time.Second
@@ -62,6 +65,9 @@ func runClient(start bool) error {
 	if err != nil {
 		return err
 	}
+	if coreVersion != version() {
+		fmt.Fprintf(os.Stderr, "nerdr: the core runs version %s, this is %s: quit and start nerdr again to use this one\n", coreVersion, version())
+	}
 	sess, _ := state.Load(root) // the layout, as the core saved it
 
 	old, err := term.MakeRaw(int(os.Stdin.Fd()))
@@ -88,6 +94,7 @@ func runClient(start bool) error {
 	if *cfg.Mouse {
 		opts = append(opts, tea.WithMouseCellMotion())
 	}
+	model.SetRedial(func() (*attach.Conn, error) { return dialCore(root, false) })
 	p = tea.NewProgram(model, opts...)
 	close(ready)
 	router.SetSend(func(m any) { p.Send(m) })
@@ -179,9 +186,7 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	if w.Version != version() {
-		fmt.Fprintf(os.Stderr, "nerdr: the core runs version %s, this is %s: quit and start nerdr again to use this one\n", w.Version, version())
-	}
+	coreVersion = w.Version
 	return conn, nil
 }
 
