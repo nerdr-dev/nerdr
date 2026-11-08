@@ -54,7 +54,7 @@ func (m *Model) refreshAllPRs(force bool) tea.Cmd {
 	if !m.panelAllPRs() || d == nil || !d.all || a.busy {
 		return nil
 	}
-	if !github.Available() {
+	if m.NoGh {
 		a.askedErr = "the gh CLI is not installed"
 		m.applyPRs()
 		return nil

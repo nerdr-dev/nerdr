@@ -57,7 +57,7 @@ type wizardPRsMsg struct {
 // GitHub's.
 func (w *wizard) loadPRs(m *Model) tea.Cmd {
 	picked := w.pickedRepos()
-	if len(picked) != 1 || !github.Available() {
+	if len(picked) != 1 || m.NoGh {
 		w.pulls = wizardPRs{}
 		return nil
 	}

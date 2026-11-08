@@ -200,7 +200,7 @@ func (m *Model) openWizard() tea.Cmd {
 func (m *Model) openNewRepoDialog() tea.Cmd {
 	cmd := m.openWizard()
 	if w, ok := m.dialog.(*wizard); ok && w.repoDir != "" && len(w.repos) == 0 {
-		return tea.Batch(cmd, w.openNewRepo(false))
+		return tea.Batch(cmd, w.openNewRepo(false, !m.NoGh))
 	}
 	return cmd
 }
@@ -309,7 +309,7 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			}
 		case "n", "c":
 			if w.repoDir != "" {
-				return w.openNewRepo(k == "c")
+				return w.openNewRepo(k == "c", !m.NoGh)
 			}
 		case "enter":
 			w.err = ""
