@@ -774,21 +774,24 @@ func (m *Core) AddReviewer(t *Tab, by Reviewer) Cmd {
 		Model: model,
 	}, Light: StStarting}, ReviewOf: t}
 	req := codereview.Request(string(t.Agent), string(k), run.Base, run.Focus, run.Round, run.Rounds)
-	l := agents.NewSession(agents.WithModel(m.Cfg.Agents, k, model), k)
-	l.Argv = append(l.Argv, m.Cfg.Review.Args[k]...)
-	if first := agents.StartPrompt(k, req); first != nil {
-		l.Argv = append(l.Argv, first...)
-	} else {
+	args := slices.Clone(m.Cfg.Review.Args[k])
+	first := agents.StartPrompt(k, req)
+	if first == nil {
 		r.Messages = []state.Message{{Text: req, Auto: true}}
 	}
+	add := func(l agents.Launch) agents.Launch {
+		l.Argv = slices.Concat(l.Argv, args, first)
+		return l
+	}
 	p := m.ReviewPaneFor(t, r)
-	cmd := m.Spawn(r, l, false)
+	cmd := m.SpawnNew(r, agents.WithModel(m.Cfg.Agents, k, model), add)
 	if r.Pane == nil && r.Light == StExited {
 		m.Toast(t.Name + ": " + r.Err)
 		p.A = nil
 		return cmd
 	}
-	// Started, or to start once its CLI has answered (see Spawn).
+	// Started, or to start once its CLI has answered (see SpawnNew and
+	// Spawn).
 	run.Seats = append(run.Seats, &Seat{R: r})
 	m.saveReview()
 	m.Tell(TermsMsg{T: m.Ref(t.Owner())})

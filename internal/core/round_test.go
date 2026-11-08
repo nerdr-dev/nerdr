@@ -82,6 +82,7 @@ func TestWholeRoundWithNoTUI(t *testing.T) {
 	c := &Core{Client: w, Tabs: []*Tab{tb}, Cfg: config.Config{Agents: map[agents.Kind]agents.Spec{
 		agents.Codex: {Command: []string{script}},
 	}}}
+	askedHelp(c.Cfg.Agents)
 	c.Start(tb, false)
 	if tb.Pane == nil {
 		t.Fatalf("not started: %s", tb.Err)
@@ -138,6 +139,7 @@ func TestEnterForAReplacedAgent(t *testing.T) {
 	c := &Core{Client: &watcher{}, Cfg: config.Config{Agents: map[agents.Kind]agents.Spec{
 		agents.Codex: {Command: []string{script}},
 	}}}
+	askedHelp(c.Cfg.Agents)
 	start := func() *Tab {
 		tb := &Tab{AgentState: Agent{Tab: state.Tab{ID: "a", Name: "a", Dir: dir, Agent: agents.Codex}}}
 		c.Tabs = []*Tab{tb}

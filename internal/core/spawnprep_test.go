@@ -2,12 +2,15 @@ package core
 
 import (
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/holder"
 )
 
 // stubTrust has TrustCodex count its calls, and answer trusted.
@@ -116,5 +119,93 @@ func writeExec(t *testing.T, path string) {
 	t.Helper()
 	if err := os.WriteFile(path, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// fakeCopilot is a copilot that knows --session-id, and notes in the
+// file it returns each time its help is asked.
+func fakeCopilot(t *testing.T) (cmd, asked string) {
+	dir := t.TempDir()
+	cmd, asked = filepath.Join(dir, "copilot"), filepath.Join(dir, "asked")
+	script := "#!/bin/sh\ncase \"$*\" in *--help*) echo x >> '" + asked + "'; echo '  --session-id <id>'; exit 0 ;; esac\nexec cat\n"
+	if err := os.WriteFile(cmd, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return cmd, asked
+}
+
+// TestStartAsksTheHelpAwayFromMu: an agent whose command line needs an
+// answer from its CLI (copilot whether it takes --session-id) is not
+// asked by Start, which has Mu held, but by the Cmd it returns; the agent
+// starts with the answer, and the next at once.
+func TestStartAsksTheHelpAwayFromMu(t *testing.T) {
+	cmdPath, asked := fakeCopilot(t)
+	m := &Core{Client: NoClient{}, Spawner: &recorder{}}
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Copilot: {Command: []string{cmdPath}}}
+	tab := &Tab{}
+	tab.Dir, tab.Agent = t.TempDir(), agents.Copilot
+	m.Tabs = []*Tab{tab}
+
+	cmd := m.Start(tab, false)
+	if _, err := os.Stat(asked); err == nil || tab.Pane != nil || cmd == nil {
+		t.Fatalf("Start asked copilot itself (started %v, cmd %v)", tab.Pane != nil, cmd != nil)
+	}
+	ev, ok := cmd().(LaunchMsg)
+	if !ok || !slices.Contains(ev.L.Argv, "--session-id") {
+		t.Fatalf("the Cmd gave %+v", ev)
+	}
+	m.loopEvent(ev)
+	if tab.Pane == nil {
+		t.Fatalf("copilot did not start: %q", tab.Err)
+	}
+	defer tab.Pane.Close()
+
+	next := &Tab{}
+	next.Dir, next.Agent = tab.Dir, agents.Copilot
+	m.Tabs = append(m.Tabs, next)
+	m.Start(next, false)
+	if next.Pane == nil {
+		t.Fatal("asked already, copilot did not start at once")
+	}
+	defer next.Pane.Close()
+	if b, _ := os.ReadFile(asked); string(b) != "x\n" {
+		t.Errorf("copilot asked %q", b)
+	}
+}
+
+// TestAddReviewerAsksTheHelpAwayFromMu: a reviewer whose CLI must be
+// asked first takes its seat at once, and starts once it has answered.
+func TestAddReviewerAsksTheHelpAwayFromMu(t *testing.T) {
+	h := holder.New()
+	cl, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = cl.Shutdown() })
+	m, tab := heldCore(t, cl, agentScript(t, "exec cat\n"))
+	m.Root = t.TempDir()
+	cmdPath, asked := fakeCopilot(t)
+	m.Cfg.Agents[agents.Claude] = agents.Spec{Command: []string{agentScript(t, "exec cat\n")}}
+	m.Cfg.Agents[agents.Copilot] = agents.Spec{Command: []string{cmdPath}}
+	m.Start(tab, false)
+	m.StartReview(tab, Reviewer{Kind: agents.Claude}, "main", "tree1", "")
+	cmd := m.AddReviewer(tab, Reviewer{Kind: agents.Copilot})
+	if tab.Review == nil || len(tab.Review.Seats) != 2 {
+		t.Fatalf("no seat: %+v", tab.Review)
+	}
+	r := tab.Review.Seats[1].R
+	if _, err := os.Stat(asked); err == nil || r.Pane != nil || cmd == nil {
+		t.Fatalf("AddReviewer asked copilot itself (started %v)", r.Pane != nil)
+	}
+	ev, ok := cmd().(LaunchMsg)
+	if !ok {
+		t.Fatalf("the Cmd gave %+v", ev)
+	}
+	m.loopEvent(ev)
+	if r.Pane == nil {
+		t.Fatalf("the reviewer did not start: %q", r.Err)
+	}
+	if r.SessionID == "" {
+		t.Error("started without the --session-id copilot said it takes")
 	}
 }

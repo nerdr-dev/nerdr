@@ -534,3 +534,31 @@ func TestWithModel(t *testing.T) {
 		t.Fatal("TakesModel")
 	}
 }
+
+// TestNewSessionKnown: NewSessionKnown is false until what NewSession
+// asks the agent's command has been asked, and from then on NewSession
+// runs nothing.
+func TestNewSessionKnown(t *testing.T) {
+	dir := t.TempDir()
+	log := filepath.Join(dir, "ran")
+	for _, k := range All {
+		cmd := filepath.Join(dir, string(k))
+		script := "#!/bin/sh\necho \"$@\" >> '" + log + "'\necho '--session-id --standalone --no-daemon'\n"
+		if err := os.WriteFile(cmd, []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		specs := map[Kind]Spec{k: {Command: []string{cmd}}}
+		for range 2 {
+			known := NewSessionKnown(specs, k)
+			_ = os.Remove(log)
+			NewSession(specs, k)
+			_, err := os.ReadFile(log)
+			if ran := err == nil; ran == known {
+				t.Errorf("%s: known %v, and NewSession ran its command: %v", k, known, ran)
+			}
+			if !NewSessionKnown(specs, k) {
+				t.Errorf("%s: not known once asked", k)
+			}
+		}
+	}
+}

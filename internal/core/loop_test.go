@@ -35,6 +35,7 @@ func TestRoundOnTheLoop(t *testing.T) {
 	c := &Core{Client: NoClient{}, Tabs: []*Tab{tb}, Wake: make(chan struct{}, 1), Cfg: config.Config{Agents: map[agents.Kind]agents.Spec{
 		agents.Codex: {Command: []string{script}},
 	}}}
+	askedHelp(c.Cfg.Agents)
 	c.Start(tb, false)
 	if tb.Pane == nil {
 		t.Fatalf("not started: %s", tb.Err)

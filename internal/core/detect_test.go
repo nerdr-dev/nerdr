@@ -101,11 +101,12 @@ func TestTaskFinishesUnseen(t *testing.T) {
 func TestStartupPromptCountsAsTaskAndResetsOnRestart(t *testing.T) {
 	dir := t.TempDir()
 	script := filepath.Join(dir, "agent.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.args\"\nsleep 30\n"), 0755); err != nil {
+	if err := os.WriteFile(script, []byte("#!/bin/sh\n[ \"$1\" = resume ] && exit 0\nprintf '%s\\n' \"$@\" > \"$0.args\"\nsleep 30\n"), 0755); err != nil {
 		t.Fatal(err)
 	}
 	tb := &Tab{AgentState: Agent{Tab: state.Tab{ID: "first", Name: "first", Dir: dir, Agent: agents.Codex, Messages: []state.Message{{Text: "do the first task", Auto: true}}}}}
 	c := &Core{Client: NoClient{}, Tabs: []*Tab{tb}, Cfg: config.Config{Agents: map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{script}}}}}
+	askedHelp(c.Cfg.Agents)
 	c.Start(tb, false)
 	if tb.Pane == nil {
 		t.Fatal(tb.Err)

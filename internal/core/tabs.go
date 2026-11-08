@@ -262,7 +262,7 @@ func (m *Core) Start(t *Tab, resume bool) Cmd {
 			specs, kind, dir := m.SpecsFor(t), t.Agent, t.Dir
 			return func() Event { return LaunchMsg{T: t, Kind: kind, L: agents.NewSessionIn(specs, kind, dir)} }
 		}
-		return m.Spawn(t, agents.NewSession(m.SpecsFor(t), t.Agent), false)
+		return m.SpawnNew(t, m.SpecsFor(t), nil)
 	}
 	specs, kind, id, dir, skip := m.SpecsFor(t), t.Agent, t.SessionID, t.Dir, m.OthersSessions(t)
 	reported := t.ResumeArgv
@@ -277,6 +277,21 @@ func (m *Core) Start(t *Tab, resume bool) Cmd {
 		}
 		return LaunchMsg{T: t, Kind: kind, L: l, Resume: !l.New}
 	}
+}
+
+// SpawnNew starts t's agent on a new conversation, from specs: at once,
+// or, when its command line needs an answer from its CLI not had yet (see
+// agents.NewSessionKnown), once that has been asked with m.Mu let go, by
+// LaunchMsg. add, when set, adds to the command line. m.Mu is held.
+func (m *Core) SpawnNew(t *Tab, specs map[agents.Kind]agents.Spec, add func(agents.Launch) agents.Launch) Cmd {
+	kind := t.Agent
+	if add == nil {
+		add = func(l agents.Launch) agents.Launch { return l }
+	}
+	if !agents.NewSessionKnown(specs, kind) {
+		return func() Event { return LaunchMsg{T: t, Kind: kind, L: add(agents.NewSession(specs, kind))} }
+	}
+	return m.Spawn(t, add(agents.NewSession(specs, kind)), false)
 }
 
 // firstAsArgs takes t's first message off its list and returns it, and
