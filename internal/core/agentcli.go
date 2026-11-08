@@ -430,7 +430,7 @@ func (m *Core) OnTerminal(r hooks.Report) Cmd {
 		reply(hooks.Answer{Err: "the tab's repositories are being changed; try again in a moment"})
 		return nil
 	}
-	p, cmd := m.NewShellIn(o, true)
+	p, cmd := m.NewShellIn(o, true, EnvByAgent+"=1")
 	if p == nil {
 		reply(hooks.Answer{Err: "the terminal did not start"})
 		return cmd

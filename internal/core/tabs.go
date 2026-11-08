@@ -15,6 +15,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/detect"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
+	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -35,7 +36,7 @@ func NewTabID() string {
 // to report to this one, and one in a sandbox never to a socket it was
 // not given. The user's own, such as NERDR_DEBUG_LOG, are passed on.
 var TabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK", "NERDR_GROK_HOOK",
-	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_BIN", "NERDR_DATA_DIR"}
+	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_BIN", "NERDR_DATA_DIR", EnvByAgent, holder.EnvNested}
 
 // HostVars are left out of what an agent or terminal of a tab inherits,
 // as herdr leaves them out of its panes. The first say nerdr was started
