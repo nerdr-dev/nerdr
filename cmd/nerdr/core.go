@@ -194,6 +194,16 @@ func runCore(h *core.Held) error {
 	case p := <-panicked:
 		fmt.Fprintln(os.Stderr, "nerdr core: panic:", p.String())
 		return errors.New("panic")
+	case <-h.Client.Gone():
+		// The holder crashed, and its watch has ended the programs: a
+		// core of its own has nothing left to run, and would keep the
+		// folder from the nerdr started next. That one resumes the
+		// agents from the session, as after any crash.
+		c.Mu.Lock()
+		c.SaveSession()
+		c.Mu.Unlock()
+		srv.Close(attach.ByeHolderGone)
+		return errors.New("its holder is gone")
 	case s := <-sig:
 		// Told to end: the programs live on in the holder, for the core
 		// started again; SIGTERM to the holder itself stops them.

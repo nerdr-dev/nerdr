@@ -183,13 +183,14 @@ func (m *Model) initRemote() tea.Cmd {
 // core having crashed or been ended, its holder starts it again, the
 // agents living on, and the TUI connects to it again when it can. Without
 // a way to (SetRedial) it ends; and when another nerdr took over, as the
-// two would take it from each other without end.
+// two would take it from each other without end, or the holder is gone,
+// when no core comes back.
 func (m *Model) coreGone(why string) tea.Cmd {
 	m.remote.Close("")
 	if m.closing {
 		return nil
 	}
-	if why == attach.ByeTakenOver {
+	if why == attach.ByeTakenOver || why == attach.ByeHolderGone {
 		m.goneErr = why
 		return tea.Quit
 	}

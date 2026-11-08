@@ -40,6 +40,8 @@ type Server struct {
 	keyf string
 	key  string
 
+	closed sync.Once
+
 	mu  sync.Mutex
 	cur *Conn
 	all map[net.Conn]bool
@@ -102,8 +104,11 @@ func (s *Server) Current() *Conn {
 }
 
 // Close stops listening and says bye to the client, for reason, and
-// removes the socket and the key.
-func (s *Server) Close(reason string) {
+// removes the socket and the key. Only the first call does: once the lock
+// is let go, the socket may be another core's.
+func (s *Server) Close(reason string) { s.closed.Do(func() { s.close(reason) }) }
+
+func (s *Server) close(reason string) {
 	_ = s.ln.Close()
 	s.mu.Lock()
 	cur := s.cur

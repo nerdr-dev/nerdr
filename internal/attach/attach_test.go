@@ -433,3 +433,19 @@ func TestSendFunc(t *testing.T) {
 		t.Fatalf("back: %q", got)
 	}
 }
+
+// Closed a second time, a server leaves alone what another core has made
+// since: the lock let go, the socket may be that core's.
+func TestCloseTwice(t *testing.T) {
+	s, sock, key, _ := listen(t, takeAll)
+	s.Close(ByeQuit)
+	next, err := Listen(sock, key, Config{Check: func(hooks.Peer) string { return "" }})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close("")
+	s.Close(ByeQuit)
+	if _, err := os.Stat(sock); err != nil {
+		t.Errorf("the next core's socket is gone: %v", err)
+	}
+}

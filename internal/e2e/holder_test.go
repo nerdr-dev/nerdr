@@ -37,7 +37,7 @@ func TestCoreOfItsOwn(t *testing.T) {
 	env := holderEnv(t, bin, scratch)
 	fake, _ := filepath.Abs("fakeagent.sh")
 	runDir := filepath.Join(scratch, "run")
-	holders := func() []int { return pgrep("-f", "^"+bin+" holder") }
+	holders := func() []int { return pgrep("-f", "^"+bin+" holder -- ") }
 	coreOf := func(holder int) []int { return pgrep("-P", strconv.Itoa(holder), "-f", " core$") }
 	closeClient := func(h *harness) { t.Helper(); endClient(t, h, "c") }
 
@@ -232,4 +232,49 @@ func TestASecondClientTakesOver(t *testing.T) {
 		t.Errorf("agent %v, was %v", got, agents)
 	}
 	endClient(t, second, "q")
+}
+
+// TestAHolderThatCrashes: kill -9 on the holder ends what it ran, the
+// agent and the core with it, and leaves nothing running unseen; nerdr
+// started again resumes the agent's conversation from the session.
+func TestAHolderThatCrashes(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
+	fake, _ := filepath.Abs("fakeagent.sh")
+	h := start(t, bin, root, env)
+	newCrashTab(h)
+	h.keys("work\r")
+	h.waitFor("done", 5*time.Second)
+	hs := pgrep("-f", "^"+bin+" holder -- ")
+	agents := pgrep("-f", fake)
+	if len(hs) != 1 || len(agents) != 1 {
+		t.Fatalf("holders %v, agents %v", hs, agents)
+	}
+	time.Sleep(500 * time.Millisecond) // the watch is told of the agent
+	if err := syscall.Kill(hs[0], syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	for deadline := time.Now().Add(10 * time.Second); ; time.Sleep(100 * time.Millisecond) {
+		if len(pgrep("-f", fake)) == 0 && len(pgrep("-f", "^"+bin+" core$")) == 0 && len(pgrep("-f", "^"+bin+" holder")) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("left after the holder crashed: agents %v, cores %v, holders and watches %v",
+				pgrep("-f", fake), pgrep("-f", "^"+bin+" core$"), pgrep("-f", "^"+bin+" holder"))
+		}
+	}
+	select {
+	case <-h.p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatalf("the client did not end with its core; screen:\n%s", h.screen())
+	}
+	if !strings.Contains(h.screen(), "holder ended") {
+		t.Errorf("the client did not say why it ended:\n%s", h.screen())
+	}
+
+	h = start(t, bin, root, env)
+	h.waitTabBar("1:crash", 15*time.Second)
+	h.waitFor("resumed conversation", 10*time.Second)
+	endClient(t, h, "q")
 }

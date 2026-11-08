@@ -48,6 +48,11 @@ type state struct {
 	Reads    []*Msg     `json:"reads,omitempty"`
 	Reply    uint64     `json:"reply"` // the upgrade to answer
 	Progs    []progSave `json:"progs"`
+	// WatchFD and WatchPid are the pipe to the holder's watch, and its
+	// process; WatchFD is -1 for none. Added after version 1: a state
+	// without them has no watch.
+	WatchFD  int `json:"watch_fd,omitempty"`
+	WatchPid int `json:"watch_pid,omitempty"`
 }
 
 type progSave struct {
@@ -153,6 +158,14 @@ func (h *Holder) save(s *sender, seq uint64) (*state, []int, error) {
 		for _, m := range h.reads {
 			st.Reads = append(st.Reads, m)
 		}
+	}
+	st.WatchFD = -1
+	if h.watcher != nil {
+		fd, err := fdOf(h.watcher.w)
+		if err != nil {
+			return nil, nil, err
+		}
+		st.WatchFD, st.WatchPid = fd, h.watcher.pid
 	}
 	for _, id := range h.order {
 		p := h.progs[id]
@@ -267,6 +280,9 @@ func Resume(fd int) error {
 	}
 	h := New()
 	h.coreArgv, h.corePid, h.upgrade = st.CoreArgv, st.CorePid, h.doUpgrade
+	if st.WatchFD > 0 && st.WatchPid > 0 {
+		h.watcher = &watch{pid: st.WatchPid, w: pollable(st.WatchFD, "watch")}
+	}
 	var s *sender
 	var c *conn
 	if st.ConnFD >= 0 {
@@ -321,7 +337,9 @@ func Resume(fd int) error {
 		pid := st.CorePid
 		first = func() error { return h.superviseCore(pid, c, served) }
 	}
+	h.tellWatch()
 	h.mu.Unlock()
+	h.keepWatch()
 	return h.keepCoreUp(st.CoreArgv, first)
 }
 
