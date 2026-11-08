@@ -23,6 +23,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/store"
 
@@ -68,6 +69,11 @@ config: %s
 `
 
 func main() {
+	// A nerdr that runs its programs itself, as it runs; see localExec.
+	local := len(os.Args) == 2 && os.Args[1] == spawn.LocalArg
+	if local {
+		os.Args = os.Args[:1]
+	}
 	if len(os.Args) > 1 && os.Args[1] == core.PluginExecArg {
 		os.Exit(core.ExecPlugin(os.Args[2:]))
 	}
@@ -210,10 +216,28 @@ func main() {
 		fmt.Fprintln(os.Stderr, "nerdr: under its holder nerdr runs as `nerdr core`")
 		os.Exit(holder.ExitDone)
 	}
+	if !local {
+		localExec()
+	}
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr:", err)
 		os.Exit(1)
 	}
+}
+
+// localExec has a nerdr about to run its programs itself exec itself as
+// `nerdr --nerdr-runs-its-programs`, the name it was started by kept, so
+// that a core finds it among the processes a client runs under and
+// refuses the client: one of its programs, out to drive the nerdr of
+// another folder (see core.ClientUnderNerdr). Where it cannot, it runs on
+// as it is.
+func localExec() {
+	exe, err := os.Executable()
+	if err != nil {
+		return
+	}
+	err = syscall.Exec(exe, []string{os.Args[0], spawn.LocalArg}, os.Environ())
+	fmt.Fprintln(os.Stderr, "nerdr: could not mark itself as running its programs:", err)
 }
 
 // releaseVersion is the release tag, such as "v0.1.0", set by the release

@@ -55,23 +55,28 @@ func (m *Core) ClientRefusal(p hooks.Peer) string {
 var procArgs = spawn.Args
 
 // ClientUnderNerdr is why a client connecting from peer p is refused for
-// running under a nerdr holder, that of any folder, "" when it does not:
-// an agent in one folder must not drive the nerdr of another, whose core
-// knows nothing of it to refuse it by (see ClientRefusal). The holder is
-// known by its command line, `nerdr holder ...`, however nerdr was named
-// and from whichever version: a program cannot change the command lines
-// of the processes it runs under, and a chain the kernel would not give
-// is refused already. A terminal of a tab is under a holder too, and is
-// refused alike. It reads the process table, so it is not called with Mu
-// held.
+// running under a nerdr that runs programs, of any folder, "" when it
+// does not: an agent in one folder must not drive the nerdr of another,
+// whose core knows nothing of it to refuse it by (see ClientRefusal).
+// Such a nerdr is a holder, or a nerdr that runs its programs itself, and
+// is known by its command line (see spawn.IsNerdr), however nerdr was
+// named: a program cannot change the command lines of the processes it
+// runs under, and a chain the kernel would not give is refused already. A
+// terminal of a tab is refused alike. It reads the process table, so it
+// is not called with Mu held.
 //
-// A core that a program under another nerdr started (see
-// holder.EnvNested) does not ask it: its own client is under that nerdr,
-// as when an agent runs nerdr's tests, and the core is the program's, in
-// its sandbox, as much as anything else it starts.
-func ClientUnderNerdr(p hooks.Peer) string {
-	for _, pid := range p.Chain {
-		if args, err := procArgs(pid); err == nil && spawn.IsHolder(args) {
+// Origin are the processes that started this core's holder under such a
+// nerdr, if any (see holder.EnvNested): a client under one of them, met
+// before any nerdr, is taken, as when an agent runs nerdr's tests or the
+// user starts nerdr from a terminal of a tab. The core is theirs, run
+// where they run. Another program under that nerdr is refused all the
+// same.
+func ClientUnderNerdr(p hooks.Peer, origin []spawn.Process) string {
+	for i, pid := range p.Chain {
+		if i < len(p.Starts) && p.Starts[i] != 0 && slices.Contains(origin, spawn.Process{Pid: pid, Start: p.Starts[i]}) {
+			return ""
+		}
+		if args, err := procArgs(pid); err == nil && spawn.IsNerdr(args) {
 			return "nerdr takes no client from a program a nerdr runs, in any folder: connect from your own terminal"
 		}
 	}

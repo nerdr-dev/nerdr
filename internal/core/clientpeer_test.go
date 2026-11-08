@@ -73,15 +73,18 @@ func TestClientRefusal(t *testing.T) {
 	}
 }
 
-// TestClientUnderNerdr: a client under a nerdr holder, of any folder, is
-// refused, however nerdr was named; one under none is not.
+// TestClientUnderNerdr: a client under a nerdr that runs programs, of any
+// folder, is refused, however nerdr was named, unless it is under the
+// processes that started this core first; one under none is taken.
 func TestClientUnderNerdr(t *testing.T) {
 	args := map[int][]string{
 		10: {"nerdr", "connect"},
 		11: {"bash"},
 		12: {"/home/u/bin/nerdr-new", "holder", "--", "/home/u/bin/nerdr-new", "core"},
-		13: {"nerdr", "holder"}, // as one updated execs into
+		13: {"nerdr", "holder", "--resume", "7"}, // as one updated execs into
 		14: {"tmux"},
+		15: {"nerdr", spawn.LocalArg},
+		16: {"bash", "holder"}, // not nerdr's
 	}
 	defer func(f func(int) ([]string, error)) { procArgs = f }(procArgs)
 	procArgs = func(pid int) ([]string, error) {
@@ -90,17 +93,27 @@ func TestClientUnderNerdr(t *testing.T) {
 		}
 		return nil, os.ErrNotExist
 	}
+	// The shell, 11, started this core from under the holder, 12.
+	origin := []spawn.Process{{Pid: 11, Start: 111}}
 	for _, c := range []struct {
 		name    string
 		chain   []int
+		starts  []uint64
+		origin  []spawn.Process
 		refused bool
 	}{
-		{"your terminal", []int{10, 11, 14, 1}, false},
-		{"under a holder", []int{10, 11, 12, 1}, true},
-		{"under an updated holder", []int{10, 11, 13, 1}, true},
-		{"a chain that cannot be read", []int{20, 21}, false},
+		{"your terminal", []int{10, 11, 14, 1}, nil, nil, false},
+		{"under a holder", []int{10, 11, 12, 1}, nil, nil, true},
+		{"under an updated holder", []int{10, 11, 13, 1}, nil, nil, true},
+		{"under a nerdr running its programs itself", []int{10, 11, 15, 1}, nil, nil, true},
+		{"under a program given holder", []int{10, 16, 14, 1}, nil, nil, false},
+		{"a chain that cannot be read", []int{20, 21}, nil, nil, false},
+		{"from where the core was started", []int{10, 11, 12, 1}, []uint64{1, 111, 1, 1}, origin, false},
+		{"another program under that holder", []int{10, 14, 12, 1}, []uint64{1, 1, 1, 1}, origin, true},
+		{"a process given the id of the one it started from", []int{10, 11, 12, 1}, []uint64{1, 112, 1, 1}, origin, true},
+		{"a start not known", []int{10, 11, 12, 1}, nil, []spawn.Process{{Pid: 11}}, true},
 	} {
-		if got := ClientUnderNerdr(hooks.Peer{Known: true, Chain: c.chain}) != ""; got != c.refused {
+		if got := ClientUnderNerdr(hooks.Peer{Known: true, Chain: c.chain, Starts: c.starts}, c.origin) != ""; got != c.refused {
 			t.Errorf("%s: refused = %v", c.name, got)
 		}
 	}
@@ -116,23 +129,23 @@ func TestClientUnderARealHolder(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "holder"), []byte("sleep 30\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cmd := &exec.Cmd{Path: "/bin/sh", Args: []string{"nerdr", "holder"}, Dir: dir}
+	cmd := &exec.Cmd{Path: "/bin/sh", Args: []string{"nerdr", "holder", "--"}, Dir: dir}
 	if err := cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
 	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(10 * time.Millisecond) {
-		if a, _ := spawn.Args(cmd.Process.Pid); len(a) == 2 && a[1] == "holder" {
+		if a, _ := spawn.Args(cmd.Process.Pid); spawn.IsHolder(a) {
 			break
 		}
 		if time.Now().After(deadline) {
 			t.Fatal("never saw its command line")
 		}
 	}
-	if ClientUnderNerdr(hooks.Peer{Known: true, Chain: []int{os.Getpid(), cmd.Process.Pid, 1}}) == "" {
+	if ClientUnderNerdr(hooks.Peer{Known: true, Chain: []int{os.Getpid(), cmd.Process.Pid, 1}}, nil) == "" {
 		t.Error("a client under a holder taken")
 	}
-	if ClientUnderNerdr(hooks.Peer{Known: true, Chain: []int{os.Getpid(), os.Getppid(), 1}}) != "" {
+	if ClientUnderNerdr(hooks.Peer{Known: true, Chain: []int{os.Getpid(), os.Getppid(), 1}}, nil) != "" {
 		t.Error("a client under no holder refused")
 	}
 }
