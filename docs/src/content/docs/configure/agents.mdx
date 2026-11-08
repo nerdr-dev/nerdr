@@ -237,8 +237,12 @@ reports that its sandbox blocked it from reaching nerdr.
 
 ## What a sandbox must deny when the core runs on its own
 
-With `NERDR_HOLDER=1`, an experimental setting, the agents run in a nerdr
-process of their own, the core, and the nerdr you see connects to it.
+nerdr runs the agents in a process of its own, the core, under a holder
+that starts each program (see
+[How it works](../../reference/how-it-works/#the-core-and-the-holder)),
+and the nerdr you see connects to it. With `NERDR_HOLDER=0` nerdr runs
+them itself, the way it did before the core, they end with it, and this
+section does not apply.
 Closing the window, or choosing **Close** when you leave nerdr, leaves
 the agents, terminals and plugin runs working with no one watching; start
 nerdr in the same folder to connect again. **Quit** stops them. While no
@@ -249,7 +253,10 @@ allowed before, such as an approved setup or a plugin that is not asked
 about at each run, still runs.
 
 This adds two things a sandboxed agent must not reach. Everything above
-still applies.
+still applies. A sandbox that was enough for nerdr before the core, one
+that lets the agent read and connect to anything in your home folder or
+in `$XDG_RUNTIME_DIR`, is not: nerdr then does not start the agent until
+the sandbox denies them.
 
 - **The client socket's folder.** A client can do anything you can,
   approvals included. Its socket and the key to it are in

@@ -35,7 +35,7 @@ const startUnsized = 5 * time.Second
 // client has had it quit (core.QuitAll), or it is told to end.
 func runCore(h *core.Held) error {
 	if h == nil {
-		return errStarting{errors.New("nerdr core runs only under its holder: start nerdr with NERDR_HOLDER=1")}
+		return errStarting{errors.New("nerdr core runs only under its holder: start nerdr, without NERDR_HOLDER=0")}
 	}
 	cfg, err := config.Load()
 	if err != nil {

@@ -195,9 +195,9 @@ func main() {
 		os.Exit(2)
 	}
 
-	if os.Getenv(core.EnvHolder) == "1" && os.Getenv(holder.EnvFD) == "" {
+	if core.UseHolder() && os.Getenv(holder.EnvFD) == "" {
 		// The agents in a core of their own, which the terminal is a
-		// client of.
+		// client of: what nerdr does unless NERDR_HOLDER=0.
 		if err := runClient(true); err != nil {
 			fmt.Fprintln(os.Stderr, "nerdr:", err)
 			os.Exit(1)

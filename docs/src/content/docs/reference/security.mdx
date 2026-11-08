@@ -24,14 +24,13 @@ about it, and what is left for your sandbox to do.
 - **Keep nerdr's own files out of reach.** A sandbox must not let its
   agent write to `~/.config/nerdr`, `~/.local/state/nerdr`, or the main
   checkout's `.git/config` and `.git/hooks`.
-  With nerdr's core running on its own (`NERDR_HOLDER=1`, experimental),
-  it must also deny the client socket's folder. nerdr refuses to start an
+  With nerdr's core running on its own, as it does unless
+  `NERDR_HOLDER=0`, it must also deny the client socket's folder. nerdr refuses to start an
   agent whose sandbox check finds it can reach that folder; if it cannot
   check, it warns and starts the agent. See
   [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
-- **Closed is not stopped.** With the core on its own, the agents work on
-  when you close nerdr or its window, with no one watching, until you
-  quit. A setup that needs your approval waits until you connect again;
+- **Closed is not stopped.** The agents work on when you close nerdr or
+  its window, with no one watching, until you quit. A setup that needs your approval waits until you connect again;
   a plugin run that needs it does not run when its time to be answered
   runs out. Nothing is approved by itself.
 

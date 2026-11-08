@@ -5,14 +5,17 @@ description: Keep agents running when you disconnect, and run them on another ma
 
 import { Steps, Aside } from '@astrojs/starlight/components';
 
-Quitting nerdr stops its agents, tests and terminals. The next start
+Closing nerdr, or losing the SSH connection it runs in, leaves its
+agents, tests and terminals running: start nerdr in the same folder
+again to see them, as they are. Quitting stops them. The next start then
 brings back every tab and resumes every agent's conversation, the agents
 beside a tab's own included, but not processes such as a running test or
-dev server. Losing an SSH connection has the same effect.
+dev server. With `NERDR_HOLDER=0`, nerdr runs them itself, and closing it
+or losing the connection stops them too.
 
-[herdr](https://herdr.dev) keeps them running. It is a terminal workspace
-for agents that runs as a server: detach, close the terminal or lose the
-connection, and everything inside keeps going.
+[herdr](https://herdr.dev) is a terminal workspace for agents that runs
+as a server: detach, close the terminal or lose the connection, and
+everything inside keeps going, nerdr with `NERDR_HOLDER=0` included.
 
 ## Keep agents running
 

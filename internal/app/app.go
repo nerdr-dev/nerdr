@@ -46,7 +46,7 @@ type Model struct {
 	// in tests that drive Update by hand.
 	Loop *core.Loop
 	// screens keeps copies of core's screens sent as rows, to draw and
-	// send keys to (NERDR_HOLDER=1); nil when the programs are drawn from
+	// send keys to (nerdr over its holder); nil when the programs are drawn from
 	// core's own. See SetScreens.
 	screens *core.ScreenClient
 	// remote is the connection to core, when it runs in a process of its

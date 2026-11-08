@@ -74,7 +74,5 @@ func TestGroups(t *testing.T) {
 	h.waitTabBar("repoA (1)", 5*time.Second)
 	h.waitTabBar("1:b claude", 2*time.Second)
 
-	h.keys(prefix + "q")
-	h.keys("y")
-	<-h.p.Done()
+	quit(t, h)
 }

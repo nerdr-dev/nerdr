@@ -20,6 +20,23 @@ with nerdr focused and no editor over it. Until then its agent is not
 taken as visible either, so walking past a tab does not clear its
 light. Inside herdr, nerdr's pane must be focused.
 
+## The core and the holder
+
+The nerdr you start is a client. It starts, once per folder, a holder:
+a process that starts and owns every agent, terminal and plugin run,
+their terminals included, and that starts nerdr's core, which has the
+tabs and all the logic. Both run on with no terminal when you close the
+client, the core writing its log to `~/.local/state/nerdr/core-*.log`,
+and nerdr started in the folder again connects to them, by a socket in
+`$XDG_RUNTIME_DIR/nerdr`. If the core crashes, the holder starts it
+again and it takes up the programs still running. If the holder ends,
+its programs end with it, and the next start resumes the conversations
+as after a quit. Quit stops it all.
+
+The programs started while a client is connected run with that client's
+environment. With `NERDR_HOLDER=0`, nerdr runs without a holder and core,
+the agents as its own children, and they end when it does.
+
 ## Resuming conversations
 
 Claude starts with a session ID and resumes with `--resume <id>`.
@@ -71,7 +88,8 @@ Sessions are stored per startup folder in
 backs up the previous version to `sessions/snapshots/`, at most once every
 15 minutes. It keeps the newest 20 snapshots.
 
-To recover closed tabs, stop nerdr and copy a snapshot over the session
+To recover closed tabs, quit nerdr (Quit, not Close: a core left running
+would write over it) and copy a snapshot over the session
 file. Unreadable session files are preserved as `….broken-<time>.json`.
 
 ## herdr and the review panel
