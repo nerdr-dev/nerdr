@@ -16,7 +16,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -293,7 +292,6 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	m := &Model{
 		Cfg:         cfg,
 		Root:        root,
-		WtRoot:      workspace.WorktreesRoot(root, cfg.WorktreesDir),
 		router:      router,
 		Herdr:       herdr.Detect(),
 		review:      review.NewEmbedded(),

@@ -1,4 +1,3 @@
-app.go: workspace.WorktreesRoot 1
 issuelist.go: workspace.ScanAll 1
 newrepo.go: github.CloneRepo 1
 newrepo.go: github.CreateRepo 1
@@ -19,7 +18,6 @@ repos.go: workspace.Dirty 1
 repos.go: workspace.PlanAdd 1
 repos.go: workspace.ScanAll 1
 repos.go: workspace.Unpushed 1
-setup.go: workspace.WorktreesRoot 1
 wizard.go: github.BranchPR 1
 wizard.go: github.FetchIssue 1
 wizard.go: github.ForkPR 1

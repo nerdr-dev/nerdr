@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // Layout is what the session keeps of the client's: how it shows the tabs.
@@ -47,6 +48,9 @@ func (m *Core) SaveSession() {
 // the issues, the groups and where agents ran in a sandbox. now is when
 // it starts.
 func (m *Core) Restore(sess state.Session, now time.Time) {
+	if m.WtRoot == "" {
+		m.WtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
+	}
 	for _, st := range sess.Tabs {
 		t := &Tab{AgentState: Agent{Tab: st, Light: StStarting}}
 		TrustWorktrees(t)

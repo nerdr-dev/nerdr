@@ -19,7 +19,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // errStarting is a core that could not start: starting it again would not
@@ -66,11 +65,10 @@ func runCore(h *core.Held) error {
 	core.Logf("started for %s, %d tabs from the saved session", root, len(sess.Tabs))
 
 	c := &core.Core{
-		Cfg:    cfg,
-		Root:   root,
-		WtRoot: workspace.WorktreesRoot(root, cfg.WorktreesDir),
-		Wake:   make(chan struct{}, 1),
-		Held:   h,
+		Cfg:  cfg,
+		Root: root,
+		Wake: make(chan struct{}, 1),
+		Held: h,
 	}
 	now := time.Now()
 	c.Restore(sess, now)

@@ -10,7 +10,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/store"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 	"github.com/nerdr-dev/nerdr/skills"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -141,7 +140,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		enabled = append(enabled, sk.Name)
 	}
 	var notes *string
-	wtRoot := ""
+	moveWtRoot := false
 	if !d.notesSet {
 		v := strings.TrimSpace(d.notes.Value())
 		notes = &v
@@ -162,7 +161,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		// Asked before any tab is made, so the new worktrees go there
 		// from now on, not only from the next start.
 		m.Cfg.WorktreesDir = config.ExpandHome(v)
-		wtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
+		moveWtRoot = true
 		d.worktreesSet = true
 	}
 	m.Cfg.EnabledSkills = enabled
@@ -172,7 +171,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		store.SetDataDir(*notes)
 	}
 	m.dialog = nil
-	m.do(core.SetConfig{Cfg: m.Cfg, WtRoot: wtRoot})
+	m.do(core.SetConfig{Cfg: m.Cfg, MoveWtRoot: moveWtRoot})
 	m.do(core.ApplySkills{Otherwise: "saved in " + config.Path()})
 	return d.next(m)
 }
