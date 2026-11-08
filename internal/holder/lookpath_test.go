@@ -24,6 +24,16 @@ func TestLookPathUsesTheProgramsPATH(t *testing.T) {
 	if p, err := lookPath("nerdr-test-prog", nil); err != nil || p != filepath.Join(mine, "nerdr-test-prog") {
 		t.Errorf("with no PATH of its own: %q, %v", p, err)
 	}
+	if os.Geteuid() != 0 {
+		// One only others may run is passed over, as exec.LookPath does.
+		denied := t.TempDir()
+		if err := os.WriteFile(filepath.Join(denied, "nerdr-test-prog"), []byte("#!/bin/sh\n"), 0o601); err != nil {
+			t.Fatal(err)
+		}
+		if p, err := lookPath("nerdr-test-prog", []string{"PATH=" + denied + ":" + theirs}); err != nil || p != filepath.Join(theirs, "nerdr-test-prog") {
+			t.Errorf("found %q, %v; want the one this user may run", p, err)
+		}
+	}
 	t.Chdir(theirs)
 	if p, err := lookPath("nerdr-test-prog", []string{"PATH=.:"}); err == nil {
 		t.Errorf("found %q through a relative entry", p)

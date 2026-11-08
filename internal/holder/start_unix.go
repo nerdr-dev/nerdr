@@ -200,8 +200,9 @@ func lookPath(file string, env []string) (string, error) {
 		if !filepath.IsAbs(d) {
 			continue
 		}
-		p := filepath.Join(d, file)
-		if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() && st.Mode()&0o111 != 0 {
+		// exec.LookPath of a path looks at that file alone, and asks
+		// whether this user may run it.
+		if p, err := exec.LookPath(filepath.Join(d, file)); err == nil {
 			return p, nil
 		}
 	}
