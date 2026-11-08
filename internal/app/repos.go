@@ -2,6 +2,7 @@ package app
 
 import (
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -52,17 +53,27 @@ func (m *Model) openRepos() tea.Cmd {
 		m.toast(why)
 		return nil
 	}
-	repos, err := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
 	d := &repoDialog{t: t, picked: map[string]bool{}}
-	if err != nil {
-		d.err = err.Error()
+	for _, w := range t.Worktrees {
+		d.picked[filepath.Clean(w.Repo)] = true
+	}
+	d.scan(m)
+	m.dialog = d
+	return m.do(core.ScanRepos{})
+}
+
+// scan has the repositories to pick from as core last found them (see
+// core.RepoScan), and the tab's own.
+func (d *repoDialog) scan(m *Model) {
+	repos := slices.Clone(m.Scan.Repos)
+	if m.Scan.Err != "" && d.err == "" {
+		d.err = m.Scan.Err
 	}
 	have := map[string]bool{}
 	for _, r := range repos {
 		have[filepath.Clean(r.Path)] = true
 	}
-	for _, w := range t.Worktrees {
-		d.picked[filepath.Clean(w.Repo)] = true
+	for _, w := range d.t.Worktrees {
 		if !have[filepath.Clean(w.Repo)] {
 			// From a folder no longer scanned: still the tab's.
 			repos = append(repos, workspace.Repo{Name: filepath.Base(w.Repo), Path: filepath.Clean(w.Repo)})
@@ -72,8 +83,7 @@ func (m *Model) openRepos() tea.Cmd {
 		repos[i].Path = filepath.Clean(repos[i].Path)
 	}
 	d.repos = repos
-	m.dialog = d
-	return nil
+	d.cursor = min(d.cursor, max(len(repos)-1, 0))
 }
 
 // pickedRepos is the repositories ticked, in the list's order.
@@ -301,4 +311,20 @@ func (d *repoDialog) changeLines(m *Model, c *core.RepoChange) []string {
 		return append(lines, m.button("Y", "go ahead anyway")+"   "+m.button("n", "back"))
 	}
 	return append(lines, m.button("y", "go ahead")+dim(" (enter)")+"   "+m.button("n", "back"))
+}
+
+// rescanned has what lists the repositories list those core found again.
+func (m *Model) rescanned() tea.Cmd {
+	var cmd tea.Cmd
+	switch d := m.dialog.(type) {
+	case *wizard:
+		cmd = d.rescanned(m)
+	case *repoDialog:
+		d.scan(m)
+	}
+	if d := m.issuePanel; d != nil && !d.here {
+		d.setScope(m)
+		d.fill(m)
+	}
+	return cmd
 }

@@ -55,6 +55,7 @@ func init() {
 		*Core.KnownGroupNames *Core.GroupCount *Core.CutOff
 		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
 		*Core.PRNewsByKey *Core.IssueNewsByKey *Core.Runs *Tab.HasProgram
+		*Core.ClosedGroups
 
 		*Core.SkillStates *Core.SkillOn *Core.AgentNote
 		*ScreenClient.Program *ScreenClient.Shown *ScreenClient.Drop
@@ -91,6 +92,7 @@ func init() {
 		*Core.ColdTabs *Core.AllAgents *Core.KnownGroupNames
 		*Core.SearchRoots *Core.UsedModels *Core.SpinoffKinds
 		*Core.OtherRepos *Tab.TaskRefs *Tab.TaskAgents *Tab.ExtraAgents
+		*Core.ClosedGroups
 		*Tab.AgentsIn
 	`) {
 		makesNew[s] = true

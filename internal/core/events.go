@@ -29,7 +29,7 @@ func init() {
 		OverlapsMsg{}, DetectStartMsg{}, DetectDoneMsg{}, PluginUIStartedMsg{},
 		PluginUIGoneMsg{}, PluginRunMsg{}, AskMsg{}, AnsweredMsg{}, TypedInMsg{},
 		UnseenMsg{}, SetupAnsweredMsg{}, SpinoffFailedMsg{}, SpinoffNextMsg{},
-		ReposDoneMsg{}, ChangesMsg{}, BranchDoneMsg{}, CloseInfoMsg{},
+		ReposDoneMsg{}, ChangesMsg{}, BranchDoneMsg{}, CloseInfoMsg{}, ReposScannedMsg{}, RepoMadeMsg{},
 
 		ChangedMsg{}, RedrawMsg{}, FrameMsg{}, InfoTickMsg{}, WirePanic{},
 	)

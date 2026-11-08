@@ -189,6 +189,7 @@ func TestSidebarDetailsOnTheTabsLine(t *testing.T) {
 			t.Fatalf("no %q:\n%s", want, all)
 		}
 	}
+	scanned(m)
 	clickOn(t, m, "+ new repo", tea.MouseButtonLeft)
 	if w, ok := m.dialog.(*wizard); !ok || w.step != stepNewRepo {
 		t.Fatalf("+ new repo opened %T", m.dialog)

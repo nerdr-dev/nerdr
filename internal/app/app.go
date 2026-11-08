@@ -644,17 +644,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.promptEnter(msg.t)
 		return nil
 
-	case newRepoMsg:
-		if w, ok := m.dialog.(*wizard); ok && w == msg.w {
-			return w.handleNewRepo(m, msg)
-		}
-		if msg.path != "" {
-			m.toast("made " + msg.path)
-		} else if msg.err != nil {
-			m.toast(msg.err.Error())
-		}
-		return nil
-
 	case issueMsg:
 		if w, ok := m.dialog.(*wizard); ok {
 			return w.handleIssue(msg)

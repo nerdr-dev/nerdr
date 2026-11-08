@@ -30,6 +30,7 @@ func TestWizardMakesARepository(t *testing.T) {
 	t.Setenv("GIT_COMMITTER_NAME", "t")
 	t.Setenv("GIT_COMMITTER_EMAIL", "t@t")
 	m := tabsModel(t)
+	scanned(m)
 	m.openWizard()
 	w := m.dialog.(*wizard)
 	if view := ansi.Strip(w.view(m, 120, 40)); !strings.Contains(view, "Make a new one (n) or clone one (c)") {
@@ -63,7 +64,8 @@ func TestWizardMakesARepository(t *testing.T) {
 	for _, r := range "fresh" {
 		w.key(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 	}
-	if w.key(m, keyMsg("enter")) != nil || !strings.Contains(w.err, "already exists") {
+	m.Update(w.key(m, keyMsg("enter"))())
+	if w.step != stepNewRepo || !strings.Contains(w.err, "already exists") {
 		t.Fatalf("made over an existing folder: %q", w.err)
 	}
 }
@@ -76,6 +78,7 @@ func TestWizardWithoutAgents(t *testing.T) {
 	if err := exec.Command("git", "init", "-q", filepath.Join(m.Root, "app")).Run(); err != nil {
 		t.Fatal(err)
 	}
+	scanned(m)
 	m.openWizard()
 	w := m.dialog.(*wizard)
 	if view := ansi.Strip(w.view(m, 120, 40)); !strings.Contains(view, "Found no agent on PATH") ||

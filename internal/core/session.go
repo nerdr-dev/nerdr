@@ -51,6 +51,7 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 	if m.WtRoot == "" {
 		m.WtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
 	}
+	m.Scan.NewRepoDir = workspace.NewRepoDir(m.Root, m.Cfg.RepoDirs)
 	for _, st := range sess.Tabs {
 		t := &Tab{AgentState: Agent{Tab: st, Light: StStarting}}
 		TrustWorktrees(t)
