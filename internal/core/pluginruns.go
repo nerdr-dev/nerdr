@@ -349,7 +349,7 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 	idb := make([]byte, 8)
 	_, _ = rand.Read(idb)
 	cmd := p.RunCmd(vals, "")
-	cmd.Env = append(append(m.TabEnv(o), "NERDR_SHELL=1"), p.Env(vals)...)
+	cmd.Env = append(append(m.TabEnv(o), "NERDR_SHELL=1", EnvByAgent+"=1"), p.Env(vals)...)
 	spec, err := PluginSpec(cmd, dir, p.Dir, key)
 	if err != nil {
 		return nil, err
