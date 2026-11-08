@@ -12,6 +12,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -217,7 +218,10 @@ type WtInfo struct {
 
 // TabInfo is what was found about a tab.
 type TabInfo struct {
-	Wts  []WtInfo
+	Wts []WtInfo
+	// Repo is the main checkout of the repository the tab's folder is in,
+	// "" when it is in none; looked up the first time, and kept.
+	Repo string
 	At   time.Time // when the branches were last looked at
 	PrAt time.Time // when the pull requests were
 	// Stale asks for a look at the next tick, e.g. when the agent has just
@@ -366,13 +370,29 @@ func (m *Core) RefreshInfo() Cmd {
 	_, prEvery := m.InfoEvery(pick)
 	withPR := prev.StalePR || now.Sub(prev.PrAt) > prEvery
 	skip, watchN := m.MaySkip(pick, now)
-	id, wts := pick.ID, append([]workspace.Worktree(nil), pick.Worktrees...)
+	id, dir, wts := pick.ID, pick.Dir, append([]workspace.Worktree(nil), pick.Worktrees...)
 	asks, prAsks := pick.InfoAsks, pick.PrAsks
 	return func() Event {
 		in := LookAt(wts, prev, withPR, skip)
 		in.WatchN = watchN
+		in.Repo = prev.Repo
+		if !prev.Known() {
+			in.Repo = RepoOf(dir)
+		}
 		return InfoMsg{Id: id, Info: in, Asks: asks, PrAsks: prAsks}
 	}
+}
+
+// RepoOf is the main checkout of the repository dir is in, "" when it is
+// in none.
+func RepoOf(dir string) string {
+	if _, common, ok := gitsafe.Dirs(dir); ok {
+		return filepath.Dir(common)
+	}
+	if out, err := gitsafe.Command(dir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output(); err == nil {
+		return filepath.Dir(strings.TrimSpace(string(out)))
+	}
+	return ""
 }
 
 // MaySkip reports whether a look at t can keep what the last one found

@@ -8,7 +8,6 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/skills"
 
 	"github.com/charmbracelet/lipgloss"
@@ -25,17 +24,14 @@ func (m *Model) contextItems(t *core.Tab) []core.ContextRow {
 		v.Rows = nil
 		return nil
 	}
-	key := t.ID + "/" + string(t.Agent) + "/" + t.Dir
+	// The repository is core's to find, with the tab's branches: the
+	// list is looked up again once it is known.
+	repo := t.Info.Repo
+	key := t.ID + "/" + string(t.Agent) + "/" + t.Dir + "/" + repo
 	if key == v.Key && time.Since(v.At) < core.SkillsCheckEvery {
 		return v.Rows
 	}
 	v.Key, v.At, v.Shown = key, time.Now(), ""
-	repo := ""
-	if _, common, ok := gitsafe.Dirs(t.Dir); ok {
-		repo = filepath.Dir(common)
-	} else if out, err := gitsafe.Command(t.Dir, "rev-parse", "--path-format=absolute", "--git-common-dir").Output(); err == nil {
-		repo = filepath.Dir(strings.TrimSpace(string(out)))
-	}
 	v.Rows = nil
 	for _, it := range agents.Context(t.Agent, t.Dir, repo) {
 		v.Rows = append(v.Rows, core.ContextRow{ContextItem: it})
