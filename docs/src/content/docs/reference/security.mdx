@@ -13,8 +13,8 @@ about it, and what is left for your sandbox to do.
 
 - **Run agents in a sandbox** if you can, and mark them
   [`sandboxed`](../../configure/agents/#agents-in-a-sandbox-sandboxed).
-  nerdr then stops them from asking it for a terminal, an agent outside a
-  sandbox, or anything else their sandbox keeps from them.
+  nerdr then refuses what they ask of it on the hook socket that would
+  get them out: a terminal, an agent outside a sandbox, a task for one.
 - **Nothing runs as you without your yes.** A repository's `.nerdr.toml`
   setup and every plugin wait for you to read and allow them, and again
   after any change.
@@ -24,9 +24,16 @@ about it, and what is left for your sandbox to do.
 - **Keep nerdr's own files out of reach.** A sandbox must not let its
   agent write to `~/.config/nerdr`, `~/.local/state/nerdr`, or the main
   checkout's `.git/config` and `.git/hooks`.
-  With nerdr's core running on its own (`NERDR_HOLDER=1`), it must also
-  deny the client socket's folder; see
+  With nerdr's core running on its own (`NERDR_HOLDER=1`, experimental),
+  it must also deny the client socket's folder. nerdr refuses to start an
+  agent whose sandbox check finds it can reach that folder; if it cannot
+  check, it warns and starts the agent. See
   [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
+- **Closed is not stopped.** With the core on its own, the agents work on
+  when you close nerdr or its window, with no one watching, until you
+  quit. A setup that needs your approval waits until you connect again;
+  a plugin run that needs it does not run when its time to be answered
+  runs out. Nothing is approved by itself.
 
 ## What nerdr does not take from the worktree
 
