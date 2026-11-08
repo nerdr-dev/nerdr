@@ -43,7 +43,7 @@ func (h *Held) take(wanted func(Label) bool) (holder.Prog, Label, bool) {
 // gone: from before what the holder keeps, with no checkpoint, or between
 // the checkpoint and it.
 func (h *Held) taken(p holder.Prog) term.Taken {
-	at := term.Taken{Pos: p.Start, Incomplete: p.Start > 0, Started: time.Unix(0, p.Started)}
+	at := term.Taken{Pos: p.Start, Incomplete: p.Start > 0, Started: time.Unix(0, p.Started), Answered: p.Pos}
 	if ck, ok := h.Checkpoints[p.ID]; ok && ck.Pos >= 0 {
 		at.Block = ck.Block
 		at.Pos = max(ck.Pos, p.Start)

@@ -103,3 +103,51 @@ func TestAttachIncomplete(t *testing.T) {
 		t.Fatalf("bad block: %v %q", bad.Incomplete(), bad.Snapshot().Screen)
 	}
 }
+
+// recordingProc is a heldProc that keeps what is written to it.
+type recordingProc struct {
+	*heldProc
+	inMu sync.Mutex
+	in   bytes.Buffer
+}
+
+func (p *recordingProc) Write(b []byte) (int, error) {
+	p.inMu.Lock()
+	defer p.inMu.Unlock()
+	return p.in.Write(b)
+}
+
+func (p *recordingProc) written() string {
+	p.inMu.Lock()
+	defer p.inMu.Unlock()
+	return p.in.String()
+}
+
+// A pane taken up does not answer again the queries its program wrote
+// before (Taken.Answered): the answer would reach it as keys typed in.
+// Those after are answered, also in the read that has both.
+func TestAttachAnswersOnlyWhatIsNew(t *testing.T) {
+	old := strings.Repeat("o", 40) + "\x1b[6n" + strings.Repeat("o", 16) // asks where the cursor is
+	now := "\x1b[c" + "new"                                              // asks what the terminal is
+	proc := &recordingProc{heldProc: newHeldProc([]byte(old + now))}
+	p := Attach(proc, 20, 4, Taken{Answered: int64(len(old))}, func() {})
+	t.Cleanup(func() {
+		p.CloseReplies()
+		<-p.replyDone
+		p.Close()
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(proc.written(), "\x1b[?") {
+		if time.Now().After(deadline) {
+			t.Fatalf("the new query was not answered: %q", proc.written())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	<-p.Done()
+	if got := proc.written(); strings.Contains(got, "R") {
+		t.Errorf("the old query was answered again: %q", got)
+	}
+	if !strings.Contains(p.Snapshot().Screen, "new") {
+		t.Errorf("screen %q", p.Snapshot().Screen)
+	}
+}

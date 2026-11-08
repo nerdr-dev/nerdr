@@ -60,7 +60,7 @@ type Emulator struct {
 
 	// I/O pipes.
 	pr *io.PipeReader
-	pw *io.PipeWriter
+	pw *replyPipe
 
 	// The GL and GR character set identifiers.
 	gl, gr  int
@@ -98,7 +98,8 @@ func NewEmulator(w, h int) *Emulator {
 		HandlePm:  t.handlePm,
 		HandleSos: t.handleSos,
 	})
-	t.pr, t.pw = io.Pipe()
+	pr, pw := io.Pipe()
+	t.pr, t.pw = pr, &replyPipe{PipeWriter: pw}
 	t.resetModes()
 	t.tabstops = uv.DefaultTabStops(w)
 	t.registerDefaultHandlers()
@@ -288,6 +289,25 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 func (e *Emulator) WriteString(s string) (n int, err error) {
 	return e.Write([]byte(s))
 }
+
+// replyPipe is where the emulator's answers to the program's queries go,
+// for Read; while muted they are dropped.
+type replyPipe struct {
+	*io.PipeWriter
+	muted bool
+}
+
+func (r *replyPipe) Write(b []byte) (int, error) {
+	if r.muted {
+		return len(b), nil
+	}
+	return r.PipeWriter.Write(b) //nolint:wrapcheck
+}
+
+// MuteReplies has the emulator drop its answers to the program's queries
+// while on, rather than give them to Read: for output whose queries were
+// answered already, read again.
+func (e *Emulator) MuteReplies(on bool) { e.pw.muted = on }
 
 // InputPipe returns the terminal's input pipe.
 // This can be used to send input to the terminal.
