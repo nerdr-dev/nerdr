@@ -17,6 +17,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/editor"
 	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -152,10 +153,7 @@ func runCore(h *core.Held) error {
 	srv, err := attach.Listen(sock, keyFile, attach.Config{
 		Version: version(),
 		Check: func(p hooks.Peer) string {
-			why := ""
-			if !nested {
-				why = core.ClientUnderNerdr(p)
-			}
+			why := core.ClientUnderNerdr(p, origin)
 			if why == "" {
 				c.Mu.Lock()
 				why = c.ClientRefusal(p)
@@ -222,9 +220,9 @@ func runCore(h *core.Held) error {
 	}
 }
 
-// nested is whether this core's holder was started under another nerdr's;
-// see holder.EnvNested.
-var nested bool
+// origin are the processes that started this core's holder under another
+// nerdr, if any; see holder.EnvNested.
+var origin []spawn.Process
 
 // coreMain runs the core and is its exit status: holder.ExitDone when it
 // could not start or was had to quit, for the holder to end too; anything
@@ -232,7 +230,7 @@ var nested bool
 func coreMain() int {
 	// Not for the programs it starts, which would pass it on to a nerdr
 	// they start.
-	nested = os.Getenv(holder.EnvNested) == "1"
+	origin = spawn.ParseProcs(os.Getenv(holder.EnvNested))
 	os.Unsetenv(holder.EnvNested)
 	h, err := held()
 	if err != nil {

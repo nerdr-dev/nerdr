@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/plugin"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 )
 
 // pgrep is the processes pgrep finds with args, by pid.
@@ -538,25 +539,46 @@ func TestANerdrAnAgentStarts(t *testing.T) {
 
 // TestAnAgentConnectsToTheNerdrOfAnotherFolder: the nerdr of another
 // folder, which knows nothing of the agent, refuses it as a client all
-// the same, for running under a nerdr. NERDR_NESTED=0 has that nerdr
-// count as the user's own, as it would be, even when an agent runs the
-// test; it then refuses the test's own client too, if an agent runs the
-// test, and runs on.
+// the same, for running under a nerdr, whether that nerdr runs its
+// programs in a holder or itself (NERDR_HOLDER=0). The test's own client
+// is taken, though an agent runs the test, and the other nerdr then
+// counts as nested: it was started from where that client runs.
 func TestAnAgentConnectsToTheNerdrOfAnotherFolder(t *testing.T) {
-	bin := build(t)
-	root, scratch := setup(t)
-	elsewhere := filepath.Join(scratch, "elsewhere")
-	_ = os.MkdirAll(elsewhere, 0o755)
-	env := append(holderEnv(t, bin, scratch), "FAKE_ELSEWHERE="+elsewhere)
+	for _, mode := range []string{"1", "0"} {
+		t.Run("NERDR_HOLDER="+mode, func(t *testing.T) {
+			bin := build(t)
+			root, scratch := setup(t)
+			elsewhere := filepath.Join(scratch, "elsewhere")
+			_ = os.MkdirAll(elsewhere, 0o755)
+			env := append(holderEnv(t, bin, scratch), "FAKE_ELSEWHERE="+elsewhere)
 
-	other := start(t, bin, elsewhere, append(env, "NERDR_NESTED=0"))
-	other.waitFor("nerdr", 15*time.Second)
-	h := start(t, bin, root, env)
-	newCrashTab(h)
-	h.keys("connect-elsewhere\r")
-	h.waitFor("connect ", 15*time.Second)
-	if !strings.Contains(h.screen(), "connect refused") {
-		t.Errorf("the agent was taken as a client of the other folder's nerdr:\n%s\n%s", h.screen(), readFile(elsewhere+".out"))
+			other := start(t, bin, elsewhere, env)
+			other.waitFor("Repositories in", 15*time.Second)
+			h := start(t, bin, root, append(env, "NERDR_HOLDER="+mode))
+			newCrashTab(h)
+			if mode == "0" {
+				if ps := pgrep("-f", "^"+bin+" "+spawn.LocalArg+"$"); len(ps) != 1 {
+					t.Errorf("nerdrs that say they run their programs: %v", ps)
+				}
+			}
+			h.keys("connect-elsewhere\r")
+			h.waitFor("connect ", 15*time.Second)
+			if !strings.Contains(h.screen(), "connect refused") {
+				t.Errorf("the agent was taken as a client of the other folder's nerdr:\n%s\n%s", h.screen(), readFile(elsewhere+".out"))
+			}
+			if mode == "1" {
+				endClient(t, h, "q")
+			} else {
+				h.keys(prefix + "q")
+				h.waitFor("Quit nerdr?", 2*time.Second)
+				h.keys("y")
+				select {
+				case <-h.p.Done():
+				case <-time.After(15 * time.Second):
+					t.Fatalf("did not quit; screen:\n%s", h.screen())
+				}
+			}
+			endClient(t, other, "q")
+		})
 	}
-	endClient(t, h, "q")
 }
