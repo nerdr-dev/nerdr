@@ -64,8 +64,13 @@ type InfoMsg struct {
 // the issues, and agents to put to sleep or wake. The loop runs it every
 // InfoTickN, with a client or without.
 func (m *Core) InfoTick(now time.Time) Cmd {
-	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now))
+	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now), lookForGh)
 }
+
+// GhMsg is whether the gh CLI is there, for Core.NoGh.
+type GhMsg struct{ Has bool }
+
+func lookForGh() Event { return GhMsg{Has: github.Available()} }
 
 // GithubEvery is d, an interval of asking GitHub written for the default
 // github_refresh, made as much longer or shorter as the config's is.

@@ -81,6 +81,9 @@ type Core struct {
 	LastBusy time.Time
 	// PRWatch is the watching of your pull requests; see prwatch.go.
 	PRWatch PRWatchState
+	// NoGh is set when the gh CLI was not found, the last time core
+	// looked; see GhMsg.
+	NoGh bool
 	// GroupNames is the group name given to each folder of worktrees in
 	// several repositories, kept when its tab is closed; see addTab.
 	GroupNames map[string]string

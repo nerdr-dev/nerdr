@@ -48,6 +48,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		if t := m.ByRef(ev.T); t != nil && t == m.Cur() {
 			m.review = m.review.SetUnseen(t.Unseen)
 		}
+	case core.ChangesMsg:
+		m.onCommitFiles(ev)
+	case core.BranchDoneMsg:
+		return toCore(m.prDone(ev))
 	case core.SpinoffFailedMsg:
 		if t := m.ByRef(ev.T); t != nil {
 			m.spinoffFailed(t, ev.Branch, ev.Err)

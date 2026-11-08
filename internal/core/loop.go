@@ -326,6 +326,11 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	switch ev := ev.(type) {
 	case RequestEv:
 		return ev.Run(m), true
+	case Reply:
+		return m.Tell(ev.Ev), true
+	case GhMsg:
+		m.NoGh = !ev.Has
+		return nil, true
 	case ReposChangedMsg:
 		return m.OnReposChanged(ev), true
 	case IssueAllMsg:
