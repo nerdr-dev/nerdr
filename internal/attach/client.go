@@ -46,6 +46,13 @@ func Dial(sock, keyFile string, h Hello) (*Conn, Welcome, error) {
 func Handshake(c net.Conn, h Hello) (*Conn, Welcome, error) {
 	_ = c.SetDeadline(time.Now().Add(handshakeTimeout))
 	if err := writeJSON(c, frameHello, h); err != nil {
+		// A core that refuses the peer says why before it reads anything,
+		// and hangs up: the reason may be waiting all the same.
+		if typ, body, rerr := readFrame(c); rerr == nil && typ == frameRefused {
+			var r Refused
+			_ = json.Unmarshal(body, &r)
+			return nil, Welcome{}, &RefusedError{r}
+		}
 		return nil, Welcome{}, err
 	}
 	typ, body, err := readFrame(c)
