@@ -255,11 +255,12 @@ func Main(args []string) int {
 		} else {
 			err = Resume(fd)
 		}
+	case len(args) > 0 && args[0] == "--":
+		// Nothing else: its command line is how a core knows a holder
+		// among the processes a client runs under (spawn.IsHolder).
+		err = Run(args[1:])
 	default:
-		if len(args) > 0 && args[0] == "--" {
-			args = args[1:]
-		}
-		err = Run(args)
+		err = fmt.Errorf("usage: nerdr holder -- CORE...")
 	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "nerdr holder: %v\n", err)

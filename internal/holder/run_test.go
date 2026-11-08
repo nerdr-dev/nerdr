@@ -573,3 +573,11 @@ func alive(pid int) bool {
 	i := strings.LastIndexByte(s, ')')
 	return i < 0 || !strings.HasPrefix(s[i+1:], " Z")
 }
+
+// TestMainNeedsTheSeparator: a holder runs only as `nerdr holder --
+// CORE`, the command line a core knows one by (spawn.IsHolder).
+func TestMainNeedsTheSeparator(t *testing.T) {
+	if got := Main([]string{"true"}); got != 1 {
+		t.Errorf("Main without -- = %d", got)
+	}
+}
