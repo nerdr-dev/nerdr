@@ -35,3 +35,21 @@ func TestRepoScan(t *testing.T) {
 		t.Fatalf("closed groups %+v", g)
 	}
 }
+
+// TestCheckRepoChange covers the check of a change to a tab's
+// repositories: a worktree to delete with changes not committed says so.
+func TestCheckRepoChange(t *testing.T) {
+	root := t.TempDir()
+	repo := filepath.Join(root, "app")
+	gitIn(t, root, "init", "-q", "-b", "main", repo)
+	gitIn(t, repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init")
+	writeIn(t, repo, "a.txt", "new\n")
+	wt := workspace.Worktree{Repo: repo, Path: repo, Branch: "main"}
+	m := &Core{Root: root}
+	m.Tabs = []*Tab{{AgentState: Agent{Tab: state.Tab{ID: "1", Dir: root, Worktrees: []workspace.Worktree{wt, {Repo: "/r/lib", Path: "/w/lib", Branch: "main"}}}}}}
+	cmd := CheckRepoChange{Job: "j", T: m.Ref(m.Tabs[0]), Remove: []workspace.Worktree{wt}}.Do(m)
+	got, ok := cmd().(Reply).Ev.(RepoCheckedMsg)
+	if !ok || got.Job != "j" || got.Err != "" || got.Change == nil || len(got.Change.Dirty) != 1 {
+		t.Fatalf("got %+v", got)
+	}
+}

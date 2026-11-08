@@ -5,9 +5,6 @@ prall.go: workspace.ScanAll 1
 prlist.go: git.ListWorktrees 1
 prlist.go: workspace.FetchForkPR 1
 prpanel.go: github.FetchPR 1
-repos.go: workspace.Dirty 1
-repos.go: workspace.PlanAdd 1
-repos.go: workspace.Unpushed 1
 wizard.go: github.BranchPR 1
 wizard.go: github.FetchIssue 1
 wizard.go: github.ForkPR 1

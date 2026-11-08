@@ -42,8 +42,8 @@ func TestReposDialog(t *testing.T) {
 		t.Fatal("enter did not ask git")
 	}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
-	m.Update(repoCheckedMsg{d: d, change: &core.RepoChange{Nest: true, Add: workspace.Plan{Branch: "login", Dir: tb.Dir,
-		Items: []workspace.PlanItem{{Repo: lib, Path: "/w/login/lib", Mode: "new", Base: "main"}}}}})
+	m.Update(core.Reply{Ev: core.RepoCheckedMsg{Job: d.job, Change: &core.RepoChange{Nest: true, Add: workspace.Plan{Branch: "login", Dir: tb.Dir,
+		Items: []workspace.PlanItem{{Repo: lib, Path: "/w/login/lib", Mode: "new", Base: "main"}}}}}})
 	v := ansi.Strip(m.View())
 	for _, want := range []string{"moves into", "lib: new branch from main", "y go ahead"} {
 		if !strings.Contains(v, want) {

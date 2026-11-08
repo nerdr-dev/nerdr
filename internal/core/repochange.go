@@ -15,7 +15,46 @@ import (
 // what the change would do (RepoChange), and asks the user; then core
 // makes it (ChangeRepos).
 
-func init() { registerRequests(ChangeRepos{}) }
+func init() { registerRequests(ChangeRepos{}, CheckRepoChange{}) }
+
+// CheckRepoChange asks git what adding repositories Add to tab T, and
+// deleting its worktrees Remove, would do: told as a RepoCheckedMsg of
+// Job.
+type CheckRepoChange struct {
+	Job    string
+	T      TabRef
+	Add    []workspace.Repo
+	Remove []workspace.Worktree
+}
+
+// RepoCheckedMsg is what CheckRepoChange of Job found: the change, or why
+// it cannot be made.
+type RepoCheckedMsg struct {
+	Job    string
+	Change *RepoChange
+	Err    string
+}
+
+func (q CheckRepoChange) Do(m *Core) Cmd {
+	t := m.ByRef(q.T)
+	if t == nil || len(t.Worktrees) == 0 {
+		return nil
+	}
+	nest := len(q.Add) > 0 && len(t.Worktrees) == 1 && SamePath(t.Worktrees[0].Path, t.Dir)
+	dir, branch := t.Dir, t.Worktrees[0].Branch
+	return Later(func() Event {
+		c := &RepoChange{Remove: q.Remove, Nest: nest}
+		if len(q.Add) > 0 {
+			plan, err := workspace.PlanAdd(dir, branch, q.Add)
+			if err != nil {
+				return RepoCheckedMsg{Job: q.Job, Err: err.Error()}
+			}
+			c.Add = plan
+		}
+		c.Dirty, c.Unpushed = workspace.Dirty(q.Remove), workspace.Unpushed(q.Remove)
+		return RepoCheckedMsg{Job: q.Job, Change: c}
+	})
+}
 
 // RepoChange is the repositories to add to a tab, and the worktrees to
 // delete; what the worktrees deleted hold that is not committed, or not
