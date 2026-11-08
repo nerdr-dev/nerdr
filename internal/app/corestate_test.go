@@ -139,44 +139,7 @@ func lines(s string) []string {
 // the changes to core's state, in the package's own files, as a count a
 // line by file.
 func coreChanges() (string, error) {
-	out, err := exec.Command("go", "list", "-export", "-deps", "-json", ".").Output()
-	if err != nil {
-		return "", err
-	}
-	exports := map[string]string{}
-	dec := json.NewDecoder(strings.NewReader(string(out)))
-	for {
-		var p struct{ ImportPath, Export string }
-		if err := dec.Decode(&p); err == io.EOF {
-			break
-		} else if err != nil {
-			return "", err
-		}
-		exports[p.ImportPath] = p.Export
-	}
-	fset := token.NewFileSet()
-	imp := importer.ForCompiler(fset, "gc", func(path string) (io.ReadCloser, error) {
-		return os.Open(exports[path])
-	})
-	names, _ := filepath.Glob("*.go")
-	var files []*ast.File
-	for _, n := range names {
-		if strings.HasSuffix(n, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, n, nil, 0)
-		if err != nil {
-			return "", err
-		}
-		files = append(files, f)
-	}
-	info := &types.Info{
-		Types:      map[ast.Expr]types.TypeAndValue{},
-		Selections: map[*ast.SelectorExpr]*types.Selection{},
-		Uses:       map[*ast.Ident]types.Object{},
-		Defs:       map[*ast.Ident]types.Object{},
-	}
-	pkg, err := (&types.Config{Importer: imp}).Check("app", fset, files, info)
+	fset, files, info, pkg, err := typeCheckPackage()
 	if err != nil {
 		return "", err
 	}
@@ -540,4 +503,50 @@ func exprString(e ast.Expr) string {
 		return exprString(x.Fun) + "()"
 	}
 	return "?"
+}
+
+// typeCheckPackage type-checks the package's own files, not its tests.
+func typeCheckPackage() (*token.FileSet, []*ast.File, *types.Info, *types.Package, error) {
+	out, err := exec.Command("go", "list", "-export", "-deps", "-json", ".").Output()
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	exports := map[string]string{}
+	dec := json.NewDecoder(strings.NewReader(string(out)))
+	for {
+		var p struct{ ImportPath, Export string }
+		if err := dec.Decode(&p); err == io.EOF {
+			break
+		} else if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		exports[p.ImportPath] = p.Export
+	}
+	fset := token.NewFileSet()
+	imp := importer.ForCompiler(fset, "gc", func(path string) (io.ReadCloser, error) {
+		return os.Open(exports[path])
+	})
+	names, _ := filepath.Glob("*.go")
+	var files []*ast.File
+	for _, n := range names {
+		if strings.HasSuffix(n, "_test.go") {
+			continue
+		}
+		f, err := parser.ParseFile(fset, n, nil, 0)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		files = append(files, f)
+	}
+	info := &types.Info{
+		Types:      map[ast.Expr]types.TypeAndValue{},
+		Selections: map[*ast.SelectorExpr]*types.Selection{},
+		Uses:       map[*ast.Ident]types.Object{},
+		Defs:       map[*ast.Ident]types.Object{},
+	}
+	pkg, err := (&types.Config{Importer: imp}).Check("app", fset, files, info)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+	return fset, files, info, pkg, nil
 }
