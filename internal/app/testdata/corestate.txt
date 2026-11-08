@@ -2,8 +2,6 @@ app.go: call *Core.Handle 2
 app.go: call *Core.PluginUIPanes 1
 app.go: call *Core.Restore 1
 app.go: call *Core.SaveSession 1
-app.go: call *Core.ShutdownHolder 1
 app.go: call *Loop.Start 1
 app.go: call *Loop.Stop 1
 app.go: write m.Quitting 1
-dialogs.go: call *Held.Shutdown 1
