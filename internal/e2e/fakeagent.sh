@@ -44,6 +44,13 @@ handle() {
       n="${line#bin-status-}"
       "$NERDR_BIN" status "set by NERDR_BIN $n" >/dev/null 2>&1 && echo "status $n set" || echo "status $n failed"
       ;;
+    nerdr-elsewhere)
+      # An agent that starts nerdr in another folder, in a terminal of its
+      # own, and leaves it; see TestANerdrAnAgentStarts.
+      mkdir -p "$FAKE_ELSEWHERE"
+      (cd "$FAKE_ELSEWHERE" && timeout 6 script -qec "$NERDR_BIN" /dev/null </dev/null >/dev/null 2>&1)
+      echo "elsewhere-exit-$?"
+      ;;
     from)
       # Which nerdr's environment it was started with; see
       # TestAgentsTakeTheClientsEnv.
