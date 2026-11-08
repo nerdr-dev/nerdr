@@ -5,6 +5,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // The requests a client may make of core; see Request. Each is done with
@@ -18,11 +19,12 @@ func init() {
 }
 
 // SetConfig is the config as the client changed it, and saved it when
-// it could: core goes by it from now on. WtRoot, when set, is where new
-// worktrees go now, the setup having asked before any tab was made.
+// it could: core goes by it from now on. With MoveWtRoot new worktrees go
+// to its worktrees_dir now, the setup having asked before any tab was
+// made; else from the next start.
 type SetConfig struct {
-	Cfg    config.Config
-	WtRoot string
+	Cfg        config.Config
+	MoveWtRoot bool
 }
 
 func (q SetConfig) Do(m *Core) Cmd {
@@ -30,8 +32,8 @@ func (q SetConfig) Do(m *Core) Cmd {
 		store.SetDataDir(q.Cfg.DataDir)
 	}
 	m.Cfg = q.Cfg
-	if q.WtRoot != "" {
-		m.WtRoot = q.WtRoot
+	if q.MoveWtRoot {
+		m.WtRoot = workspace.WorktreesRoot(m.Root, q.Cfg.WorktreesDir)
 	}
 	return nil
 }
