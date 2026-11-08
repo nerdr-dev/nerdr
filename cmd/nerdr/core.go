@@ -85,11 +85,13 @@ func runCore(h *core.Held) error {
 	}
 	c.Client = core.Unattached(core.Layout{Active: sess.Active, Split: sess.Split, SplitLeft: sess.SplitLeft, SideWidth: sess.SideWidth}, front)
 
+	// What comes to the hook socket before the loop is made waits for it
+	// rather than being lost: a plugin run's read just after a crash.
 	var loop *core.Loop
+	made := make(chan struct{})
 	post := func(ev core.Event) {
-		if loop != nil {
-			loop.Post(ev)
-		}
+		<-made
+		loop.Post(ev)
 	}
 	hookSrv, err := hooks.Listen(hooks.SocketPath(), func(r hooks.Report) { post(r) })
 	var taken error
@@ -132,6 +134,7 @@ func runCore(h *core.Held) error {
 			rc.Forward(ev)
 		}
 	})
+	close(made)
 	attachPost := func(ev core.RequestEv) { loop.Post(ev) }
 
 	c.Mu.Lock()

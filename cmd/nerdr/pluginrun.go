@@ -134,7 +134,8 @@ const (
 // is left. A nerdr that quit takes its socket with it.
 func coreAway(err error) bool {
 	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
-		errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF)
+		errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF) ||
+		errors.Is(err, syscall.ENOENT) // the socket between one core and the next
 }
 
 var runID = regexp.MustCompile(`^[0-9a-f]{16}$`)
