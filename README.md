@@ -38,6 +38,9 @@ question.*
 - **Your own scripts as plugins.** Custom scripts (like rebuilding Docker or
   seeding a database) that agents can run with parameters, or that you can
   run directly in `F5`. [Plugins →](https://nerdr.app/configure/plugins/)
+- **Close it, and the agents work on.** Closing nerdr, or losing the SSH
+  connection, leaves the agents running; start nerdr again to see them.
+  Quit stops them. [Remote →](https://nerdr.app/use/remote/)
 - **Keyboard and mouse.** Every command has a key after `ctrl+q`, and
   most can be clicked.
   [Keys →](https://nerdr.app/configure/keyboard/)
@@ -89,8 +92,7 @@ Everything lives at [nerdr.app](https://nerdr.app/):
 
 nerdr builds on [herdr](https://herdr.dev)'s status lights, mouse controls
 and rules for detecting an agent's state; see [NOTICE](NOTICE). Run nerdr
-inside herdr to keep agents running when you detach, or on another
-machine.
+inside herdr to come back to it from anywhere, or on another machine.
 
 ## Development
 

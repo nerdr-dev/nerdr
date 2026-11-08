@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"os"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/holder"
@@ -11,10 +12,15 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
-// EnvHolder turns on running nerdr's programs in a holder, a process of
-// their own that keeps them when nerdr's core crashes: NERDR_HOLDER=1.
-// Without it nothing changes.
+// EnvHolder set to 0 has nerdr run its programs itself, the way it did
+// before the core: they end with it. Unset, or set to anything else,
+// nerdr runs them in a holder, a process of their own under a core of
+// their own, which keeps them when nerdr is closed or its core crashes.
 const EnvHolder = "NERDR_HOLDER"
+
+// UseHolder reports whether nerdr runs its programs in a holder; see
+// EnvHolder.
+func UseHolder() bool { return os.Getenv(EnvHolder) != "0" }
 
 // Held is the holder the programs of the tabs run in, when nerdr runs
 // over one, and the programs it had when this core started: a core

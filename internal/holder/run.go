@@ -219,7 +219,7 @@ func FromEnv() (*Client, error) {
 }
 
 // Main is `nerdr holder -- CORE...`: a holder that starts CORE as nerdr's
-// core, as nerdr with NERDR_HOLDER=1 starts `nerdr core`. It is left out of the help. An
+// core, as nerdr starts `nerdr core` (unless NERDR_HOLDER=0). It is left out of the help. An
 // upgraded holder is started as `nerdr holder --resume FD`.
 func Main(args []string) int {
 	closeInheritedOnExec()

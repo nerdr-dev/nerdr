@@ -359,14 +359,7 @@ func TestEndToEnd(t *testing.T) {
 	h.waitGone("review · esc", 2*time.Second)
 
 	// 9: quit and start again; both tabs come back, resuming.
-	h.keys(prefix + "q")
-	h.waitFor("Quit nerdr?", 2*time.Second)
-	h.keys("y")
-	select {
-	case <-h.p.Done():
-	case <-time.After(10 * time.Second):
-		t.Fatalf("did not quit; screen:\n%s", h.screen())
-	}
+	quit(t, h)
 	if !strings.Contains(readFile(herdrLog), "release-agent") {
 		t.Fatalf("herdr was not told nerdr left:\n%s", readFile(herdrLog))
 	}
@@ -417,9 +410,7 @@ func TestEndToEnd(t *testing.T) {
 	// It is offered again as an existing worktree.
 	h.waitFor("Or open an existing worktree", time.Second)
 	h.keys("\x1b")
-	h.keys(prefix + "q")
-	h.keys("y")
-	<-h.p.Done()
+	quit(t, h)
 }
 
 func readFile(p string) string {
@@ -453,7 +444,24 @@ func TestRealClaude(t *testing.T) {
 	t.Logf("screen:\n%s", h.screen())
 	first, _, _ := strings.Cut(h.screen(), "\n")
 	t.Logf("tab bar: %q", first)
+	quit(t, h)
+}
+
+// quit quits nerdr in h, and its agents with it: over its core, nerdr asks
+// whether to close or quit, and q quits; with NERDR_HOLDER=0 it asks
+// whether to quit, and y does.
+func quit(t *testing.T, h *harness) {
+	t.Helper()
 	h.keys(prefix + "q")
-	h.keys("y")
-	<-h.p.Done()
+	h.waitFor("uit nerdr?", 2*time.Second)
+	if strings.Contains(h.screen(), "Close or quit nerdr?") {
+		h.keys("q")
+	} else {
+		h.keys("y")
+	}
+	select {
+	case <-h.p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatalf("did not quit; screen:\n%s", h.screen())
+	}
 }
