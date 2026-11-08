@@ -40,8 +40,9 @@ type Pane struct {
 	// inputs counts what has been typed into it; see Inputs.
 	inputs atomic.Uint64
 	// base is the position in the program's output the pane started
-	// reading at; see Attach.
-	base int64
+	// reading at, and answered how far the queries in it were answered
+	// before; see Attach.
+	base, answered int64
 
 	notify func()
 	// watched is set while a client in another process is sent the
@@ -75,11 +76,17 @@ func StartWith(sp spawn.Spawner, s spawn.Spec, notify func()) (*Pane, error) {
 // for that position if there is one, and when it started. Incomplete is
 // set when what is read from Pos on, on top of Block, is not all it drew:
 // output was lost, or it wrote before Pos and there is no checkpoint.
+//
+// Answered is how far the output went when it was taken up: the queries
+// in it before that were answered by the core before, or came while there
+// was none, and an answer now would reach the program long after it
+// stopped waiting, as keys typed in. They are not answered again.
 type Taken struct {
 	Pos        int64
 	Block      []byte
 	Incomplete bool
 	Started    time.Time
+	Answered   int64
 }
 
 // Attach is a pane of proc, a program already running in a terminal, as
@@ -101,7 +108,7 @@ func Attach(proc spawn.Proc, w, h int, at Taken, notify func()) *Pane {
 		started = time.Now()
 	}
 	p := newPane(proc, sc, started, notify)
-	p.base = at.Pos
+	p.base, p.answered = at.Pos, at.Answered
 	_ = proc.Resize(max(w, 10), max(h, 3))
 	p.run()
 	return p
@@ -158,7 +165,15 @@ func (p *Pane) readLoop() {
 	for {
 		n, err := p.proc.Read(buf)
 		if n > 0 {
-			p.Feed(buf[:n])
+			b := buf[:n]
+			if old := p.answered - p.Position(); old > 0 {
+				k := min(int64(len(b)), old)
+				p.FeedAnswered(b[:k])
+				b = b[k:]
+			}
+			if len(b) > 0 {
+				p.Feed(b)
+			}
 			if p.drawnOn.Load() == frame.Load() || p.watched.Load() {
 				p.notify()
 			}

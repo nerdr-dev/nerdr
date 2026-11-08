@@ -105,6 +105,21 @@ func NewScreen(w, h int) *Screen {
 func (s *Screen) Feed(b []byte) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.feed(b)
+}
+
+// FeedAnswered is Feed for output whose queries were answered before, read
+// again: they are not answered.
+func (s *Screen) FeedAnswered(b []byte) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.emu.MuteReplies(true)
+	defer s.emu.MuteReplies(false)
+	s.feed(b)
+}
+
+// feed is Feed with s.mu held.
+func (s *Screen) feed(b []byte) {
 	s.oscOut = s.osc.write(s.oscOut[:0], b, func(t string) { s.title = t })
 	s.write(s.oscOut)
 	s.fed += int64(len(b))
