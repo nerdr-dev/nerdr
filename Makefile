@@ -2,7 +2,7 @@ BINARY := nerdr
 DIST := dist
 LDFLAGS := -s -w
 
-.PHONY: build test e2e vet fmt install clean all
+.PHONY: build test e2e fuzz vet fmt install clean all
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(BINARY) ./cmd/nerdr
@@ -20,6 +20,12 @@ test:
 # Drives the real binary in a pseudo-terminal with a fake agent.
 e2e:
 	go test -tags e2e ./internal/e2e/ -count=1 -v
+
+# The screen fuzzed with resizes between its output, as the contract for
+# a terminal engine asks; each target runs by itself.
+FUZZTIME ?= 60s
+fuzz:
+	go test ./internal/term/ -run '^$$' -fuzz '^FuzzScreenResize$$' -fuzztime $(FUZZTIME)
 
 vet:
 	go vet ./...

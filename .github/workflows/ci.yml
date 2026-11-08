@@ -31,6 +31,7 @@ jobs:
       - run: make test
       # The real binary in a pseudo-terminal, with a fake agent.
       - run: make e2e
+      - run: make fuzz
       # Every target in the release matrix, so a darwin-only break shows up here.
       - run: make all
 
