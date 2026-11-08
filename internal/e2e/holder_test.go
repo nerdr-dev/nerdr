@@ -495,7 +495,7 @@ func TestAPluginRunOutlivesACoreCrash(t *testing.T) {
 	// The core started again runs it as the one before did.
 	_ = os.Remove(pidFile)
 	h.keys("plugin-run-slow\r")
-	h.waitFor("plugin-exit-4", 5*time.Second)
+	h.waitCount("plugin-exit-4", 2, 5*time.Second) // the first run's is on the screen too
 	if strings.Count(h.screen(), "in-crash") != 2 {
 		t.Errorf("the second run was not in the worktree:\n%s", h.screen())
 	}
