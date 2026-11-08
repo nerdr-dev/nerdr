@@ -47,9 +47,10 @@ func checkedCore(t *testing.T, body string) (*Core, *Tab, *toldClient) {
 	t.Cleanup(func() { os.RemoveAll(run) })
 	t.Setenv(attach.EnvDir, filepath.Join(run, "run"))
 	wrap := agentScript(t, body)
-	c, tb := heldCore(t, inProcessHolder(t), wrap)
+	c, tb := heldCoreUnasked(t, inProcessHolder(t), wrap)
 	c.Root = filepath.Dir(wrap)
 	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{wrap, "codex"}, Sandboxed: true}
+	askedHelp(c.Cfg.Agents)
 	sock, key, err := attach.Paths(c.Root)
 	if err != nil {
 		t.Fatal(err)
@@ -134,6 +135,7 @@ func TestASandboxNerdrCannotCheckIsSaidSo(t *testing.T) {
 
 	c, tb, cl = checkedCore(t, runsCodex)
 	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{filepath.Join(c.Root, "agent.sh")}, Sandboxed: true}
+	askedHelp(c.Cfg.Agents)
 	tb.Agent = agents.Codex
 	notes, _ = check(t, c, tb, cl)
 	if len(notes) != 1 || !strings.Contains(notes[0], "names no codex") {
@@ -162,6 +164,7 @@ func TestOnlyASandboxedAgentOverAHolderIsChecked(t *testing.T) {
 	c, tb, _ := checkedCore(t, runsCodex+"exec \"$@\"\n")
 	sandboxed := c.Cfg.Agents[agents.Codex]
 	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: sandboxed.Command}
+	askedHelp(c.Cfg.Agents)
 	if cmd := c.Start(tb, false); cmd != nil || tb.Pane == nil {
 		t.Errorf("an agent outside a sandbox checked, or not started: %s", tb.Err)
 	}

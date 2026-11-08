@@ -19,8 +19,16 @@ import (
 )
 
 // heldCore is a core over a holder in this process, with one tab whose
-// agent is script, not started yet.
+// agent is script, not started yet, and asked what starting it asks.
 func heldCore(t *testing.T, cl *holder.Client, script string) (*Core, *Tab) {
+	t.Helper()
+	c, tb := heldCoreUnasked(t, cl, script)
+	askedHelp(c.Cfg.Agents)
+	return c, tb
+}
+
+// heldCoreUnasked is heldCore with script not asked anything yet.
+func heldCoreUnasked(t *testing.T, cl *holder.Client, script string) (*Core, *Tab) {
 	t.Helper()
 	held, err := NewHeld(cl)
 	if err != nil {
@@ -300,6 +308,7 @@ func TestANewCoreTakesUpAReview(t *testing.T) {
 	reviewer := []string{agentScript(t, "echo reviewing; exec cat\n")}
 	a.Cfg.Agents[agents.Claude] = agents.Spec{Command: reviewer}
 	a.Cfg.Agents[agents.OpenCode] = agents.Spec{Command: reviewer}
+	askedHelp(a.Cfg.Agents)
 	a.Start(tabA, false)
 	a.StartReview(tabA, Reviewer{Kind: agents.Claude}, "main", "tree1", "the parser")
 	a.AddReviewer(tabA, Reviewer{Kind: agents.OpenCode})
@@ -420,6 +429,7 @@ func TestTheSandboxMarkOutlivesACrash(t *testing.T) {
 	script := agentScript(t, "exec cat\n")
 	a, tabA := heldCore(t, clA, script)
 	a.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{script}, Sandboxed: true}
+	askedHelp(a.Cfg.Agents)
 	// Its sandbox is checked first, which says it cannot be: it starts.
 	if cmd := a.Start(tabA, false); cmd != nil {
 		if ev, ok := cmd().(SpawnReady); ok {

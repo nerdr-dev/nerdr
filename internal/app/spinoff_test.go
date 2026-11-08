@@ -98,6 +98,7 @@ func TestSpinoffPromptStartsCopilot(t *testing.T) {
 		agents.Copilot: {Command: []string{fake}},
 		agents.Claude:  {Command: []string{"cat"}},
 	}
+	askedHelp(m.Cfg.Agents)
 
 	nt, _ := m.AddTabBeside("fix-a", dir, "", nil, agents.Copilot, "Do A.")
 	defer nt.Pane.Close()

@@ -25,6 +25,7 @@ func argvAgent(t *testing.T, m *Model) string {
 	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {
 		Command: []string{"sh", "-c", `printf '%s\n' "$@" -- >> "` + out + `"; exec cat`, "sh"},
 	}}
+	askedHelp(m.Cfg.Agents)
 	return out
 }
 

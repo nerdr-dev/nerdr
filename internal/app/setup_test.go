@@ -314,6 +314,7 @@ func TestCodexGetsNerdrsHooksOnceTrusted(t *testing.T) {
 
 	m := paneModel(t)
 	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
+	askedHelp(m.Cfg.Agents)
 	m.SetHookSocket("/run/nerdr.sock")
 	tb := m.Cur()
 	m.Cfg.Install = config.InstallWorktree
@@ -363,6 +364,7 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 
 	m := paneModel(t)
 	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Copilot: {Command: []string{cmd}}}
+	askedHelp(m.Cfg.Agents)
 	m.SetHookSocket("/run/nerdr.sock")
 	m.Cfg.Install = config.InstallHome
 	note := m.ApplySkills()

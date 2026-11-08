@@ -151,6 +151,7 @@ func fakeAgent(m *Model, k agents.Kind) {
 		m.Cfg.Agents = map[agents.Kind]agents.Spec{}
 	}
 	m.Cfg.Agents[k] = agents.Spec{Command: []string{"cat"}}
+	askedHelp(m.Cfg.Agents)
 }
 
 // TestAgentBesideTheTab: another agent starts in the tab's worktree, in a

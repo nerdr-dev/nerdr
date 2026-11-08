@@ -101,7 +101,7 @@ func configModelEnv(k Kind, s Spec) []string {
 // command and Args.
 func startArgs(s Spec, k Kind) []string {
 	argv := append(append([]string{}, s.Command...), s.Args...)
-	if k == OpenCode && (s.ConfigModel != "" || helpHas(s, []string{"--help"}, "--standalone")) {
+	if k == OpenCode && (s.ConfigModel != "" || askStandalone.of(s)) {
 		// opencode runs its own server instead of the shared background
 		// service: only its own reads the model in the environment, and
 		// only its own runs nerdr's plugin with the tab's environment
@@ -286,7 +286,7 @@ func newSession(specs map[Kind]Spec, k Kind) Launch {
 		// Copilot takes the id from us too, where it knows --session-id.
 		// Without it a reviewer's conversation, had in the tab's worktree,
 		// was never known as one, and the tab carried it on as its own.
-		if helpHas(s, []string{"--help"}, "--session-id") {
+		if askSessionID.of(s) {
 			id := newUUID()
 			return Launch{Argv: append(argv, "--session-id", id), SessionID: id}
 		}
@@ -296,12 +296,57 @@ func newSession(specs map[Kind]Spec, k Kind) Launch {
 		// opencode makes the session it is given when there is none by
 		// that id, in the form of its own; whether it did is looked at
 		// once something has been said in it.
-		if helpHas(s, []string{"--help"}, "or to create if it does not exist") {
+		if askCreates.of(s) {
 			id := openCodeID()
 			return Launch{Argv: append(argv, "--session", id), SessionID: id, Unsure: true}
 		}
 	}
 	return Launch{Argv: argv}
+}
+
+// helpQ is a question NewSession asks the help of an agent's command:
+// whether that printed for args mentions flag.
+type helpQ struct {
+	args []string
+	flag string
+}
+
+var (
+	askStandalone = helpQ{[]string{"--help"}, "--standalone"}                      // opencode
+	askSessionID  = helpQ{[]string{"--help"}, "--session-id"}                      // copilot
+	askCreates    = helpQ{[]string{"--help"}, "or to create if it does not exist"} // opencode
+	askNoDaemon   = helpQ{[]string{"resume", "--help"}, "--no-daemon"}             // codex
+)
+
+func (q helpQ) of(s Spec) bool { return helpHas(s, q.args, q.flag) }
+
+// newSessionAsks is what NewSession for k asks its command's help.
+func newSessionAsks(s Spec, k Kind) []helpQ {
+	switch k {
+	case Copilot:
+		return []helpQ{askSessionID}
+	case Codex:
+		return []helpQ{askNoDaemon}
+	case OpenCode:
+		if s.ConfigModel != "" {
+			return []helpQ{askCreates}
+		}
+		return []helpQ{askStandalone, askCreates}
+	}
+	return nil
+}
+
+// NewSessionKnown reports whether NewSession for k runs nothing: whether
+// all it asks k's command has been asked already. The first asking can
+// take seconds, so is not for where nothing must wait.
+func NewSessionKnown(specs map[Kind]Spec, k Kind) bool {
+	s := specFor(specs, k)
+	for _, q := range newSessionAsks(s, k) {
+		if !helpAsked(s, q.args, q.flag) {
+			return false
+		}
+	}
+	return true
 }
 
 // NewSessionIn is NewSession for a conversation in dir, with an id nerdr
@@ -357,7 +402,7 @@ func openCodeID() string {
 // --no-daemon keeps the server in the tab's own codex. An older codex
 // knows no such flag and would not start with it.
 func codexNoDaemon(s Spec) []string {
-	if !helpHas(s, []string{"resume", "--help"}, "--no-daemon") {
+	if !askNoDaemon.of(s) {
 		return nil
 	}
 	return []string{"--no-daemon"}
@@ -397,13 +442,18 @@ func helpKey(s Spec, args []string, flag string) string {
 // FlagKnown reports whether HasFlag for k and flag has been asked
 // already, and so answers without running anything.
 func FlagKnown(specs map[Kind]Spec, k Kind, flag string) bool {
-	s := specFor(specs, k)
+	return helpAsked(specFor(specs, k), []string{"--help"}, flag)
+}
+
+// helpAsked reports whether helpHas for s, args and flag answers without
+// running anything.
+func helpAsked(s Spec, args []string, flag string) bool {
 	if len(s.Command) == 0 {
 		return true
 	}
 	helpMu.Lock()
 	defer helpMu.Unlock()
-	_, ok := helpSeen[helpKey(s, []string{"--help"}, flag)]
+	_, ok := helpSeen[helpKey(s, args, flag)]
 	return ok
 }
 
