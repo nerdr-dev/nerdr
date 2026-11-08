@@ -192,7 +192,7 @@ func GrokCommand(args []string, stdin io.Reader, stderr io.Writer) int {
 	if method == "" {
 		return 0
 	}
-	if err := Send(sock, method, p); err != nil {
+	if err := SendReport(sock, method, p); err != nil {
 		fmt.Fprintln(stderr, "nerdr hook grok:", err)
 		return 1
 	}

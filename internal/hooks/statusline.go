@@ -45,7 +45,7 @@ func StatusLineCommand(stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	if sock, pane := os.Getenv("NERDR_SOCKET"), os.Getenv("NERDR_TAB"); sock != "" && pane != "" {
-		_ = Send(sock, Usage, map[string]any{"pane_id": pane, "limits": r})
+		_ = SendReport(sock, Usage, map[string]any{"pane_id": pane, "limits": r})
 	}
 	if cmd := userStatusLine(dir); cmd != "" {
 		if out, ok := runStatusLine(cmd, dir, in); ok {
