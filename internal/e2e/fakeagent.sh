@@ -51,6 +51,12 @@ handle() {
       (cd "$FAKE_ELSEWHERE" && timeout 6 script -qec "$NERDR_BIN" /dev/null </dev/null >/dev/null 2>&1)
       echo "elsewhere-exit-$?"
       ;;
+    connect-elsewhere)
+      # An agent that connects to the nerdr of another folder; see
+      # TestAnAgentConnectsToTheNerdrOfAnotherFolder.
+      (cd "$FAKE_ELSEWHERE" && timeout 6 script -qec "$NERDR_BIN connect" "$FAKE_ELSEWHERE.out" </dev/null >/dev/null 2>&1)
+      if grep -q "takes no client" "$FAKE_ELSEWHERE.out"; then echo "connect refused"; else echo "connect taken"; fi
+      ;;
     from)
       # Which nerdr's environment it was started with; see
       # TestAgentsTakeTheClientsEnv.

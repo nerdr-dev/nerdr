@@ -152,9 +152,15 @@ func runCore(h *core.Held) error {
 	srv, err := attach.Listen(sock, keyFile, attach.Config{
 		Version: version(),
 		Check: func(p hooks.Peer) string {
-			c.Mu.Lock()
-			why := c.ClientRefusal(p)
-			c.Mu.Unlock()
+			why := ""
+			if !nested {
+				why = core.ClientUnderNerdr(p)
+			}
+			if why == "" {
+				c.Mu.Lock()
+				why = c.ClientRefusal(p)
+				c.Mu.Unlock()
+			}
 			if why != "" {
 				core.Logf("client refused (%v): %s", p.Chain, why)
 			}
@@ -216,10 +222,18 @@ func runCore(h *core.Held) error {
 	}
 }
 
+// nested is whether this core's holder was started under another nerdr's;
+// see holder.EnvNested.
+var nested bool
+
 // coreMain runs the core and is its exit status: holder.ExitDone when it
 // could not start or was had to quit, for the holder to end too; anything
 // else when it crashed, for the holder to start it again.
 func coreMain() int {
+	// Not for the programs it starts, which would pass it on to a nerdr
+	// they start.
+	nested = os.Getenv(holder.EnvNested) == "1"
+	os.Unsetenv(holder.EnvNested)
 	h, err := held()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr core: holder:", err)

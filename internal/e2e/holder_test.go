@@ -535,3 +535,28 @@ func TestANerdrAnAgentStarts(t *testing.T) {
 	}
 	endClient(t, h, "q")
 }
+
+// TestAnAgentConnectsToTheNerdrOfAnotherFolder: the nerdr of another
+// folder, which knows nothing of the agent, refuses it as a client all
+// the same, for running under a nerdr. NERDR_NESTED=0 has that nerdr
+// count as the user's own, as it would be, even when an agent runs the
+// test; it then refuses the test's own client too, if an agent runs the
+// test, and runs on.
+func TestAnAgentConnectsToTheNerdrOfAnotherFolder(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	elsewhere := filepath.Join(scratch, "elsewhere")
+	_ = os.MkdirAll(elsewhere, 0o755)
+	env := append(holderEnv(t, bin, scratch), "FAKE_ELSEWHERE="+elsewhere)
+
+	other := start(t, bin, elsewhere, append(env, "NERDR_NESTED=0"))
+	other.waitFor("nerdr", 15*time.Second)
+	h := start(t, bin, root, env)
+	newCrashTab(h)
+	h.keys("connect-elsewhere\r")
+	h.waitFor("connect ", 15*time.Second)
+	if !strings.Contains(h.screen(), "connect refused") {
+		t.Errorf("the agent was taken as a client of the other folder's nerdr:\n%s\n%s", h.screen(), readFile(elsewhere+".out"))
+	}
+	endClient(t, h, "q")
+}
