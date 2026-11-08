@@ -153,7 +153,7 @@ func (m *Model) goToIssue(e core.IssueEntry) tea.Cmd {
 	}
 	w.branch.SetValue(e.Issue.BranchName())
 	w.branch.CursorEnd()
-	return tea.Batch(cmd, w.lookUpIssue(e.Repo.Path, e.Issue.Number))
+	return tea.Batch(cmd, w.lookUpIssue(m, e.Repo.Path, e.Issue.Number))
 }
 
 // tabOnIssue is a tab with a worktree of repo on a branch for issue

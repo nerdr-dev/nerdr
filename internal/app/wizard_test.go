@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,7 +30,7 @@ func TestWizardAsksAboutOriginsBranch(t *testing.T) {
 		Repo: workspace.Repo{Name: "app", Path: "/r/app"}, Path: "/w/diverse-app",
 		Mode: "remote", Base: "origin/main", Ahead: 2, PR: 9, PRState: "MERGED",
 	}}}
-	w.handlePlan(m, planMsg{plan: plan})
+	w.handlePlan(m, core.PlanMsg{Job: w.id, Plan: plan})
 	if w.step != stepExisting {
 		t.Fatalf("step = %d, want the question about origin's branch", w.step)
 	}
@@ -83,7 +82,7 @@ func TestWizardAsksAboutLocalBranch(t *testing.T) {
 		Repo: workspace.Repo{Name: "app", Path: "/r/app"}, Path: "/w/fix-app",
 		Mode: "local", Base: "origin/main", Ahead: 3, Behind: 40, PR: 6, PRState: "MERGED", Tip: "abc1234def", PRHasTip: true,
 	}}}
-	w.handlePlan(m, planMsg{plan: plan})
+	w.handlePlan(m, core.PlanMsg{Job: w.id, Plan: plan})
 	if w.step != stepExisting {
 		t.Fatalf("step = %d, want the question about the local branch", w.step)
 	}
@@ -109,7 +108,7 @@ func TestWizardAsksAboutLocalBranch(t *testing.T) {
 	// Work that is not merged: only continuing it is on offer.
 	w.step = stepBranch
 	plan.Items[0].PR, plan.Items[0].PRState = 0, ""
-	w.handlePlan(m, planMsg{plan: plan})
+	w.handlePlan(m, core.PlanMsg{Job: w.id, Plan: plan})
 	view = w.view(m, 120, 40)
 	for _, want := range []string{"3 commits not in origin/main", "would throw away", "pick another name"} {
 		if !strings.Contains(view, want) {
@@ -144,7 +143,7 @@ func TestWizardHiddenWhileCreating(t *testing.T) {
 	m.openWizard()
 	other := m.dialog
 	plan := workspace.Plan{Branch: "new", Dir: "/w/new"}
-	m.Update(wizardMsg{w: w, plan: plan, agent: "claude", task: "do it"})
+	m.Update(core.Reply{Ev: core.WorktreesMadeMsg{Job: w.id, Plan: plan, Kind: "claude", Task: "do it"}})
 	if m.dialog != other {
 		t.Fatalf("the result went to the wizard opened since: %T", m.dialog)
 	}
@@ -158,7 +157,7 @@ func TestWizardHiddenWhileCreating(t *testing.T) {
 
 	m.dialog = nil
 	n := len(m.Tabs)
-	m.Update(wizardMsg{w: w, plan: plan, err: errors.New("no fetch")})
+	m.Update(core.Reply{Ev: core.WorktreesMadeMsg{Job: w.id, Plan: plan, Err: "no fetch"}})
 	if len(m.Tabs) != n || !strings.Contains(m.toastText, "no fetch") {
 		t.Fatalf("a failure is told, and opens nothing: %d tabs, toast %q", len(m.Tabs), m.toastText)
 	}
@@ -174,7 +173,7 @@ func TestWizardOffersTheLastFetchedCopy(t *testing.T) {
 	w.step, w.plan.Branch = stepCreating, "new"
 	plan := workspace.Plan{Branch: "new", Dir: "/w/new"}
 
-	m.Update(wizardMsg{w: w, plan: plan, err: &workspace.FetchError{Repo: "a", Branch: "main", Err: errors.New("no key")}})
+	m.Update(core.Reply{Ev: core.WorktreesMadeMsg{Job: w.id, Plan: plan, Err: "fetch main of a: no key", Unfetched: true}})
 	if w.step != stepAgent || !w.unfetched {
 		t.Fatalf("a failed fetch offers the last fetched copy: step %d, unfetched %v", w.step, w.unfetched)
 	}
@@ -187,7 +186,7 @@ func TestWizardOffersTheLastFetchedCopy(t *testing.T) {
 	}
 
 	w.step = stepCreating
-	m.Update(wizardMsg{w: w, plan: plan, err: errors.New("disk full")})
+	m.Update(core.Reply{Ev: core.WorktreesMadeMsg{Job: w.id, Plan: plan, Err: "disk full"}})
 	if w.unfetched {
 		t.Fatal("only a failed fetch offers the last fetched copy")
 	}
@@ -352,7 +351,7 @@ func TestWizardSkipsPickingTheOnlyAgent(t *testing.T) {
 	plan := workspace.Plan{Branch: "x", Dir: "/w/x-app", Items: []workspace.PlanItem{{
 		Repo: workspace.Repo{Name: "app", Path: "/r/app"}, Path: "/w/x-app", Mode: "new", Base: "origin/main",
 	}}}
-	w.handlePlan(m, planMsg{plan: plan})
+	w.handlePlan(m, core.PlanMsg{Job: w.id, Plan: plan})
 	if w.step != stepCreating {
 		t.Fatalf("step = %d, want the worktree being made", w.step)
 	}
