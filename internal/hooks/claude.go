@@ -76,8 +76,21 @@ type ClaudeEvent struct {
 // it. Type is shell (Bash with run_in_background), monitor, subagent,
 // workflow, teammate, cloud session, MCP task, ….
 type ClaudeTask struct {
-	ID   string `json:"id"`
-	Type string `json:"type"`
+	ID          string `json:"id"`
+	Type        string `json:"type"`
+	Description string `json:"description"`
+}
+
+// artifactWatch is how claude 2.1.319 describes the watch it keeps on an
+// Artifact the agent published, for comments on it: a monitor with no end
+// and no process, which wakes the agent with a turn of its own when a
+// comment comes, as a cron does. It is not work going on.
+const artifactWatch = "live updates for artifact "
+
+// waitedOn says whether a task in background_tasks is work the agent waits
+// on: not the watch on an Artifact it published.
+func (t ClaudeTask) waitedOn() bool {
+	return !(t.Type == "monitor" && strings.HasPrefix(t.Description, artifactWatch))
 }
 
 // A Bash command or a monitor run in the background goes on after the
@@ -95,14 +108,14 @@ type ClaudeTask struct {
 // waitsInBackground says whether the agent's own Stop ev, with w its
 // subagents, ends a turn the agent has work going on after. Subagents
 // listed in background_tasks are left to w, which also knows when the
-// last of them is done; a session's crons (ScheduleWakeup, /loop) are not
-// work going on.
+// last of them is done; a session's crons (ScheduleWakeup, /loop), and the
+// watch on an Artifact the agent published, are not work going on.
 func waitsInBackground(ev ClaudeEvent, w SubagentWait) bool {
 	if w.Going > 0 {
 		return true
 	}
 	for _, t := range ev.BackgroundTasks {
-		if t.Type != "subagent" {
+		if t.Type != "subagent" && t.waitedOn() {
 			return true
 		}
 	}
@@ -119,6 +132,9 @@ func backgroundProcesses(ev ClaudeEvent, w SubagentWait) int {
 	}
 	n := 0
 	for _, t := range ev.BackgroundTasks {
+		if !t.waitedOn() {
+			continue
+		}
 		switch t.Type {
 		case "shell", "monitor":
 			n++
