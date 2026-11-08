@@ -20,9 +20,6 @@ repos.go: workspace.PlanAdd 1
 repos.go: workspace.ScanAll 1
 repos.go: workspace.Unpushed 1
 setup.go: workspace.WorktreesRoot 1
-skillcontext.go: exec.*Cmd.Output 1
-skillcontext.go: gitsafe.Command 1
-skillcontext.go: gitsafe.Dirs 1
 wizard.go: github.BranchPR 1
 wizard.go: github.FetchIssue 1
 wizard.go: github.ForkPR 1
