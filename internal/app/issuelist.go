@@ -47,11 +47,10 @@ func (d *issueList) setScope(m *Model) {
 		return
 	}
 	d.here = false
-	repos, err := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
-	if err != nil {
-		d.errs = []string{err.Error()}
+	if m.Scan.Err != "" {
+		d.errs = []string{m.Scan.Err}
 	}
-	d.scope = repos
+	d.scope = m.Scan.Repos
 }
 
 // fill shows what is known of the issues in scope, keeping the cursor on

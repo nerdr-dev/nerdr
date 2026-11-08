@@ -50,6 +50,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 	case core.ChangesMsg:
 		m.onCommitFiles(ev)
+	case core.ReposScannedMsg:
+		return toCore(m.rescanned())
+	case core.RepoMadeMsg:
+		return toCore(m.repoMade(ev))
 	case core.CloseInfoMsg:
 		m.onCloseInfo(ev)
 	case core.BranchDoneMsg:

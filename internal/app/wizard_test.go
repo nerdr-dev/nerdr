@@ -324,6 +324,7 @@ func TestWizardForARepoClosesOnEsc(t *testing.T) {
 func TestNewRepoPicksFromTheRepositoriesFirst(t *testing.T) {
 	m := tabsModel(t)
 	m.Cfg.RepoDirs = []string{m.Root}
+	scanned(m)
 	m.openNewRepoDialog()
 	if w, ok := m.dialog.(*wizard); !ok || w.repoDir == "" || w.step != stepNewRepo {
 		t.Fatalf("with no repositories it should open at the new one's form: %T", m.dialog)
@@ -333,6 +334,7 @@ func TestNewRepoPicksFromTheRepositoriesFirst(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(m.Root, "app", ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	scanned(m)
 	m.openNewRepoDialog()
 	if w, ok := m.dialog.(*wizard); !ok || w.step != stepRepos || len(w.repos) != 1 {
 		t.Fatalf("with a repository it should open at the list: %T", m.dialog)

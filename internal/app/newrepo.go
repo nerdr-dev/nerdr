@@ -4,8 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
+	"github.com/nerdr-dev/nerdr/internal/core"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,8 +12,9 @@ import (
 )
 
 // The new-tab dialog can make a repository to work on, or clone one, into
-// the folder it lists repositories from (workspace.NewRepoDir): started in
-// an empty folder, there is otherwise nothing to pick.
+// the folder it lists repositories from (core.RepoScan.NewRepoDir):
+// started in an empty folder, there is otherwise nothing to pick. Core
+// makes it, on its own disk.
 
 // newRepoForm is the new-tab dialog's form for a repository to make or
 // clone.
@@ -27,16 +27,8 @@ type newRepoForm struct {
 	onGitHub bool
 	field    int
 	gh       bool
-}
-
-// newRepoMsg is what became of making or cloning a repository. path is
-// set when there is one to pick, warning when something after that went
-// wrong (its first commit, its copy on GitHub).
-type newRepoMsg struct {
-	w       *wizard
-	path    string
-	warning string
-	err     error
+	// job is the id of the request to make it, while it is being made.
+	job string
 }
 
 // openNewRepo opens the form, to make a repository or, with clone, to
@@ -89,61 +81,39 @@ func (w *wizard) newRepoKey(m *Model, msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
-// makeRepo makes or clones the repository the form says, in the
-// background.
+// makeRepo has core make or clone the repository the form says.
 func (w *wizard) makeRepo(m *Model) tea.Cmd {
-	f := w.newRepo
-	dir, value := w.repoDir, strings.TrimSpace(f.input.Value())
+	f := &w.newRepo
+	value := strings.TrimSpace(f.input.Value())
 	w.err = ""
-	if f.clone {
-		name, url, onGitHub, err := workspace.CloneSource(value)
-		if err == nil {
-			err = workspace.CheckNewRepo(dir, name)
-		}
-		if err != nil {
-			w.err = err.Error()
-			return nil
-		}
-		w.busy = "cloning " + value + "…"
-		return func() tea.Msg {
-			var p string
-			var err error
-			if onGitHub && f.gh {
-				p, err = github.CloneRepo(dir, value, name)
-			} else {
-				p, err = workspace.CloneRepo(dir, name, url)
-			}
-			return newRepoMsg{w: w, path: p, err: err}
-		}
-	}
-	if err := workspace.CheckNewRepo(dir, value); err != nil {
-		w.err = err.Error()
-		return nil
-	}
+	f.job = core.NewJobID()
 	w.busy = "making " + value + "…"
-	onGitHub := f.onGitHub && f.gh
-	return func() tea.Msg {
-		p, err := workspace.InitRepo(dir, value)
-		if err != nil {
-			// A repository without its first commit is still one to
-			// pick; a worktree of it says what is missing.
-			return newRepoMsg{w: w, path: p, err: err}
-		}
-		if onGitHub {
-			if _, err := github.CreateRepo(p); err != nil {
-				return newRepoMsg{w: w, path: p, warning: "made " + filepath.Base(p) + " here, but not on GitHub: " + err.Error()}
-			}
-		}
-		return newRepoMsg{w: w, path: p}
+	if f.clone {
+		w.busy = "cloning " + value + "…"
 	}
+	return m.do(core.MakeRepo{Job: f.job, Name: value, Clone: f.clone, OnGitHub: f.onGitHub && f.gh})
+}
+
+// repoMade takes the repository made or cloned: it is listed, and
+// picked, in the dialog that asked for it.
+func (m *Model) repoMade(msg core.RepoMadeMsg) tea.Cmd {
+	if w, ok := m.dialog.(*wizard); ok && w.newRepo.job == msg.Job {
+		return w.handleNewRepo(m, msg)
+	}
+	if msg.Path != "" {
+		m.toast("made " + msg.Path)
+	} else if msg.Err != "" {
+		m.toast(msg.Err)
+	}
+	return nil
 }
 
 // handleNewRepo takes the repository made or cloned: it is listed, and
 // picked.
-func (w *wizard) handleNewRepo(m *Model, msg newRepoMsg) tea.Cmd {
-	w.busy = ""
-	if msg.path == "" {
-		w.err = msg.err.Error()
+func (w *wizard) handleNewRepo(m *Model, msg core.RepoMadeMsg) tea.Cmd {
+	w.busy, w.newRepo.job = "", ""
+	if msg.Path == "" {
+		w.err = msg.Err
 		return nil
 	}
 	w.newRepo.input.Blur()
@@ -151,20 +121,20 @@ func (w *wizard) handleNewRepo(m *Model, msg newRepoMsg) tea.Cmd {
 	w.scan(m)
 	w.picked = map[int]bool{}
 	for i, r := range w.repos {
-		if filepath.Clean(r.Path) == filepath.Clean(msg.path) {
+		if filepath.Clean(r.Path) == filepath.Clean(msg.Path) {
 			w.picked[i] = true
 			w.cursor = i
 		}
 	}
-	w.err = msg.warning
-	if msg.err != nil {
-		w.err = msg.err.Error()
+	w.err = msg.Warning
+	if msg.Err != "" {
+		w.err = msg.Err
 	}
 	if len(w.picked) == 0 && w.err == "" {
-		w.err = msg.path + " is not among the repositories listed here"
+		w.err = msg.Path + " is not among the repositories listed here"
 	}
 	if w.err == "" {
-		m.toast("made " + msg.path)
+		m.toast("made " + msg.Path)
 	}
 	return nil
 }

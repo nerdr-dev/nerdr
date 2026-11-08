@@ -255,12 +255,7 @@ func checkedOut(e core.PREntry) string {
 // it in, with the other repositories' worktrees beside it when the branch
 // spans several, or the worktree alone when nerdr did not make it.
 func (m *Model) worktreeGroup(e core.PREntry) workspace.Group {
-	open := map[string]bool{}
-	for _, t := range m.Tabs {
-		open[t.Dir] = true
-	}
-	repos, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
-	for _, g := range workspace.Existing(m.WtRoot, repos, open) {
+	for _, g := range m.ClosedGroups() {
 		for _, w := range g.Worktrees {
 			if filepath.Clean(w.Path) == filepath.Clean(e.Wt) {
 				return g

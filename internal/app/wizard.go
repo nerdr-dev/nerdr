@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -86,6 +87,10 @@ type wizard struct {
 	// starts from it as it was last fetched.
 	unfetched bool
 
+	// newIfNone is set when the dialog opened for a new repository: it
+	// goes on to the form for one once core has found none to pick.
+	newIfNone bool
+
 	err  string
 	busy string
 }
@@ -166,11 +171,6 @@ func (m *Model) openWizard() tea.Cmd {
 	w := &wizard{picked: map[int]bool{}}
 	w.scan(m)
 	w.agents = agents.Available(m.Cfg.Agents)
-	w.repoDir = workspace.NewRepoDir(m.Root, m.Cfg.RepoDirs)
-	// Starting inside a repository: that is the one to work on.
-	if len(w.repos) == 1 {
-		w.picked[0] = true
-	}
 	w.branch = textinput.New()
 	w.branch.Prompt = "branch: "
 	w.branch.Placeholder = "feature/my-change, or #123 for a GitHub issue"
@@ -190,34 +190,81 @@ func (m *Model) openWizard() tea.Cmd {
 	w.task.SetHeight(4)
 	w.task.Blur()
 	m.dialog = w
-	return nil
+	return m.do(core.ScanRepos{})
 }
 
 // openNewRepoDialog opens the new-tab dialog for the repository list's
 // "+ new repo": at the repositories there are to pick from, which offers
 // making or cloning one too, or, with none, at the form for a new one.
-// Where there is no folder to make one in, the dialog says why.
+// Where there is no folder to make one in, the dialog says why. Whether
+// there are any is as core last found, and found again now.
 func (m *Model) openNewRepoDialog() tea.Cmd {
 	cmd := m.openWizard()
-	if w, ok := m.dialog.(*wizard); ok && w.repoDir != "" && len(w.repos) == 0 {
-		return tea.Batch(cmd, w.openNewRepo(false, !m.NoGh))
+	if w, ok := m.dialog.(*wizard); ok {
+		w.newIfNone = true
+		return tea.Batch(cmd, w.toNewRepo(m))
 	}
 	return cmd
 }
 
-// scan finds the repositories to pick from, and the worktrees of theirs
-// no tab has open.
+// toNewRepo goes on to the form for a new repository when the dialog was
+// opened for one, and core has looked and found none to pick.
+func (w *wizard) toNewRepo(m *Model) tea.Cmd {
+	if !w.newIfNone || w.step != stepRepos || m.Scan.At.IsZero() || w.repoDir == "" || len(w.repos) > 0 {
+		return nil
+	}
+	w.newIfNone = false
+	return w.openNewRepo(false, !m.NoGh)
+}
+
+// scan has the repositories to pick from, and the worktrees of theirs no
+// tab has open, as core last found them; see core.RepoScan. Those picked
+// stay picked.
 func (w *wizard) scan(m *Model) {
-	repos, err := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
-	w.repos = repos
-	if err != nil {
-		w.err = err.Error()
+	picked := map[string]bool{}
+	for _, r := range w.pickedRepos() {
+		picked[filepath.Clean(r.Path)] = true
 	}
-	open := map[string]bool{}
-	for _, t := range m.Tabs {
-		open[t.Dir] = true
+	w.repos, w.err = m.Scan.Repos, m.Scan.Err
+	for p := range picked {
+		w.repoListed(p)
 	}
-	w.existing = workspace.Existing(m.WtRoot, repos, open)
+	w.picked = map[int]bool{}
+	for i, r := range w.repos {
+		if picked[filepath.Clean(r.Path)] {
+			w.picked[i] = true
+		}
+	}
+	// Starting inside a repository: that is the one to work on.
+	if len(w.repos) == 1 {
+		w.picked[0] = true
+	}
+	w.existing = m.ClosedGroups()
+	w.repoDir = m.Scan.NewRepoDir
+	w.cursor = min(w.cursor, max(w.rows()-1, 0))
+}
+
+// repoListed is the row of the repository at path, added when core's last
+// look did not find it: one a menu names is there to pick, looked for
+// since or not.
+func (w *wizard) repoListed(path string) int {
+	for i, r := range w.repos {
+		if filepath.Clean(r.Path) == filepath.Clean(path) {
+			return i
+		}
+	}
+	w.repos = append(slices.Clone(w.repos), workspace.Repo{Name: filepath.Base(path), Path: filepath.Clean(path)})
+	return len(w.repos) - 1
+}
+
+// rescanned has the dialog offer the repositories core found again,
+// while they are being picked.
+func (w *wizard) rescanned(m *Model) tea.Cmd {
+	if w.step != stepRepos {
+		return nil
+	}
+	w.scan(m)
+	return w.toNewRepo(m)
 }
 
 // noAgentHint says what to do when no agent is found, the first thing the
@@ -241,16 +288,12 @@ func (m *Model) openWizardFor(repo string) tea.Cmd {
 	if !ok {
 		return cmd
 	}
-	for i, r := range w.repos {
-		if filepath.Clean(r.Path) == filepath.Clean(repo) {
-			w.picked = map[int]bool{i: true}
-			w.cursor = i
-			w.step = stepBranch
-			w.repoGiven = true
-			return tea.Batch(cmd, w.focusBranch(), w.loadPRs(m))
-		}
-	}
-	return cmd
+	i := w.repoListed(repo)
+	w.picked = map[int]bool{i: true}
+	w.cursor = i
+	w.step = stepBranch
+	w.repoGiven = true
+	return tea.Batch(cmd, w.focusBranch(), w.loadPRs(m))
 }
 
 // openWizardOn opens the dialog for a new tab whose branch starts on top

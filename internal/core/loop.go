@@ -328,6 +328,10 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return ev.Run(m), true
 	case Reply:
 		return m.Tell(ev.Ev), true
+	case repoMadeMsg:
+		return m.onRepoMade(ev), true
+	case RepoScanMsg:
+		return m.OnRepoScan(ev), true
 	case GhMsg:
 		m.NoGh = !ev.Has
 		return nil, true
