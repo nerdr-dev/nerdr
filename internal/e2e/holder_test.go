@@ -277,7 +277,7 @@ func TestANerdrWithNoCoreInTheFolder(t *testing.T) {
 	case <-time.After(15 * time.Second):
 		t.Fatalf("the second nerdr did not end; screen:\n%s", second.screen())
 	}
-	if scr := second.screen(); !strings.Contains(scr, "with no core of its own") || !strings.Contains(scr, "Quit it there first") {
+	if scr := second.screen(); !strings.Contains(scr, "no core of it answers here") || !strings.Contains(scr, "quit it there first") {
 		t.Errorf("not told to quit the other:\n%s", scr)
 	}
 	if took := time.Since(started); took > 10*time.Second {

@@ -233,8 +233,9 @@ func waitForLock(root, sock, keyFile string, hello attach.Hello) (*attach.Conn, 
 			return conn, w, err
 		}
 		if time.Now().After(deadline) {
-			return nil, attach.Welcome{}, fmt.Errorf("nerdr already runs in %s with no core of its own: an older nerdr, "+
-				"or one started with %s=0. Quit it there first, then start this one", root, core.EnvHolder)
+			return nil, attach.Welcome{}, fmt.Errorf("another nerdr has the session of %s, and no core of it answers here. "+
+				"It may be one with no core, from before it or started with %s=0: quit it there first. "+
+				"Or it is a core still starting, or one started with another XDG_RUNTIME_DIR: try again", root, core.EnvHolder)
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
