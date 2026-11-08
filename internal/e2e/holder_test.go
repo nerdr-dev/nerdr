@@ -3,6 +3,7 @@
 package e2e
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -339,5 +340,97 @@ func TestAHolderThatCrashes(t *testing.T) {
 	h = start(t, bin, root, env)
 	h.waitTabBar("1:crash", 15*time.Second)
 	h.waitFor("resumed conversation", 10*time.Second)
+	endClient(t, h, "q")
+}
+
+// TestAnUpdateUnderARunningAgent: nerdr is updated, as Homebrew does it,
+// while an agent runs: the link nerdr was started by is moved to the new
+// version, and the old one's file removed. The agent keeps the NERDR_BIN
+// and HERDR_BIN_PATH it was given, the link, and its hooks and nerdr's
+// commands still reach the core: the old one, and the one the holder
+// starts after it is killed, from the new file.
+func TestAnUpdateUnderARunningAgent(t *testing.T) {
+	built := build(t)
+	root, scratch := setup(t)
+	cellar := filepath.Join(scratch, "cellar")
+	install := func(version string) string {
+		t.Helper()
+		p := filepath.Join(cellar, version, "nerdr")
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		b, err := os.ReadFile(built)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, b, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		return p
+	}
+	link := filepath.Join(scratch, "bin", "nerdr")
+	_ = os.MkdirAll(filepath.Dir(link), 0o755)
+	if err := os.Symlink(install("1"), link); err != nil {
+		t.Fatal(err)
+	}
+	env := holderEnv(t, link, scratch)
+	fake, _ := filepath.Abs("fakeagent.sh")
+	h := start(t, link, root, env)
+	newCrashTab(h)
+	agent := pgrep("-f", fake)
+	if len(agent) != 1 {
+		t.Fatalf("agents %v", agent)
+	}
+	environ := readFile(fmt.Sprintf("/proc/%d/environ", agent[0]))
+	for _, name := range []string{"NERDR_BIN", "HERDR_BIN_PATH"} {
+		if !strings.Contains(environ, "\x00"+name+"="+link+"\x00") {
+			t.Fatalf("%s is not the link nerdr was started by:\n%s", name, strings.ReplaceAll(environ, "\x00", "\n"))
+		}
+	}
+
+	// The update: the link moved to the new version, the old one gone.
+	moved := link + ".new"
+	if err := os.Symlink(install("2"), moved); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(moved, link); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(cellar, "1")); err != nil {
+		t.Fatal(err)
+	}
+	check := func(state string) {
+		t.Helper()
+		h.keys("hook-" + state + "\r")
+		h.waitFor("reported "+state, 5*time.Second)
+		h.keys("bin-status-" + state + "\r")
+		h.waitFor("status "+state+" set", 5*time.Second)
+		h.waitFor("set by NERDR_BIN "+state, 5*time.Second) // shown above the agent
+	}
+	check("blocked")
+
+	// The core killed: the holder starts it again by the link, the new
+	// nerdr, and the agent's hooks reach that one.
+	holder := pgrep("-f", "^"+link+" holder -- ")
+	if len(holder) != 1 {
+		t.Fatalf("holders %v", holder)
+	}
+	core := pgrep("-P", strconv.Itoa(holder[0]), "-f", " core$")
+	if len(core) != 1 {
+		t.Fatalf("cores %v", core)
+	}
+	time.Sleep(2500 * time.Millisecond) // the screen goes to the holder
+	if err := syscall.Kill(core[0], syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("connected to nerdr's core again", 15*time.Second)
+	again := pgrep("-P", strconv.Itoa(holder[0]), "-f", " core$")
+	if len(again) != 1 || again[0] == core[0] {
+		t.Fatalf("core not started again: %v", again)
+	}
+	if exe, _ := os.Readlink(fmt.Sprintf("/proc/%d/exe", again[0])); exe != filepath.Join(cellar, "2", "nerdr") {
+		t.Errorf("the core started again runs %s", exe)
+	}
+	check("idle")
 	endClient(t, h, "q")
 }

@@ -38,6 +38,12 @@ handle() {
         --state "$state" --agent-session-id "sess-$state" --seq "$(date +%s)$(printf %04d "$n")" \
         && echo "reported $state" || echo "report failed"
       ;;
+    bin-status-*)
+      # What the nerdr-tools skill has an agent do: run the nerdr NERDR_BIN
+      # names, as it was given; see TestAnUpdateUnderARunningAgent.
+      n="${line#bin-status-}"
+      "$NERDR_BIN" status "set by NERDR_BIN $n" >/dev/null 2>&1 && echo "status $n set" || echo "status $n failed"
+      ;;
     from)
       # Which nerdr's environment it was started with; see
       # TestAgentsTakeTheClientsEnv.
