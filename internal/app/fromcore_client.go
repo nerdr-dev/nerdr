@@ -58,6 +58,12 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.onRepoChecked(ev)
 	case core.PlanMsg, core.IssueMsg, core.SetupProgressMsg, core.WorktreesMadeMsg:
 		return toCore(m.wizardAnswer(ev))
+	case core.CheckoutMsg, core.ForkFetchedMsg:
+		return toCore(m.prAnswer(ev))
+	case core.RepoPRsMsg:
+		m.onWizardPRs(ev)
+	case core.PRFetchedMsg:
+		m.onPRFetched(ev)
 	case core.CloseInfoMsg:
 		m.onCloseInfo(ev)
 	case core.BranchDoneMsg:

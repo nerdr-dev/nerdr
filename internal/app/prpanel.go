@@ -1,6 +1,7 @@
 package app
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -272,7 +272,7 @@ func (m *Model) allPRsBody(w, h int) []string {
 func (m *Model) prScope(all bool) string {
 	whose, n := "Your", len(m.PRWatch.Repos)
 	if all {
-		whose, n = "Everyone's", len(m.prAll.repos)
+		whose, n = "Everyone's", len(m.PRAll.Repos)
 	}
 	home, _ := os.UserHomeDir()
 	where := []string{core.TildePath(m.Root, home)}
@@ -348,8 +348,15 @@ func (m *Model) openPRInPanel(e core.PREntry) tea.Cmd {
 	return tea.Batch(cmd, shown, m.syncPRPanel(), m.resize())
 }
 
-// prAskMsg is a message for the agent of the tab on a PR's branch, made in
-// the background: the PR fetched afresh, a build log read.
+// prAsk is a message for the agent of the tab on a PR's branch, being
+// made: core fetches the PR afresh, and reads the build log.
+type prAsk struct {
+	t    *core.Tab
+	what string // what the message asks, for the bar
+	fix  bool
+}
+
+// prAskMsg is the message made, or why it could not be.
 type prAskMsg struct {
 	t    *core.Tab
 	key  string
@@ -375,13 +382,12 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		return nil
 	}
 	key := core.PrKey(e.Repo.Path, e.PR.Number)
-	if m.prAsking[key] {
+	if _, ok := m.prAsking[key]; ok {
 		return nil
 	}
 	if m.prAsking == nil {
-		m.prAsking = map[string]bool{}
+		m.prAsking = map[string]prAsk{}
 	}
-	m.prAsking[key] = true
 	dir := e.Repo.Path
 	for _, w := range t.Worktrees {
 		if filepath.Clean(w.Repo) == filepath.Clean(e.Repo.Path) {
@@ -393,21 +399,28 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		what = "fix #" + strconv.Itoa(e.PR.Number) + "'s build"
 		m.toast("reading the build log of #" + strconv.Itoa(e.PR.Number) + "…")
 	}
-	return func() tea.Msg {
-		msg := prAskMsg{t: t, key: key, what: what}
-		pr, err := github.FetchPR(dir, e.PR.Number)
-		switch {
-		case err != nil:
-			msg.err = err
-		case fix:
-			msg.text, msg.err = review.FixMessage(dir, pr)
-		default:
-			if msg.text = review.ReplyMessage(pr); msg.text == "" {
-				msg.err = fmt.Errorf("no reviews or comments with words on #%d", pr.Number)
-			}
-		}
-		return msg
+	m.prAsking[key] = prAsk{t: t, what: what, fix: fix}
+	return m.do(core.FetchPR{Job: key, Dir: dir, Number: e.PR.Number, Logs: fix, Limit: review.LogLimit})
+}
+
+// onPRFetched makes the message of the PR asked for by its key.
+func (m *Model) onPRFetched(msg core.PRFetchedMsg) {
+	a, ok := m.prAsking[msg.Job]
+	if !ok {
+		return
 	}
+	out := prAskMsg{t: a.t, key: msg.Job, what: a.what}
+	switch {
+	case msg.Err != "":
+		out.err = errors.New(msg.Err)
+	case a.fix:
+		out.text, out.err = review.FixMessage(msg.PR, msg.Logs)
+	default:
+		if out.text = review.ReplyMessage(msg.PR); out.text == "" {
+			out.err = fmt.Errorf("no reviews or comments with words on #%d", msg.PR.Number)
+		}
+	}
+	m.onPRAsk(out)
 }
 
 // onPRAsk puts a message askAboutPR made in its tab's messages.

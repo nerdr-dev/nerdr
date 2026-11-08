@@ -81,6 +81,9 @@ type Core struct {
 	LastBusy time.Time
 	// PRWatch is the watching of your pull requests; see prwatch.go.
 	PRWatch PRWatchState
+	// PRAll is everyone's pull requests, while a client shows them; see
+	// prall.go.
+	PRAll PRAll
 	// Scan is the last look at the repositories; see reposcan.go.
 	Scan RepoScan
 	// NoGh is set when the gh CLI was not found, the last time core

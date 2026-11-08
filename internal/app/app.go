@@ -220,7 +220,6 @@ type Model struct {
 	lastWheelStep, lastWheel time.Time
 	wheelHeld                bool
 
-	prAll prAll // everyone's pull requests, while the list shows them; see prall.go
 	// prPanel is all your pull requests as the review panel's F2 shows
 	// them, and prPanelShown whether it did at the last look; see
 	// prpanel.go.
@@ -238,7 +237,10 @@ type Model struct {
 	issuePanelShown bool
 	// prAsking is the PRs a message for an agent is being made for, by
 	// prKey, so a second f does not make another.
-	prAsking map[string]bool
+	prAsking map[string]prAsk
+	// prPick is the id of what core is asked for a PR picked in F2's
+	// list, while it is: where it is checked out, a fork's fetched.
+	prPick string
 
 	// sideWidth is the columns the sidebar's edge was dragged to, its
 	// frames included; 0 for as wide as its names need.
@@ -593,21 +595,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 
 	case review.EditMsg:
 		return m.openEditor(msg)
-
-	case wizardPRsMsg:
-		m.onWizardPRs(msg)
-		return nil
-
-	case forkFetchedMsg:
-		return m.onForkFetched(msg)
-
-	case prAllMsg:
-		m.onPRAll(msg)
-		return nil
-
-	case prAskMsg:
-		m.onPRAsk(msg)
-		return nil
 
 	case review.AgentMsg:
 		return m.askAgent(msg)
