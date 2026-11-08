@@ -163,17 +163,37 @@ func (s *Screen) Resize(w, h int) {
 	s.resize(w, h)
 }
 
-// resize reports whether the size changed. s.mu is held.
+// resize reports whether the size changed. A panic in the emulator, as
+// in write, is not let bring nerdr down: the screen is marked incomplete.
+// s.mu is held.
 func (s *Screen) resize(w, h int) bool {
 	w, h = max(w, 10), max(h, 3)
 	if s.emu.Width() == w && s.emu.Height() == h {
 		return false
 	}
-	s.emu.Resize(w, h)
+	if !s.tryResize(w, h) {
+		s.incomplete = true
+		s.tryWrite([]byte{0x18})
+	}
 	s.drawGen++
 	s.gen++
 	return true
 }
+
+// tryResize reports whether the emulator took the new size without a
+// panic.
+func (s *Screen) tryResize(w, h int) (ok bool) {
+	defer func() {
+		if recover() != nil {
+			ok = false
+		}
+	}()
+	emuResize(s.emu, w, h)
+	return true
+}
+
+// emuResize is how the emulator is resized; a test makes it panic.
+var emuResize = (*vt.Emulator).Resize
 
 func (s *Screen) setMode(m ansi.Mode, on bool) {
 	if s.setMouseMode(m, on) {

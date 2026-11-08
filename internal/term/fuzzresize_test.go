@@ -2,7 +2,10 @@ package term
 
 import (
 	"io"
+	"strings"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/vt"
 )
 
 // fuzzScreen is a screen whose replies are read and dropped, as a pane
@@ -79,4 +82,25 @@ func FuzzScreenResize(f *testing.F) {
 		_ = s.Frame(0)
 		_ = s.Snapshot()
 	})
+}
+
+// TestAResizeThatPanics: a panic in the emulator while resizing, as in
+// Feed, does not bring nerdr down: the screen is marked incomplete, and
+// takes output and draws after.
+func TestAResizeThatPanics(t *testing.T) {
+	s := fuzzScreen(t, 80, 24)
+	s.Feed([]byte("before\r\n"))
+	was := emuResize
+	emuResize = func(*vt.Emulator, int, int) { panic("resize") }
+	s.Resize(40, 10)
+	emuResize = was
+	if !s.Incomplete() {
+		t.Error("not marked incomplete")
+	}
+	s.Resize(50, 12)
+	s.Feed([]byte("after\r\n"))
+	_ = s.Frame(0)
+	if snap := s.Snapshot(); !strings.Contains(snap.Screen, "after") {
+		t.Errorf("no output after: %q", snap.Screen)
+	}
 }
