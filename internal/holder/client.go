@@ -37,6 +37,9 @@ type reply struct {
 
 var _ spawn.Spawner = (*Client)(nil)
 
+// Gone is closed once the holder is gone: the socket to it has ended.
+func (cl *Client) Gone() <-chan struct{} { return cl.gone }
+
 // ErrGone is what a Client's calls return once the holder is gone.
 var ErrGone = errors.New("holder: gone")
 

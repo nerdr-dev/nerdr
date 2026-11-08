@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -23,6 +24,10 @@ import (
 const roleArg = "holder-test-role"
 
 func init() {
+	// The watch of a holder this binary plays, started as it, as nerdr is.
+	if len(os.Args) == 3 && os.Args[1] == "holder" && os.Args[2] == watchArg {
+		os.Exit(watchMain())
+	}
 	if len(os.Args) > 2 && os.Args[1] == roleArg {
 		os.Exit(playRole(os.Args[2], os.Args[3:]))
 	}
@@ -58,6 +63,8 @@ func playRole(role string, args []string) int {
 		return coreCannotStart()
 	case "core-hangup":
 		return coreWaitsForAHangup()
+	case "core-orphans":
+		return coreLeavesPrograms()
 	case "agent":
 		return agentReachesFor(args)
 	}
@@ -441,4 +448,100 @@ func TestAHangupEndsTheHolder(t *testing.T) {
 	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
 		t.Errorf("program %d left running: %v", pid, err)
 	}
+}
+
+// coreLeavesPrograms starts programs that would outlive a holder that
+// crashed but for its watch: one with no terminal and one on a terminal,
+// each ignoring hangups and with a child in its group. It says the
+// holder's pid and theirs, then waits to be killed with the holder.
+func coreLeavesPrograms() int {
+	cl, err := FromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	pids := os.Getenv("TEST_PIDS")
+	body := `trap "" HUP TERM; sleep 60 & echo $$ $! >> ` + pids + `; wait`
+	for _, pty := range []bool{false, true} {
+		if _, err := cl.Spawn(spawn.Spec{Argv: []string{"sh", "-c", body}, PTY: pty, W: 80, H: 24}); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+	}
+	fmt.Printf("holder %d\n", cl.Pid())
+	signal.Ignore(syscall.SIGHUP)
+	// As nerdr's core does, it ends once its holder is gone.
+	select {
+	case <-cl.Gone():
+	case <-time.After(time.Minute):
+	}
+	return 0
+}
+
+// A holder that crashes takes its programs with it: its watch kills their
+// groups, with what they started, terminal or none, hangups ignored.
+func TestAHolderThatCrashesLeavesNoProgram(t *testing.T) {
+	pids := filepath.Join(t.TempDir(), "pids")
+	cmd := exec.Command(self(), roleArg, "holder", "core-orphans")
+	cmd.Env = append(os.Environ(), "TEST_PIDS="+pids)
+	cmd.Stderr = os.Stderr
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer cmd.Process.Kill()
+	var holderPid int
+	if _, err := fmt.Fscanf(out, "holder %d\n", &holderPid); err != nil || holderPid != cmd.Process.Pid {
+		t.Fatalf("holder %d, started %d: %v", holderPid, cmd.Process.Pid, err)
+	}
+	var progs []int
+	for deadline := time.Now().Add(5 * time.Second); len(progs) < 4 && time.Now().Before(deadline); time.Sleep(20 * time.Millisecond) {
+		b, _ := os.ReadFile(pids)
+		progs = progs[:0]
+		for _, f := range strings.Fields(string(b)) {
+			n, _ := strconv.Atoi(f)
+			progs = append(progs, n)
+		}
+	}
+	if len(progs) != 4 {
+		t.Fatalf("programs %v", progs)
+	}
+	time.Sleep(2 * watchEvery) // told to the watch
+	_ = cmd.Process.Kill()     // the crash
+	_ = cmd.Wait()
+	for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		var left []int
+		for _, pid := range progs {
+			if alive(pid) {
+				left = append(left, pid)
+			}
+		}
+		if len(left) == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			for _, pid := range left {
+				_ = syscall.Kill(pid, syscall.SIGKILL)
+			}
+			t.Fatalf("still running after the holder crashed: %v of %v", left, progs)
+		}
+	}
+}
+
+// alive reports whether pid is a process, and not one ended that waits to
+// be reaped.
+func alive(pid int) bool {
+	if syscall.Kill(pid, 0) != nil {
+		return false
+	}
+	b, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return true // no /proc: taken as there
+	}
+	s := string(b)
+	i := strings.LastIndexByte(s, ')')
+	return i < 0 || !strings.HasPrefix(s[i+1:], " Z")
 }

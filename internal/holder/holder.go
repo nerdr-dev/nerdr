@@ -36,6 +36,9 @@ type Holder struct {
 	// coreArgv is the core the holder starts, corePid the one running.
 	coreArgv []string
 	corePid  int
+	// watch kills the programs' groups should the holder crash; nil in a
+	// holder in another's process. See watch.go.
+	watcher *watch
 }
 
 // prog is one program and what is kept of it.
@@ -302,6 +305,7 @@ func (h *Holder) spawn(m *Msg, stdin []byte, files []*os.File) (int, error) {
 	h.progs[p.id] = p
 	h.order = append(h.order, p.id)
 	h.run(p)
+	h.tellWatch() // watched from the start
 	h.mu.Unlock()
 	go h.watch(p)
 	return p.pid, nil
@@ -773,6 +777,9 @@ func (h *Holder) shutdown(grace time.Duration) {
 		}
 	}
 	h.progs, h.order = map[string]*prog{}, nil
+	// None left: the watch kills nothing as the holder ends, not a group
+	// whose id another has since.
+	h.tellWatch()
 }
 
 // sender sends a core what the holder has for it, in order, from one

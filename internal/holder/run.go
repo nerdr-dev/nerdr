@@ -49,10 +49,16 @@ func Run(core []string) error {
 }
 
 func (h *Holder) serveCores(core []string) error {
+	wt, err := startWatch()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%s nerdr holder: no watch, so a crash of the holder may leave programs running: %v\n", time.Now().Format(time.TimeOnly), err)
+	}
 	h.mu.Lock()
 	h.coreArgv = core
 	h.upgrade = h.doUpgrade
+	h.watcher = wt
 	h.mu.Unlock()
+	h.keepWatch()
 	h.onHangup()
 	return h.keepCoreUp(core, nil)
 }
@@ -219,6 +225,8 @@ func Main(args []string) int {
 	closeInheritedOnExec()
 	var err error
 	switch {
+	case len(args) == 1 && args[0] == watchArg:
+		return watchMain()
 	case len(args) == 2 && args[0] == resumeArg:
 		fd, aerr := strconv.Atoi(args[1])
 		if aerr != nil {

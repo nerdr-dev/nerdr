@@ -96,6 +96,9 @@ type Bye struct {
 const (
 	ByeTakenOver = "another nerdr connected to this core and took over"
 	ByeQuit      = "nerdr quit"
+	// ByeHolderGone: the holder crashed, and its programs ended with it;
+	// the core does not come back.
+	ByeHolderGone = "nerdr's holder ended, and the agents with it: start nerdr again to resume them"
 )
 
 // RefusedError is a connection the core refused.
