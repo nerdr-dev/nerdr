@@ -35,15 +35,10 @@ type repoDialog struct {
 	// change is what was picked, once git has been asked about it; the
 	// dialog then asks whether to go ahead.
 	change *core.RepoChange
-	busy   string
-	err    string
-}
-
-// repoCheckedMsg is what git said about the change d asked for.
-type repoCheckedMsg struct {
-	d      *repoDialog
-	change *core.RepoChange
-	err    error
+	// job is the id of the check of the change, while git is asked.
+	job  string
+	busy string
+	err  string
 }
 
 // openRepos opens the dialog for the active tab's repositories.
@@ -181,31 +176,22 @@ func (d *repoDialog) check(m *Model) tea.Cmd {
 		m.dialog = nil
 		return nil
 	}
-	nest := len(add) > 0 && len(t.Worktrees) == 1 && core.SamePath(t.Worktrees[0].Path, t.Dir)
-	dir, branch := t.Dir, t.Worktrees[0].Branch
-	d.busy, d.err = "checking…", ""
-	return func() tea.Msg {
-		c := &core.RepoChange{Remove: remove, Nest: nest}
-		if len(add) > 0 {
-			plan, err := workspace.PlanAdd(dir, branch, add)
-			if err != nil {
-				return repoCheckedMsg{d: d, err: err}
-			}
-			c.Add = plan
-		}
-		c.Dirty, c.Unpushed = workspace.Dirty(remove), workspace.Unpushed(remove)
-		return repoCheckedMsg{d: d, change: c}
-	}
+	d.busy, d.err, d.job = "checking…", "", core.NewJobID()
+	return m.do(core.CheckRepoChange{Job: d.job, T: m.Ref(t), Add: add, Remove: remove})
 }
 
-// onChecked takes what git said, and asks whether to go ahead.
-func (d *repoDialog) onChecked(msg repoCheckedMsg) {
-	d.busy = ""
-	if msg.err != nil {
-		d.err = msg.err.Error()
+// onRepoChecked takes what git said, and asks whether to go ahead.
+func (m *Model) onRepoChecked(msg core.RepoCheckedMsg) {
+	d, ok := m.dialog.(*repoDialog)
+	if !ok || d.job != msg.Job {
 		return
 	}
-	d.change = msg.change
+	d.busy, d.job = "", ""
+	if msg.Err != "" {
+		d.err = msg.Err
+		return
+	}
+	d.change = msg.Change
 }
 
 // apply has core make the change, once the user has allowed the new

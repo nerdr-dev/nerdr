@@ -628,12 +628,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return nil
 
-	case repoCheckedMsg:
-		if m.dialog == msg.d {
-			msg.d.onChecked(msg)
-		}
-		return nil
-
 	case closeShowMsg:
 		if m.dialog == msg.c {
 			msg.c.shown = true
