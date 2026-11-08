@@ -64,39 +64,46 @@ func checkedCore(t *testing.T, body string) (*Core, *Tab, *toldClient) {
 	return c, tb, cl
 }
 
-// check starts tb's agent and runs the check that comes of it, as the
-// loop would, and is the notices it led to.
-func check(t *testing.T, c *Core, tb *Tab, cl *toldClient) []string {
+// check starts tb's agent, which runs the check first, as the loop
+// would, and is the notices it led to; started is whether the agent was.
+func check(t *testing.T, c *Core, tb *Tab, cl *toldClient) (notes []string, started bool) {
 	t.Helper()
 	cmd := c.Start(tb, false)
-	if tb.Pane == nil {
-		t.Fatalf("not started: %s", tb.Err)
+	if tb.Pane != nil {
+		t.Fatal("started before the check")
 	}
 	if cmd == nil {
-		t.Fatal("no check")
+		t.Fatalf("no check: %s", tb.Err)
 	}
-	ev, ok := cmd().(SandboxCheckedMsg)
-	if !ok {
-		t.Fatalf("got %T", ev)
+	ev, ok := cmd().(SpawnReady)
+	if !ok || ev.Prep.Check == nil {
+		t.Fatalf("got %T %+v", ev, ev)
 	}
-	c.OnSandboxChecked(ev)
-	// Once a kind and command: not again while the core runs.
-	if c.CheckSandbox(tb, nil) != nil {
-		t.Error("checked twice")
+	c.OnSpawnReady(ev)
+	started = tb.Pane != nil
+	if started != !ev.Prep.Check.Refused() {
+		t.Errorf("started %v, the check refused %v: %s", started, ev.Prep.Check.Refused(), tb.Err)
 	}
-	return cl.notices
+	// Once a kind and command, while the core runs, unless refused.
+	if again := c.CheckSandbox(tb, nil) != nil; again == started {
+		t.Errorf("started %v, checked again %v", started, again)
+	}
+	return cl.notices, started
 }
 
 // runsCodex has the wrapper run codex as a program that waits; asked for
 // its flags, it has none.
 const runsCodex = "if [ \"$1\" = codex ]; then case \"$*\" in *--help*) exit 0;; esac; exec sleep 30; fi\n"
 
-// A wrapper that is no sandbox lets the check reach the client socket,
-// and the user is warned.
-func TestAWrapperThatLetsTheAgentReachTheClientSocketIsWarnedOf(t *testing.T) {
+// A wrapper that is no sandbox lets the check reach the client socket:
+// the agent is not started, and the user is told why.
+func TestAWrapperThatLetsTheAgentReachTheClientSocketIsRefused(t *testing.T) {
 	c, tb, cl := checkedCore(t, runsCodex+"exec \"$@\"\n")
-	notes := check(t, c, tb, cl)
-	if len(notes) != 1 || !strings.Contains(notes[0], "codex's sandbox lets it reach nerdr's client socket") ||
+	notes, started := check(t, c, tb, cl)
+	if started || !strings.Contains(tb.Err, "not started") {
+		t.Errorf("started %v: %q", started, tb.Err)
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "nerdr did not start codex: its sandbox lets it reach nerdr's client socket") ||
 		!strings.Contains(notes[0], "folder, socket, key") {
 		t.Errorf("notices %q", notes)
 	}
@@ -109,16 +116,17 @@ func TestASandboxThatDeniesTheClientSocketIsNotWarnedOf(t *testing.T) {
 		t.Skip("no bwrap that runs here: ", err)
 	}
 	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --unshare-pid -- \"$@\"\n")
-	if notes := check(t, c, tb, cl); len(notes) != 0 {
-		t.Errorf("notices %q", notes)
+	if notes, started := check(t, c, tb, cl); len(notes) != 0 || !started {
+		t.Errorf("started %v, notices %q", started, notes)
 	}
 }
 
 // A sandbox in which nerdr does not run, or whose command names no
-// agent to put the check in place of, is said to be unchecked.
+// agent to put the check in place of, is said to be unchecked; the agent
+// starts.
 func TestASandboxNerdrCannotCheckIsSaidSo(t *testing.T) {
 	c, tb, cl := checkedCore(t, runsCodex+"echo no nerdr in here\n")
-	notes := check(t, c, tb, cl)
+	notes, _ := check(t, c, tb, cl)
 	if len(notes) != 1 || !strings.Contains(notes[0], "nerdr could not check from inside codex's sandbox") ||
 		!strings.Contains(notes[0], "the check did not answer") {
 		t.Errorf("notices %q", notes)
@@ -127,7 +135,7 @@ func TestASandboxNerdrCannotCheckIsSaidSo(t *testing.T) {
 	c, tb, cl = checkedCore(t, runsCodex)
 	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{filepath.Join(c.Root, "agent.sh")}, Sandboxed: true}
 	tb.Agent = agents.Codex
-	notes = check(t, c, tb, cl)
+	notes, _ = check(t, c, tb, cl)
 	if len(notes) != 1 || !strings.Contains(notes[0], "names no codex") {
 		t.Errorf("notices %q", notes)
 	}
@@ -140,7 +148,7 @@ func TestACheckThatHangsIsEnded(t *testing.T) {
 	t.Cleanup(func() { SandboxCheckWait = old })
 	c, tb, cl := checkedCore(t, runsCodex+"exec sleep 30\n")
 	start := time.Now()
-	notes := check(t, c, tb, cl)
+	notes, _ := check(t, c, tb, cl)
 	if time.Since(start) > 5*time.Second {
 		t.Errorf("took %v", time.Since(start))
 	}
@@ -152,11 +160,12 @@ func TestACheckThatHangsIsEnded(t *testing.T) {
 // An agent outside a sandbox, or a core with no holder, is not checked.
 func TestOnlyASandboxedAgentOverAHolderIsChecked(t *testing.T) {
 	c, tb, _ := checkedCore(t, runsCodex+"exec \"$@\"\n")
-	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: c.Cfg.Agents[agents.Codex].Command}
+	sandboxed := c.Cfg.Agents[agents.Codex]
+	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: sandboxed.Command}
 	if cmd := c.Start(tb, false); cmd != nil || tb.Pane == nil {
 		t.Errorf("an agent outside a sandbox checked, or not started: %s", tb.Err)
 	}
-	tb.InSandbox = true
+	c.Cfg.Agents[agents.Codex] = sandboxed
 	c.Held = nil
 	if c.CheckSandbox(tb, nil) != nil {
 		t.Error("checked with no holder")

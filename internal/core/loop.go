@@ -399,9 +399,6 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	case SendEnter:
 		m.SendEnter(ev)
 		return nil, true
-	case SandboxCheckedMsg:
-		m.OnSandboxChecked(ev)
-		return nil, true
 	}
 	return nil, false
 }

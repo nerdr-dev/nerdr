@@ -264,16 +264,18 @@ When a `sandboxed` agent starts, nerdr checks this from inside its
 sandbox: it runs its own executable through the agent's `command`, in
 place of the agent, with the agent's environment and folder, and tries
 the client socket's folder, the socket, the key, and tracing the holder
-and the core. The agent starts either way. If the check gets through,
-nerdr shows a notice saying what it reached, and writes it to the core's
-log in `~/.local/state/nerdr/`. Each agent and `command` is checked
-once each time the core starts.
+and the core, before the agent starts. If the check gets through, nerdr
+does not start the agent: it shows a notice saying what the check
+reached, and writes it to the core's log in `~/.local/state/nerdr/`.
+Once the sandbox denies them, the agent starts as usual: a check that
+got through is run again at each start. One that reached nothing is run
+once for each agent and `command` each time the core starts.
 
 nerdr puts the check where the agent's program is in `command`: the last
 word named as the agent is (`claude`, `codex`, `cursor-agent`, …, or the
 section's name for an agent nerdr does not know). If none is, as with a
 single script that starts the sandbox and the agent, or the sandbox
-cannot run `$NERDR_BIN`, nerdr says it could not check, and you should
-check it yourself. The check catches a sandbox set up wrong. It does not
+cannot run `$NERDR_BIN`, nerdr says it could not check and starts the
+agent, and you should check it yourself. The check catches a sandbox set up wrong. It does not
 stop an agent that gets out some other way, and it says nothing about
 D-Bus, sockets in `/run/user/$UID` or services on localhost.
