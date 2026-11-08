@@ -186,6 +186,20 @@ func (h *harness) waitFor(what string, timeout time.Duration) {
 	h.t.Fatalf("timed out waiting for %q; screen:\n%s", what, h.screen())
 }
 
+// waitCount waits for what to be on the screen n times: for a second
+// run's output, say, while the first's is still there.
+func (h *harness) waitCount(what string, n int, timeout time.Duration) {
+	h.t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if strings.Count(h.screen(), what) >= n {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	h.t.Fatalf("timed out waiting for %q %d times; screen:\n%s", what, n, h.screen())
+}
+
 func (h *harness) waitGone(what string, timeout time.Duration) {
 	h.t.Helper()
 	deadline := time.Now().Add(timeout)
