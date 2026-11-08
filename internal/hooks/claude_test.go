@@ -107,6 +107,7 @@ func TestClaudeWaitsForBackgroundCommands(t *testing.T) {
 	}
 	shell := ClaudeTask{ID: "b1", Type: "shell"}
 	monitor := ClaudeTask{ID: "m1", Type: "monitor"}
+	watch := ClaudeTask{ID: "s1", Type: "monitor", Description: "live updates for artifact b478d532 (comments)"}
 	for i, c := range []struct {
 		ev         ClaudeEvent
 		want       string
@@ -119,6 +120,11 @@ func TestClaudeWaitsForBackgroundCommands(t *testing.T) {
 		{ClaudeEvent{Event: "UserPromptSubmit"}, "working", false},
 		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{monitor}}, "working", true},
 		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{}}, "idle", false},
+		// The watch on an Artifact the agent published waits on comments,
+		// as a cron does: the turn is over. A monitor of the agent's own
+		// is still work going on.
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{watch}}, "idle", false},
+		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{watch, monitor}}, "working", true},
 		// A subagent listed is left to the count of SubagentStart and
 		// SubagentStop, which has none going.
 		{ClaudeEvent{Event: "Stop", BackgroundTasks: []ClaudeTask{{ID: "a9", Type: "subagent"}}}, "idle", false},
@@ -195,6 +201,26 @@ func TestClaudeCommandReportsTheWaitInTheBackground(t *testing.T) {
 	}
 }
 
+// TestClaudeCommandLeavesAnArtifactWatchOut covers the Stop of an agent
+// that published an Artifact: claude keeps a watch on it for comments, a
+// monitor that does not end, which leaves the agent waiting on the user.
+func TestClaudeCommandLeavesAnArtifactWatchOut(t *testing.T) {
+	s, got := listen(t)
+	t.Setenv("NERDR_SOCKET", s.Path())
+	t.Setenv("NERDR_TAB", "tab1")
+	t.Setenv("TMPDIR", t.TempDir()) // after the socket: its path must stay short
+	var stderr bytes.Buffer
+	in := `{"hook_event_name":"Stop","session_id":"s1","stop_hook_active":false,` +
+		`"background_tasks":[{"id":"sq1x2","type":"monitor","status":"running","description":"live updates for artifact Senterkartet (comments and edits)"}],` +
+		`"session_crons":[]}`
+	if code := ClaudeCommand(strings.NewReader(in), &stderr); code != 0 {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if r := next(t, got); r.State != "idle" || r.Background || r.Processes != 0 {
+		t.Fatalf("stop: %+v", r)
+	}
+}
+
 // TestClaudeCommandReportsABackgroundCommand covers `nerdr hook claude`
 // reading a Stop as claude gives it with a command in the background.
 func TestClaudeCommandReportsABackgroundCommand(t *testing.T) {
@@ -219,6 +245,7 @@ func TestClaudeCommandReportsABackgroundCommand(t *testing.T) {
 func TestClaudeReportsOnlyProcessesAsProcesses(t *testing.T) {
 	shell := ClaudeTask{ID: "b1", Type: "shell"}
 	monitor := ClaudeTask{ID: "m1", Type: "monitor"}
+	watch := ClaudeTask{ID: "s1", Type: "monitor", Description: "live updates for artifact b478d532 (comments)"}
 	for i, c := range []struct {
 		tasks []ClaudeTask
 		w     SubagentWait
@@ -226,6 +253,8 @@ func TestClaudeReportsOnlyProcessesAsProcesses(t *testing.T) {
 	}{
 		{[]ClaudeTask{shell}, SubagentWait{}, 1},
 		{[]ClaudeTask{shell, monitor}, SubagentWait{}, 2},
+		{[]ClaudeTask{shell, watch}, SubagentWait{}, 1},
+		{[]ClaudeTask{watch}, SubagentWait{}, nil},
 		{[]ClaudeTask{shell, {ID: "a1", Type: "subagent"}}, SubagentWait{}, 1}, // the count has it stopped
 		{[]ClaudeTask{shell}, SubagentWait{Going: 1}, nil},
 		{[]ClaudeTask{shell, {ID: "w1", Type: "workflow"}}, SubagentWait{}, nil},
