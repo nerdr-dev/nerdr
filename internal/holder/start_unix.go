@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -30,7 +31,7 @@ func start(s *Spawn, stdin []byte, files []*os.File) (*started, error) {
 	}
 	path := s.Argv[0]
 	if filepath.Base(path) == path {
-		p, err := exec.LookPath(path)
+		p, err := lookPath(path, s.Env)
 		if err != nil {
 			return nil, err
 		}
@@ -177,4 +178,32 @@ func reap(pid int) {
 			return
 		}
 	}
+}
+
+// lookPath finds file in the PATH of env, the program's environment: the
+// holder's own PATH is that of the nerdr that started it, and the
+// program's that of the client connected since, which may name other
+// folders. Relative entries are passed over, as exec.LookPath refuses
+// them: the program's folder may be a worktree an agent writes to.
+// Without PATH in env it is looked for in the holder's.
+func lookPath(file string, env []string) (string, error) {
+	path, ok := "", false
+	for _, kv := range env {
+		if k, v, _ := strings.Cut(kv, "="); k == "PATH" {
+			path, ok = v, true // the last wins, as exec has it
+		}
+	}
+	if !ok {
+		return exec.LookPath(file)
+	}
+	for _, d := range filepath.SplitList(path) {
+		if !filepath.IsAbs(d) {
+			continue
+		}
+		p := filepath.Join(d, file)
+		if st, err := os.Stat(p); err == nil && st.Mode().IsRegular() && st.Mode()&0o111 != 0 {
+			return p, nil
+		}
+	}
+	return "", &exec.Error{Name: file, Err: exec.ErrNotFound}
 }
