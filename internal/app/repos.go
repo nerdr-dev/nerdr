@@ -311,6 +311,7 @@ func (m *Model) rescanned() tea.Cmd {
 	if d := m.issuePanel; d != nil && !d.here {
 		d.setScope(m)
 		d.fill(m)
+		cmd = tea.Batch(cmd, m.refreshAllIssues(false))
 	}
 	return cmd
 }

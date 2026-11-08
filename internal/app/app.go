@@ -239,8 +239,11 @@ type Model struct {
 	// prKey, so a second f does not make another.
 	prAsking map[string]prAsk
 	// prPick is the id of what core is asked for a PR picked in F2's
-	// list, while it is: where it is checked out, a fork's fetched.
-	prPick string
+	// list, while it is: where it is checked out, a fork's fetched; and
+	// prPickOn the dialog open then. The answer is gone on with only while
+	// that is still so: else the user has gone on to something else.
+	prPick   string
+	prPickOn dialog
 
 	// sideWidth is the columns the sidebar's edge was dragged to, its
 	// frames included; 0 for as wide as its names need.
