@@ -52,7 +52,7 @@ func init() {
 		*Core.OtherRepos *Core.ColdTabs *Core.AllAgents *Core.WaitsForReady
 		*Core.UsedModels *Core.Toast *Core.TabFor *Core.SpinoffKinds
 		*Core.SearchRoots *Core.ReviewModel *Core.ReviewerNames
-		*Core.KnownGroupNames *Core.HeldAgent *Core.GroupCount *Core.CutOff
+		*Core.KnownGroupNames *Core.GroupCount *Core.CutOff
 		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
 		*Core.PRNewsByKey *Core.IssueNewsByKey *Core.Runs *Tab.HasProgram
 
