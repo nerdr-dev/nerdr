@@ -151,3 +151,36 @@ func TestAttachAnswersOnlyWhatIsNew(t *testing.T) {
 		t.Errorf("screen %q", p.Snapshot().Screen)
 	}
 }
+
+// TestAttachToAProgramThatAskedForInBandResizes: a program that asked for
+// in-band resizes (mode 2048), taken up at another size than its
+// checkpoint's, is told of the new size; taking it up does not wait on
+// the answer forever.
+func TestAttachToAProgramThatAskedForInBandResizes(t *testing.T) {
+	first := attached(t, []byte("\x1b[?2048hready"), Taken{})
+	block, pos, err := first.CheckpointAt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	proc := &recordingProc{heldProc: newHeldProc(nil)}
+	attachedc := make(chan *Pane, 1)
+	go func() { attachedc <- Attach(proc, 30, 6, Taken{Pos: pos, Block: block}, func() {}) }()
+	var p *Pane
+	select {
+	case p = <-attachedc:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Attach never returned")
+	}
+	t.Cleanup(func() {
+		p.CloseReplies()
+		<-p.replyDone
+		p.Close()
+	})
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(proc.written(), "\x1b[48;6;30") {
+		if time.Now().After(deadline) {
+			t.Fatalf("not told of the new size: %q", proc.written())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
