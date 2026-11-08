@@ -299,8 +299,118 @@ func (m *Core) FirstAsArgs(t *Tab) ([]string, state.Message) {
 	return args, msg
 }
 
-// spawn runs the command line in a new pane for the tab.
+// SpawnPrep is what starting an agent asks its CLI first: codex whether
+// it trusts nerdr's hooks, and for its own developer instructions,
+// copilot whether it takes --plugin-dir. Each runs the agent's command,
+// which can take seconds, so it is asked away from Mu, and the agent
+// started when SpawnReady brings the answers.
+type SpawnPrep struct {
+	// CodexAsked is set when codex was asked whether it trusts nerdr's
+	// hooks, CodexTrusted to its answer.
+	CodexAsked, CodexTrusted bool
+	// CodexNoted is set when CodexNote was worked out.
+	CodexNoted bool
+	CodexNote  []string
+}
+
+// SpawnReady is a tab's agent to start, with what its CLI said first.
+type SpawnReady struct {
+	T      *Tab
+	Kind   agents.Kind
+	L      agents.Launch
+	Resume bool
+	Prep   SpawnPrep
+}
+
+// Prepare is how to ask what starting t's agent with l needs to ask its
+// CLI first, with m.Mu let go; nil when there is nothing to ask.
+func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
+	switch t.Agent {
+	case agents.Codex:
+		var ask func() (bool, bool, error)
+		hooked := m.HookSock != "" && slices.Contains(l.Argv, "--no-daemon")
+		if hooked && !m.CodexAsked {
+			ask = m.AskCodexTrust(false)
+		}
+		known := m.CodexHooks
+		note := m.AgentNote(t)
+		if ask == nil && note == "" {
+			return nil
+		}
+		command, _ := agents.Command(m.SpecsFor(t), t.Agent)
+		// The environment it starts with, in or out of its sandbox.
+		was := t.InSandbox
+		t.InSandbox = m.SandboxedKind(t.Agent)
+		env := WithUserEnv(m.AgentEnv(t), l.Env)
+		t.InSandbox = was
+		argv, dir := slices.Clone(l.Argv), t.Dir
+		return func() SpawnPrep {
+			var p SpawnPrep
+			args := known
+			if ask != nil {
+				trusted, _, err := ask()
+				if err != nil {
+					Debugf("codex hooks: %v", err)
+				}
+				p.CodexAsked, p.CodexTrusted = true, trusted
+				args = nil
+				if trusted {
+					args = hooks.CodexArgs()
+				}
+			}
+			if hooked {
+				argv = BeforePrompt(argv, args, len(command))
+			}
+			p.CodexNoted = true
+			p.CodexNote = CodexNoteArgs(note, command, argv, env, dir)
+			return p
+		}
+	case agents.Copilot:
+		specs := m.Cfg.Agents
+		if m.HookSock == "" || m.CopilotPlugin(t) == "" || agents.FlagKnown(specs, agents.Copilot, "--plugin-dir") {
+			return nil
+		}
+		return func() SpawnPrep {
+			agents.HasFlag(specs, agents.Copilot, "--plugin-dir") // known from then on
+			return SpawnPrep{}
+		}
+	}
+	return nil
+}
+
+// Spawn runs the command line in a new pane for the tab: at once, or,
+// when its CLI must be asked something first (see Prepare), once it has
+// answered, by SpawnReady. m.Mu is held.
 func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
+	if ask := m.Prepare(t, l); ask != nil {
+		kind := t.Agent
+		return func() Event { return SpawnReady{T: t, Kind: kind, L: l, Resume: resume, Prep: ask()} }
+	}
+	return m.SpawnPrepared(t, l, resume, SpawnPrep{})
+}
+
+// OnSpawnReady starts the agent ev is for, unless its tab closed or
+// switched agent while its CLI was asked.
+func (m *Core) OnSpawnReady(ev SpawnReady) Cmd {
+	if !m.Live(ev.T) || ev.Kind != ev.T.Agent {
+		return nil
+	}
+	cmd := m.SpawnPrepared(ev.T, ev.L, ev.Resume, ev.Prep)
+	switch {
+	case ev.T.Pane != nil:
+	case ev.T.ReviewOf != nil:
+		m.ReviewerNotStarted(ev.T)
+	case ev.T.Err != "":
+		m.Toast(ev.T.Name + ": " + ev.T.Err)
+	}
+	return cmd
+}
+
+// SpawnPrepared is Spawn, with what the agent's CLI was asked.
+func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPrep) Cmd {
+	if prep.CodexAsked {
+		m.SetCodexTrust(prep.CodexTrusted)
+	}
 	if l.SessionID != t.SessionID && (l.SessionID != "" || !resume) {
 		// A new conversation is the agent's now: with no id from nerdr,
 		// none, until it is found (claimSession), not the one before.
@@ -348,7 +458,7 @@ func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	case agents.Claude:
 		l.Argv = append(l.Argv, m.ClaudeNote(t)...)
 	case agents.Codex:
-		if args := m.CodexNote(t, l.Argv, WithUserEnv(m.AgentEnv(t), l.Env)); args != nil {
+		if args := prep.CodexNote; prep.CodexNoted && args != nil {
 			command, _ := agents.Command(m.SpecsFor(t), t.Agent)
 			l.Argv = BeforePrompt(l.Argv, args, len(command))
 		}

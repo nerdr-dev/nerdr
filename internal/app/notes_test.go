@@ -150,7 +150,7 @@ func TestCodexStartsWithTheNotes(t *testing.T) {
 	m := paneModel(t)
 	m.Cfg.Install = config.InstallHome
 	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
-	m.NewAgent(m.Cur(), agents.Codex)
+	startAsked(t, m, m.NewAgent(m.Cur(), agents.Codex))
 	var args string
 	for i := 0; i < 100 && args == ""; i++ {
 		b, _ := os.ReadFile(started)

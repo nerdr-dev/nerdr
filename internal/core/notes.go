@@ -179,16 +179,22 @@ func (m *Core) GrokNote(t *Tab) []string {
 // they cannot be read, or argv picks a profile, whose own the app server
 // does not read, rather than lose them.
 func (m *Core) CodexNote(t *Tab, argv, env []string) []string {
-	note := m.AgentNote(t)
+	command, _ := agents.Command(m.SpecsFor(t), t.Agent)
+	return CodexNoteArgs(m.AgentNote(t), command, argv, env, t.Dir)
+}
+
+// CodexNoteArgs is CodexNote for note, codex being run as argv, command
+// and what follows it, with env in dir. It runs codex's app server: not
+// with m.Mu held.
+func CodexNoteArgs(note string, command, argv, env []string, dir string) []string {
 	if note == "" {
 		return nil
 	}
-	command, _ := agents.Command(m.SpecsFor(t), t.Agent)
 	config, profile := CodexOptions(argv[min(len(command), len(argv)):])
 	if profile {
 		return nil
 	}
-	own, err := CodexInstructions(command, env, config, t.Dir)
+	own, err := CodexInstructions(command, env, config, dir)
 	if err != nil {
 		return nil
 	}

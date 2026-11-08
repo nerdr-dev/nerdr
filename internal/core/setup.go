@@ -108,7 +108,16 @@ func Tracked(dir, file string) bool {
 // applySkills puts the skills where the install setting says, and says where it
 // wrote any; "" when nothing was written. For "worktree" that is the tabs'
 // folders, which each tab's start also sees to (see installProjectSkills).
+//
+// It asks codex whether it trusts nerdr's hooks, which runs it: not with
+// m.Mu held, outside the tests. The request ApplySkills asks it away.
 func (m *Core) ApplySkills() string {
+	return m.applySkills(m.TrustCodexHooks)
+}
+
+// applySkills is ApplySkills, with trust to have codex trust nerdr's
+// hooks; it says whether that wrote codex's config.
+func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 	home, _ := os.UserHomeDir()
 	homeDirs := map[string]bool{}
 	for _, k := range agents.All {
@@ -198,7 +207,7 @@ func (m *Core) ApplySkills() string {
 		if slices.Contains(agents.Available(m.Cfg.Agents), agents.Codex) {
 			// codex runs nerdr's hooks, which tell nerdr what it is
 			// doing, once it trusts them, in its own config.
-			if ok, err := m.TrustCodexHooks(true); ok {
+			if ok, err := trust(true); ok {
 				wrote = append(wrote, TildePath(CodexConfig(home), home)+" (trusts nerdr's codex hooks)")
 			} else if err != nil {
 				Debugf("codex hooks: %v", err)

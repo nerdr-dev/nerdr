@@ -391,6 +391,11 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 			m.SaveSession()
 		}
 		return m.Spawn(ev.T, ev.L, ev.Resume), true
+	case SpawnReady:
+		return m.OnSpawnReady(ev), true
+	case SkillsAppliedMsg:
+		m.OnSkillsApplied(ev)
+		return nil, true
 	case SendEnter:
 		m.SendEnter(ev)
 		return nil, true

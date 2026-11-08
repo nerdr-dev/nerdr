@@ -783,11 +783,12 @@ func (m *Core) AddReviewer(t *Tab, by Reviewer) Cmd {
 	}
 	p := m.ReviewPaneFor(t, r)
 	cmd := m.Spawn(r, l, false)
-	if r.Pane == nil {
+	if r.Pane == nil && r.Light == StExited {
 		m.Toast(t.Name + ": " + r.Err)
 		p.A = nil
 		return cmd
 	}
+	// Started, or to start once its CLI has answered (see Spawn).
 	run.Seats = append(run.Seats, &Seat{R: r})
 	m.saveReview()
 	m.Tell(TermsMsg{T: m.Ref(t.Owner())})
@@ -820,4 +821,24 @@ func (m *Core) ReviewPaneFor(of, r *Tab) *PaneTab {
 	}
 	o.PaneList = slices.Insert(ps, at+1, p)
 	return p
+}
+
+// ReviewerNotStarted takes reviewer r, whose agent could not be started
+// after its seat was taken (see OnSpawnReady), out of its review.
+func (m *Core) ReviewerNotStarted(r *Tab) {
+	t := r.ReviewOf
+	m.Toast(t.Name + ": " + r.Err)
+	for _, p := range t.Owner().Panes() {
+		if p.A == r {
+			p.A = nil
+		}
+	}
+	if run := t.Review; run != nil {
+		run.Seats = slices.DeleteFunc(run.Seats, func(s *Seat) bool { return s.R == r })
+		if len(run.Seats) == 0 {
+			t.Review = nil
+		}
+	}
+	m.saveReview()
+	m.Tell(PanesMsg{})
 }

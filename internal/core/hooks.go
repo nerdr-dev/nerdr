@@ -29,24 +29,43 @@ func (m *Core) SetHookSocket(path string) {
 // while codex does not trust them: an untrusted hook stops codex at start
 // to ask about it. codex is asked once; where the skills go in the home
 // folder, applySkills has it trust them.
+//
+// Asking runs codex, which can take seconds, so it is done away from Mu
+// (see SpawnPrep), and none are given while it has not been.
 func (m *Core) CodexHookArgs() []string {
 	if !m.CodexAsked {
-		m.TrustCodexHooks(false)
+		Debugf("codex hooks: codex not asked yet whether it trusts them")
 	}
 	return m.CodexHooks
 }
 
 // TrustCodexHooks asks codex whether it trusts nerdr's hooks, and with
 // write has it trust them, and reports whether that wrote its config.
+// It runs codex: not with m.Mu held, outside the tests.
 func (m *Core) TrustCodexHooks(write bool) (bool, error) {
-	m.CodexAsked = true
+	ask := m.AskCodexTrust(write)
+	trusted, wrote, err := ask()
+	m.SetCodexTrust(trusted)
+	return wrote, err
+}
+
+// AskCodexTrust is how to ask codex, as the config runs it, whether it
+// trusts nerdr's hooks, with m.Mu let go; SetCodexTrust takes the answer.
+// m.Mu is held.
+func (m *Core) AskCodexTrust(write bool) func() (trusted, wrote bool, err error) {
 	argv, env := agents.Command(m.Cfg.Agents, agents.Codex)
-	trusted, wrote, err := TrustCodex(argv, WithUserEnv(m.BaseEnv(), env), write)
+	env = WithUserEnv(m.BaseEnv(), env)
+	return func() (bool, bool, error) { return TrustCodex(argv, env, write) }
+}
+
+// SetCodexTrust takes codex's answer to whether it trusts nerdr's hooks.
+// m.Mu is held.
+func (m *Core) SetCodexTrust(trusted bool) {
+	m.CodexAsked = true
 	m.CodexHooks = nil
 	if trusted {
 		m.CodexHooks = hooks.CodexArgs()
 	}
-	return wrote, err
 }
 
 // CopilotPlugin is the folder of nerdr's plugin for t's copilot, where the
