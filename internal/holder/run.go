@@ -17,6 +17,14 @@ import (
 // the socket on.
 const EnvFD = "NERDR_HOLDER_FD"
 
+// EnvNested is 1 in the environment of a core whose holder was started
+// under the holder of another nerdr, by a program in one of its tabs, and
+// 0 in any other's. The holder sets it, from its own process chain when
+// it starts, so that a program cannot set it for a nerdr it did not
+// start; see core.ClientUnderNerdr. Given 0, the holder keeps it, which
+// only has its core refuse more: nerdr's tests run by an agent ask so.
+const EnvNested = "NERDR_NESTED"
+
 // ExitDone is the status a core ends with to say it is not to be started
 // again: it could not start at all (another nerdr has the folder, there is
 // no terminal), and starting it again would not help. The holder then
@@ -45,6 +53,14 @@ func Run(core []string) error {
 	if len(core) == 0 {
 		return fmt.Errorf("holder: no core to start")
 	}
+	// For every core this holder starts, and those an upgrade's holder
+	// does: it keeps the environment.
+	// One asked not to count as nested is not: that only refuses more.
+	nested := "0"
+	if os.Getenv(EnvNested) != "0" && spawn.UnderHolder(os.Getppid()) {
+		nested = "1"
+	}
+	os.Setenv(EnvNested, nested)
 	return New().serveCores(core)
 }
 
