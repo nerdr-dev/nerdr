@@ -160,9 +160,12 @@ func runCore(h *core.Held) error {
 			}
 			return why
 		},
-		Client: func(conn *attach.Conn, _ attach.Hello) {
+		Client: func(conn *attach.Conn, h attach.Hello) {
 			core.Logf("client: connected")
 			c.Mu.Lock()
+			if len(h.Env) > 0 {
+				c.ClientEnv = h.Env
+			}
 			c.AttachClient(conn, attachPost)
 			c.Mu.Unlock()
 		},

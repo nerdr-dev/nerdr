@@ -51,9 +51,33 @@ var HostVars = []string{
 	"TMUX", "TMUX_PANE", "STY", "ZELLIJ", "ZELLIJ_SESSION_NAME", "ZELLIJ_PANE_ID",
 }
 
-// ChildEnv is the environment an agent runs with.
+// ChildEnv is the environment an agent runs with, given nerdr's own.
 func ChildEnv(t *Tab) []string {
-	env := slices.DeleteFunc(herdr.ChildEnv(os.Environ()), func(kv string) bool {
+	return ChildEnvFrom(os.Environ(), t)
+}
+
+// BaseEnv is the environment the programs the core starts build on: the
+// last client's, as nerdr run in its terminal would have, else the
+// core's own. The core's is that of the nerdr that started the holder,
+// in another terminal or session perhaps, with an ssh agent or display
+// since gone; a program started with it would reach what the user's
+// terminal does not, and miss what it does. m.Mu is held.
+func (m *Core) BaseEnv() []string {
+	if m.ClientEnv != nil {
+		return slices.Clone(m.ClientEnv)
+	}
+	return os.Environ()
+}
+
+// TabEnv is ChildEnv with m's BaseEnv in place of nerdr's own. m.Mu is
+// held.
+func (m *Core) TabEnv(t *Tab) []string {
+	return ChildEnvFrom(m.BaseEnv(), t)
+}
+
+// ChildEnvFrom is the environment an agent of t runs with, built on base.
+func ChildEnvFrom(base []string, t *Tab) []string {
+	env := slices.DeleteFunc(herdr.ChildEnv(base), func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
 		return slices.Contains(TabVars, name) || slices.Contains(HostVars, name)
 	})

@@ -253,6 +253,13 @@ sandboxed agent must not reach. Everything above still applies.
   holder started; at 0 only the sandbox stops it, with a PID namespace of
   its own or by denying those calls.
 
+An agent, terminal or plugin started while you are connected runs with
+the environment of the nerdr you connected with, as it would without the
+core: `PATH`, `SSH_AUTH_SOCK`, `DBUS_SESSION_BUS_ADDRESS` and the rest
+come from your terminal, not from the one that first started the core.
+One started with no nerdr connected gets the environment of the last one
+that was. What the agent can reach of them is still up to its sandbox.
+
 When a `sandboxed` agent starts, nerdr checks this from inside its
 sandbox: it runs its own executable through the agent's `command`, in
 place of the agent, with the agent's environment and folder, and tries

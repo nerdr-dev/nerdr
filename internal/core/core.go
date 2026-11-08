@@ -91,6 +91,10 @@ type Core struct {
 	// sandbox since the core started, by kind and command; see
 	// CheckSandbox.
 	SandboxChecks map[string]bool `json:"-"`
+	// ClientEnv is the environment of the client last connected, nil
+	// before one sends it: what the programs started since run with,
+	// in place of the core's own. See BaseEnv.
+	ClientEnv []string `json:"-"`
 	// Unseen are the programs in the holder no tab took up, for the
 	// client to show and the user to stop; see unseen.go.
 	Unseen []UnseenProgram

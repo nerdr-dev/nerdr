@@ -38,6 +38,11 @@ handle() {
         --state "$state" --agent-session-id "sess-$state" --seq "$(date +%s)$(printf %04d "$n")" \
         && echo "reported $state" || echo "report failed"
       ;;
+    from)
+      # Which nerdr's environment it was started with; see
+      # TestAgentsTakeTheClientsEnv.
+      echo "from is ${FAKE_FROM:-none}"
+      ;;
     size)
       # The size of its terminal, as it is now.
       echo "size is $(stty size)"

@@ -191,7 +191,7 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 		_ = events.Close()
 		_ = os.Remove(events.Name())
 	}
-	env := append(append(ChildEnv(t), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
+	env := append(append(m.TabEnv(t), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
 	argv := p.Command(p.UI)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
