@@ -1,9 +1,4 @@
 app.go: workspace.WorktreesRoot 1
-dialogs.go: git.CurrentBranch 1
-dialogs.go: github.BranchStatus 1
-dialogs.go: workspace.Dirty 1
-dialogs.go: workspace.Head 2
-dialogs.go: workspace.Unpushed 1
 issuelist.go: workspace.ScanAll 1
 newrepo.go: github.CloneRepo 1
 newrepo.go: github.CreateRepo 1

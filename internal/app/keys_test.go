@@ -296,13 +296,13 @@ func TestCloseDialogNoIsNo(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
 	m.openCloseFor(tb)
-	m.Update(closeInfoMsg{t: tb})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Ref(tb)}})
 	m.Update(keyMsg("n"))
 	if m.dialog != nil || m.TabIndex(tb) < 0 {
 		t.Fatalf("n should cancel: dialog %T, tab at %d", m.dialog, m.TabIndex(tb))
 	}
 	m.openCloseFor(tb)
-	m.Update(closeInfoMsg{t: tb})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Ref(tb)}})
 	m.Update(keyMsg("k"))
 	if m.TabIndex(tb) >= 0 {
 		t.Fatal("k should close the tab, keeping the worktree")

@@ -6,10 +6,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/term"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -164,14 +161,6 @@ const (
 // leave the screen as it was.
 const closeWait = 500 * time.Millisecond
 
-// closeInfoMsg is what git says about a tab's worktrees before closing it.
-type closeInfoMsg struct {
-	t               *core.Tab
-	dirty, unpushed []string
-	mergedHeads     map[string]string
-	heads           map[string]string
-}
-
 // closeShowMsg comes closeWait after the close dialog c opened.
 type closeShowMsg struct{ c *closeTab }
 
@@ -186,33 +175,17 @@ func (m *Model) openCloseFor(t *core.Tab) tea.Cmd {
 	}
 	c := &closeTab{t: t}
 	m.dialog = c
-	wts := append([]workspace.Worktree(nil), t.Worktrees...)
-	return tea.Batch(func() tea.Msg {
-		heads := make(map[string]string)
-		for _, w := range wts {
-			if h := workspace.Head(w); h != "" {
-				heads[w.Path] = h
-			}
-		}
-		return closeInfoMsg{t: t, dirty: workspace.Dirty(wts), unpushed: workspace.Unpushed(wts),
-			mergedHeads: mergedBranchHeads(wts), heads: heads}
-	}, tea.Tick(closeWait, func(time.Time) tea.Msg { return closeShowMsg{c} }))
+	return tea.Batch(m.do(core.LookBeforeClose{T: m.Ref(t)}),
+		tea.Tick(closeWait, func(time.Time) tea.Msg { return closeShowMsg{c} }))
 }
 
-// A merged PR's head stays identifiable after squash/rebase merges, when
-// Git ancestry alone cannot prove that the local branch's work is safe.
-func mergedBranchHeads(wts []workspace.Worktree) map[string]string {
-	heads := make(map[string]string)
-	for _, w := range wts {
-		if w.Branch == "" || git.CurrentBranch(w.Path) != w.Branch {
-			continue
-		}
-		pr, ok := github.BranchStatus(w.Path)
-		if ok && pr.State == "MERGED" && pr.HeadOID != "" && workspace.Head(w) == pr.HeadOID {
-			heads[w.Path] = pr.HeadOID
-		}
+// onCloseInfo has the close dialog of the tab show what closing it would
+// lose.
+func (m *Model) onCloseInfo(msg core.CloseInfoMsg) {
+	if c, ok := m.dialog.(*closeTab); ok && c.t == m.ByRef(msg.T) {
+		c.dirty, c.unpushed, c.loaded = msg.Dirty, msg.Unpushed, true
+		c.mergedHeads, c.heads = msg.MergedHeads, msg.Heads
 	}
-	return heads
 }
 
 // canDeleteBranches reports whether b is offered: every worktree has a
