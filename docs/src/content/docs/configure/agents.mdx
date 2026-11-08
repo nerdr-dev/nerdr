@@ -255,8 +255,9 @@ about at each run, still runs.
 This adds two things a sandboxed agent must not reach. Everything above
 still applies. A sandbox that was enough for nerdr before the core, one
 that lets the agent read and connect to anything in your home folder or
-in `$XDG_RUNTIME_DIR`, is not: nerdr then does not start the agent until
-the sandbox denies them.
+in `$XDG_RUNTIME_DIR`, is not: it must now deny them too. When the check
+below finds the agent can reach them, nerdr does not start it; when it
+cannot tell, it warns and starts it.
 
 - **The client socket's folder.** A client can do anything you can,
   approvals included. Its socket and the key to it are in

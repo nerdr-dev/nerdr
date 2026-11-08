@@ -27,8 +27,9 @@ a process that starts and owns every agent, terminal and plugin run,
 their terminals included, and that starts nerdr's core, which has the
 tabs and all the logic. Both run on with no terminal when you close the
 client, the core writing its log to `~/.local/state/nerdr/core-*.log`,
-and nerdr started in the folder again connects to them, by a socket in
-`$XDG_RUNTIME_DIR/nerdr`. If the core crashes, the holder starts it
+and nerdr started in the folder again connects to them, by a client
+socket of their own (see [where it is, and what a sandbox must
+deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own)). If the core crashes, the holder starts it
 again and it takes up the programs still running. If the holder ends,
 its programs end with it, and the next start resumes the conversations
 as after a quit. Quit stops it all.
