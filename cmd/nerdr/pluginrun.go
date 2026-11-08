@@ -2,12 +2,15 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"regexp"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
@@ -83,8 +86,21 @@ func remoteRun(p plugin.Plugin, vals plugin.Values, dir string) int {
 		os.Exit(130)
 	}()
 	offset := 0
+	var away time.Time // since when the core has not answered
 	for {
 		text, err := hooks.Request(sock, hooks.Plugin, map[string]any{"pane_id": tab, "what": hooks.PluginRead, "run": run, "offset": offset})
+		if coreAway(err) {
+			// The run goes on in the holder, which starts the core again;
+			// the new one takes it up, from the same offset.
+			if away.IsZero() {
+				away = time.Now()
+			}
+			if time.Since(away) < coreBackWait {
+				time.Sleep(coreRetry)
+				continue
+			}
+		}
+		away = time.Time{}
 		if err = explain(sock, err); err != nil {
 			fmt.Fprintf(os.Stderr, "%s: %s: %v\n", name, p.Name, err)
 			return 1
@@ -103,6 +119,22 @@ func remoteRun(p plugin.Plugin, vals plugin.Values, dir string) int {
 			return out.Exit
 		}
 	}
+}
+
+// coreBackWait is how long a run's output is waited for while the core
+// is away, and coreRetry how often it is asked for meanwhile. The holder
+// starts a core that ended again after at most 30 s.
+const (
+	coreBackWait = time.Minute
+	coreRetry    = 500 * time.Millisecond
+)
+
+// coreAway reports whether err says the core is not there for now: it
+// ended, by a crash or a kill, before or while it answered, and its socket
+// is left. A nerdr that quit takes its socket with it.
+func coreAway(err error) bool {
+	return errors.Is(err, syscall.ECONNREFUSED) || errors.Is(err, syscall.ECONNRESET) ||
+		errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF)
 }
 
 var runID = regexp.MustCompile(`^[0-9a-f]{16}$`)
