@@ -544,8 +544,10 @@ func TestANerdrAnAgentStarts(t *testing.T) {
 // is taken, though an agent runs the test, and the other nerdr then
 // counts as nested: it was started from where that client runs.
 func TestAnAgentConnectsToTheNerdrOfAnotherFolder(t *testing.T) {
-	for _, mode := range []string{"1", "0"} {
-		t.Run("NERDR_HOLDER="+mode, func(t *testing.T) {
+	// Short names: the test's folder holds the socket's path, which is
+	// to be under 108 bytes.
+	for name, mode := range map[string]string{"held": "1", "own": "0"} {
+		t.Run(name, func(t *testing.T) {
 			bin := build(t)
 			root, scratch := setup(t)
 			elsewhere := filepath.Join(scratch, "elsewhere")

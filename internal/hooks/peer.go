@@ -19,6 +19,9 @@ type Peer struct {
 	// Starts are when each process in Chain started, by the kernel's
 	// clock: a process given the id of one that has ended has another.
 	Starts []uint64
+	// Cut is true when Chain stops at maxChain, short of the first
+	// process: what it runs under is not known.
+	Cut bool
 }
 
 // Started is when the process pid started, as Peer's Starts have it;
@@ -65,7 +68,11 @@ func PeerOf(c net.Conn) Peer {
 		return Peer{Known: peerSupported}
 	}
 	p := Peer{Known: true}
-	for len(p.Chain) < maxChain && pid > 0 {
+	for pid > 0 {
+		if len(p.Chain) == maxChain {
+			p.Cut = true
+			break
+		}
 		next, start, err := spawn.ProcInfo(pid)
 		p.Chain = append(p.Chain, pid)
 		p.Starts = append(p.Starts, start) // 0 when not known

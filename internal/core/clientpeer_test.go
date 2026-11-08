@@ -36,6 +36,7 @@ func TestClientRefusal(t *testing.T) {
 		{"under an agent outside nerdr's tree", []*Tab{tab}, under, true},
 		{"under nerdr itself", nil, hooks.Peer{Known: true, Chain: []int{stray, os.Getpid(), 1}}, true},
 		{"a system that cannot say", []*Tab{tab}, hooks.Peer{}, true},
+		{"a chain cut short", nil, hooks.Peer{Known: true, Chain: []int{stray, shell}, Cut: true}, true},
 		{"a peer asked and not told", nil, hooks.Peer{Known: true}, true},
 	} {
 		m.Tabs = c.tabs
@@ -112,6 +113,7 @@ func TestClientUnderNerdr(t *testing.T) {
 		{"another program under that holder", []int{10, 14, 12, 1}, []uint64{1, 1, 1, 1}, origin, true},
 		{"a process given the id of the one it started from", []int{10, 11, 12, 1}, []uint64{1, 112, 1, 1}, origin, true},
 		{"a start not known", []int{10, 11, 12, 1}, nil, []spawn.Process{{Pid: 11}}, true},
+		{"a process it started from that has exec'd into a nerdr", []int{10, 15, 12, 1}, []uint64{1, 151, 1, 1}, []spawn.Process{{Pid: 15, Start: 151}}, true},
 	} {
 		if got := ClientUnderNerdr(hooks.Peer{Known: true, Chain: c.chain, Starts: c.starts}, c.origin) != ""; got != c.refused {
 			t.Errorf("%s: refused = %v", c.name, got)

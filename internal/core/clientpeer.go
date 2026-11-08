@@ -27,7 +27,7 @@ func (m *Core) ClientRefusal(p hooks.Peer) string {
 		return RefusedQuitting
 	}
 	const why = "nerdr takes no client from a program it runs: connect from your own terminal"
-	if !p.Known || len(p.Chain) == 0 {
+	if !p.Known || len(p.Chain) == 0 || p.Cut {
 		return "nerdr cannot tell which program connected, and takes no client it cannot place"
 	}
 	own := []int{os.Getpid()}
@@ -73,11 +73,13 @@ var procArgs = spawn.Args
 // same.
 func ClientUnderNerdr(p hooks.Peer, origin []spawn.Process) string {
 	for i, pid := range p.Chain {
-		if i < len(p.Starts) && p.Starts[i] != 0 && slices.Contains(origin, spawn.Process{Pid: pid, Start: p.Starts[i]}) {
-			return ""
-		}
+		// The nerdr first: a process of origin that has since exec'd into
+		// one keeps its id and start.
 		if args, err := procArgs(pid); err == nil && spawn.IsNerdr(args) {
 			return "nerdr takes no client from a program a nerdr runs, in any folder: connect from your own terminal"
+		}
+		if i < len(p.Starts) && p.Starts[i] != 0 && slices.Contains(origin, spawn.Process{Pid: pid, Start: p.Starts[i]}) {
+			return ""
 		}
 	}
 	return ""
