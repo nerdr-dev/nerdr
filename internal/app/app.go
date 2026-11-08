@@ -616,18 +616,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.dialog = &explainDialog{e: msg}
 		return nil
 
-	case wizardMsg:
-		if w, ok := m.dialog.(*wizard); ok && w == msg.w {
-			return w.handle(m, msg)
-		}
-		return m.createdBehind(msg)
-
-	case planMsg:
-		if w, ok := m.dialog.(*wizard); ok {
-			return w.handlePlan(m, msg)
-		}
-		return nil
-
 	case closeShowMsg:
 		if m.dialog == msg.c {
 			msg.c.shown = true
@@ -637,19 +625,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case promptEnterMsg:
 		m.promptEnter(msg.t)
 		return nil
-
-	case issueMsg:
-		if w, ok := m.dialog.(*wizard); ok {
-			return w.handleIssue(msg)
-		}
-		return nil
-
-	case setupProgressMsg:
-		if w, ok := m.dialog.(*wizard); ok && w == msg.w && w.step == stepCreating {
-			w.busy = msg.s
-			return listenProgress(w)
-		}
-		return nil // hidden: its setup does not wait for anyone to listen
 
 	case quitReadyMsg:
 		return tea.Quit

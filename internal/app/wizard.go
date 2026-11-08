@@ -1,7 +1,6 @@
 package app
 
 import (
-	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -11,7 +10,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -43,10 +41,10 @@ type wizard struct {
 	// field is the one being typed into: fieldBranch, fieldGroup or
 	// fieldTask.
 	field int
-	// progress is where the worktrees' setup says what it is doing.
-	progress <-chan string
-	plan     workspace.Plan
-	group    *workspace.Group // set when opening an existing worktree
+	// id names the dialog in what it asks core, and core's answers by it.
+	id    string
+	plan  workspace.Plan
+	group *workspace.Group // set when opening an existing worktree
 	// fromBranch is set when group was picked at stepBranch, among the
 	// picked repository's worktrees, so esc goes back there.
 	fromBranch bool
@@ -113,53 +111,6 @@ const (
 	fieldPRs // the picked repository's open pull requests
 )
 
-// wizardMsg is the result of creating a tab's worktrees. It carries what
-// the tab needs, so the tab is opened even if the wizard was closed while
-// they were being made: the worktrees exist by then either way. w is the
-// wizard that asked for them, so the result does not land in another one
-// opened since.
-type wizardMsg struct {
-	w        *wizard
-	plan     workspace.Plan
-	agent    agents.Kind
-	task     string
-	group    string
-	wts      []workspace.Worktree
-	warnings []string
-	err      error
-}
-
-// issueMsg is the GitHub issue typed as #<number> for the branch.
-type issueMsg struct {
-	issue github.Issue
-	err   error
-}
-
-// setupProgressMsg says what the new worktrees' setup for w is doing.
-type setupProgressMsg struct {
-	w *wizard
-	s string
-}
-
-// listenProgress passes progress on from w's setup until it is done.
-func listenProgress(w *wizard) tea.Cmd {
-	ch := w.progress
-	return func() tea.Msg {
-		s, ok := <-ch
-		if !ok {
-			return nil
-		}
-		return setupProgressMsg{w: w, s: s}
-	}
-}
-
-// planMsg is the result of checking the branch name and the repositories,
-// which asks git and so runs in the background.
-type planMsg struct {
-	plan workspace.Plan
-	err  error
-}
-
 func (m *Model) openWizard() tea.Cmd {
 	if m.TabLimitReached() {
 		m.openTabLimit()
@@ -168,7 +119,7 @@ func (m *Model) openWizard() tea.Cmd {
 	if m.offerRoom((*Model).openWizard) {
 		return nil
 	}
-	w := &wizard{picked: map[int]bool{}}
+	w := &wizard{id: core.NewJobID(), picked: map[int]bool{}}
 	w.scan(m)
 	w.agents = agents.Available(m.Cfg.Agents)
 	w.branch = textinput.New()
@@ -442,41 +393,17 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		case "enter":
 			name := strings.TrimSpace(w.branch.Value())
 			if n, ok := issueNumber(name); ok {
-				return w.lookUpIssue(w.pickedRepos()[0].Path, n)
+				return w.lookUpIssue(m, w.pickedRepos()[0].Path, n)
 			}
 			w.err = ""
 			w.busy = "checking…"
-			wtRoot, repos, on := m.WtRoot, w.pickedRepos(), w.on
+			q := core.MakePlan{Job: w.id, Name: name, Repos: w.pickedRepos(), On: w.on}
 			// The list knows the picked repository's forks' pull requests;
 			// with several picked, or no list, GitHub is asked.
-			fork, isFork, listed := w.forkPRNamed(name)
-			return func() tea.Msg {
-				if err := workspace.ValidBranch(name); err != nil {
-					return planMsg{err: err}
-				}
-				plan, err := workspace.MakePlanOn(wtRoot, name, repos, on)
-				for i, it := range plan.Items {
-					if it.Mode == "remote" || it.Mode == "local" {
-						n, state, head, _ := github.BranchPR(it.Repo.Path, name)
-						plan.Items[i].SetPR(n, state, head)
-					}
-					// Not on origin, but a fork's pull request has it: a new
-					// branch of the name would start from main, and look
-					// like the pull request without being it.
-					if it.Mode != "new" || err != nil {
-						continue
-					}
-					n, owner, ok := fork.PR.Number, fork.PR.Fork, isFork
-					if !listed {
-						n, owner, ok = github.ForkPR(it.Repo.Path, name)
-					}
-					if ok {
-						return planMsg{err: fmt.Errorf("%s: %s is pull request #%d from %s's fork, not on origin: pick #%d among the pull requests to fetch it",
-							it.Repo.Name, name, n, owner, n)}
-					}
-				}
-				return planMsg{plan: plan, err: err}
+			if fork, isFork, listed := w.forkPRNamed(name); listed {
+				q.Fork = &core.ForkPR{Is: isFork, Number: fork.PR.Number, Owner: fork.PR.Fork}
 			}
+			return m.do(q)
 		}
 		var cmd tea.Cmd
 		switch w.field {
@@ -553,7 +480,7 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			w.err, w.unfetched = "", false
 			plan := w.chosenPlan()
 			plan.Unfetched = true
-			return w.create(plan)
+			return w.create(m, plan)
 		case "enter":
 			if len(w.agents) == 0 {
 				return nil
@@ -568,39 +495,18 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			for _, it := range plan.Items {
 				repos = append(repos, it.Repo.Path)
 			}
-			return m.askSetup(repos, func(m *Model) tea.Cmd { return w.create(plan) })
+			return m.askSetup(repos, func(m *Model) tea.Cmd { return w.create(m, plan) })
 		}
 		return nil
 	}
 	return nil
 }
 
-// create makes plan's worktrees, in the background, and then the tab.
-func (w *wizard) create(plan workspace.Plan) tea.Cmd {
+// create has core make plan's worktrees, and then opens the tab.
+func (w *wizard) create(m *Model, plan workspace.Plan) tea.Cmd {
 	w.step = stepCreating
 	w.busy = "creating worktree" + pluralS(len(w.plan.Items)) + "…"
-	agent, task, group := w.agents[w.agentIdx], w.task.Value(), w.chosenGroup()
-	progress := make(chan string, 16)
-	w.progress = progress
-	allowed := core.SetupAllowedFile()
-	work := func() tea.Msg {
-		defer close(progress)
-		warnings, err := plan.Sync()
-		var wts []workspace.Worktree
-		if err == nil {
-			wts, err = plan.Execute()
-		}
-		if err == nil {
-			warnings = append(warnings, workspace.Prepare(wts, plan.SetupIn(), allowed, func(s string) {
-				select {
-				case progress <- s:
-				default: // nobody is watching; fine
-				}
-			})...)
-		}
-		return wizardMsg{w: w, plan: plan, agent: agent, task: task, group: group, wts: wts, warnings: warnings, err: err}
-	}
-	return tea.Batch(work, listenProgress(w))
+	return m.do(core.MakeWorktrees{Job: w.id, Plan: plan, Kind: w.agents[w.agentIdx], Task: w.task.Value(), Group: w.chosenGroup()})
 }
 
 // issueNumber reads "#123" (or "123" alone is a branch name, not an issue).
@@ -613,30 +519,27 @@ func issueNumber(s string) (int, bool) {
 	return n, err == nil && n > 0
 }
 
-// lookUpIssue reads issue n from the repository at dir, to fill in the
-// branch and the task from.
-func (w *wizard) lookUpIssue(dir string, n int) tea.Cmd {
+// lookUpIssue has core read issue n of the repository at dir, to fill
+// in the branch and the task from.
+func (w *wizard) lookUpIssue(m *Model, dir string, n int) tea.Cmd {
 	w.err = ""
 	w.busy = "looking up issue #" + strconv.Itoa(n) + "…"
-	return func() tea.Msg {
-		is, err := github.FetchIssue(dir, n)
-		return issueMsg{issue: is, err: err}
-	}
+	return m.do(core.LookUpIssue{Job: w.id, Dir: dir, N: n})
 }
 
 // handleIssue fills in the branch and the task from an issue.
-func (w *wizard) handleIssue(msg issueMsg) tea.Cmd {
+func (w *wizard) handleIssue(msg core.IssueMsg) tea.Cmd {
 	w.busy = ""
 	if w.step != stepBranch {
 		return nil
 	}
-	if msg.err != nil {
-		w.err = "issue: " + msg.err.Error()
+	if msg.Err != "" {
+		w.err = "issue: " + msg.Err
 		return nil
 	}
-	w.branch.SetValue(msg.issue.BranchName())
+	w.branch.SetValue(msg.Issue.BranchName())
 	w.branch.CursorEnd()
-	w.task.SetValue(msg.issue.Task())
+	w.task.SetValue(msg.Issue.Task())
 	w.err = ""
 	return nil
 }
@@ -696,16 +599,16 @@ func (w *wizard) toAgent(m *Model) tea.Cmd {
 }
 
 // handlePlan takes the result of checking the branch.
-func (w *wizard) handlePlan(m *Model, msg planMsg) tea.Cmd {
+func (w *wizard) handlePlan(m *Model, msg core.PlanMsg) tea.Cmd {
 	w.busy = ""
 	if w.step != stepBranch {
 		return nil
 	}
-	if msg.err != nil {
-		w.err = msg.err.Error()
+	if msg.Err != "" {
+		w.err = msg.Err
 		return nil
 	}
-	w.plan, w.err = msg.plan, ""
+	w.plan, w.err = msg.Plan, ""
 	if !w.plan.CanStartAnew() {
 		w.useExisting = true
 	}
@@ -817,13 +720,12 @@ func (w *wizard) existingLines(m *Model, sel lipgloss.Style) []string {
 }
 
 // handle takes the result of creating the worktrees.
-func (w *wizard) handle(m *Model, msg wizardMsg) tea.Cmd {
-	if msg.err != nil {
-		w.err = msg.err.Error()
+func (w *wizard) handle(m *Model, msg core.WorktreesMadeMsg) tea.Cmd {
+	if msg.Err != "" {
+		w.err = msg.Err
 		w.step = stepAgent
 		w.busy = ""
-		var fe *workspace.FetchError
-		w.unfetched = errors.As(msg.err, &fe)
+		w.unfetched = msg.Unfetched
 		return nil
 	}
 	m.dialog = nil
@@ -832,8 +734,8 @@ func (w *wizard) handle(m *Model, msg wizardMsg) tea.Cmd {
 
 // createdTab opens the tab for worktrees that have been made, and goes to
 // it.
-func (m *Model) createdTab(msg wizardMsg) tea.Cmd {
-	t, cmd := m.addTab(msg.plan.Branch, msg.plan.Dir, msg.group, msg.wts, msg.agent, false, msg.task)
+func (m *Model) createdTab(msg core.WorktreesMadeMsg) tea.Cmd {
+	t, cmd := m.addTab(msg.Plan.Branch, msg.Plan.Dir, msg.Group, msg.Wts, msg.Kind, false, msg.Task)
 	m.setUpCreated(t, msg)
 	return cmd
 }
@@ -842,17 +744,17 @@ func (m *Model) createdTab(msg wizardMsg) tea.Cmd {
 // the worktrees. The tab opens beside the active one without going to it:
 // you are busy with something else by now, and what you type must not land
 // in the new agent.
-func (m *Model) createdBehind(msg wizardMsg) tea.Cmd {
-	if msg.err != nil {
-		m.toast("could not make " + msg.plan.Branch + ": " + msg.err.Error())
+func (m *Model) createdBehind(msg core.WorktreesMadeMsg) tea.Cmd {
+	if msg.Err != "" {
+		m.toast("could not make " + msg.Plan.Branch + ": " + msg.Err)
 		return nil
 	}
 	if len(m.Tabs) == 0 {
 		return m.createdTab(msg) // nothing else to be busy with
 	}
 	id := core.NewTabID()
-	cmd := m.do(core.AddTab{ID: id, Name: msg.plan.Branch, Dir: msg.plan.Dir, Group: msg.group, Wts: msg.wts,
-		Kind: msg.agent, Task: msg.task, Goal: msg.task})
+	cmd := m.do(core.AddTab{ID: id, Name: msg.Plan.Branch, Dir: msg.Plan.Dir, Group: msg.Group, Wts: msg.Wts,
+		Kind: msg.Kind, Task: msg.Task, Goal: msg.Task})
 	if t := m.ByRef(core.TabRef{Core: m.ID, Tab: id}); t != nil {
 		m.toast(t.Name + " is ready in a tab of its own")
 		m.setUpCreated(t, msg)
@@ -862,12 +764,12 @@ func (m *Model) createdBehind(msg wizardMsg) tea.Cmd {
 
 // setUpCreated shows a tab made from the wizard its task, which addTab
 // gave its agent.
-func (m *Model) setUpCreated(t *core.Tab, msg wizardMsg) {
-	if strings.TrimSpace(msg.task) != "" {
+func (m *Model) setUpCreated(t *core.Tab, msg core.WorktreesMadeMsg) {
+	if strings.TrimSpace(msg.Task) != "" {
 		m.resizePanes() // the panel takes rows above the agent, its goal the task
 	}
-	if len(msg.warnings) > 0 {
-		m.toast(t.Name + ": " + strings.Join(msg.warnings, "; "))
+	if len(msg.Warnings) > 0 {
+		m.toast(t.Name + ": " + strings.Join(msg.Warnings, "; "))
 	}
 }
 
@@ -1198,4 +1100,31 @@ func cursorLine(on bool, s string, st lipgloss.Style) string {
 		return st.Render("❯ ") + st.Render(s)
 	}
 	return "  " + s
+}
+
+// wizardAnswer takes core's answer to what a new-tab dialog asked, in the
+// dialog when it is still the one that asked.
+func (m *Model) wizardAnswer(ev core.Event) tea.Cmd {
+	w, _ := m.dialog.(*wizard)
+	ours := func(job string) bool { return w != nil && w.id == job }
+	switch ev := ev.(type) {
+	case core.PlanMsg:
+		if ours(ev.Job) {
+			return w.handlePlan(m, ev)
+		}
+	case core.IssueMsg:
+		if ours(ev.Job) {
+			return w.handleIssue(ev)
+		}
+	case core.SetupProgressMsg:
+		if ours(ev.Job) && w.step == stepCreating {
+			w.busy = ev.Line
+		}
+	case core.WorktreesMadeMsg:
+		if ours(ev.Job) {
+			return w.handle(m, ev)
+		}
+		return m.createdBehind(ev)
+	}
+	return nil
 }

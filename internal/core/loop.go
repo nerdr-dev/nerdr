@@ -328,6 +328,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return ev.Run(m), true
 	case Reply:
 		return m.Tell(ev.Ev), true
+	case setupProgress:
+		return m.onSetupProgress(ev), true
 	case repoMadeMsg:
 		return m.onRepoMade(ev), true
 	case RepoScanMsg:
