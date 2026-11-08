@@ -466,3 +466,30 @@ func TestCloseTwice(t *testing.T) {
 		t.Errorf("the next core's socket is gone: %v", err)
 	}
 }
+
+// TestRefusedBeforeTheHello: a core that refuses the peer and hangs up
+// before the hello is through is still heard: the client is told why, not
+// that the pipe broke.
+func TestRefusedBeforeTheHello(t *testing.T) {
+	l, err := net.Listen("unix", filepath.Join(t.TempDir(), "c.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	a, err := net.Dial("unix", l.Addr().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close()
+	b, err := l.Accept()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = writeJSON(b, frameRefused, Refused{Reason: "started by an agent"})
+	_ = b.Close()
+	_, _, err = Handshake(a, Hello{Env: []string{strings.Repeat("x", 1<<20)}})
+	var re *RefusedError
+	if !errors.As(err, &re) || re.Reason != "started by an agent" {
+		t.Errorf("Handshake = %v", err)
+	}
+}
