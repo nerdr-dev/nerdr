@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"testing"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
 // pgrep is the processes pgrep finds with args, by pid.
@@ -432,5 +434,76 @@ func TestAnUpdateUnderARunningAgent(t *testing.T) {
 		t.Errorf("the core started again runs %s", exe)
 	}
 	check("idle")
+	endClient(t, h, "q")
+}
+
+// TestAPluginRunOutlivesACoreCrash: an agent's run of a plugin goes on in
+// the holder when the core is killed. The agent's nerdr plugin run waits
+// for the core started again, which takes the run up and gives it what
+// the run prints after. The run started in the folder given it as
+// descriptor 3, and one started by the new core does too; a plugin
+// changed since it was allowed is not run.
+func TestAPluginRunOutlivesACoreCrash(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
+	dir := filepath.Join(scratch, "config", "nerdr", "plugins", "slow")
+	_ = os.MkdirAll(dir, 0o755)
+	pidFile, goFile := filepath.Join(scratch, "slow.pid"), filepath.Join(scratch, "go")
+	_ = os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte("description = \"Takes a while.\"\nrun = [\"./run.sh\"]\n"), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\necho $$ > "+pidFile+
+		"\necho \"in-$(basename \"$(pwd)\")\"\necho before-crash\nwhile [ ! -e "+goFile+" ]; do sleep 0.1; done\necho after-crash\nexit 4\n"), 0o755)
+	p, key, err := plugin.Fresh(plugin.Load(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := plugin.Allow(plugin.AllowedFile(filepath.Join(scratch, "state", "nerdr", "sessions")), p, key); err != nil {
+		t.Fatal(err)
+	}
+
+	h := start(t, bin, root, env)
+	newCrashTab(h)
+	h.keys("plugin-run-slow\r")
+	h.waitFor("in-crash", 5*time.Second) // the worktree, by descriptor 3
+	h.waitFor("before-crash", 5*time.Second)
+	b, _ := os.ReadFile(pidFile)
+	pid, err := strconv.Atoi(strings.TrimSpace(string(b)))
+	if err != nil {
+		t.Fatal("the plugin's program did not start:", err)
+	}
+
+	holder := pgrep("-f", "^"+bin+" holder -- ")
+	if len(holder) != 1 {
+		t.Fatalf("holders %v", holder)
+	}
+	core := pgrep("-P", strconv.Itoa(holder[0]), "-f", " core$")
+	if len(core) != 1 {
+		t.Fatalf("cores %v", core)
+	}
+	if err := syscall.Kill(core[0], syscall.SIGKILL); err != nil {
+		t.Fatal(err)
+	}
+	h.waitFor("connected to nerdr's core again", 15*time.Second)
+	if syscall.Kill(pid, 0) != nil {
+		t.Fatal("the run ended with the core")
+	}
+	_ = os.WriteFile(goFile, nil, 0o644)
+	h.waitFor("after-crash", 10*time.Second)
+	h.waitFor("plugin-exit-4", 5*time.Second)
+
+	// The core started again runs it as the one before did.
+	_ = os.Remove(pidFile)
+	h.keys("plugin-run-slow\r")
+	h.waitFor("plugin-exit-4", 5*time.Second)
+	if strings.Count(h.screen(), "in-crash") != 2 {
+		t.Errorf("the second run was not in the worktree:\n%s", h.screen())
+	}
+	// Changed since it was allowed: not run.
+	_ = os.WriteFile(filepath.Join(dir, "run.sh"), []byte("#!/bin/sh\necho changed-run\n"), 0o755)
+	h.keys("plugin-run-slow\r")
+	h.waitFor("not allowed it as it is now", 5*time.Second)
+	if strings.Contains(h.screen(), "changed-run") {
+		t.Fatal("a plugin changed since it was allowed ran")
+	}
 	endClient(t, h, "q")
 }
