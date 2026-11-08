@@ -87,6 +87,50 @@ func TestStalledMessageStopsTheQueue(t *testing.T) {
 	}
 }
 
+// TestQueueDeliversToAnAgentAtItsPromptInTheBackground: an agent whose turn
+// is over, with only commands it left running going on (a dev server that
+// never ends), takes the next message once its screen shows the prompt;
+// one at work does not.
+func TestQueueDeliversToAnAgentAtItsPromptInTheBackground(t *testing.T) {
+	a := silent(t, state.Message{Text: "next", Auto: true})
+	a.Light, a.Raw = StBackground, detect.Working
+	a.Hook = HookAuthority{Source: "s", State: detect.Working, At: time.Now(), Background: true, Processes: 1}
+	a.Reading = ScreenReading{pane: a.Pane, Res: detect.Result{State: detect.Idle}}
+	if !a.ReadyForMessage(false) {
+		t.Fatal("not ready at the prompt with a command in the background")
+	}
+	if a.ReadyForMessage(true) {
+		t.Fatal("ready though something holds the queue")
+	}
+	a.Reading.Res.State = detect.Working
+	if a.ReadyForMessage(false) {
+		t.Fatal("ready in the background with the screen at work")
+	}
+	a.Reading.Res.State = detect.Idle
+	a.Light = StWorking
+	if a.ReadyForMessage(false) {
+		t.Fatal("ready while working")
+	}
+}
+
+// TestBackgroundIsNotTakingTheMessageUp: an agent in the background, sent a
+// message, has not taken it up until it works on it; nor does a paused
+// queue carry on because of what it left running.
+func TestBackgroundIsNotTakingTheMessageUp(t *testing.T) {
+	a := silent(t)
+	now := time.Now()
+	a.Hook = HookAuthority{Source: "s", State: detect.Working, At: now, Background: true, Processes: 1}
+	a.AwaitWork, a.QueuePaused = true, true
+	if a.Classify(false, now); a.Light != StBackground || !a.AwaitWork || !a.QueuePaused {
+		t.Fatalf("background: %s, await %v, paused %v", a.Light.Label(), a.AwaitWork, a.QueuePaused)
+	}
+	a.QueuePaused = false
+	a.Hook = HookAuthority{Source: "s", State: detect.Working, At: now}
+	if a.Classify(false, now); a.Light != StWorking || a.AwaitWork {
+		t.Fatalf("working: %s, await %v", a.Light.Label(), a.AwaitWork)
+	}
+}
+
 func TestPasteCannotEndItself(t *testing.T) {
 	got := string(Paste("a\r\nb\x1b[201~\rc"))
 	if want := "\x1b[200~a\nb[201~\nc\x1b[201~"; got != want {

@@ -71,10 +71,7 @@ func (a *Agent) ReadyForMessage(holds bool) bool {
 	if a.NextAuto() < 0 || a.Pane == nil {
 		return false
 	}
-	if a.Light != StIdle && a.Light != StDone {
-		return false
-	}
-	if a.Raw != detect.Idle || a.Pane.Quiet() < QueueQuiet {
+	if !a.AtPrompt() || a.Pane.Quiet() < QueueQuiet {
 		return false
 	}
 	if a.AwaitWork || a.QueuePaused || holds {
@@ -82,6 +79,23 @@ func (a *Agent) ReadyForMessage(holds bool) bool {
 	}
 	exited, _, _ := a.Pane.Exited()
 	return !exited
+}
+
+// AtPrompt reports whether the agent waits at its prompt for what is typed
+// in: idle or done, or with its turn over and only commands or monitors it
+// started still running (StBackground). Claude, codex and the others take a
+// prompt then, and a dev server that never ends would otherwise hold the
+// queue up for good. Raw is the hook's working then, so the screen is what
+// says it is at the prompt.
+func (a *Agent) AtPrompt() bool {
+	switch a.Light {
+	case StIdle, StDone:
+		return a.Raw == detect.Idle
+	case StBackground:
+		r := a.Reading.Res
+		return a.Reading.pane == a.Pane && !r.Skip && r.State == detect.Idle
+	}
+	return false
 }
 
 // TypeMessage types msg in, and returns the Cmd for pressing enter after it.

@@ -135,10 +135,14 @@ func (a *Agent) Classify(visible bool, now time.Time) {
 			a.Worked = true
 		}
 		a.Begun = true
-		a.AwaitWork, a.QueuePaused = false, false
 		if hooked && a.Hook.Processes > 0 {
+			// The turn is over, and only what it left running goes on:
+			// that is not the agent taking up a message sent from the
+			// queue, nor a reason to carry on with a queue a stall paused.
+			// The prompt it takes reports work with no processes.
 			a.SetStatus(StBackground)
 		} else {
+			a.AwaitWork, a.QueuePaused = false, false
 			a.SetStatus(StWorking)
 		}
 	case detect.Blocked:
