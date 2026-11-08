@@ -277,6 +277,7 @@ app-server*)
     *'"method":"hooks/list"'*)
       if [ -f '` + trusted + `' ]; then printf '{"id":2,"result":%s}\n' '` + list("trusted") + `'
       else printf '{"id":2,"result":%s}\n' '` + list("untrusted") + `'; fi ;;
+    *'"method":"config/read"'*) echo '{"id":2,"result":{"config":{}}}' ;;
     *'"method":"config/batchWrite"'*) : > '` + trusted + `'; echo '{"id":3,"result":{"status":"ok"}}' ;;
     esac
   done; exit 0 ;;
@@ -316,7 +317,7 @@ func TestCodexGetsNerdrsHooksOnceTrusted(t *testing.T) {
 	m.SetHookSocket("/run/nerdr.sock")
 	tb := m.Cur()
 	m.Cfg.Install = config.InstallWorktree
-	m.NewAgent(tb, agents.Codex)
+	startAsked(t, m, m.NewAgent(tb, agents.Codex))
 	if args := startedWith(); !strings.Contains(args, "--no-daemon") || strings.Contains(args, "hook codex") {
 		t.Fatalf("untrusted hooks passed, or not a codex of its own: %q", args)
 	}
@@ -328,7 +329,7 @@ func TestCodexGetsNerdrsHooksOnceTrusted(t *testing.T) {
 	if note := m.ApplySkills(); note != "" {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
-	m.NewAgent(tb, agents.Codex)
+	startAsked(t, m, m.NewAgent(tb, agents.Codex))
 	if args := startedWith(); !strings.Contains(args, "hooks.Stop=") || !strings.Contains(args, "hook codex") {
 		t.Fatalf("trusted hooks not passed: %q", args)
 	}
@@ -375,7 +376,7 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 		t.Errorf("a second start should write nothing, said %q", note)
 	}
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Copilot)
+	startAsked(t, m, m.NewAgent(tb, agents.Copilot))
 	if args := startedWith(); !strings.Contains(args, "--plugin-dir\n"+hooks.CopilotPluginHome(home)+"\n") {
 		t.Fatalf("not given the plugin: %q", args)
 	}

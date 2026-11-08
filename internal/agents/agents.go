@@ -370,19 +370,41 @@ func helpHas(s Spec, args []string, flag string) bool {
 	if len(s.Command) == 0 {
 		return false
 	}
-	key := strings.Join(append(append(append([]string{}, s.Command...), args...), flag), "\x00")
+	key := helpKey(s, args, flag)
+	helpMu.Lock()
+	has, ok := helpSeen[key]
+	helpMu.Unlock()
+	if ok {
+		return has
+	}
+	// Run with the lock let go: one asked already is answered while
+	// another command runs. Two asking at once both run it.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	cmd := proc.Detach(exec.CommandContext(ctx, s.Command[0], append(append([]string{}, s.Command[1:]...), args...)...))
+	out, _ := proc.Output(cmd)
+	cancel()
+	has = strings.Contains(string(out), flag)
+	helpMu.Lock()
+	helpSeen[key] = has
+	helpMu.Unlock()
+	return has
+}
+
+func helpKey(s Spec, args []string, flag string) string {
+	return strings.Join(append(append(append([]string{}, s.Command...), args...), flag), "\x00")
+}
+
+// FlagKnown reports whether HasFlag for k and flag has been asked
+// already, and so answers without running anything.
+func FlagKnown(specs map[Kind]Spec, k Kind, flag string) bool {
+	s := specFor(specs, k)
+	if len(s.Command) == 0 {
+		return true
+	}
 	helpMu.Lock()
 	defer helpMu.Unlock()
-	has, ok := helpSeen[key]
-	if !ok {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		cmd := proc.Detach(exec.CommandContext(ctx, s.Command[0], append(append([]string{}, s.Command[1:]...), args...)...))
-		out, _ := proc.Output(cmd)
-		cancel()
-		has = strings.Contains(string(out), flag)
-		helpSeen[key] = has
-	}
-	return has
+	_, ok := helpSeen[helpKey(s, []string{"--help"}, flag)]
+	return ok
 }
 
 var (

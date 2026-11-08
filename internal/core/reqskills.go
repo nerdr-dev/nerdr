@@ -1,6 +1,7 @@
 package core
 
 import (
+	"os"
 	"strings"
 	"time"
 
@@ -20,14 +21,58 @@ type ApplySkills struct{ Say, Otherwise string }
 
 func (q ApplySkills) Do(m *Core) Cmd {
 	m.SkillLook.At = time.Time{}
-	msg := strings.TrimSpace(q.Say + " " + m.ApplySkills())
+	codex := false
+	note := m.applySkills(func(bool) (bool, error) { codex = true; return false, nil })
+	if !codex {
+		q.tell(m, note)
+		return nil
+	}
+	// codex is asked away from Mu: it runs it.
+	ask := m.AskCodexTrust(true)
+	return func() Event {
+		trusted, wrote, err := ask()
+		return SkillsAppliedMsg{Q: q, Note: note, Trusted: trusted, Wrote: wrote, Err: err}
+	}
+}
+
+// tell says what applying the skills did.
+func (q ApplySkills) tell(m *Core, note string) {
+	msg := strings.TrimSpace(q.Say + " " + note)
 	if msg == "" {
 		msg = q.Otherwise
 	}
 	if msg != "" {
 		m.Toast(msg)
 	}
-	return nil
+}
+
+// SkillsAppliedMsg is codex's answer, asked by ApplySkills: whether it
+// trusts nerdr's hooks, and whether it wrote its config to. Note is what
+// ApplySkills did before.
+type SkillsAppliedMsg struct {
+	Q              ApplySkills
+	Note           string
+	Trusted, Wrote bool
+	Err            error
+}
+
+// OnSkillsApplied takes codex's answer, and says what was done.
+func (m *Core) OnSkillsApplied(ev SkillsAppliedMsg) {
+	m.SetCodexTrust(ev.Trusted)
+	if ev.Err != nil {
+		Debugf("codex hooks: %v", ev.Err)
+	}
+	note := ev.Note
+	if ev.Wrote {
+		home, _ := os.UserHomeDir()
+		codex := TildePath(CodexConfig(home), home) + " (trusts nerdr's codex hooks)"
+		if note == "" {
+			note = "skills installed in " + codex
+		} else {
+			note += ", " + codex
+		}
+	}
+	ev.Q.tell(m, note)
 }
 
 // ReadSkillUse reads how much the agents have used each skill, the first
