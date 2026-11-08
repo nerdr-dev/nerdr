@@ -40,9 +40,9 @@ type newRepoMsg struct {
 }
 
 // openNewRepo opens the form, to make a repository or, with clone, to
-// clone one.
-func (w *wizard) openNewRepo(clone bool) tea.Cmd {
-	f := newRepoForm{clone: clone, gh: github.Available()}
+// clone one; gh is whether core has the gh CLI.
+func (w *wizard) openNewRepo(clone, gh bool) tea.Cmd {
+	f := newRepoForm{clone: clone, gh: gh}
 	f.input = textinput.New()
 	f.input.CharLimit = 300
 	if clone {

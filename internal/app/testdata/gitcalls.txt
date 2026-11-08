@@ -5,7 +5,6 @@ dialogs.go: workspace.Dirty 1
 dialogs.go: workspace.Head 2
 dialogs.go: workspace.Unpushed 1
 issuelist.go: workspace.ScanAll 1
-newrepo.go: github.Available 1
 newrepo.go: github.CloneRepo 1
 newrepo.go: github.CreateRepo 1
 newrepo.go: workspace.CheckNewRepo 2
@@ -13,7 +12,6 @@ newrepo.go: workspace.CloneRepo 1
 newrepo.go: workspace.CloneSource 1
 newrepo.go: workspace.InitRepo 1
 prall.go: git.ListWorktrees 1
-prall.go: github.Available 1
 prall.go: github.ListPRs 1
 prall.go: github.ReviewRequested 1
 prall.go: workspace.ScanAll 1
@@ -42,6 +40,5 @@ wizard.go: workspace.Plan.Execute 1
 wizard.go: workspace.Prepare 1
 wizard.go: workspace.ScanAll 1
 wizard.go: workspace.ValidBranch 1
-wizardprs.go: github.Available 1
 wizardprs.go: github.ReviewRequested 1
 wizardprs.go: workspace.FetchForkPR 1
