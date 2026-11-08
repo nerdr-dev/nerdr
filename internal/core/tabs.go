@@ -311,6 +311,9 @@ type SpawnPrep struct {
 	// CodexNoted is set when CodexNote was worked out.
 	CodexNoted bool
 	CodexNote  []string
+	// Check is how the check from inside the agent's sandbox went, nil
+	// when there was none; see CheckSandbox.
+	Check *SandboxCheckedMsg
 }
 
 // SpawnReady is a tab's agent to start, with what its CLI said first.
@@ -323,8 +326,44 @@ type SpawnReady struct {
 }
 
 // Prepare is how to ask what starting t's agent with l needs to ask its
-// CLI first, with m.Mu let go; nil when there is nothing to ask.
+// CLI first, and to check its sandbox, with m.Mu let go; nil when there
+// is nothing to ask. One the check refuses is not asked more.
 func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
+	env := m.LaunchEnv(t, l)
+	check := m.CheckSandbox(t, env)
+	ask := m.prepareAgent(t, l, env)
+	if check == nil && ask == nil {
+		return nil
+	}
+	return func() SpawnPrep {
+		var c *SandboxCheckedMsg
+		if check != nil {
+			ev := check()
+			if c = &ev; ev.Refused() {
+				return SpawnPrep{Check: c}
+			}
+		}
+		var p SpawnPrep
+		if ask != nil {
+			p = ask()
+		}
+		p.Check = c
+		return p
+	}
+}
+
+// LaunchEnv is the environment t's agent starts with from l: in or out of
+// its sandbox, as Spawn will put it. m.Mu is held.
+func (m *Core) LaunchEnv(t *Tab, l agents.Launch) []string {
+	was := t.InSandbox
+	t.InSandbox = m.SandboxedKind(t.Agent)
+	defer func() { t.InSandbox = was }()
+	return WithUserEnv(m.AgentEnv(t), l.Env)
+}
+
+// prepareAgent is Prepare for what the agent's CLI is asked, env being
+// what it starts with.
+func (m *Core) prepareAgent(t *Tab, l agents.Launch, env []string) func() SpawnPrep {
 	switch t.Agent {
 	case agents.Codex:
 		var ask func() (bool, bool, error)
@@ -338,11 +377,6 @@ func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
 			return nil
 		}
 		command, _ := agents.Command(m.SpecsFor(t), t.Agent)
-		// The environment it starts with, in or out of its sandbox.
-		was := t.InSandbox
-		t.InSandbox = m.SandboxedKind(t.Agent)
-		env := WithUserEnv(m.AgentEnv(t), l.Env)
-		t.InSandbox = was
 		argv, dir := slices.Clone(l.Argv), t.Dir
 		return func() SpawnPrep {
 			var p SpawnPrep
@@ -408,6 +442,14 @@ func (m *Core) OnSpawnReady(ev SpawnReady) Cmd {
 
 // SpawnPrepared is Spawn, with what the agent's CLI was asked.
 func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPrep) Cmd {
+	if prep.Check != nil {
+		m.OnSandboxChecked(*prep.Check)
+		if prep.Check.Refused() {
+			t.Err = "not started: its sandbox lets it reach nerdr's client socket or holder, which it must deny"
+			t.Light = StExited
+			return nil
+		}
+	}
 	if prep.CodexAsked {
 		m.SetCodexTrust(prep.CodexTrusted)
 	}
@@ -501,7 +543,7 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 	t.Err = ""
 	t.Changed = time.Now()
 	m.Tell(StartedMsg{A: m.Ref(t)})
-	return m.CheckSandbox(t, spec.Env)
+	return nil
 }
 
 // Tab is one agent in one set of worktrees.

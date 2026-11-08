@@ -420,7 +420,12 @@ func TestTheSandboxMarkOutlivesACrash(t *testing.T) {
 	script := agentScript(t, "exec cat\n")
 	a, tabA := heldCore(t, clA, script)
 	a.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{script}, Sandboxed: true}
-	a.Start(tabA, false)
+	// Its sandbox is checked first, which says it cannot be: it starts.
+	if cmd := a.Start(tabA, false); cmd != nil {
+		if ev, ok := cmd().(SpawnReady); ok {
+			a.OnSpawnReady(ev)
+		}
+	}
 	if tabA.Pane == nil || !tabA.InSandbox {
 		t.Fatalf("not started in a sandbox: %s", tabA.Err)
 	}
