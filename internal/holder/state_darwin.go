@@ -1,19 +1,19 @@
 package holder
 
-import "os"
+import (
+	"os"
+
+	"github.com/nerdr-dev/nerdr/internal/rundir"
+)
 
 // stateFile is where an upgrade leaves the holder's state. macOS has no
-// file in memory only, so it is a file in the user's own temporary
-// folder (mode 0700 there), removed as soon as it is open: it has no name
-// but for the moment between the two.
+// file in memory only, so it is a file in the client sockets' folder,
+// which a sandbox must deny (see rundir), never the temporary folder,
+// which sandboxes tend to allow; removed as soon as it is open.
 func stateFile() (*os.File, error) {
-	f, err := os.CreateTemp("", "nerdr-holder-*")
+	dir, err := rundir.Dir()
 	if err != nil {
 		return nil, err
 	}
-	if err := os.Remove(f.Name()); err != nil {
-		f.Close()
-		return nil, err
-	}
-	return f, nil
+	return stateFileIn(dir)
 }
