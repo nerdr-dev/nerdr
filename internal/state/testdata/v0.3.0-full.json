@@ -1,0 +1,238 @@
+{
+  "root": "/ROOT",
+  "active": 7,
+  "tabs": [
+    {
+      "id": "s-string",
+      "name": "s-string",
+      "dir": "s-string",
+      "agent": "s-Kind",
+      "model": "s-string",
+      "session_id": "s-string",
+      "resume_argv": [
+        "s-string"
+      ],
+      "sessions": {
+        "s-Kind": "s-string"
+      },
+      "worktrees": [
+        {
+          "repo": "s-string",
+          "path": "s-string",
+          "branch": "s-string",
+          "origin": "s-string"
+        }
+      ],
+      "group": "s-string",
+      "messages": [
+        {
+          "text": "s-string",
+          "auto": true,
+          "from": 7,
+          "sandboxed": true,
+          "gone": 7
+        }
+      ],
+      "inactive": [
+        {
+          "text": "s-string",
+          "auto": true,
+          "from": 7,
+          "sandboxed": true,
+          "gone": 7
+        }
+      ],
+      "queue": [
+        "s-string"
+      ],
+      "goal": "s-string",
+      "last": "s-string",
+      "note": "s-string",
+      "prompts": [
+        {
+          "text": "s-string",
+          "at": "2026-10-30T09:00:00Z"
+        }
+      ],
+      "recap": "s-string",
+      "recap_at": "2026-10-30T09:00:00Z",
+      "status": "s-string",
+      "status_by": 7,
+      "status_at": "2026-10-30T09:00:00Z",
+      "last_active": "2026-10-30T09:00:00Z",
+      "spinoff": {
+        "next": [
+          {
+            "branch": "s-string",
+            "summary": "s-string",
+            "prompt": "s-string",
+            "from": "s-string",
+            "sandboxed": true
+          }
+        ],
+        "done": [
+          {
+            "part": {
+              "branch": "s-string",
+              "summary": "s-string",
+              "prompt": "s-string",
+              "from": "s-string",
+              "sandboxed": true
+            },
+            "skipped": true,
+            "branch": "s-string",
+            "dir": "s-string",
+            "agent": "s-string",
+            "reused": true,
+            "pick_failed": "s-string",
+            "elsewhere": true,
+            "err": "s-string",
+            "tab": "s-string",
+            "start": "s-string"
+          }
+        ]
+      },
+      "spinoff_report": [
+        {
+          "part": {
+            "branch": "s-string",
+            "summary": "s-string",
+            "prompt": "s-string",
+            "from": "s-string",
+            "sandboxed": true
+          },
+          "skipped": true,
+          "branch": "s-string",
+          "dir": "s-string",
+          "agent": "s-string",
+          "reused": true,
+          "pick_failed": "s-string",
+          "elsewhere": true,
+          "err": "s-string",
+          "tab": "s-string",
+          "start": "s-string"
+        }
+      ],
+      "reviewed": "s-string",
+      "review_brief": "s-string",
+      "findings_sent": true,
+      "review_done": {
+        "brief": "s-string",
+        "msg": {
+          "text": "s-string",
+          "auto": true,
+          "from": 7,
+          "sandboxed": true,
+          "gone": 7
+        },
+        "approved": true,
+        "says": [
+          {
+            "agent": "s-string",
+            "brief": "s-string",
+            "summary": "s-string",
+            "approved": true
+          }
+        ]
+      },
+      "agents": [
+        {
+          "id": "s-string",
+          "name": "s-string",
+          "dir": "s-string",
+          "agent": "s-Kind",
+          "model": "s-string",
+          "session_id": "s-string",
+          "sessions": {
+            "s-Kind": ""
+          },
+          "worktrees": null,
+          "group": "s-string",
+          "goal": "s-string",
+          "last": "s-string",
+          "note": "s-string",
+          "recap": "s-string",
+          "recap_at": "2026-10-30T09:00:00Z",
+          "status": "s-string",
+          "status_by": 7,
+          "status_at": "2026-10-30T09:00:00Z",
+          "last_active": "2026-10-30T09:00:00Z",
+          "spinoff": {
+            "next": null
+          },
+          "reviewed": "s-string",
+          "review_brief": "s-string",
+          "findings_sent": true,
+          "review_done": {
+            "brief": "s-string",
+            "msg": {
+              "text": "s-string",
+              "auto": true,
+              "from": 7,
+              "sandboxed": true,
+              "gone": 7
+            },
+            "approved": true
+          },
+          "num": 7,
+          "sandboxed": true
+        }
+      ],
+      "num": 7,
+      "sandboxed": true
+    }
+  ],
+  "split": "s-string",
+  "split_left": true,
+  "prs": {
+    "known": {
+      "s-string": {
+        "repo": "s-string",
+        "failing": {
+          "s-string": true
+        },
+        "reviews": {
+          "s-string": {
+            "state": "s-string",
+            "at": "2026-10-30T09:00:00Z"
+          }
+        }
+      }
+    },
+    "repos": [
+      "s-string"
+    ],
+    "news": [
+      {
+        "key": "s-string",
+        "repo": "s-string",
+        "number": 7,
+        "what": "s-string",
+        "tab": "s-string",
+        "checks": [
+          "s-string"
+        ]
+      }
+    ]
+  },
+  "issues": {
+    "known": [
+      "s-string"
+    ],
+    "news": [
+      {
+        "key": "s-string",
+        "repo": "s-string",
+        "number": 7,
+        "title": "s-string"
+      }
+    ]
+  },
+  "group_names": {
+    "s-string": "s-string"
+  },
+  "sandboxed_dirs": {
+    "s-string": true
+  },
+  "side_width": 7
+}
