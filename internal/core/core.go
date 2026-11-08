@@ -91,6 +91,9 @@ type Core struct {
 	// sandbox since the core started, by kind and command; see
 	// CheckSandbox.
 	SandboxChecks map[string]bool `json:"-"`
+	// Unseen are the programs in the holder no tab took up, for the
+	// client to show and the user to stop; see unseen.go.
+	Unseen []UnseenProgram
 	// hookSock is the socket herdr's integrations in the agents report to,
 	// and hookBin nerdr itself, for those that report through the CLI.
 	HookSock, HookBin string

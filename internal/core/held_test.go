@@ -492,3 +492,58 @@ func TestAnAgentThatEndedIsTakenUpWithItsStart(t *testing.T) {
 		t.Error("a process with the ended agent's id vouched for")
 	}
 }
+
+// A program in the holder that no tab takes up, a terminal of a tab
+// closed while no core ran, is shown, not stopped, until the user stops
+// it: hung up, then killed should it ignore that, and let go of.
+func TestProgramsInNoTabAreShownAndStoppedOnlyWhenAsked(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, tabA := heldCore(t, clA, agentScript(t, "exec cat\n"))
+	shell, _ := a.NewShellIn(tabA, true)
+	if shell == nil {
+		t.Fatal("no terminal")
+	}
+	pid := shell.Shell.Pid()
+	clA.Close()
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, _ := heldCore(t, clB, agentScript(t, "exec cat\n"))
+	b.Tabs = nil // the tab was closed
+	b.Mu.Lock()
+	b.TakeUpHeld()
+	b.NoteUnseen()
+	b.Mu.Unlock()
+	if len(b.Unseen) != 1 || b.Unseen[0].Pid != pid || b.Unseen[0].What != "terminal 1 of a tab since closed" || b.HeldLeft() != 1 {
+		t.Fatalf("unseen %+v", b.Unseen)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if syscall.Kill(pid, 0) != nil {
+		t.Fatal("stopped before it was asked to be")
+	}
+
+	old := unseenStopGrace
+	unseenStopGrace = 300 * time.Millisecond
+	t.Cleanup(func() { unseenStopGrace = old })
+	b.Mu.Lock()
+	cmd := StopUnseen{}.Do(b)
+	b.Mu.Unlock()
+	if len(b.Unseen) != 0 || cmd == nil {
+		t.Fatalf("still shown %+v, or nothing to do", b.Unseen)
+	}
+	cmd()
+	waitFor(t, "the holder to let go of it", func() bool {
+		progs, _ := clB.List()
+		return len(progs) == 0
+	})
+	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+		t.Errorf("still there: %v", err)
+	}
+}
