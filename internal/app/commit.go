@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	"github.com/charmbracelet/bubbles/textarea"
@@ -20,7 +19,9 @@ import (
 
 // commitDialog asks for the message, above the files it commits.
 type commitDialog struct {
-	t     *core.Tab
+	t *core.Tab
+	// job is the id of the look at the changes, which core answers.
+	job   string
 	wts   []workspace.Worktree
 	input textarea.Model
 	// files are each worktree's changes, by its path, as git status lists
@@ -44,14 +45,6 @@ var commitThen = []struct{ label, key string }{
 	{"Commit + push + open PR", "P"},
 }
 
-// commitFilesMsg carries the changes the dialog d commits.
-type commitFilesMsg struct {
-	d             *commitDialog
-	files         map[string][]string
-	worktreeHooks bool
-	err           string
-}
-
 // commitFilesShown is how many of a worktree's files the dialog lists.
 const commitFilesShown = 12
 
@@ -61,33 +54,18 @@ func (m *Model) openCommit(t *core.Tab) tea.Cmd {
 	m.do(core.MarkSandboxed{T: m.Ref(t)})
 	in := newTextArea("what the change does", min(max(m.width-16, 30), 80))
 	in.SetHeight(4)
-	d := &commitDialog{t: t, wts: append([]workspace.Worktree(nil), t.Worktrees...), input: in}
+	d := &commitDialog{t: t, job: core.NewJobID(), wts: append([]workspace.Worktree(nil), t.Worktrees...), input: in}
 	m.dialog = d
-	return func() tea.Msg {
-		files := map[string][]string{}
-		var errs []string
-		wtHooks := false
-		for _, w := range d.wts {
-			if gitsafe.WorktreeHooks(w.Path) {
-				wtHooks = true
-			}
-			fs, err := workspace.Changes(w)
-			if err != nil {
-				errs = append(errs, filepath.Base(w.Repo)+": "+err.Error())
-				continue
-			}
-			files[w.Path] = fs
-		}
-		return commitFilesMsg{d: d, files: files, worktreeHooks: wtHooks, err: strings.Join(errs, "; ")}
-	}
+	return m.do(core.LookChanges{Job: d.job, T: m.Ref(t)})
 }
 
 // onCommitFiles shows the changes in the dialog that asked for them.
-func (m *Model) onCommitFiles(msg commitFilesMsg) {
-	if m.dialog != msg.d {
+func (m *Model) onCommitFiles(msg core.ChangesMsg) {
+	d, ok := m.dialog.(*commitDialog)
+	if !ok || d.job != msg.Job {
 		return
 	}
-	msg.d.files, msg.d.worktreeHooks, msg.d.err = msg.files, msg.worktreeHooks, msg.err
+	d.files, d.worktreeHooks, d.err = msg.Files, msg.WorktreeHooks, msg.Err
 }
 
 // changed is how many files the commit takes.
@@ -123,69 +101,30 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.dialog = nil
-		var wts []workspace.Worktree
+		var in []string
 		for _, w := range d.wts {
 			if len(d.files[w.Path]) > 0 {
-				wts = append(wts, w)
+				in = append(in, w.Path)
 			}
 		}
 		t := d.t
-		m.do(core.MarkSandboxed{T: m.Ref(t)})
-		hooks := !t.HasSandboxed()
 		p := m.curBranchPanel()
 		if p == nil || p.t != t {
 			p = &tabPanel{t: t}
 		}
-		// What follows is worked out now, from what is known of the tab
-		// here; it runs once the commit has been made.
-		then, busy := p.job(commitThen[d.then].key)
+		// What follows the commit is worked out now, from what is known of
+		// the tab here; core does it once the commit has been made.
+		q, busy, then := p.work(commitThen[d.then].key)
+		q.T, q.Message, q.CommitIn = m.Ref(t), message, in
 		p.busy = "committing…"
-		if then != nil {
+		if then {
 			p.busy = "committing, then " + busy
 		}
-		return func() tea.Msg {
-			msg := commitAll(t, wts, message, hooks)
-			if msg.err != "" || then == nil {
-				return msg
-			}
-			after := then()
-			after.note = strings.TrimSpace(msg.note + "; " + after.note)
-			if after.err != "" {
-				after.err = msg.note + ", but " + after.err
-			}
-			return after
-		}
+		return m.do(q)
 	}
 	var cmd tea.Cmd
 	d.input, cmd = d.input.Update(msg)
 	return cmd
-}
-
-func commitAll(t *core.Tab, wts []workspace.Worktree, message string, hooks bool) prActionMsg {
-	var errs, done []string
-	skipped := false
-	for _, w := range wts {
-		name := filepath.Base(w.Repo)
-		if !hooks && gitsafe.WorktreeHooks(w.Path) {
-			skipped = true
-		}
-		if err := workspace.CommitIn(w, message, hooks); err != nil {
-			errs = append(errs, name+": "+err.Error())
-			continue
-		}
-		done = append(done, name)
-	}
-	if len(errs) > 0 {
-		return prActionMsg{t: t, err: "commit failed: " + strings.Join(errs, "; ")}
-	}
-	note := "committed " + t.Name
-	if len(wts) > 1 {
-		note += " (" + strings.Join(done, ", ") + ")"
-	}
-	if skipped {
-		note += " (worktree git hooks skipped for sandboxed tab)"
-	}
-	return prActionMsg{t: t, note: note}
 }
 
 func (d *commitDialog) view(m *Model, w, h int) string {

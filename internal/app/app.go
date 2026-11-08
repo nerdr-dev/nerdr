@@ -618,10 +618,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		m.dialog = &explainDialog{e: msg}
 		return nil
 
-	case commitFilesMsg:
-		m.onCommitFiles(msg)
-		return nil
-
 	case wizardMsg:
 		if w, ok := m.dialog.(*wizard); ok && w == msg.w {
 			return w.handle(m, msg)
@@ -656,9 +652,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case promptEnterMsg:
 		m.promptEnter(msg.t)
 		return nil
-
-	case prActionMsg:
-		return m.prDone(msg)
 
 	case newRepoMsg:
 		if w, ok := m.dialog.(*wizard); ok && w == msg.w {

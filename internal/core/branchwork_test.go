@@ -1,4 +1,4 @@
-package app
+package core
 
 import (
 	"os"
@@ -7,12 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
-// TestPullRequestNeedsCommits covers c on a branch whose work is not
+// TestPullRequestNeedsCommits covers P on a branch whose work is not
 // committed yet: it says so, rather than pushing nothing and passing on
 // gh's refusal.
 func TestPullRequestNeedsCommits(t *testing.T) {
@@ -29,11 +27,10 @@ func TestPullRequestNeedsCommits(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Name: "feat"}}}
 	wts := []workspace.Worktree{{Repo: dir, Path: dir, Branch: "feat"}}
-	msg := createPRs(tb, wts, nil, true)
-	if !strings.Contains(msg.err, "no commits ahead of main") ||
-		!strings.Contains(msg.err, "1 file changed but not committed") {
-		t.Fatalf("got %+v", msg)
+	_, err := CreatePRs("feat", wts, nil, true)
+	if !strings.Contains(err, "no commits ahead of main") ||
+		!strings.Contains(err, "1 file changed but not committed") {
+		t.Fatalf("got %q", err)
 	}
 }

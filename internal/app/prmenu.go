@@ -7,10 +7,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
-	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/term"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -29,12 +26,6 @@ type tabPanel struct {
 	failed bool
 }
 
-type prActionMsg struct {
-	t    *core.Tab
-	note string
-	err  string
-}
-
 // showBranchPR is F2 on the tab's branches and its pull request, with the
 // keyboard: where ctrl+q i i takes you.
 func (m *Model) showBranchPR() tea.Cmd {
@@ -48,123 +39,57 @@ func (m *Model) showBranchPR() tea.Cmd {
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())
 }
 
-// act starts what key k does to the tab's branches, p a push and P a
-// pull request, reporting whether k is one of those.
-func (p *tabPanel) act(k string) (tea.Cmd, bool) {
-	job, busy := p.job(k)
-	if job == nil {
+// branchAct starts what key k does to the branches of p's tab, p a push
+// and P a pull request, reporting whether k is one of those.
+func (m *Model) branchAct(p *tabPanel, k string) (tea.Cmd, bool) {
+	q, busy, ok := p.work(k)
+	if !ok {
 		return nil, false
 	}
 	p.busy = busy
-	return func() tea.Msg { return job() }, true
+	q.T = m.Ref(p.t)
+	return m.do(q), true
 }
 
-// job is what key k does to the tab's branches, to run in the background,
-// and what the panel says while it runs; nil for another key.
-func (p *tabPanel) job(k string) (func() prActionMsg, string) {
-	t := p.t
-	wts := append([]workspace.Worktree(nil), t.Worktrees...)
-	hooks := !t.HasSandboxed()
+// work is what key k has core do to the tab's branches, and what the
+// panel says while it does; false for another key. The request is still
+// to be given its tab.
+func (p *tabPanel) work(k string) (core.BranchWork, string, bool) {
+	var q core.BranchWork
 	switch k {
 	case "p":
-		return func() prActionMsg { return pushAll(t, wts, hooks) }, "pushing…"
+		q.Push = true
+		return q, "pushing…", true
 	case "P":
-		have := map[string]bool{}
-		for _, w := range t.Info.Wts {
-			if w.HasPR && w.Pr.State == "OPEN" {
-				have[w.Repo] = true
-			}
-		}
-		return func() prActionMsg { return createPRs(t, wts, have, hooks) }, "pushing and opening the pull request…"
+		q.PR = true
+		return q, "pushing and opening the pull request…", true
 	}
-	return nil, ""
+	return q, "", false
 }
 
-// handle takes the result of an action.
-func (m *Model) prDone(msg prActionMsg) tea.Cmd {
-	if p := m.branchPanel; p != nil && p.t == msg.t {
+// prDone takes the result of an action.
+func (m *Model) prDone(msg core.BranchDoneMsg) tea.Cmd {
+	t := m.ByRef(msg.T)
+	if t == nil {
+		return nil
+	}
+	if p := m.branchPanel; p != nil && p.t == t {
 		p.busy = ""
-		p.result, p.failed = msg.note, msg.err != ""
+		p.result, p.failed = msg.Note, msg.Err != ""
 		if p.failed {
-			p.result = msg.err
+			p.result = msg.Err
 		}
 	}
-	if msg.err != "" {
-		m.toast(msg.err)
-	} else if msg.note != "" {
-		m.toast(msg.note)
+	if msg.Err != "" {
+		m.toast(msg.Err)
+	} else if msg.Note != "" {
+		m.toast(msg.Note)
 	}
 	var pr tea.Cmd
-	if msg.t == m.Cur() {
+	if t == m.Cur() {
 		pr = m.review.ReloadPR() // F2 shows the new PR at once
 	}
-	return tea.Batch(m.do(core.LookAgain{T: m.Ref(msg.t), PR: true}), pr)
-}
-
-func pushAll(t *core.Tab, wts []workspace.Worktree, hooks bool) prActionMsg {
-	var errs []string
-	skipped := false
-	for _, w := range wts {
-		if !hooks && gitsafe.WorktreeHooks(w.Path) {
-			skipped = true
-		}
-		if err := workspace.PushIn(w, hooks); err != nil {
-			errs = append(errs, filepath.Base(w.Repo)+": "+err.Error())
-		}
-	}
-	if len(errs) > 0 {
-		return prActionMsg{t: t, err: "push failed: " + strings.Join(errs, "; ")}
-	}
-	note := "pushed " + t.Name
-	if skipped {
-		note += " (worktree git hooks skipped for sandboxed tab)"
-	}
-	return prActionMsg{t: t, note: note}
-}
-
-func createPRs(t *core.Tab, wts []workspace.Worktree, have map[string]bool, hooks bool) prActionMsg {
-	var urls, errs []string
-	skipped := false
-	for _, w := range wts {
-		if have[w.Repo] {
-			continue
-		}
-		name := filepath.Base(w.Repo)
-		// A pull request is made of commits: work not yet committed is in
-		// none, and gh's refusal would not say so.
-		if s, err := workspace.BranchStats(w); err == nil && s.Ahead == 0 {
-			why := name + ": no commits ahead of " + s.Base + " to open a pull request with"
-			if n := workspace.Uncommitted(w); n > 0 {
-				why += " — " + core.Plural(n, "file") + " changed but not committed: commit them first"
-			}
-			errs = append(errs, why)
-			continue
-		}
-		if !hooks && gitsafe.WorktreeHooks(w.Path) {
-			skipped = true
-		}
-		if err := workspace.PushIn(w, hooks); err != nil {
-			errs = append(errs, name+": push: "+err.Error())
-			continue
-		}
-		url, err := github.CreatePR(w.Path, w.Origin)
-		if err != nil {
-			errs = append(errs, name+": "+err.Error())
-			continue
-		}
-		urls = append(urls, url)
-	}
-	switch {
-	case len(errs) > 0:
-		return prActionMsg{t: t, err: strings.Join(errs, "; ")}
-	case len(urls) == 0:
-		return prActionMsg{t: t, note: t.Name + " already has its pull request"}
-	}
-	note := "opened " + strings.Join(urls, ", ")
-	if skipped {
-		note += " (worktree git hooks skipped for sandboxed tab)"
-	}
-	return prActionMsg{t: t, note: note}
+	return tea.Batch(m.do(core.LookAgain{T: msg.T, PR: true}), pr)
 }
 
 // openURL opens url in the browser, without waiting for it; see
@@ -244,7 +169,7 @@ func (p *tabPanel) branchLines(m *Model, shown string) []string {
 				m.openURL(url)
 				return nil
 			}))
-		case !github.Available():
+		case m.NoGh:
 			lines = append(lines, "  "+dim("no gh CLI: pull requests unknown"))
 		default:
 			lines = append(lines, "  "+dim("no pull request"))
@@ -289,7 +214,7 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 						pr += " · CI " + wi.Pr.CI
 					}
 					row += pr
-				case github.Available():
+				case !m.NoGh:
 					row += dim("no PR")
 				}
 			}

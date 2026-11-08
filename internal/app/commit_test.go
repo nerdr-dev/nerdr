@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -28,7 +29,7 @@ func TestCommitDialog(t *testing.T) {
 	if !done || !ok {
 		t.Fatalf("c opens the commit dialog: %T", m.dialog)
 	}
-	m.Update(cmd())
+	replies(m, cmd)
 	view := ansi.Strip(d.view(m, 100, 40))
 	for _, want := range []string{"M a.txt", "?? b.txt"} {
 		if !strings.Contains(view, want) {
@@ -45,7 +46,7 @@ func TestCommitDialog(t *testing.T) {
 	if m.dialog != nil || commit == nil {
 		t.Fatal("enter with a message commits")
 	}
-	if msg, ok := commit().(prActionMsg); !ok || msg.err != "" {
+	if msg, ok := answer[core.BranchDoneMsg](m, commit); !ok || msg.Err != "" {
 		t.Fatalf("commit: %+v", msg)
 	}
 	if got := gitRun(t, repo, "log", "-1", "--format=%s"); got != "Change a, add b" {
@@ -70,14 +71,14 @@ func TestCommitAndPush(t *testing.T) {
 
 	cmd, _ := m.branchKey("c")
 	d := m.dialog.(*commitDialog)
-	m.Update(cmd())
+	replies(m, cmd)
 	d.key(m, keyMsg("tab"))
 	if !strings.Contains(ansi.Strip(d.view(m, 100, 40)), "enter commit + push") {
 		t.Fatalf("tab picks commit + push:\n%s", ansi.Strip(d.view(m, 100, 40)))
 	}
 	d.input.SetValue("Change a")
-	msg, ok := d.key(m, keyMsg("enter"))().(prActionMsg)
-	if !ok || msg.err != "" || !strings.Contains(msg.note, "pushed") {
+	msg, ok := answer[core.BranchDoneMsg](m, d.key(m, keyMsg("enter")))
+	if !ok || msg.Err != "" || !strings.Contains(msg.Note, "pushed") {
 		t.Fatalf("commit + push: %+v", msg)
 	}
 	if got, want := gitRun(t, origin, "rev-parse", "main"), gitRun(t, repo, "rev-parse", "HEAD"); got != want {
@@ -103,7 +104,7 @@ func TestLookAfterCommitIsNotLost(t *testing.T) {
 	look := before()
 
 	gitRun(t, repo, "-c", "commit.gpgsign=false", "commit", "-qam", "commit while looking")
-	m.Update(prActionMsg{t: tb, note: "committed feat"})
+	m.Update(core.Reply{Ev: core.BranchDoneMsg{T: m.Ref(tb), Note: "committed feat"}})
 	_, again := m.Update(look)
 	if !tb.Info.Stale || again == nil {
 		t.Fatal("the look the commit asked for is still to come")

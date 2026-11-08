@@ -149,7 +149,7 @@ func (m *Model) branchKey(k string) (tea.Cmd, bool) {
 				if q == nil || q.t != t || q.busy != "" {
 					return nil
 				}
-				cmd, _ := q.act(k)
+				cmd, _ := m.branchAct(q, k)
 				return cmd
 			},
 		}

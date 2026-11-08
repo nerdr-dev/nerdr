@@ -1,7 +1,4 @@
 app.go: workspace.WorktreesRoot 1
-commit.go: gitsafe.WorktreeHooks 2
-commit.go: workspace.Changes 1
-commit.go: workspace.CommitIn 1
 dialogs.go: git.CurrentBranch 1
 dialogs.go: github.BranchStatus 1
 dialogs.go: workspace.Dirty 1
@@ -24,12 +21,6 @@ prlist.go: git.ListWorktrees 1
 prlist.go: workspace.Existing 1
 prlist.go: workspace.FetchForkPR 1
 prlist.go: workspace.ScanAll 1
-prmenu.go: github.Available 2
-prmenu.go: github.CreatePR 1
-prmenu.go: gitsafe.WorktreeHooks 2
-prmenu.go: workspace.BranchStats 1
-prmenu.go: workspace.PushIn 2
-prmenu.go: workspace.Uncommitted 1
 prpanel.go: github.FetchPR 1
 repos.go: workspace.Dirty 1
 repos.go: workspace.PlanAdd 1

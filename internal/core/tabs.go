@@ -716,3 +716,7 @@ func (t *Tab) Attention() int {
 
 // lastGen is the last Agent.Gen given out.
 var lastGen atomic.Uint64
+
+// NewJobID is an id for a request whose answer comes later (see Later),
+// for the client to know it by.
+func NewJobID() string { return NewTabID() }

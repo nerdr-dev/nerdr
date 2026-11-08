@@ -1,0 +1,32 @@
+package app
+
+import (
+	"github.com/nerdr-dev/nerdr/internal/core"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// replies runs cmd, and gives m core's answers among what it brings
+// (core.Reply), returning what they told it.
+func replies(m *Model, cmd tea.Cmd) []core.Event {
+	var out []core.Event
+	for _, msg := range runBatch(cmd) {
+		if r, ok := msg.(core.Reply); ok {
+			m.Update(r)
+			out = append(out, r.Ev)
+		}
+	}
+	return out
+}
+
+// answer is the one answer of type T that cmd brings m, and whether there
+// was one.
+func answer[T any](m *Model, cmd tea.Cmd) (T, bool) {
+	var zero T
+	for _, ev := range replies(m, cmd) {
+		if v, ok := ev.(T); ok {
+			return v, true
+		}
+	}
+	return zero, false
+}
