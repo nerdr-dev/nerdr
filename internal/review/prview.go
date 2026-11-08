@@ -698,21 +698,17 @@ func (m *Model) startPRFix() tea.Cmd {
 	m.setToast("reading the build log…")
 	wt, pr := m.curWT, m.pr
 	return func() tea.Msg {
-		logs, err := github.FailedRunLogs(wt, pr.Checks, logLimit)
+		logs, err := github.FailedRunLogs(wt, pr.Checks, LogLimit)
 		return prFixMsg{wt: wt, pr: pr, logs: logs, err: err}
 	}
 }
 
-// FixMessage is the message f writes for pr: the failing jobs' log, read
-// in dir, and the ask to fix the build. Without a failing check it is an
-// error saying so.
-func FixMessage(dir string, pr github.PR) (string, error) {
+// FixMessage is the message f writes for pr: the failing jobs' logs, as
+// github.FailedRunLogs read them (at most LogLimit of each), and the ask
+// to fix the build. Without a failing check it is an error saying so.
+func FixMessage(pr github.PR, logs string) (string, error) {
 	if _, fail, _ := countChecks(pr.Checks); fail == 0 {
 		return "", fmt.Errorf("no failing checks on #%d", pr.Number)
-	}
-	logs, err := github.FailedRunLogs(dir, pr.Checks, logLimit)
-	if err != nil {
-		return "", err
 	}
 	return fixPrompt(pr, logs), nil
 }
@@ -726,9 +722,9 @@ func ReplyMessage(pr github.PR) string {
 	return replyPrompt(pr)
 }
 
-// logLimit is how much failing-build log goes into the message. The agent
+// LogLimit is how much failing-build log goes into the message. The agent
 // can read the repository itself, so this only has to carry the failure.
-const logLimit = 6000
+const LogLimit = 6000
 
 // said is the reviews that came with words: all of them when the PR was
 // fetched by itself, else each reviewer's latest.

@@ -36,19 +36,19 @@ func TestPickingAPRGoesWhereItsBranchIs(t *testing.T) {
 	)
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
 
-	m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 3, Branch: "fix/login"}, Wt: "/w/b"})
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 3, Branch: "fix/login"}, Wt: "/w/b"}))
 	if m.dialog != nil || m.Cur().ID != "b" {
 		t.Fatalf("a PR with a tab should go to it: dialog %T, tab %s", m.dialog, m.Cur().ID)
 	}
 
-	m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 4, Branch: "feat/x"}, Wt: "/elsewhere/x"})
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 4, Branch: "feat/x"}, Wt: "/elsewhere/x"}))
 	w, ok := m.dialog.(*wizard)
 	if !ok || w.step != stepAgent || w.group == nil || w.group.Dir != "/elsewhere/x" ||
 		w.group.Worktrees[0].Branch != "feat/x" || w.group.Worktrees[0].Repo != "/r/app" {
 		t.Fatalf("a checked-out branch should be offered for opening: %#v", m.dialog)
 	}
 
-	m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}})
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}}))
 	c, ok := m.dialog.(*confirm)
 	if !ok || !strings.Contains(strings.Join(c.lines, " "), "No worktree has feat/y") {
 		t.Fatalf("a branch nowhere should ask to make a worktree: %#v", m.dialog)
@@ -86,7 +86,7 @@ func TestPRToItsWorktree(t *testing.T) {
 		}
 	}
 	m := tabsModel(t)
-	m.goToPR(core.PREntry{Repo: workspace.Repo{Name: "app", Path: repo}, PR: github.PR{Number: 9, Branch: "feat/z"}})
+	replies(m, m.goToPR(core.PREntry{Repo: workspace.Repo{Name: "app", Path: repo}, PR: github.PR{Number: 9, Branch: "feat/z"}}))
 	w, ok := m.dialog.(*wizard)
 	// Compared as the folders they are: on a Mac the temporary folder is
 	// under /var, which git gives as /private/var.

@@ -7,9 +7,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/term"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -43,15 +41,6 @@ type wizardPRs struct {
 	cursor  int // in shown
 }
 
-// wizardPRsMsg is the open pull requests of repo, asked for w.
-type wizardPRsMsg struct {
-	w        *wizard
-	repo     string
-	got      repoPRs
-	asked    map[string]bool
-	askedErr string
-}
-
 // loadPRs has the dialog list the pull requests of the repository picked,
 // when one is: those F2's list knows of, if it asked lately, or else
 // GitHub's.
@@ -66,52 +55,36 @@ func (w *wizard) loadPRs(m *Model) tea.Cmd {
 		return nil
 	}
 	w.pulls = wizardPRs{repo: r.Path}
-	if got, ok := m.prAll.repos[r.Path]; ok && m.prAll.asked != nil && time.Since(got.at) < m.GithubEvery(core.PrAllEvery) {
-		w.setPRs(m, got, m.prAll.asked)
+	if got, ok := m.PRAll.Repos[r.Path]; ok && m.PRAll.Asked != nil && time.Since(got.At) < m.GithubEvery(core.PrAllEvery) {
+		w.setPRs(m, got, m.PRAll.Asked)
 		return nil
 	}
 	w.pulls.loading = true
-	return func() tea.Msg {
-		msg := wizardPRsMsg{w: w, repo: r.Path, got: fetchRepoPRs(r)}
-		var err error
-		if msg.asked, err = github.ReviewRequested(); err != nil {
-			msg.askedErr = "review requests: " + err.Error()
-		}
-		return msg
-	}
+	return m.do(core.AskRepoPRs{Job: w.id, Repo: r})
 }
 
 // setPRs lists got, but those a tab is open on, asked marking those your
 // review is asked for.
-func (w *wizard) setPRs(m *Model, got repoPRs, asked map[string]bool) {
+func (w *wizard) setPRs(m *Model, got core.RepoPRs, asked map[string]bool) {
 	w.pulls.entries = nil
-	for _, e := range got.marked(asked) {
+	for _, e := range markedPRs(got, asked) {
 		if m.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
 			w.pulls.entries = append(w.pulls.entries, e)
 		}
 	}
 	sortAllPREntries(w.pulls.entries)
-	w.pulls.loading, w.pulls.loaded, w.pulls.err = false, got.err == "", got.err
+	w.pulls.loading, w.pulls.loaded, w.pulls.err = false, got.Err == "", got.Err
 }
 
-// onWizardPRs takes a repository's pull requests, for the dialog that
-// asked and for F2's list.
-func (m *Model) onWizardPRs(msg wizardPRsMsg) {
-	a := &m.prAll
-	if a.repos == nil {
-		a.repos = map[string]repoPRs{}
-	}
-	a.repos[msg.repo] = msg.got
-	if msg.asked != nil {
-		a.asked = msg.asked
-	}
-	if w, ok := m.dialog.(*wizard); ok && w == msg.w && w.pulls.repo == msg.repo {
-		w.setPRs(m, msg.got, a.asked)
-		if msg.askedErr != "" && w.pulls.err == "" {
-			w.pulls.err = msg.askedErr
+// onWizardPRs takes a repository's pull requests, in core's PRAll, for
+// the dialog that asked.
+func (m *Model) onWizardPRs(msg core.RepoPRsMsg) {
+	if w, ok := m.dialog.(*wizard); ok && w.id == msg.Job && w.pulls.repo == msg.Repo {
+		w.setPRs(m, m.PRAll.Repos[msg.Repo], m.PRAll.Asked)
+		if msg.AskedErr != "" && w.pulls.err == "" {
+			w.pulls.err = msg.AskedErr
 		}
 	}
-	m.applyPRs()
 }
 
 // shownPRs is the pull requests listed, narrowed by what is typed as the
@@ -170,16 +143,22 @@ func (w *wizard) prsKey(m *Model, msg tea.KeyMsg) (tea.Cmd, bool) {
 // is checked out in, or on to the branch, continued, once a fork's is
 // fetched.
 func (w *wizard) pickPR(m *Model, e core.PREntry) tea.Cmd {
-	if e.Wt = checkedOut(e); e.Wt != "" {
+	w.err, w.busy = "", "looking for #"+strconv.Itoa(e.PR.Number)+"'s worktree…"
+	return m.do(core.LookUpCheckout{Job: w.id, E: e})
+}
+
+// pickedPR goes on with e, picked, once core has said where its branch is
+// checked out.
+func (w *wizard) pickedPR(m *Model, e core.PREntry) tea.Cmd {
+	w.busy = ""
+	if e.Wt != "" {
 		g := m.worktreeGroup(e)
 		w.group, w.fromBranch, w.err = &g, true, ""
 		return w.toAgent(m)
 	}
 	if e.PR.Fork != "" {
 		w.err, w.busy = "", "fetching #"+strconv.Itoa(e.PR.Number)+" from origin…"
-		return func() tea.Msg {
-			return forkFetchedMsg{w: w, e: e, err: workspace.FetchForkPR(e.Repo.Path, e.PR.Number, e.Branch())}
-		}
+		return m.do(core.FetchForkPR{Job: w.id, E: e})
 	}
 	return w.continuePR(m, e)
 }

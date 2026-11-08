@@ -614,12 +614,12 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 	m.PRWatch.At = time.Now()
 	m.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me"}}}
 	now := time.Now()
-	m.prAll.repos = map[string]repoPRs{app.Path: {at: now, names: []string{"acme/app"}, entries: []core.PREntry{
+	m.PRAll.Repos = map[string]core.RepoPRs{app.Path: {At: now, Names: []string{"acme/app"}, Entries: []core.PREntry{
 		{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me", Branch: "mine", UpdatedAt: now}},
 		{Repo: app, PR: github.PR{Number: 8, Title: "Theirs", Author: "ann", Branch: "theirs", UpdatedAt: now.Add(-time.Hour)}},
 		{Repo: app, PR: github.PR{Number: 9, Title: "Forked", Author: "bob", Branch: "main", Fork: "bob", UpdatedAt: now.Add(-2 * time.Hour)}},
 	}}}
-	m.prAll.asked = map[string]bool{github.RequestKey("Acme/App", 9): true}
+	m.PRAll.Asked = map[string]bool{github.RequestKey("Acme/App", 9): true}
 
 	m.handleKey(keyMsg("f2"))
 	m.handleKey(keyMsg("f2"))
@@ -627,7 +627,7 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 		t.Fatal("F2 again should show your PRs")
 	}
 	m.handleKey(keyMsg("m"))
-	m.prAll.busy = false // as if GitHub had answered
+	m.PRAll.Busy = false // as if GitHub had answered
 	m.applyPRs()
 	d := m.prPanel
 	if !d.all || len(d.entries) != 3 || d.entries[0].PR.Number != 9 || !d.entries[0].Asked {
@@ -641,7 +641,7 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 	}
 
 	d.cursor = 0
-	m.handleKey(keyMsg("enter"))
+	replies(m, m.handleKey(keyMsg("enter")))
 	c, ok := m.dialog.(*confirm)
 	if !ok || !strings.Contains(strings.Join(c.lines, " "), "fork") || !strings.Contains(strings.Join(c.lines, " "), "pr-9-main") {
 		t.Fatalf("enter on a fork's PR should offer to fetch it: %#v", m.dialog)
@@ -663,7 +663,7 @@ func TestPRListSaysWhatItIs(t *testing.T) {
 	m.Root = filepath.Join(home, "develop")
 	m.Cfg.RepoDirs = []string{"/srv/repos"}
 	m.PRWatch.Repos = map[string]bool{"/a": true}
-	m.prAll.repos = map[string]repoPRs{"/a": {}, "/b": {}, "/c": {}}
+	m.PRAll.Repos = map[string]core.RepoPRs{"/a": {}, "/b": {}, "/c": {}}
 	if got := ansi.Strip(m.prScope(false)); got != "Your open pull requests · in 1 repository under ~/develop, /srv/repos" {
 		t.Fatalf("mine: %q", got)
 	}

@@ -463,12 +463,12 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 		t.Fatalf("step = %d, want the branch name", w.step)
 	}
 	now := time.Now()
-	got := repoPRs{at: now, names: []string{"acme/app"}}
+	got := core.RepoPRs{At: now, Names: []string{"acme/app"}}
 	for i := 1; i <= 20; i++ {
-		got.entries = append(got.entries, core.PREntry{Repo: app, PR: github.PR{Number: i, Title: fmt.Sprintf("Change %d", i),
+		got.Entries = append(got.Entries, core.PREntry{Repo: app, PR: github.PR{Number: i, Title: fmt.Sprintf("Change %d", i),
 			Author: "ann", Branch: fmt.Sprintf("change-%d", i), UpdatedAt: now.Add(-time.Duration(i) * time.Hour)}})
 	}
-	got.entries = append(got.entries, core.PREntry{Repo: app, PR: github.PR{Number: 21, Title: "From a fork", Author: "bob",
+	got.Entries = append(got.Entries, core.PREntry{Repo: app, PR: github.PR{Number: 21, Title: "From a fork", Author: "bob",
 		Branch: "main", Fork: "bob", UpdatedAt: now.Add(-48 * time.Hour)}})
 	w.pulls = wizardPRs{repo: app.Path}
 	w.setPRs(m, got, map[string]bool{github.RequestKey("acme/app", 15): true})
@@ -518,7 +518,7 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 
 	// Enter on the fork's fetches it first.
 	w.key(m, keyMsg("down"))
-	if cmd := w.key(m, keyMsg("enter")); cmd == nil || !strings.Contains(w.busy, "fetching #21") {
+	if replies(m, w.key(m, keyMsg("enter"))); !strings.Contains(w.busy, "fetching #21") {
 		t.Fatalf("enter on a fork's PR should fetch it: busy %q", w.busy)
 	}
 	w.busy = ""
@@ -527,7 +527,7 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 	w.branch.SetValue("change-3")
 	w.focusField(fieldBranch)
 	w.key(m, keyMsg("down"))
-	w.key(m, keyMsg("enter"))
+	replies(m, w.key(m, keyMsg("enter")))
 	if w.branch.Value() != "change-3" || !w.useExisting || w.busy != "checking…" {
 		t.Fatalf("enter should go on with the branch, continued: %q %v %q", w.branch.Value(), w.useExisting, w.busy)
 	}

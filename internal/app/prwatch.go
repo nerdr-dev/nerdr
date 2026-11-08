@@ -40,7 +40,7 @@ func (m *Model) applyPRs() {
 	if d := m.prPanel; d != nil && d.all {
 		entries, errs := m.allPREntries()
 		d.apply(entries, errs)
-		d.loading = m.prAll.busy
+		d.loading = m.PRAll.Busy
 	} else if d != nil {
 		d.apply(m.PRWatch.Entries, errs)
 		d.loading = m.PRWatch.Busy

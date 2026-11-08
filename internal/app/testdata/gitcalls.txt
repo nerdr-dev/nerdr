@@ -1,9 +1,1 @@
-prall.go: git.ListWorktrees 1
-prall.go: github.ListPRs 1
-prall.go: github.ReviewRequested 1
-prall.go: workspace.ScanAll 1
-prlist.go: git.ListWorktrees 1
-prlist.go: workspace.FetchForkPR 1
-prpanel.go: github.FetchPR 1
-wizardprs.go: github.ReviewRequested 1
-wizardprs.go: workspace.FetchForkPR 1
+

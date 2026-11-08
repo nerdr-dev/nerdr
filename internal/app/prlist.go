@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -154,7 +153,15 @@ func (m *Model) goToPR(e core.PREntry) tea.Cmd {
 		m.setFocus(core.FocusAgent)
 		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
 	}
-	e.Wt = checkedOut(e)
+	m.prPick = core.NewJobID()
+	return m.do(core.LookUpCheckout{Job: m.prPick, E: e})
+}
+
+// prCheckedOut goes on with e, picked in F2's list with no tab on its
+// branch, once core has said where the branch is checked out: it asks
+// whether to open the worktree, or, when there is none, whether to make
+// one.
+func (m *Model) prCheckedOut(e core.PREntry) tea.Cmd {
 	if e.Wt != "" {
 		g := m.worktreeGroup(e)
 		cmd := m.openWizard()
@@ -187,40 +194,47 @@ func (m *Model) goToPR(e core.PREntry) tea.Cmd {
 				return m.openPRWizard(e)
 			}
 			m.toast("fetching #" + fmt.Sprint(e.PR.Number) + " from origin…")
-			return func() tea.Msg {
-				return forkFetchedMsg{e: e, err: workspace.FetchForkPR(e.Repo.Path, e.PR.Number, e.Branch())}
-			}
+			m.prPick = core.NewJobID()
+			return m.do(core.FetchForkPR{Job: m.prPick, E: e})
 		},
 	}
 	return nil
 }
 
-// forkFetchedMsg is a pull request from a fork fetched into its local
-// branch, for a tab to be made on it.
-type forkFetchedMsg struct {
-	w   *wizard // the new-tab dialog it was picked in, nil from F2
-	e   core.PREntry
-	err error
-}
-
-func (m *Model) onForkFetched(msg forkFetchedMsg) tea.Cmd {
-	if msg.w != nil {
-		w, ok := m.dialog.(*wizard)
-		if !ok || w != msg.w {
-			return nil // closed since; the branch is fetched for next time
+// prAnswer takes what core found of a PR picked in a list: where its
+// branch is checked out, a fork's fetched. A new-tab dialog's goes to it,
+// while it is open; F2's to F2, while it is the last asked.
+func (m *Model) prAnswer(ev core.Event) tea.Cmd {
+	w, _ := m.dialog.(*wizard)
+	switch ev := ev.(type) {
+	case core.CheckoutMsg:
+		switch {
+		case w != nil && w.id == ev.Job:
+			return w.pickedPR(m, ev.E)
+		case ev.Job == m.prPick:
+			m.prPick = ""
+			return m.prCheckedOut(ev.E)
 		}
-		w.busy = ""
-		if msg.err != nil {
-			w.err = msg.err.Error()
-			return nil
+	case core.ForkFetchedMsg:
+		switch {
+		case w != nil && w.id == ev.Job:
+			w.busy = ""
+			if ev.Err != "" {
+				w.err = ev.Err
+				return nil
+			}
+			return w.continuePR(m, ev.E)
+		case ev.Job == m.prPick:
+			m.prPick = ""
+			if ev.Err != "" {
+				m.toast(ev.Err)
+				return nil
+			}
+			return m.openPRWizard(ev.E)
 		}
-		return w.continuePR(m, msg.e)
+		// Closed since: the branch is fetched for next time.
 	}
-	if msg.err != nil {
-		m.toast(msg.err.Error())
-		return nil
-	}
-	return m.openPRWizard(msg.e)
+	return nil
 }
 
 // openPRWizard starts the new-tab steps on e's branch, continuing it.
@@ -232,23 +246,6 @@ func (m *Model) openPRWizard(e core.PREntry) tea.Cmd {
 		w.useExisting = true
 	}
 	return cmd
-}
-
-// checkedOut is the worktree with e's branch checked out, as git says
-// now: the list's, from when GitHub was last asked, can be minutes old,
-// from before a worktree was made or removed. The list's when git cannot
-// say.
-func checkedOut(e core.PREntry) string {
-	wts, err := git.ListWorktrees(e.Repo.Path)
-	if err != nil {
-		return e.Wt
-	}
-	for _, w := range wts {
-		if w.Branch == e.Branch() {
-			return w.Path
-		}
-	}
-	return ""
 }
 
 // worktreeGroup is what a tab on e's worktree opens: the folder nerdr made

@@ -30,7 +30,8 @@ func init() {
 		PluginUIGoneMsg{}, PluginRunMsg{}, AskMsg{}, AnsweredMsg{}, TypedInMsg{},
 		UnseenMsg{}, SetupAnsweredMsg{}, SpinoffFailedMsg{}, SpinoffNextMsg{},
 		ReposDoneMsg{}, ChangesMsg{}, BranchDoneMsg{}, CloseInfoMsg{}, ReposScannedMsg{}, RepoMadeMsg{}, RepoCheckedMsg{}, PlanMsg{}, IssueMsg{}, SetupProgressMsg{},
-		WorktreesMadeMsg{},
+		WorktreesMadeMsg{}, RepoPRsMsg{}, CheckoutMsg{}, ForkFetchedMsg{},
+		PRFetchedMsg{},
 
 		ChangedMsg{}, RedrawMsg{}, FrameMsg{}, InfoTickMsg{}, WirePanic{},
 	)
