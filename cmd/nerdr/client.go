@@ -116,6 +116,9 @@ func runClient(start bool) error {
 	_, err = p.Run()
 	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap)
 	model.Close()
+	// Gone from the herdr pane it ran in, if any, however it ended: the
+	// core it leaves working is not in that pane.
+	model.Herdr.Release()
 	if why := model.GoneErr(); why != "" {
 		return errors.New(why)
 	}
