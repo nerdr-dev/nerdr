@@ -22,38 +22,17 @@ package attach
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"fmt"
-	"os"
 	"path/filepath"
-	"runtime"
-	"syscall"
+
+	"github.com/nerdr-dev/nerdr/internal/rundir"
 )
 
 // EnvDir, when set, is the folder of the client sockets, for tests that
 // must not meet a real core.
-const EnvDir = "NERDR_CLIENT_DIR"
+const EnvDir = rundir.EnvDir
 
-// Dir is the folder of the client sockets: nerdr in $XDG_RUNTIME_DIR;
-// without it ~/Library/Application Support/nerdr/run on macOS and
-// ~/.cache/nerdr/run elsewhere. Not the temporary folder, which sandboxes
-// tend to allow.
-func Dir() (string, error) {
-	if d := os.Getenv(EnvDir); d != "" {
-		return d, nil
-	}
-	if d := os.Getenv("XDG_RUNTIME_DIR"); d != "" {
-		return filepath.Join(d, "nerdr"), nil
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	if runtime.GOOS == "darwin" {
-		return filepath.Join(home, "Library", "Application Support", "nerdr", "run"), nil
-	}
-	return filepath.Join(home, ".cache", "nerdr", "run"), nil
-}
+// Dir is the folder of the client sockets; see rundir.Dir.
+func Dir() (string, error) { return rundir.Dir() }
 
 // Paths are the socket of the core of folder root, and its key file.
 func Paths(root string) (sock, key string, err error) {
@@ -66,39 +45,8 @@ func Paths(root string) (sock, key string, err error) {
 	return filepath.Join(dir, name+".sock"), filepath.Join(dir, name+".key"), nil
 }
 
-// ensureDir makes dir if it is not there, and checks it is a folder of
-// this user's that nobody else can enter, tightening it when it is ours
-// but open. It does not follow a link put in its place.
-func ensureDir(dir string) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
-	}
-	return checkDir(dir, true)
-}
-
-// checkDir is ensureDir's check; fix says to tighten a folder of ours.
-func checkDir(dir string, fix bool) error {
-	fi, err := os.Lstat(dir)
-	if err != nil {
-		return err
-	}
-	if !fi.IsDir() {
-		return fmt.Errorf("%s is not a folder", dir)
-	}
-	st, ok := fi.Sys().(*syscall.Stat_t)
-	if !ok {
-		return errors.New("cannot tell who owns " + dir)
-	}
-	if int(st.Uid) != os.Getuid() {
-		return fmt.Errorf("%s belongs to another user", dir)
-	}
-	if fi.Mode().Perm()&0o077 != 0 {
-		if !fix {
-			return fmt.Errorf("%s is open to other users (mode %o)", dir, fi.Mode().Perm())
-		}
-		if err := os.Chmod(dir, 0o700); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// ensureDir and checkDir are rundir's Ensure and Check.
+var (
+	ensureDir = rundir.Ensure
+	checkDir  = rundir.Check
+)
