@@ -283,7 +283,8 @@ func version() string {
 	return out
 }
 
-// run is nerdr in the terminal, over holder h when it is not nil.
+// run is nerdr in the terminal, running the programs itself, without a
+// holder: with NERDR_HOLDER=0, or when a program in a tab started it.
 func run() error {
 	cfg, err := config.Load()
 	if err != nil {
