@@ -41,7 +41,7 @@ func (m *Core) CodexHookArgs() []string {
 func (m *Core) TrustCodexHooks(write bool) (bool, error) {
 	m.CodexAsked = true
 	argv, env := agents.Command(m.Cfg.Agents, agents.Codex)
-	trusted, wrote, err := TrustCodex(argv, WithUserEnv(os.Environ(), env), write)
+	trusted, wrote, err := TrustCodex(argv, WithUserEnv(m.BaseEnv(), env), write)
 	m.CodexHooks = nil
 	if trusted {
 		m.CodexHooks = hooks.CodexArgs()
@@ -149,7 +149,7 @@ func (m *Core) SetSocketShared(taken error) {
 // nerdr's own commands report to, and herdr's variables pointing its
 // integrations at nerdr. The tab's id stands for herdr's pane id.
 func (m *Core) AgentEnv(t *Tab) []string {
-	env := ChildEnv(t)
+	env := m.TabEnv(t)
 	sock, sockErr := m.HookSock, m.HookSockErr
 	if t.InSandbox {
 		env = append(env, "NERDR_SANDBOXED=1")

@@ -33,18 +33,32 @@ func takeAll(hooks.Peer) string { return "" }
 // let in to clients.
 func listen(t *testing.T, check func(hooks.Peer) string) (s *Server, sock, key string, clients chan *Conn) {
 	t.Helper()
+	s, sock, key, clients, _ = listenHellos(t, check)
+	return s, sock, key, clients
+}
+
+// listenHellos is listen, with what each client said first.
+func listenHellos(t *testing.T, check func(hooks.Peer) string) (s *Server, sock, key string, clients chan *Conn, hellos chan Hello) {
+	t.Helper()
 	d := dir(t)
 	sock, key = filepath.Join(d, "c.sock"), filepath.Join(d, "c.key")
 	clients = make(chan *Conn, 4)
+	hellos = make(chan Hello, 4)
 	s, err := Listen(sock, key, Config{
 		Version: "core-1", Features: []string{"rows"}, Check: check,
-		Client: func(c *Conn, _ Hello) { clients <- c },
+		Client: func(c *Conn, h Hello) {
+			select {
+			case hellos <- h:
+			default: // a test that does not read them
+			}
+			clients <- c
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { s.Close("") })
-	return s, sock, key, clients
+	return s, sock, key, clients, hellos
 }
 
 func recv(t *testing.T, c *Conn) string {
@@ -148,17 +162,20 @@ func TestKeyFile(t *testing.T) {
 func TestConnect(t *testing.T) {
 	var peer hooks.Peer
 	var mu sync.Mutex
-	s, sock, key, clients := listen(t, func(p hooks.Peer) string {
+	s, sock, key, clients, hellos := listenHellos(t, func(p hooks.Peer) string {
 		mu.Lock()
 		peer = p
 		mu.Unlock()
 		return ""
 	})
-	c, w, err := Dial(sock, key, Hello{Version: "client-1", Features: []string{"rows", "gui"}})
+	c, w, err := Dial(sock, key, Hello{Version: "client-1", Features: []string{"rows", "gui"}, Env: []string{"A=1", "B=two"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer c.Close("")
+	if h := <-hellos; !slices.Equal(h.Env, []string{"A=1", "B=two"}) {
+		t.Errorf("core got the environment %q", h.Env)
+	}
 	if w.Gen != Generation || w.Version != "core-1" || !slices.Contains(w.Features, "rows") {
 		t.Errorf("welcome %+v", w)
 	}

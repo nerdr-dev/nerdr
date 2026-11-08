@@ -63,12 +63,17 @@ func writeJSON(w io.Writer, typ byte, v any) error {
 // together; what one may lack goes in the features instead.
 const Generation = 1
 
-// Hello is what a client says first.
+// Hello is what a client says first. Env is the client's environment,
+// which the programs the core starts from then on run with, as they
+// would with nerdr run in the client's terminal: the holder's is that of
+// whichever nerdr started it, and may be long out of date. A client that
+// sends none leaves them with the one before.
 type Hello struct {
 	Gen      int      `json:"gen"`
 	Version  string   `json:"version"`
 	Features []string `json:"features,omitempty"`
 	Key      string   `json:"key"`
+	Env      []string `json:"env,omitempty"`
 }
 
 // Welcome is the core's answer to a client it lets in.

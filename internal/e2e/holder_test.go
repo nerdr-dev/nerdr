@@ -234,6 +234,30 @@ func TestASecondClientTakesOver(t *testing.T) {
 	endClient(t, second, "q")
 }
 
+// TestAgentsTakeTheClientsEnv: an agent started over a core that another
+// nerdr started runs with the environment of the nerdr connected, as it
+// would without the core, not with the one the core was started from.
+func TestAgentsTakeTheClientsEnv(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
+	first := start(t, bin, root, append(env, "FAKE_FROM=first"))
+	first.waitFor("Repositories in", 15*time.Second)
+	endClient(t, first, "c")
+	if len(pgrep("-f", "^"+bin+" holder -- ")) != 1 {
+		t.Fatal("no core runs on")
+	}
+
+	second := start(t, bin, root, append(env, "FAKE_FROM=second"))
+	newCrashTab(second)
+	second.keys("from\r")
+	second.waitFor("from is", 3*time.Second)
+	if scr := second.screen(); !strings.Contains(scr, "from is second") {
+		t.Errorf("the agent did not run with the connected nerdr's environment:\n%s", scr)
+	}
+	endClient(t, second, "q")
+}
+
 // TestAHolderThatCrashes: kill -9 on the holder ends what it ran, the
 // agent and the core with it, and leaves nothing running unseen; nerdr
 // started again resumes the agent's conversation from the session.
