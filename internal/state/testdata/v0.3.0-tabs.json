@@ -1,0 +1,82 @@
+{
+  "root": "/ROOT",
+  "active": 1,
+  "tabs": [
+    {
+      "id": "fix-parser",
+      "name": "fix-parser",
+      "dir": "/ROOT/worktrees/fix-parser",
+      "agent": "claude",
+      "session_id": "11111111-2222-3333-4444-555555555555",
+      "worktrees": [
+        {
+          "repo": "/ROOT/repoA",
+          "path": "/ROOT/worktrees/fix-parser",
+          "branch": "fix-parser"
+        }
+      ],
+      "messages": [
+        {
+          "text": "then run the tests",
+          "auto": true
+        }
+      ],
+      "queue": [
+        "and push it"
+      ],
+      "goal": "Fix the parser",
+      "last": "Fixed the off-by-one",
+      "recap_at": "0001-01-01T00:00:00Z",
+      "status": "Fixing the parser",
+      "status_at": "2026-10-30T09:00:00Z",
+      "last_active": "2026-10-30T09:00:00Z",
+      "agents": [
+        {
+          "id": "fix-parser-2",
+          "name": "fix-parser",
+          "dir": "/ROOT/worktrees/fix-parser",
+          "agent": "claude",
+          "session_id": "66666666-7777-8888-9999-000000000000",
+          "worktrees": [
+            {
+              "repo": "/ROOT/repoA",
+              "path": "/ROOT/worktrees/fix-parser",
+              "branch": "fix-parser"
+            }
+          ],
+          "messages": [
+            {
+              "text": "look at the lexer",
+              "auto": true,
+              "from": 1
+            }
+          ],
+          "recap_at": "0001-01-01T00:00:00Z",
+          "status_at": "0001-01-01T00:00:00Z",
+          "last_active": "0001-01-01T00:00:00Z",
+          "num": 2
+        }
+      ],
+      "num": 1
+    },
+    {
+      "id": "feat-x",
+      "name": "feat-x",
+      "dir": "/ROOT/worktrees/feat-x",
+      "agent": "claude",
+      "session_id": "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
+      "worktrees": [
+        {
+          "repo": "/ROOT/repoA",
+          "path": "/ROOT/worktrees/feat-x",
+          "branch": "feat-x"
+        }
+      ],
+      "recap_at": "0001-01-01T00:00:00Z",
+      "status_at": "0001-01-01T00:00:00Z",
+      "last_active": "2026-10-30T09:00:00Z"
+    }
+  ],
+  "split": "feat-x",
+  "side_width": 30
+}
