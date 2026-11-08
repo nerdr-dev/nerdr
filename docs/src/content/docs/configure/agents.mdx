@@ -65,7 +65,7 @@ agent wrappers.
 ## Agents in a sandbox: `sandboxed`
 
 nerdr runs as you, outside every sandbox. An agent that can reach nerdr's
-socket could otherwise ask nerdr to do what its sandbox stops it from
+hook socket, which every agent reports to, could otherwise ask nerdr to do what its sandbox stops it from
 doing: open a terminal pane (your shell), start an agent or a tab that is
 not in a sandbox, or send such an agent a task. Set `sandboxed = true` for
 an agent whose `command` puts it in a sandbox:
@@ -78,7 +78,7 @@ sandboxed = true
 
 Such an agent:
 
-- gets `NERDR_SANDBOXED=1`, and reports to the socket the others do;
+- gets `NERDR_SANDBOXED=1`, and reports to the hook socket the others do;
 - cannot open, restart or close terminal panes (`nerdr terminal`,
   `nerdr close`), nor close an agent outside a sandbox;
 - can start agents, tabs (`nerdr agent`, `nerdr tab new`) and spun-off
@@ -104,13 +104,16 @@ The setting takes effect when the agent next starts.
 A sandboxed agent cannot pretend to be one outside a sandbox. Every agent
 gets its tab's secret in `NERDR_TAB`, and a process in a sandbox may be
 able to read it. So on Linux and macOS, nerdr also asks the kernel which
-process connects to the socket, and takes a request as the agent's only
+process connects to the hook socket, and takes a request as the agent's only
 if it comes from the agent itself or a process started under it, and
 that started when the kernel says the agent did, so a process given the
 id of an agent that has ended is not taken for it. Any
 other connection is treated as sandboxed: it is restricted as above, and
 refused if the tab it names is not sandboxed. The sandbox can therefore
-reach nerdr's socket without that becoming a way out. On other systems,
+reach nerdr's hook socket without that becoming a way out. This holds for
+the hook socket alone: with the core on its own, the client socket must
+stay out of reach even with `sandboxed = true` (see
+[below](#what-a-sandbox-must-deny-when-the-core-runs-on-its-own)). On other systems,
 nerdr cannot check the process and relies on `NERDR_TAB` alone, so a
 sandboxed agent that reads another agent's secret could pretend to be
 it.
@@ -122,8 +125,9 @@ nerdr's commands only if you mark it `sandboxed`.
 `sandboxed` does not create a sandbox; your `command` must do that. The
 setting only stops nerdr from being a way out. From inside the sandbox,
 check that the agent cannot reach other ways out, such as the D-Bus
-session bus, a VS Code or browser socket in `/run/user/$UID`, or
-services on localhost.
+session bus, a VS Code or browser socket in `/run/user/$UID`, services
+on localhost, or your SSH agent: the agent gets `SSH_AUTH_SOCK` from your
+environment, and only the sandbox decides whether it can use it.
 
 Text that an agent outside a sandbox reads from one inside, such as code
 to review, a handoff or a review, was still written by the sandboxed
@@ -199,7 +203,10 @@ One nerdr has that socket at a time. A second instance started in
 another folder notifies you and listens on its own socket in the same
 directory, `nerdr-<id>.sock`. If a sandbox only allows access to
 `nerdr.sock`, allow it to connect to all sockets in that directory so
-both instances work.
+both instances work. The sockets nerdr makes in that directory are all
+hook sockets: the client socket is elsewhere and the holder's has no
+path (see [below](#what-a-sandbox-must-deny-when-the-core-runs-on-its-own)),
+so allowing connections to them reaches neither.
 
 Agent commands never write to `~/.local/state/nerdr`: connecting to the
 socket is all the sandbox needs there. Never let a sandbox write to
@@ -230,52 +237,71 @@ reports that its sandbox blocked it from reaching nerdr.
 
 ## What a sandbox must deny when the core runs on its own
 
-With `NERDR_HOLDER=1`, an experimental setting, the agents keep working
-when you close nerdr: they run in a nerdr process of their own, the
-core, and the nerdr you see connects to it. This adds two things a
-sandboxed agent must not reach. Everything above still applies.
+With `NERDR_HOLDER=1`, an experimental setting, the agents run in a nerdr
+process of their own, the core, and the nerdr you see connects to it.
+Closing the window, or choosing **Close** when you leave nerdr, leaves
+the agents, terminals and plugin runs working with no one watching; start
+nerdr in the same folder to connect again. **Quit** stops them. While no
+nerdr is connected, nothing is approved for you: a `.nerdr.toml` setup
+that needs your approval waits until you connect, and a plugin run that
+needs it does not run when its time to be answered runs out. What you
+allowed before, such as an approved setup or a plugin that is not asked
+about at each run, still runs.
+
+This adds two things a sandboxed agent must not reach. Everything above
+still applies.
 
 - **The client socket's folder.** A client can do anything you can,
   approvals included. Its socket and the key to it are in
-  `$XDG_RUNTIME_DIR/nerdr` on Linux (`~/.cache/nerdr/run` without
-  `XDG_RUNTIME_DIR`) and in `~/Library/Application Support/nerdr/run` on
-  macOS, never under `~/.local/state/nerdr`. The sandbox must deny that
-  folder, not only writing to it: a sandbox that lets the agent read and
-  connect to anything in your home folder is enough without the core,
-  but not with it. nerdr also refuses a client run by one of its own
-  programs, but a process that has left the agent's process tree gets
-  past that.
+  `$XDG_RUNTIME_DIR/nerdr` when `XDG_RUNTIME_DIR` is set; without it, in
+  `~/.cache/nerdr/run` on Linux and `~/Library/Application Support/nerdr/run`
+  on macOS; never under `~/.local/state/nerdr`. The sandbox must deny
+  that folder, not only writing to it: a sandbox that lets the agent
+  read and connect to anything in your home folder is enough without the
+  core, but not with it. nerdr also refuses a client run by one of its
+  own programs, but a process that has left the agent's process tree
+  gets past that.
 - **nerdr's processes.** nerdr's core and the holder, the process that
   starts every agent and terminal, talk over a socket with no path. A
   process that may trace them (`ptrace`) or take their descriptors
   (`pidfd_getfd`) could still take it. On Linux, Yama's
   `kernel.yama.ptrace_scope` of 1 or more stops that for processes the
-  holder started; at 0 only the sandbox stops it, with a PID namespace of
-  its own or by denying those calls.
+  holder started that lack `CAP_SYS_PTRACE`; at 0 only the sandbox stops
+  it, with a PID namespace of its own or by denying those calls.
 
-An agent, terminal or plugin started while you are connected runs with
+An agent, terminal or plugin started while you are connected builds on
 the environment of the nerdr you connected with, as it would without the
 core: `PATH`, `SSH_AUTH_SOCK`, `DBUS_SESSION_BUS_ADDRESS` and the rest
-come from your terminal, not from the one that first started the core.
-One started with no nerdr connected gets the environment of the last one
-that was. What the agent can reach of them is still up to its sandbox.
+come from your terminal, not from the one that first started the core,
+with nerdr's own variables and the agent's `env` added. One started with
+no nerdr connected gets the environment of the last one that connected to
+this core; before any has, as when the core has just started again, the
+one the core started with. A program keeps the environment it started
+with. What the agent can reach of it is up to its sandbox.
 
-When a `sandboxed` agent starts, nerdr checks this from inside its
+When a `sandboxed` agent starts, nerdr first checks from inside its
 sandbox: it runs its own executable through the agent's `command`, in
-place of the agent, with the agent's environment and folder, and tries
-the client socket's folder, the socket, the key, and tracing the holder
-and the core, before the agent starts. If the check gets through, nerdr
-does not start the agent: it shows a notice saying what the check
-reached, and writes it to the core's log in `~/.local/state/nerdr/`.
-Once the sandbox denies them, the agent starts as usual: a check that
-got through is run again at each start. One that reached nothing is run
-once for each agent and `command` each time the core starts.
+place of the agent, with the agent's environment and folder. The check
+tries to see into the client socket's folder, connect to the socket and
+read its key. On Linux it also tries to reach the holder and the core
+through `/proc`, `pidfd_getfd` and `ptrace`; on macOS that part is not
+tried. If the check gets through, nerdr does not start the agent: it
+shows a notice saying what the check reached, and writes it to the
+core's log in `~/.local/state/nerdr/`.
+
+A check that got through runs again at each start, so the agent starts
+once the sandbox denies what it reached. A check that reached nothing, or
+could not tell, is not run again for that agent and `command` until the
+core starts again: nerdr does not see changes inside a wrapper script,
+the sandbox's own config or the environment. After changing your
+sandbox, quit nerdr and start it again to have it checked.
 
 nerdr puts the check where the agent's program is in `command`: the last
 word named as the agent is (`claude`, `codex`, `cursor-agent`, …, or the
 section's name for an agent nerdr does not know). If none is, as with a
 single script that starts the sandbox and the agent, or the sandbox
 cannot run `$NERDR_BIN`, nerdr says it could not check and starts the
-agent, and you should check it yourself. The check catches a sandbox set up wrong. It does not
-stop an agent that gets out some other way, and it says nothing about
-D-Bus, sockets in `/run/user/$UID` or services on localhost.
+agent; check it yourself then. The check catches a sandbox set up wrong.
+It does not stop an agent that gets out some other way, and it says
+nothing about D-Bus, sockets in `/run/user/$UID`, services on localhost,
+your SSH agent or other credentials.
