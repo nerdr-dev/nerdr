@@ -507,3 +507,31 @@ func TestAPluginRunOutlivesACoreCrash(t *testing.T) {
 	}
 	endClient(t, h, "q")
 }
+
+// TestANerdrAnAgentStarts: an agent in a tab that starts nerdr in another
+// folder, in a terminal of its own, gets a nerdr there that runs its
+// programs itself, as with NERDR_HOLDER=0: no holder that would keep them
+// unseen once the agent is gone. endAll fails the test for what is left
+// in the folder.
+func TestANerdrAnAgentStarts(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	elsewhere := filepath.Join(scratch, "elsewhere")
+	env := append(holderEnv(t, bin, scratch), "FAKE_ELSEWHERE="+elsewhere)
+
+	h := start(t, bin, root, env)
+	newCrashTab(h)
+	if hs := pgrep("-f", "^"+bin+" holder -- "); len(hs) != 1 {
+		t.Fatalf("holders %v", hs)
+	}
+	h.keys("nerdr-elsewhere\r")
+	// 124: it ran until the agent's timeout ended it, not stopped at once.
+	h.waitFor("elsewhere-exit-124", 15*time.Second)
+	if hs := pgrep("-f", "^"+bin+" holder -- "); len(hs) != 1 {
+		t.Errorf("holders %v: the agent's nerdr started one", hs)
+	}
+	if b, err := os.ReadFile(filepath.Join(scratch, "agent.log")); err != nil || strings.Count(string(b), "\n") != 1 {
+		t.Errorf("agents started:\n%s", b)
+	}
+	endClient(t, h, "q")
+}

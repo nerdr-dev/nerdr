@@ -19,8 +19,22 @@ import (
 const EnvHolder = "NERDR_HOLDER"
 
 // UseHolder reports whether nerdr runs its programs in a holder; see
-// EnvHolder.
-func UseHolder() bool { return os.Getenv(EnvHolder) != "0" }
+// EnvHolder. A nerdr a program in a tab started does not: see InATab.
+func UseHolder() bool { return os.Getenv(EnvHolder) != "0" && !InATab() }
+
+// InATab reports whether this nerdr was started by a program nerdr runs
+// in a tab other than a terminal: an agent, most likely, which has
+// started nerdr in another folder. That nerdr runs its programs itself,
+// as with NERDR_HOLDER=0, so that they end with it rather than live on
+// unseen in a holder after the agent is gone. A terminal of a tab is the
+// user's, and its nerdr is as one started anywhere else.
+//
+// This tidies; it guards nothing. An agent that unsets the variables gets
+// a holder, as one started outside nerdr does, and its programs run in
+// the sandbox the agent runs in, whichever it is.
+func InATab() bool {
+	return os.Getenv("NERDR_SHELL") != "1" && (os.Getenv("NERDR") == "1" || os.Getenv("NERDR_TAB") != "")
+}
 
 // Held is the holder the programs of the tabs run in, when nerdr runs
 // over one, and the programs it had when this core started: a core
