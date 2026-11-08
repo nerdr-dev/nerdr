@@ -177,6 +177,13 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 		conn, w, err = attach.Dial(sock, keyFile, hello)
 	}
 	if errors.Is(err, attach.ErrNoCore) && start {
+		if conn, w, err = waitForLock(root, sock, keyFile, hello); conn != nil || err != nil {
+			if err != nil {
+				return nil, err
+			}
+			coreVersion = w.Version
+			return conn, nil
+		}
 		if err := startCore(root); err != nil {
 			return nil, err
 		}
@@ -197,6 +204,40 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 	}
 	coreVersion = w.Version
 	return conn, nil
+}
+
+// lockWait is how long a client waits for a core that holds the folder's
+// session, to start listening, before it takes the holder of the session
+// for a nerdr with no core.
+const lockWait = 3 * time.Second
+
+// waitForLock sees, before a core is started for root, that no other
+// nerdr has the folder's session: a core still starting, which it waits
+// for and is the connection to, or a nerdr that runs its programs itself,
+// an older one or one with NERDR_HOLDER=0, which it is an error to say so.
+// A core started then would only find the session taken and end. Neither,
+// when the session is free.
+func waitForLock(root, sock, keyFile string, hello attach.Hello) (*attach.Conn, attach.Welcome, error) {
+	deadline := time.Now().Add(lockWait)
+	for {
+		release, err := state.Lock(root)
+		if err == nil {
+			release()
+			return nil, attach.Welcome{}, nil
+		}
+		if !errors.Is(err, state.ErrLocked) {
+			return nil, attach.Welcome{}, err
+		}
+		conn, w, err := attach.Dial(sock, keyFile, hello)
+		if err == nil || !errors.Is(err, attach.ErrNoCore) && !errors.Is(err, os.ErrNotExist) {
+			return conn, w, err
+		}
+		if time.Now().After(deadline) {
+			return nil, attach.Welcome{}, fmt.Errorf("nerdr already runs in %s with no core of its own: an older nerdr, "+
+				"or one started with %s=0. Quit it there first, then start this one", root, core.EnvHolder)
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
 }
 
 // quitting reports whether err is a core refusing a client as it quits,

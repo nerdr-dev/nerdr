@@ -258,6 +258,45 @@ func TestAgentsTakeTheClientsEnv(t *testing.T) {
 	endClient(t, second, "q")
 }
 
+// TestANerdrWithNoCoreInTheFolder: with a nerdr in the folder that runs
+// its programs itself (NERDR_HOLDER=0, or one from before the core), a
+// nerdr started there says to quit that one first, at once, rather than
+// start a core that finds the session taken. The one there runs on, and
+// quits as before the core.
+func TestANerdrWithNoCoreInTheFolder(t *testing.T) {
+	bin := build(t)
+	root, scratch := setup(t)
+	env := holderEnv(t, bin, scratch)
+	old := start(t, bin, root, append(env, "NERDR_HOLDER=0"))
+	old.waitFor("Repositories in", 15*time.Second)
+
+	started := time.Now()
+	second := start(t, bin, root, env)
+	select {
+	case <-second.p.Done():
+	case <-time.After(15 * time.Second):
+		t.Fatalf("the second nerdr did not end; screen:\n%s", second.screen())
+	}
+	if scr := second.screen(); !strings.Contains(scr, "with no core of its own") || !strings.Contains(scr, "Quit it there first") {
+		t.Errorf("not told to quit the other:\n%s", scr)
+	}
+	if took := time.Since(started); took > 10*time.Second {
+		t.Errorf("took %v to say so", took)
+	}
+	if hs := pgrep("-f", "^"+bin+" holder -- "); len(hs) != 0 {
+		t.Errorf("holders %v left running", hs)
+	}
+
+	old.keys(prefix + "q")
+	old.waitFor("Quit nerdr?", 2*time.Second)
+	old.keys("y")
+	select {
+	case <-old.p.Done():
+	case <-time.After(10 * time.Second):
+		t.Fatalf("did not quit; screen:\n%s", old.screen())
+	}
+}
+
 // TestAHolderThatCrashes: kill -9 on the holder ends what it ran, the
 // agent and the core with it, and leaves nothing running unseen; nerdr
 // started again resumes the agent's conversation from the session.
