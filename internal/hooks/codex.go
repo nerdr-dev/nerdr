@@ -318,7 +318,7 @@ func CodexCommand(stdin io.Reader, stderr io.Writer) int {
 	if method == "" || sock == "" || pane == "" {
 		return 0
 	}
-	if err := Send(sock, method, p); err != nil {
+	if err := SendReport(sock, method, p); err != nil {
 		fmt.Fprintln(stderr, "nerdr hook codex:", err)
 		return 1
 	}

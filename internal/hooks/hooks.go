@@ -811,12 +811,36 @@ func Request(path, method string, p map[string]any) (string, error) {
 // RequestWithin is Request for an answer nerdr may take as long as wait
 // to give.
 func RequestWithin(path, method string, p map[string]any, wait time.Duration) (string, error) {
-	c, err := net.DialTimeout("unix", path, 2*time.Second)
+	return roundTrip(path, method, p, 2*time.Second, wait+5*time.Second)
+}
+
+// SendReport is Send for what an agent's hook reports: what it is doing, its
+// conversation. nerdr answers those at once, with nothing the hook uses,
+// and takes the report as soon as it is written; a hook waits only
+// reportDial to connect and reportWait in all. An agent waits for its
+// hooks, and one waiting longer for a core that hangs would hang too.
+func SendReport(path, method string, p map[string]any) error {
+	_, err := roundTrip(path, method, p, reportDial, reportWait)
+	return err
+}
+
+// reportDial and reportWait are how long SendReport waits, to connect and in
+// all.
+var (
+	reportDial = time.Second
+	reportWait = 2 * time.Second
+)
+
+// roundTrip makes one request on the socket at path, waiting dial to
+// connect and wait in all.
+func roundTrip(path, method string, p map[string]any, dial, wait time.Duration) (string, error) {
+	start := time.Now()
+	c, err := net.DialTimeout("unix", path, dial)
 	if err != nil {
 		return "", err
 	}
 	defer c.Close()
-	_ = c.SetDeadline(time.Now().Add(wait + 5*time.Second))
+	_ = c.SetDeadline(start.Add(wait))
 	line, _ := json.Marshal(map[string]any{
 		"id": "nerdr:" + strconv.FormatInt(time.Now().UnixNano(), 10), "method": method, "params": p,
 	})

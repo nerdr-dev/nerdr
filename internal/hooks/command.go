@@ -57,7 +57,7 @@ func Command(args []string, stderr io.Writer) int {
 		fmt.Fprintln(stderr, "nerdr: HERDR_SOCKET_PATH is not set: not running in a nerdr tab")
 		return 1
 	}
-	if err := Send(sock, method, p); err != nil {
+	if err := SendReport(sock, method, p); err != nil {
 		fmt.Fprintln(stderr, "nerdr:", err)
 		return 1
 	}
