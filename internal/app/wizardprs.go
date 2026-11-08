@@ -8,6 +8,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/term"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -149,10 +150,10 @@ func (w *wizard) pickPR(m *Model, e core.PREntry) tea.Cmd {
 
 // pickedPR goes on with e, picked, once core has said where its branch is
 // checked out.
-func (w *wizard) pickedPR(m *Model, e core.PREntry) tea.Cmd {
+func (w *wizard) pickedPR(m *Model, e core.PREntry, group *workspace.Group) tea.Cmd {
 	w.busy = ""
 	if e.Wt != "" {
-		g := m.worktreeGroup(e)
+		g := m.worktreeGroup(e, group)
 		w.group, w.fromBranch, w.err = &g, true, ""
 		return w.toAgent(m)
 	}

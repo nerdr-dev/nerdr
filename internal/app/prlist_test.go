@@ -252,3 +252,40 @@ func TestClosedTabLeavesNothingBehind(t *testing.T) {
 		}
 	}
 }
+
+// TestLatePRAnswerIsDropped covers core's answer about a PR picked in F2
+// coming after the user has gone on: to another PR, or to a dialog. It
+// does nothing, rather than ask about the PR over what they do now.
+func TestLatePRAnswerIsDropped(t *testing.T) {
+	onlyGit(t)
+	m := tabsModel(t,
+		state.Tab{ID: "b", Name: "b", Dir: "/w/b", Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/b", Branch: "fix/login"}}},
+	)
+	repo := workspace.Repo{Name: "app", Path: "/r/app"}
+
+	late := m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}})
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 3, Branch: "fix/login"}}))
+	replies(m, late)
+	if m.dialog != nil || m.Cur().ID != "b" {
+		t.Fatalf("an answer about a PR picked before another should be dropped: dialog %T", m.dialog)
+	}
+
+	late = m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}})
+	other := &confirm{title: "something else"}
+	m.dialog = other
+	replies(m, late)
+	if m.dialog != other {
+		t.Fatalf("an answer that comes once a dialog is open should leave it: %T", m.dialog)
+	}
+
+	// A fork's PR fetched once the user has gone on: it is said, and the
+	// branch kept, rather than the new-tab dialog opened over theirs.
+	m.dialog = nil
+	m.prPick, m.prPickOn = "fork", nil
+	m.dialog = other
+	fork := core.PREntry{Repo: repo, PR: github.PR{Number: 9, Branch: "main", Fork: "bob"}}
+	m.Update(core.Reply{Ev: core.ForkFetchedMsg{Job: "fork", E: fork}})
+	if m.dialog != other || !strings.Contains(m.toastText, "fetched #9") {
+		t.Fatalf("a fork fetched late should be told, not opened: %T %q", m.dialog, m.toastText)
+	}
+}

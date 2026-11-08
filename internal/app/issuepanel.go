@@ -50,10 +50,11 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	}
 	d.setScope(m)
 	d.fill(m)
+	scan := m.do(core.ScanRepos{}) // the list fills again once core has looked
 	if time.Since(m.IssueWatch.At) < m.GithubEvery(core.IssueAllEvery) {
-		return m.refreshAllIssues(false)
+		return tea.Batch(scan, m.refreshAllIssues(false))
 	}
-	return tea.Batch(m.do(core.RefreshIssues{}), m.refreshAllIssues(false))
+	return tea.Batch(scan, m.do(core.RefreshIssues{}), m.refreshAllIssues(false))
 }
 
 // showIssues shows the issues in the review panel, with the keyboard:

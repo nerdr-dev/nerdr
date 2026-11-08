@@ -148,12 +148,13 @@ func (d *prTitleDialog) view(m *Model, w, h int) string {
 // whether to open the worktree the branch is checked out in, or, when
 // there is none, whether to make one.
 func (m *Model) goToPR(e core.PREntry) tea.Cmd {
+	m.prPick = "" // a pick before this one is not gone on with
 	if t := m.TabOnBranch(e.Repo.Path, e.Branch()); t != nil {
 		m.dialog = nil
 		m.setFocus(core.FocusAgent)
 		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
 	}
-	m.prPick = core.NewJobID()
+	m.prPick, m.prPickOn = core.NewJobID(), m.dialog
 	return m.do(core.LookUpCheckout{Job: m.prPick, E: e})
 }
 
@@ -161,9 +162,9 @@ func (m *Model) goToPR(e core.PREntry) tea.Cmd {
 // branch, once core has said where the branch is checked out: it asks
 // whether to open the worktree, or, when there is none, whether to make
 // one.
-func (m *Model) prCheckedOut(e core.PREntry) tea.Cmd {
+func (m *Model) prCheckedOut(e core.PREntry, group *workspace.Group) tea.Cmd {
 	if e.Wt != "" {
-		g := m.worktreeGroup(e)
+		g := m.worktreeGroup(e, group)
 		cmd := m.openWizard()
 		if w, ok := m.dialog.(*wizard); ok {
 			// Opened for this PR: going back closes it, not on to the
@@ -194,7 +195,7 @@ func (m *Model) prCheckedOut(e core.PREntry) tea.Cmd {
 				return m.openPRWizard(e)
 			}
 			m.toast("fetching #" + fmt.Sprint(e.PR.Number) + " from origin…")
-			m.prPick = core.NewJobID()
+			m.prPick, m.prPickOn = core.NewJobID(), m.dialog
 			return m.do(core.FetchForkPR{Job: m.prPick, E: e})
 		},
 	}
@@ -210,10 +211,13 @@ func (m *Model) prAnswer(ev core.Event) tea.Cmd {
 	case core.CheckoutMsg:
 		switch {
 		case w != nil && w.id == ev.Job:
-			return w.pickedPR(m, ev.E)
-		case ev.Job == m.prPick:
+			return w.pickedPR(m, ev.E, ev.Group)
+		case ev.Job != "" && ev.Job == m.prPick:
 			m.prPick = ""
-			return m.prCheckedOut(ev.E)
+			if m.dialog != m.prPickOn {
+				return nil // the user has gone on to something else
+			}
+			return m.prCheckedOut(ev.E, ev.Group)
 		}
 	case core.ForkFetchedMsg:
 		switch {
@@ -224,13 +228,19 @@ func (m *Model) prAnswer(ev core.Event) tea.Cmd {
 				return nil
 			}
 			return w.continuePR(m, ev.E)
-		case ev.Job == m.prPick:
+		case ev.Job != "" && ev.Job == m.prPick:
 			m.prPick = ""
-			if ev.Err != "" {
+			switch {
+			case ev.Err != "":
 				m.toast(ev.Err)
-				return nil
+			case m.dialog != m.prPickOn:
+				// The user has gone on to something else: the branch is
+				// there for when they come back to it.
+				m.toast("fetched #" + fmt.Sprint(ev.E.PR.Number) + " as " + ev.E.Branch())
+			default:
+				return m.openPRWizard(ev.E)
 			}
-			return m.openPRWizard(ev.E)
+			return nil
 		}
 		// Closed since: the branch is fetched for next time.
 	}
@@ -250,14 +260,11 @@ func (m *Model) openPRWizard(e core.PREntry) tea.Cmd {
 
 // worktreeGroup is what a tab on e's worktree opens: the folder nerdr made
 // it in, with the other repositories' worktrees beside it when the branch
-// spans several, or the worktree alone when nerdr did not make it.
-func (m *Model) worktreeGroup(e core.PREntry) workspace.Group {
-	for _, g := range m.ClosedGroups() {
-		for _, w := range g.Worktrees {
-			if filepath.Clean(w.Path) == filepath.Clean(e.Wt) {
-				return g
-			}
-		}
+// spans several (group, as core found it with the worktree), or the
+// worktree alone when nerdr did not make it, or a tab has the folder open.
+func (m *Model) worktreeGroup(e core.PREntry, group *workspace.Group) workspace.Group {
+	if group != nil && m.TabOfDir(group.Dir) == nil {
+		return *group
 	}
 	return workspace.Group{
 		Name:      e.Branch(),

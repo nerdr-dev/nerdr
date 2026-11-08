@@ -1,6 +1,8 @@
 package core
 
 import (
+	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -214,17 +216,32 @@ type LookUpCheckout struct {
 }
 
 // CheckoutMsg is the pull request LookUpCheckout of Job looked at, with
-// the worktree its branch is checked out in (E.Wt), "" for none.
+// the worktree its branch is checked out in (E.Wt), "" for none, and the
+// group of worktrees under WtRoot it is in, if any.
 type CheckoutMsg struct {
-	Job string
-	E   PREntry
+	Job   string
+	E     PREntry
+	Group *workspace.Group
 }
 
 func (q LookUpCheckout) Do(m *Core) Cmd {
+	wtRoot, repos := m.WtRoot, slices.Clone(m.Scan.Repos)
 	return Later(func() Event {
 		e := q.E
 		e.Wt = CheckedOut(e)
-		return CheckoutMsg{Job: q.Job, E: e}
+		msg := CheckoutMsg{Job: q.Job, E: e}
+		if e.Wt == "" {
+			return msg
+		}
+		for _, g := range workspace.Existing(wtRoot, repos, nil) {
+			for _, w := range g.Worktrees {
+				if filepath.Clean(w.Path) == filepath.Clean(e.Wt) {
+					msg.Group = &g
+					return msg
+				}
+			}
+		}
+		return msg
 	})
 }
 
