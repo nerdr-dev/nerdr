@@ -66,6 +66,7 @@ func CommandGroups() []CommandGroup {
 		}},
 		{"Settings and help", []CommandEntry{
 			{Key: "?", Label: "All commands", Run: "?", Desc: "this list: type part of a name or what it does to find it (: too)"},
+			{Key: "j", Label: "Programs in no tab", Run: "j", Rare: true, Desc: "programs from before nerdr started again that no tab took up, such as a reviewer of a review not kept: what each is, and stop it"},
 			{Key: "g", Label: "git and gh calls", Run: "g", Rare: true, Desc: "how many times nerdr has run git and gh for each tab, and which commands, since it started; and what of nerdr's was turned down, as in a sandbox"},
 			{Key: "s", Label: "Settings", Run: "s", Desc: "every setting of the config file, and how each agent starts: model, arguments, variables"},
 			{Key: "p", Label: "Send prefix to agent", Run: "p", Rare: true, Desc: "the agent gets the prefix key itself, for a program that uses it"},

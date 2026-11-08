@@ -238,7 +238,7 @@ func prefixCommand(k string) bool {
 	switch k {
 	case "c", "C", "x", "tab", "o", "<", ",", ">", ".",
 		"b", "pgup", "s", "q", "?", ":", "t",
-		"m", "M", "l", "w", "n", "f", " ", "r", "h", "p", "g", "u", "/":
+		"m", "M", "l", "w", "n", "f", " ", "r", "h", "p", "g", "u", "/", "j":
 		return true
 	}
 	return core.IsGroup(k)
@@ -510,6 +510,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			},
 		}
 		return nil
+	case "j":
+		return m.openUnseen()
 	case "p":
 		// Send the prefix key itself to the agent (or the shell).
 		if p := m.keyPane(); p != nil {

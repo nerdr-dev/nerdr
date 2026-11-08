@@ -192,10 +192,9 @@ func (m *Core) HeldLeft() int {
 	}
 	n := 0
 	for _, p := range m.Held.Progs {
-		if l, ok := ParseLabel(p.Label); ok && l.Kind == HeldAgent && l.Agent == "" && m.AgentByID(l.Tab) != nil {
-			continue // the agent takes it up when it starts: a tab's own, or one beside it
+		if m.heldUnseen(p) {
+			n++
 		}
-		n++
 	}
 	return n
 }

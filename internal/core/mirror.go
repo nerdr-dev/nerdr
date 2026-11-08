@@ -150,6 +150,7 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 		out = append(out, Part{Key: key, Body: b})
 		return nil
 	}
+	m.NoteUnseen() // a tab closed since may leave one
 	order := make([]string, 0, len(m.Tabs))
 	var ids []string
 	var errs []error

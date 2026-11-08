@@ -135,8 +135,10 @@ func runCore(h *core.Held) error {
 
 	c.Mu.Lock()
 	c.TakeUpHeld()
-	if n := c.HeldLeft(); n > 0 {
-		c.Tell(core.NoticeMsg(core.Plural(n, "program") + " from before nerdr started again run on in the holder, unseen: they stop when you quit"))
+	c.NoteUnseen()
+	if n := len(c.Unseen); n > 0 {
+		c.Tell(core.NoticeMsg(core.Plural(n, "program") + " from before nerdr started again run on in the holder, in no tab: " +
+			cfg.Prefix + " j shows them, and stops them"))
 	}
 	c.Mu.Unlock()
 	stopCk := make(chan struct{})
