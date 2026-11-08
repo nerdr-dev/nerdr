@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -25,7 +27,7 @@ func TestCloseWaitsForTheCheck(t *testing.T) {
 			t.Fatalf("%s typed ahead acted on a dialog not yet drawn", k)
 		}
 	}
-	m.Update(closeInfoMsg{t: tb})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Ref(tb)}})
 	v := ansi.Strip(m.View())
 	for _, want := range []string{"Close tab", "branch login", "y delete the worktree",
 		"k keep the worktree and the branch", "n cancel, the tab stays open"} {
@@ -61,7 +63,7 @@ func TestCloseShowsTheCheckWhenSlow(t *testing.T) {
 		t.Fatal("y before the check is done could lose work")
 	}
 	path := tb.Worktrees[0].Path
-	m.Update(closeInfoMsg{t: tb, mergedHeads: map[string]string{path: "abc"}, heads: map[string]string{path: "abc"}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Ref(tb), MergedHeads: map[string]string{path: "abc"}, Heads: map[string]string{path: "abc"}}})
 	v = ansi.Strip(m.View())
 	if !strings.Contains(v, "y delete the worktree and the branch — merged on GitHub") ||
 		!strings.Contains(v, "w delete the worktree, keep the branch") ||
@@ -102,7 +104,7 @@ func TestCloseDeletesAnUnmergedBranch(t *testing.T) {
 	path := tb.Worktrees[0].Path
 	m.openCloseFor(tb)
 	c := m.dialog.(*closeTab)
-	m.Update(closeInfoMsg{t: tb, unpushed: []string{"login"}, heads: map[string]string{path: "abc"}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Ref(tb), Unpushed: []string{"login"}, Heads: map[string]string{path: "abc"}}})
 	v := ansi.Strip(m.View())
 	if !strings.Contains(v, "y delete the worktree and the branch — not merged, commits not pushed") {
 		t.Fatalf("not merged:\n%s", v)
@@ -135,11 +137,11 @@ func TestEnterInTheCloseDialog(t *testing.T) {
 		tb := m.Cur()
 		path := tb.Worktrees[0].Path
 		m.openCloseFor(tb)
-		info := closeInfoMsg{t: tb, heads: map[string]string{path: "abc"}, dirty: []string{"login"}}
+		info := core.CloseInfoMsg{T: m.Ref(tb), Heads: map[string]string{path: "abc"}, Dirty: []string{"login"}}
 		if merged {
-			info.mergedHeads = map[string]string{path: "abc"}
+			info.MergedHeads = map[string]string{path: "abc"}
 		}
-		m.Update(info)
+		m.Update(core.Reply{Ev: info})
 		c := m.dialog.(*closeTab)
 		want := "keep the branch (enter)"
 		if merged {

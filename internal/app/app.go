@@ -630,13 +630,6 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		}
 		return nil
 
-	case closeInfoMsg:
-		if c, ok := m.dialog.(*closeTab); ok && c.t == msg.t {
-			c.dirty, c.unpushed, c.loaded = msg.dirty, msg.unpushed, true
-			c.mergedHeads, c.heads = msg.mergedHeads, msg.heads
-		}
-		return nil
-
 	case repoCheckedMsg:
 		if m.dialog == msg.d {
 			msg.d.onChecked(msg)
