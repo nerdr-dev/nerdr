@@ -102,15 +102,17 @@ func Attach(proc spawn.Proc, w, h int, at Taken, notify func()) *Pane {
 	if at.Incomplete {
 		sc.MarkIncomplete()
 	}
-	sc.Resize(w, h)
 	started := at.Started
 	if started.IsZero() {
 		started = time.Now()
 	}
 	p := newPane(proc, sc, started, notify)
 	p.base, p.answered = at.Pos, at.Answered
-	_ = proc.Resize(max(w, 10), max(h, 3))
+	// Running first: a program that asked for in-band resizes (mode 2048)
+	// is told of this one, which waits for its reader till then.
 	p.run()
+	sc.Resize(w, h)
+	_ = proc.Resize(max(w, 10), max(h, 3))
 	return p
 }
 
