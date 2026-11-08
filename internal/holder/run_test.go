@@ -56,7 +56,9 @@ func playRole(role string, args []string) int {
 	case "core-upgrade":
 		return coreUpgradesTheHolder()
 	case "core-agent":
-		return coreStartsAnAgent()
+		return coreStartsAnAgent(true)
+	case "core-child":
+		return coreStartsAnAgent(false)
 	case "core-crash":
 		return coreCrashesOnce()
 	case "core-done":
@@ -97,7 +99,10 @@ type report struct {
 	Reached []string
 }
 
-func coreStartsAnAgent() int {
+// coreStartsAnAgent starts the agent role through the holder, or, with
+// held false, as a child of its own, as the core runs an agent's command
+// for its help or its sessions, and prints what it found.
+func coreStartsAnAgent(held bool) int {
 	cl, err := FromEnv()
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -108,17 +113,26 @@ func coreStartsAnAgent() int {
 	for _, fd := range r.CoreSockets {
 		argv = append(argv, strconv.Itoa(fd))
 	}
-	p, err := cl.Spawn(spawn.Spec{Argv: argv, Env: os.Environ()})
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		return 1
+	var out []byte
+	if held {
+		p, err := cl.Spawn(spawn.Spec{Argv: argv, Env: os.Environ()})
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
+		out, _ = io.ReadAll(p)
+		if err := p.Wait(); err != nil {
+			fmt.Fprintf(os.Stderr, "agent: %v: %s\n", err, out)
+			return 1
+		}
+		p.Close()
+	} else {
+		out, err = exec.Command(argv[0], argv[1:]...).Output()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "agent: %v: %s\n", err, out)
+			return 1
+		}
 	}
-	out, _ := io.ReadAll(p)
-	if err := p.Wait(); err != nil {
-		fmt.Fprintf(os.Stderr, "agent: %v: %s\n", err, out)
-		return 1
-	}
-	p.Close()
 	var a report
 	if err := json.Unmarshal(out, &a); err != nil {
 		fmt.Fprintf(os.Stderr, "agent said %q\n", out)
@@ -242,6 +256,20 @@ func runHolder(t *testing.T, core string) string {
 // it, cannot open it through the core's /proc entry, nor take it with
 // pidfd_getfd, nor trace the holder or the core.
 func TestAnAgentCannotReachTheHoldersSocket(t *testing.T) {
+	cannotReach(t, "core-agent", func(r report) int { return r.HolderPid })
+}
+
+// Nor can a child of the core's, as the core runs an agent's command for
+// its help or its sessions: the core's descriptors are closed on exec,
+// and Yama keeps a process from tracing its parent as any other.
+func TestAChildOfTheCoreCannotReachTheHoldersSocket(t *testing.T) {
+	cannotReach(t, "core-child", func(r report) int { return r.CorePid })
+}
+
+// cannotReach runs the core role, which starts the agent role, and checks
+// the agent reached nothing; parent is the agent's parent it should have.
+func cannotReach(t *testing.T, role string, parent func(report) int) {
+	t.Helper()
 	// A socket the holder is given without close-on-exec, as a careless
 	// parent might, does not reach the agent either.
 	syscall.ForkLock.Lock()
@@ -252,12 +280,12 @@ func TestAnAgentCannotReachTheHoldersSocket(t *testing.T) {
 	}
 	defer syscall.Close(leak[0])
 	defer syscall.Close(leak[1])
-	out := runHolder(t, "core-agent")
+	out := runHolder(t, role)
 	var r report
 	if err := json.Unmarshal([]byte(out), &r); err != nil {
 		t.Fatalf("core said %q", out)
 	}
-	if r.CoreParent != r.HolderPid || r.AgentParent != r.HolderPid {
+	if r.CoreParent != r.HolderPid || r.AgentParent != parent(r) {
 		t.Errorf("holder %d; the core's parent is %d, the agent's %d", r.HolderPid, r.CoreParent, r.AgentParent)
 	}
 	if len(r.CoreSockets) == 0 {
