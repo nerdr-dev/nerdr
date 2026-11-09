@@ -254,7 +254,7 @@ func (m *Core) OnReposChanged(msg ReposChangedMsg) Cmd {
 	// F1 is pinned to the worktrees again, F2 shows their branches, and
 	// F4 looks for the skills where the agent starts.
 	t.Info.Stale, t.Info.StalePR = true, true
-	m.SkillLook.Key = ""
+	m.LookAtSkillsSoon()
 	m.InstallProjectSkills(t)
 	if note := msg.Note(t); note != "" {
 		for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {

@@ -3,7 +3,6 @@ package core
 import (
 	"os"
 	"strings"
-	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/usage"
@@ -20,7 +19,7 @@ func init() { registerRequests(ApplySkills{}, ReadSkillUse{}, ReadClaudeLimits{}
 type ApplySkills struct{ Say, Otherwise string }
 
 func (q ApplySkills) Do(m *Core) Cmd {
-	m.SkillLook.At = time.Time{}
+	m.LookAtSkillsSoon()
 	codex := false
 	note := m.applySkills(func(bool) (bool, error) { codex = true; return false, nil })
 	if !codex {

@@ -36,7 +36,7 @@ const (
 // skillsView is the F4 screen's state: the list shown, the row picked on
 // each, how far its text is scrolled, whether use is counted over all tabs,
 // and the last look at what the tab's agent reads. Where it has the skills is
-// core's SkillLook.
+// core's, in SkillLooks.
 type skillsView struct {
 	cursor, scroll int
 	list           int

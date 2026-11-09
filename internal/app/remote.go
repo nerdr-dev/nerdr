@@ -69,14 +69,31 @@ func (m *Model) doRemote(r core.Request) tea.Cmd {
 }
 
 // tellCore has core do r, waiting for nothing: what the TUI need not see
-// done before it goes on.
+// done before it goes on. What r leaves to do away from Mu, core's loop
+// runs; what comes of it comes to the TUI as core tells it.
 func (m *Model) tellCore(r core.Request) {
-	if m.remote == nil {
-		m.do(r)
+	if m.remote != nil {
+		m.remote.Send(r)
 		return
 	}
-	m.remote.Send(r)
+	m.runCore(r.Do(&m.Core))
 }
+
+// runCore runs c, of a request the TUI made in core's own process, on
+// core's loop, away from Mu. Only a test's model has no loop: the test
+// runs it, by runCoreNow.
+func (m *Model) runCore(c core.Cmd) {
+	switch {
+	case c == nil:
+	case m.Loop != nil:
+		m.Loop.Run(c)
+	case runCoreNow != nil:
+		runCoreNow(m, c)
+	}
+}
+
+// runCoreNow is how a test runs what a model with no loop leaves to core's.
+var runCoreNow func(m *Model, c core.Cmd)
 
 // told takes what core told the TUI, as it would have been told it in
 // core's own process; what the loop hands it is put to Update.

@@ -7,13 +7,14 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
-// startAsked runs cmd, what started an agent, and when its CLI was to be
-// asked something first (see core.Spawn), hands m the answer, which starts
-// it; one with nothing to ask started at once. What else cmd does is left
+// startAsked runs cmd, what started an agent, and when its skills were to
+// be looked at or its CLI asked something first (see core.Spawn), hands m
+// what came of it, which starts it; one with nothing to ask started at
+// once. What else cmd does is left
 // to run on its own: a tick could sleep.
 func startAsked(t *testing.T, m *Model, cmd core.Cmd) {
 	t.Helper()
-	ready := make(chan core.SpawnReady, 1)
+	ready := make(chan core.Event, 1)
 	var run func(c core.Cmd)
 	run = func(c core.Cmd) {
 		if c == nil {
@@ -25,7 +26,7 @@ func startAsked(t *testing.T, m *Model, cmd core.Cmd) {
 				for _, c := range ev {
 					run(c)
 				}
-			case core.SpawnReady:
+			case core.SpawnReady, core.SpawnLooked:
 				ready <- ev
 			}
 		}()
@@ -33,7 +34,12 @@ func startAsked(t *testing.T, m *Model, cmd core.Cmd) {
 	run(cmd)
 	select {
 	case ev := <-ready:
-		m.Update(ev)
+		m.Mu.Lock()
+		next, _ := m.Handle(ev)
+		m.Mu.Unlock()
+		if _, looked := ev.(core.SpawnLooked); looked {
+			startAsked(t, m, next)
+		}
 	case <-time.After(2 * time.Second):
 	}
 }

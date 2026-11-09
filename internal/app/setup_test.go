@@ -88,7 +88,8 @@ func TestClaudeIsToldAboutSpinoff(t *testing.T) {
 	if _, err := skills.Install(filepath.Join(home, ".claude", "skills")); err != nil {
 		t.Fatal(err)
 	}
-	m.SkillLook.At = time.Time{} // look again
+	m.LookAtSkillsSoon()
+	m.tellCore(core.LookAtSkills{T: m.Ref(tb)}) // as core looks every SkillsEvery
 	if args := m.ClaudeNote(tb); len(args) != 2 {
 		t.Fatalf("skills off, spinoff in place: %q", args)
 	}
@@ -384,7 +385,7 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 	}
 
 	m.Cfg.Install = config.InstallOff
-	m.NewAgent(tb, agents.Copilot)
+	startAsked(t, m, m.NewAgent(tb, agents.Copilot))
 	if args := startedWith(); strings.Contains(args, "--plugin-dir") {
 		t.Fatalf("given the plugin with the skills off: %q", args)
 	}

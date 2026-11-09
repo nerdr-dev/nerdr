@@ -37,7 +37,6 @@ type pluginsView struct {
 	// none: a screen of another tab or plugin is not taken from the user.
 	uiFocus string
 
-	key  string // the tab looked for
 	at   time.Time
 	list []plugin.Plugin
 	// allowed is whether the user allowed each of list as it was read,
@@ -48,8 +47,7 @@ type pluginsView struct {
 	// is asked.
 	asking *runQuestion
 
-	// askedAt is when core was last asked to look for the plugins, for a
-	// copy of its state; jobs are what waits for core's answers, by job
+	// askedAt is when core was last asked to look for the plugins; jobs are what waits for core's answers, by job
 	// (see pluginJob).
 	askedAt time.Time
 	stale   bool // an allowance changed: core is asked at once
@@ -60,34 +58,21 @@ type pluginsView struct {
 // panelPlugins reports whether the review panel shows the plugins.
 func (m *Model) panelPlugins() bool { return m.reviewOpen && m.review.Plugins() }
 
-// pluginList is the plugins for t, looked for again when the last look is
-// old or was for another tab.
-func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
+// pluginList is the plugins, as core looked for them last: the same for
+// every tab.
+func (m *Model) pluginList(*core.Tab) []plugin.Plugin {
 	v := &m.plugins
-	key := ""
-	if t != nil {
-		key = t.ID
+	// The plugins are core's to read: the list is the one core read
+	// last, and core is asked to look again when it is old.
+	now := time.Now()
+	if v.stale || now.Sub(m.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
+		v.stale, v.askedAt = false, now
+		m.tellCore(core.LookForPlugins{})
 	}
-	if m.Copy {
-		// The plugins are core's to read: the list is the one core read
-		// last, and core is asked to look again when it is old.
-		now := time.Now()
-		if v.stale || now.Sub(m.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
-			v.stale, v.askedAt = false, now
-			m.tellCore(core.LookForPlugins{})
-		}
-		if !m.Plugins.At.Equal(v.at) {
-			v.at, v.list, v.allowed = m.Plugins.At, m.Plugins.List, m.Plugins.Allowed
-			v.repick()
-		}
-		return v.list
+	if !m.Plugins.At.Equal(v.at) {
+		v.at, v.list, v.allowed = m.Plugins.At, m.Plugins.List, m.Plugins.Allowed
+		v.repick()
 	}
-	if key == v.key && time.Since(v.at) < core.PluginsCheckEvery {
-		return v.list
-	}
-	look := core.ReadPlugins()
-	v.key, v.at, v.list, v.allowed = key, look.At, look.List, look.Allowed
-	v.repick()
 	return v.list
 }
 
@@ -308,10 +293,6 @@ func (m *Model) disallowNow(p plugin.Plugin, key string) tea.Cmd {
 		m.toast(clean.Line(p.Name) + " is no longer allowed")
 		return nil
 	}
-	if !m.Copy {
-		err := core.DisallowPluginNow(p.Dir, key)
-		return done(m, errString(err))
-	}
 	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
 		return done(m, ev.(core.PluginAllowedMsg).Err)
 	})
@@ -375,10 +356,6 @@ func (m *Model) allowNow(p plugin.Plugin, key string, again, then func(m *Model)
 		m.pluginsChanged() // its mark in the list
 		return then(m)
 	}
-	if !m.Copy {
-		changed, err := core.AllowPlugin(p, key)
-		return done(m, changed, errString(err))
-	}
 	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
 		a := ev.(core.PluginAllowedMsg)
 		return done(m, a.Changed, a.Err)
@@ -390,9 +367,6 @@ func (m *Model) allowNow(p plugin.Plugin, key string, again, then func(m *Model)
 // withPluginFacts does then with p as it is now: read here in core's
 // process, asked of core by a copy of its state.
 func (m *Model) withPluginFacts(p plugin.Plugin, then func(m *Model, f core.PluginFacts) tea.Cmd) tea.Cmd {
-	if !m.Copy {
-		return then(m, core.ReadPluginFacts(p))
-	}
 	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
 		return then(m, ev.(core.PluginFactsMsg).Facts)
 	})
@@ -425,19 +399,6 @@ func (m *Model) onPluginJob(job string, ev any) tea.Cmd {
 // pluginsChanged has the list looked for again, as an allowance changed.
 func (m *Model) pluginsChanged() {
 	m.plugins.at, m.plugins.stale = time.Time{}, true
-}
-
-func errString(err error) string {
-	if err == nil {
-		return ""
-	}
-	return err.Error()
-}
-
-// pluginPreview is what is in the plugin folder dir, for the user to read
-// before allowing it; see renderPreview.
-func pluginPreview(dir string, n, w int) []string {
-	return renderPreview(core.ReadPreview(dir), dir, n, w)
 }
 
 // renderPreview draws files, of the plugin folder dir: each file's name

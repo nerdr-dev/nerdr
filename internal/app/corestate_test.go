@@ -35,9 +35,10 @@ const corePkg = "github.com/nerdr-dev/nerdr/internal/core"
 // core.Program): a copy's send what the user does as requests. The
 // ScreenClient's are the TUI's own copies of the screens, and CoreConn's
 // its connection to a core in another process, which brings the copy up
-// to date with core's own (Take, Run). SkillStates, and SkillOn and
-// AgentNote by it, read what the agent finds of its skills, kept a moment
-// in SkillLook: in a copy, the copy's own.
+// to date with core's own (Take, Run); Loop.Run hands what a request
+// leaves to do away from Mu to core's loop in its own process.
+// SkillStates and SkillLookOf, and SkillOn and AgentNote by them, read
+// what core last found of an agent's skills, in SkillLooks.
 var readsCore = map[string]bool{}
 
 func init() {
@@ -57,7 +58,8 @@ func init() {
 		*Core.PRNewsByKey *Core.IssueNewsByKey *Core.Runs *Tab.HasProgram
 		*Core.ClosedGroups *Core.Available
 
-		*Core.SkillStates *Core.SkillOn *Core.AgentNote
+		*Core.SkillStates *Core.SkillLookOf *Core.SkillOn *Core.AgentNote
+		*Loop.Run
 		*ScreenClient.Program *ScreenClient.Shown *ScreenClient.Drop
 		*ScreenClient.Tell
 		*CoreConn.Take *CoreConn.Started *CoreConn.Run *CoreConn.Send *CoreConn.Close *CoreConn.Reconnect

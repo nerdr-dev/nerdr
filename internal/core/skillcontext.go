@@ -48,9 +48,9 @@ func FileSize(n int64) string {
 	return fmt.Sprintf("%.1f KB", float64(n)/1024)
 }
 
-// What F4 reads of the files the tab's agent reads, for a client whose
-// copy reads no file (Copy): read here, where they are. It names each
-// read by a Job of its own, and the answer by it.
+// What F4 reads of the files the tab's agent reads, for a client, which
+// reads no file: read here, where they are, away from core's loop. It
+// names each read by a Job of its own, and the answer by it.
 
 func init() { registerRequests(ReadContext{}, ReadContextFile{}) }
 

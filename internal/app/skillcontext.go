@@ -31,21 +31,16 @@ func (m *Model) contextItems(t *core.Tab) []core.ContextRow {
 	if key == v.Key && time.Since(v.At) < core.SkillsCheckEvery {
 		return v.Rows
 	}
-	if m.Copy {
-		// The files are core's to read: what was read stays until core
-		// answers (onContext), and another tab's shows nothing.
-		s := &m.skills
-		if s.ctxAsked != key || time.Since(s.ctxAskedAt) >= core.SkillsCheckEvery {
-			s.ctxAsked, s.ctxAskedAt, s.ctxTab = key, time.Now(), m.Ref(t)
-			m.tellCore(core.ReadContext{Job: key, T: s.ctxTab})
-		}
-		if key != v.Key {
-			return nil
-		}
-		return v.Rows
+	// The files are core's to read: what was read stays until core
+	// answers (onContext), and another tab's shows nothing.
+	s := &m.skills
+	if s.ctxAsked != key || time.Since(s.ctxAskedAt) >= core.SkillsCheckEvery {
+		s.ctxAsked, s.ctxAskedAt, s.ctxTab = key, time.Now(), m.Ref(t)
+		m.tellCore(core.ReadContext{Job: key, T: s.ctxTab})
 	}
-	v.Key, v.At, v.Shown = key, time.Now(), ""
-	v.Rows = m.contextRows(t, agents.Context(t.Agent, t.Dir, repo))
+	if key != v.Key {
+		return nil
+	}
 	return v.Rows
 }
 
@@ -149,15 +144,13 @@ func (m *Model) contextList(t *core.Tab, rows []core.ContextRow, textW int) (hea
 	text = append(text, dim("  "+core.ContextName(r, home)))
 	c := &v.context
 	if c.Shown != r.Path {
-		if m.Copy {
-			if v.fileAsked != r.Path {
-				v.fileAsked = r.Path
-				m.tellCore(core.ReadContextFile{Job: r.Path, File: r.Path})
-			}
+		if v.fileAsked != r.Path {
+			v.fileAsked = r.Path
+			m.tellCore(core.ReadContextFile{Job: r.Path, File: r.Path})
+		}
+		if c.Shown != r.Path {
 			return head, append(text, "", dim("  Reading…")), picked
 		}
-		data, ok := skills.ReadShown(r.Path)
-		c.Shown, c.Text, c.Exists = r.Path, string(data), ok
 	}
 	if !c.Exists {
 		return head, append(text, "", dim("  Cannot be read.")), picked
