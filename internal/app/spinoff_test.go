@@ -79,6 +79,16 @@ func TestSpinoffReportWaitsForTheNewAgents(t *testing.T) {
 	if len(tb.Messages) != 1 || !strings.Contains(tb.Messages[0].Text, "not been seen starting") {
 		t.Fatalf("not told once waited long enough: %+v", tb.Messages)
 	}
+
+	// A prompt typed in and never sent (see core's checkSubmitted) is
+	// said to be so.
+	tb.Messages = nil
+	nt.QueuePaused, nt.Unsent = true, true
+	tb.SpinoffReport = []spinoff.Outcome{{Part: spinoff.Part{Branch: "fix-a"}, Branch: "fix-a", Tab: nt.ID}}
+	m.ReportWhenBegun(tb, now)
+	if len(tb.Messages) != 1 || !strings.Contains(tb.Messages[0].Text, "never sent") {
+		t.Fatalf("not told the prompt was never sent: %+v", tb.Messages)
+	}
 }
 
 // A part made into a copilot tab starts copilot with its prompt (-i)

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/detect"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -84,6 +85,97 @@ func TestStalledMessageStopsTheQueue(t *testing.T) {
 	}
 	if a.ReadyForMessage(false) {
 		t.Fatal("the queue goes on after a stall")
+	}
+}
+
+// hooked is silent with a hook that has reported it idle at its prompt,
+// and msg typed in and enter pressed at the time it returns.
+func hooked(t *testing.T, msg string) (*Agent, time.Time) {
+	t.Helper()
+	a := silent(t)
+	now := time.Now()
+	a.Hook = HookAuthority{Source: hooks.ClaudeSource, State: detect.Idle, At: now.Add(-time.Minute)}
+	a.TypeMessage(msg, now)
+	a.PressEnter(a.Gen, now)
+	return a, now
+}
+
+// TestUnsentPromptGetsEnterAgain: claude drops an enter that comes too soon
+// after it starts, the prompt left in its input box, drawn there. An agent
+// with a hook has taken a prompt only once the hook says so; till then it
+// gets enter again, and in the end the prompt counts as not sent.
+func TestUnsentPromptGetsEnterAgain(t *testing.T) {
+	a, now := hooked(t, "a long prompt")
+	inputs := a.Pane.Inputs()
+	pressed := func() uint64 { return a.Pane.Inputs() - inputs }
+	for _, c := range []struct {
+		after time.Duration
+		times uint64
+	}{
+		{time.Second, 0},
+		{EnterAgainAfter, 1},
+		{EnterAgainAfter + time.Second/2, 1},
+		{2 * EnterAgainAfter, 2},
+		{3 * EnterAgainAfter, 2}, // no more than EnterAgainMax
+		{StallAfter, 2},          // drawing or not, no stall yet
+	} {
+		if a.CheckSent(now.Add(c.after)) || pressed() != c.times {
+			t.Fatalf("after %s: enter pressed %d more times, want %d", c.after, pressed(), c.times)
+		}
+	}
+	if !a.CheckSent(now.Add(UnsentAfter)) || !a.Unsent || !a.QueuePaused || a.AwaitWork || a.Begun {
+		t.Fatalf("not unsent: unsent %v, paused %v, await %v, begun %v", a.Unsent, a.QueuePaused, a.AwaitWork, a.Begun)
+	}
+	if a.CheckSent(now.Add(2 * UnsentAfter)) {
+		t.Fatal("said twice")
+	}
+}
+
+// TestPromptTakenUpByTheHook: the hook's word that the agent took the
+// prompt is what counts, and no enter follows it; nor does one go to an
+// agent no longer at its prompt.
+func TestPromptTakenUpByTheHook(t *testing.T) {
+	a, now := hooked(t, "a prompt")
+	inputs := a.Pane.Inputs()
+	a.Light = StWorking
+	if a.CheckSent(now.Add(EnterAgainAfter)); a.Pane.Inputs() != inputs || !a.AwaitWork {
+		t.Fatal("enter pressed again while not at the prompt")
+	}
+	a.Light = StIdle
+	a.Hook.WorkingAt = now.Add(time.Second)
+	if a.CheckSent(now.Add(2*EnterAgainAfter)) || a.AwaitWork || !a.Begun || a.Pane.Inputs() != inputs {
+		t.Fatalf("not taken up: await %v, begun %v", a.AwaitWork, a.Begun)
+	}
+}
+
+// TestCommandIsReadOffTheScreen: a slash command may run with no prompt
+// hook, so whether it was taken is read off the screen as for an agent
+// with no hook.
+func TestCommandIsReadOffTheScreen(t *testing.T) {
+	a, now := hooked(t, "/compact")
+	inputs := a.Pane.Inputs()
+	if a.CheckSent(now.Add(EnterAgainAfter)); a.Pane.Inputs() != inputs {
+		t.Fatal("enter pressed again after a command")
+	}
+	if !a.CheckSent(now.Add(StallAfter)) || a.Unsent || !a.QueuePaused {
+		t.Fatalf("a silent agent: unsent %v, paused %v", a.Unsent, a.QueuePaused)
+	}
+}
+
+// TestOthersIntegrationIsReadOffTheScreen: an integration not nerdr's own
+// is not known to report a prompt taken, so the screen says.
+func TestOthersIntegrationIsReadOffTheScreen(t *testing.T) {
+	a := silent(t)
+	now := time.Now()
+	a.Hook = HookAuthority{Source: "someone:else", State: detect.Idle, At: now.Add(-time.Minute)}
+	a.TypeMessage("a prompt", now)
+	a.PressEnter(a.Gen, now)
+	inputs := a.Pane.Inputs()
+	if a.CheckSent(now.Add(EnterAgainAfter)); a.Pane.Inputs() != inputs {
+		t.Fatal("enter pressed again")
+	}
+	if !a.CheckSent(now.Add(StallAfter)) || a.Unsent {
+		t.Fatalf("a silent agent: unsent %v, paused %v", a.Unsent, a.QueuePaused)
 	}
 }
 

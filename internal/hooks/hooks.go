@@ -43,6 +43,19 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
+// ReportsPrompt says whether source, nerdr's own integration in an agent,
+// reports work as soon as the agent takes a prompt (claude's
+// UserPromptSubmit, opencode's execution start, agy's model call): until it
+// has, a prompt typed in has not been sent. An integration of anyone
+// else's is not known to.
+func ReportsPrompt(source string) bool {
+	switch source {
+	case ClaudeSource, CodexSource, CopilotSource, GrokSource, OpenCodeSource, AgySource:
+		return true
+	}
+	return false
+}
+
 // Report is one report from an integration.
 type Report struct {
 	Method string // pane.report_agent, pane.report_agent_session, pane.release_agent

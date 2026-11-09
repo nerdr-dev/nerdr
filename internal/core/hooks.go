@@ -242,6 +242,9 @@ func (m *Core) OnHook(r hooks.Report) Cmd {
 		case "working":
 			t.Tasked = true
 			t.Hook.State = detect.Working
+			if r.Processes == 0 {
+				t.Hook.WorkingAt = t.Hook.At
+			}
 		case "blocked":
 			t.Hook.State = detect.Blocked
 		case "idle":
