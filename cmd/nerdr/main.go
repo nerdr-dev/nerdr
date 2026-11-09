@@ -381,6 +381,7 @@ func run() error {
 	p := tea.NewProgram(model, opts...)
 	router.SetSend(func(m any) { p.Send(m) })
 	model.Loop = core.NewLoop(&model.Core, func(ev core.Event) { p.Send(ev) })
+	model.FindAgents()
 	sendMu.Lock()
 	send = func(m any) { model.Loop.Post(m) }
 	sendMu.Unlock()

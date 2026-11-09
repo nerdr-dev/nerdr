@@ -94,7 +94,7 @@ func (m *Core) HookAgent(id string) *Agent {
 // SandboxedKinds are the kinds a confined agent may start, by name.
 func (m *Core) SandboxedKinds() string {
 	var out []string
-	for _, k := range agents.Available(m.Cfg.Agents) {
+	for _, k := range m.Available() {
 		if m.SandboxedKind(k) {
 			out = append(out, string(k))
 		}
@@ -118,7 +118,7 @@ func (m *Core) StartRefusal(k agents.Kind) string {
 // SpinoffKinds are the agents the spinoff dialog offers for part pt:
 // only the sandboxed when an agent in a sandbox sent it.
 func (m *Core) SpinoffKinds(pt spinoff.Part) []agents.Kind {
-	all := agents.Available(m.Cfg.Agents)
+	all := m.Available()
 	if !pt.Sandboxed {
 		return all
 	}

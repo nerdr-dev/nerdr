@@ -170,6 +170,7 @@ func runCore(h *core.Held) error {
 			c.Mu.Lock()
 			if len(h.Env) > 0 {
 				c.ClientEnv = h.Env
+				c.LookForAgentsSoon() // on its PATH
 			}
 			c.AttachClient(conn, attachPost)
 			c.Mu.Unlock()
@@ -180,6 +181,7 @@ func runCore(h *core.Held) error {
 	}
 	defer srv.Close(attach.ByeQuit)
 
+	c.FindAgents()
 	loop.Start()
 	defer loop.Stop()
 	// The client that started the core connects at once, and says how

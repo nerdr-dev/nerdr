@@ -365,7 +365,7 @@ func reviewModelExample(k agents.Kind) string {
 // settingAgents are the agents the dialog has a part for: those nerdr
 // knows, the installed first, and those of the config's own.
 func (m *Model) settingAgents() []agents.Kind {
-	out := agents.Available(m.Cfg.Agents)
+	out := m.Available()
 	for _, k := range agents.All {
 		if !core.Contains(out, k) {
 			out = append(out, k)
@@ -384,7 +384,7 @@ func (m *Model) settingAgents() []agents.Kind {
 // reviewAgents are review.agent's choices.
 func (m *Model) reviewAgents() []string {
 	out := []string{config.ReviewOther}
-	for _, k := range agents.Available(m.Cfg.Agents) {
+	for _, k := range m.Available() {
 		out = append(out, string(k))
 	}
 	return out

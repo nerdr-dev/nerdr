@@ -97,7 +97,7 @@ func (d *spinoffDialog) reset(m *Model) bool {
 		picked = d.agents[d.agentIdx]
 	}
 	d.agents, d.agentIdx = m.SpinoffKinds(pt), 0
-	if len(d.agents) == 0 && pt.Sandboxed && len(agents.Available(m.Cfg.Agents)) > 0 {
+	if len(d.agents) == 0 && pt.Sandboxed && len(m.Available()) > 0 {
 		return false
 	}
 	if i := slices.Index(d.agents, picked); i >= 0 {

@@ -41,7 +41,7 @@ func (m *Model) openSwitchAgent() tea.Cmd {
 		return nil
 	}
 	var items []menuItem
-	for _, k := range agents.Available(m.Cfg.Agents) {
+	for _, k := range m.Available() {
 		if k == t.Agent {
 			continue
 		}

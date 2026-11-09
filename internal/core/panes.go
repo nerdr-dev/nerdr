@@ -352,7 +352,7 @@ func (m *Core) OnNewAgent(r hooks.Report) Cmd {
 	if r.Kind != "" {
 		k = agents.Kind(strings.ToLower(r.Kind))
 	}
-	avail := agents.Available(m.Cfg.Agents)
+	avail := m.Available()
 	if !slices.Contains(avail, k) {
 		names := make([]string, len(avail))
 		for i, a := range avail {

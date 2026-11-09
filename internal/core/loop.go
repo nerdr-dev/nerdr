@@ -332,6 +332,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.onWatchStarted(ev), true
 	case watchFired:
 		return m.onWatchFired(ev), true
+	case agentsFoundMsg:
+		m.onAgentsFound(ev)
+		return nil, true
 	case PRAllMsg:
 		return m.OnPRAll(ev), true
 	case repoPRsMsg:

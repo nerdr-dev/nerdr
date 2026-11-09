@@ -121,7 +121,7 @@ func (m *Model) openWizard() tea.Cmd {
 	}
 	w := &wizard{id: core.NewJobID(), picked: map[int]bool{}}
 	w.scan(m)
-	w.agents = agents.Available(m.Cfg.Agents)
+	w.agents = m.Available()
 	w.branch = textinput.New()
 	w.branch.Prompt = "branch: "
 	w.branch.Placeholder = "feature/my-change, or #123 for a GitHub issue"

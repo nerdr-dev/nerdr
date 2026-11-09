@@ -136,7 +136,7 @@ func (m *Model) selectTabCmd(t *core.Tab) tea.Cmd {
 }
 
 func agentAvailable(m *Model, k agents.Kind) bool {
-	for _, a := range agents.Available(m.Cfg.Agents) {
+	for _, a := range m.Available() {
 		if a == k {
 			return true
 		}

@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -301,7 +300,7 @@ func (m *Model) openNewAgent() tea.Cmd {
 		return nil
 	}
 	var items []menuItem
-	for _, k := range agents.Available(m.Cfg.Agents) {
+	for _, k := range m.Available() {
 		items = append(items, menuItem{label: string(k), key: strconv.Itoa(len(items) + 1),
 			run: func(m *Model) tea.Cmd { return m.do(core.NewAgent{T: m.Ref(t), Kind: k}) }})
 	}

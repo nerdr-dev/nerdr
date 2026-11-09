@@ -89,6 +89,11 @@ type Core struct {
 	// NoGh is set when the gh CLI was not found, the last time core
 	// looked; see GhMsg.
 	NoGh bool
+	// Agents are the agents whose commands are on the client's PATH,
+	// looked for at AgentsAt; see agentson.go.
+	Agents     []agents.Kind
+	AgentsAt   time.Time
+	agentsSoon bool
 	// ReviewWatch is the watch on the worktree the review panel shows;
 	// see reviewwatch.go.
 	ReviewWatch reviewWatch `json:"-"`
