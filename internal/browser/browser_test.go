@@ -1,6 +1,8 @@
 package browser
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"testing"
@@ -36,5 +38,35 @@ func TestOpenTakesOnlyWebAddresses(t *testing.T) {
 		if err := Open(u); err == nil {
 			t.Errorf("opened %q", u)
 		}
+	}
+}
+
+// TestOpenPageWritesWhereTheClientSays: a page made where core runs is
+// written in the user's own folder, under a name made a plain file name,
+// whatever it holds, readable by the user alone.
+func TestOpenPageWritesWhereTheClientSays(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "pages")
+	old := PagesDir
+	PagesDir = func() (string, error) { return dir, nil }
+	t.Cleanup(func() { PagesDir, Setting = old, "" })
+	Setting = "true" // no browser for the test
+	if err := OpenPage("walkthrough-../../evil/x", []byte("<p>hi</p>")); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		t.Fatalf("pages: %v %v", entries, err)
+	}
+	name := entries[0].Name()
+	if name != "walkthrough-______evil_x.html" {
+		t.Fatalf("written as %q", name)
+	}
+	st, _ := os.Stat(filepath.Join(dir, name))
+	dst, _ := os.Stat(dir)
+	if st.Mode().Perm() != 0o600 || dst.Mode().Perm() != 0o700 {
+		t.Fatalf("modes %o and %o", st.Mode().Perm(), dst.Mode().Perm())
+	}
+	if b, _ := os.ReadFile(filepath.Join(dir, name)); string(b) != "<p>hi</p>" {
+		t.Fatalf("the page is %q", b)
 	}
 }

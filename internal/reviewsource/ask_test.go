@@ -63,8 +63,8 @@ func (echo) Order(wt, branch string) order.Index {
 func (echo) Walkthrough(wt, branch string, files []string) (walkthrough.Walkthrough, bool, bool) {
 	return walkthrough.Walkthrough{Title: wt, Branch: branch, Summary: files[0]}, true, true
 }
-func (echo) WriteWalkthrough(wt, branch string) (string, bool, error) {
-	return wt + "/" + branch + ".html", true, nil
+func (echo) WalkthroughPage(wt, branch string) ([]byte, bool, error) {
+	return []byte("<h1>" + wt + " " + branch + "</h1>"), true, nil
 }
 func (echo) LoadProject(wt string) int { return 5 }
 func (echo) Imports(wt string, paths []string) map[string][]string {
@@ -143,9 +143,9 @@ func TestAskerAsks(t *testing.T) {
 	w1, ok1, old1 := k.Walkthrough("/wt", "b", []string{"f"})
 	w2, ok2, old2 := e.Walkthrough("/wt", "b", []string{"f"})
 	same("Walkthrough", []any{w1, ok1, old1}, []any{w2, ok2, old2})
-	p1, ok1, err1 := k.WriteWalkthrough("/wt", "b")
-	p2, ok2, err2 := e.WriteWalkthrough("/wt", "b")
-	same("WriteWalkthrough", []any{p1, ok1, err1}, []any{p2, ok2, err2})
+	p1, ok1, err1 := k.WalkthroughPage("/wt", "b")
+	p2, ok2, err2 := e.WalkthroughPage("/wt", "b")
+	same("WalkthroughPage", []any{p1, ok1, err1}, []any{p2, ok2, err2})
 	same("LoadProject", k.LoadProject("/wt"), 5)
 	same("Imports", k.Imports("/wt", []string{"a"}), e.Imports("/wt", []string{"a"}))
 	sy1, r1 := k.Relations("/wt", "a")

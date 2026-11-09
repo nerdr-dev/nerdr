@@ -3,6 +3,7 @@
 package browser
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -54,4 +55,55 @@ func OpenFile(path string) error {
 		return fmt.Errorf("no page at %s", path)
 	}
 	return launch.Detached(Command((&url.URL{Scheme: "file", Path: filepath.ToSlash(path)}).String()))
+}
+
+// PagesDir is the folder OpenPage writes pages in: the user's own, mode
+// 0700. Tests set it.
+var PagesDir = func() (string, error) {
+	dir, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "nerdr", "pages"), nil
+}
+
+// OpenPage writes page, a page of its own made where nerdr's core runs,
+// maybe another machine, to a file of name in PagesDir and opens it, as
+// OpenFile does. The name is the caller's, made a file name here: a page
+// never says where it is written.
+func OpenPage(name string, page []byte) error {
+	dir, err := PagesDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return err
+	}
+	if err := os.Chmod(dir, 0o700); err != nil {
+		return err
+	}
+	file := strings.Map(func(r rune) rune {
+		if r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || r == '-' || r == '_' {
+			return r
+		}
+		return '_'
+	}, name)
+	if file == "" {
+		file = "page"
+	}
+	path := filepath.Join(dir, file+".html")
+	tmp, err := os.CreateTemp(dir, ".page-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	_, werr := tmp.Write(page)
+	cerr := tmp.Close()
+	if err := errors.Join(werr, cerr, os.Chmod(tmp.Name(), 0o600)); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		return err
+	}
+	return OpenFile(path)
 }

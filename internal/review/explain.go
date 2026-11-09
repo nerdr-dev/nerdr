@@ -3,6 +3,7 @@ package review
 import (
 	_ "embed"
 	"encoding/json"
+	"path/filepath"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -177,15 +178,17 @@ func (m *Model) onWalk(msg walkMsg) tea.Cmd {
 // note after that it did.
 func showWalkthrough(src Source, wt git.Worktree, note string) tea.Cmd {
 	return func() tea.Msg {
-		path, ok, err := src.WriteWalkthrough(wt.Path, wt.Branch)
+		page, ok, err := src.WalkthroughPage(wt.Path, wt.Branch)
 		if !ok {
 			return toastMsg{"no walkthrough of this branch any more"}
 		}
 		if err != nil {
 			return toastMsg{"walkthrough: " + err.Error()}
 		}
-		if err := browser.OpenFile(path); err != nil {
-			return toastMsg{browser.Command(path)[0] + ": " + err.Error()}
+		// Written here, where the browser is: the worktree may be on the
+		// machine of a core elsewhere.
+		if err := browser.OpenPage("walkthrough-"+filepath.Base(wt.Path)+"-"+wt.Branch, page); err != nil {
+			return toastMsg{browser.Command("page")[0] + ": " + err.Error()}
 		}
 		return toastMsg{"opened the walkthrough in the browser" + note}
 	}

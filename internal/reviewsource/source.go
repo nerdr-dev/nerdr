@@ -70,10 +70,11 @@ type Source interface {
 	// one (ok), and whether one of files, the change's, was edited after
 	// it was written (older).
 	Walkthrough(wt, branch string, files []string) (w walkthrough.Walkthrough, ok, older bool)
-	// WriteWalkthrough draws the page of branch's walkthrough in worktree
-	// wt, from the change as it is now, and gives where it was written;
-	// ok is false when there is no walkthrough.
-	WriteWalkthrough(wt, branch string) (path string, ok bool, err error)
+	// WalkthroughPage draws the page of branch's walkthrough in worktree
+	// wt, from the change as it is now: a page of its own, for the client
+	// to write where it runs and open. ok is false when there is no
+	// walkthrough.
+	WalkthroughPage(wt, branch string) (page []byte, ok bool, err error)
 
 	// LoadProject reads worktree wt's code anew, for Imports and
 	// Relations, and gives its version: another once the code has changed.
@@ -158,13 +159,13 @@ func (Local) Walkthrough(wt, branch string, files []string) (walkthrough.Walkthr
 	return w, ok, ok && walkthrough.Older(wt, w, files)
 }
 
-func (Local) WriteWalkthrough(wt, branch string) (string, bool, error) {
+func (Local) WalkthroughPage(wt, branch string) ([]byte, bool, error) {
 	w, ok := walkthrough.Load(wt, branch)
 	if !ok {
-		return "", false, nil
+		return nil, false, nil
 	}
-	path, err := walkthrough.Write(wt, w)
-	return path, true, err
+	page, err := walkthrough.Render(wt, w)
+	return page, true, err
 }
 
 // projects are the worktrees' code as LoadProject last read it, the

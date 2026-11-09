@@ -102,9 +102,9 @@ func (s countingSource) Walkthrough(wt, branch string, files []string) (walkthro
 	return s.Local.Walkthrough(wt, branch, files)
 }
 
-func (s countingSource) WriteWalkthrough(wt, branch string) (string, bool, error) {
+func (s countingSource) WalkthroughPage(wt, branch string) ([]byte, bool, error) {
 	s.n.Add(1)
-	return s.Local.WriteWalkthrough(wt, branch)
+	return s.Local.WalkthroughPage(wt, branch)
 }
 
 func (s countingSource) LoadProject(wt string) int {
