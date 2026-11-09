@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
-	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 
@@ -451,7 +450,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	keys := m.pluginKeys("↑↓", "pick", "enter", "open", "a", "allow", "d", "disallow", "esc", "agent")
 	if len(list) == 0 {
 		lines := []string{""}
-		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(config.Path()), core.HomeDir())+
+		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(m.ConfigPath()), core.HomeDir())+
 			"/NAME, each a folder with a "+plugin.File+
 			". See https://nerdr.app/configure/plugins/.", textW, 20) {
 			lines = append(lines, " "+l)
