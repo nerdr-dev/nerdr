@@ -19,13 +19,20 @@ import (
 // editCoreConfig has core set e's keys in its config file. what names the
 // change in what the TUI says should it not be saved.
 func (m *Model) editCoreConfig(what string, e core.EditConfig) tea.Cmd {
+	_, cmd := m.editCoreConfigJob(what, e)
+	return cmd
+}
+
+// editCoreConfigJob is editCoreConfig, with the job that names the edit
+// in the ConfigSavedMsg that tells of it.
+func (m *Model) editCoreConfigJob(what string, e core.EditConfig) (string, tea.Cmd) {
 	m.cfgJob++
 	e.Job = "config-" + strconv.Itoa(m.cfgJob)
 	if m.cfgWhat == nil {
 		m.cfgWhat = map[string]string{}
 	}
 	m.cfgWhat[e.Job] = what
-	return m.do(e)
+	return e.Job, m.do(e)
 }
 
 // onConfigSaved says when core could not save a change of its settings,
@@ -36,6 +43,9 @@ func (m *Model) onConfigSaved(ev core.ConfigSavedMsg) tea.Cmd {
 		return nil // another client's
 	}
 	delete(m.cfgWhat, ev.Job)
+	if d, ok := m.dialog.(*setupDialog); ok && d.saving == ev.Job {
+		return d.saved(m, ev)
+	}
 	if ev.Err != "" {
 		m.toast(cmp.Or(what, "settings") + ": not saved in " + m.ConfigPath() + ": " + ev.Err)
 	}
