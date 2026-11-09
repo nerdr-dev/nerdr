@@ -33,6 +33,7 @@ func init() {
 		WorktreesMadeMsg{}, RepoPRsMsg{}, CheckoutMsg{}, ForkFetchedMsg{},
 		PRFetchedMsg{}, ReviewReadMsg{}, WatchingMsg{}, WorktreeChangedMsg{},
 		ContextMsg{}, ContextFileMsg{}, PluginFactsMsg{}, PluginAllowedMsg{},
+		ConversationsReadMsg{}, SearchHitsMsg{}, PromptsMsg{}, UsageMsg{},
 
 		ChangedMsg{}, RedrawMsg{}, FrameMsg{}, InfoTickMsg{}, WirePanic{},
 	)

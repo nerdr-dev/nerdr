@@ -97,6 +97,9 @@ type Core struct {
 	Agents     []agents.Kind
 	AgentsAt   time.Time
 	agentsSoon bool
+	// convIndex is the agents' conversations read for the search; see
+	// convsearch.go.
+	convIndex *agents.Index
 	// Plugins are the user's plugins as last looked for, for a client's
 	// copy; see LookForPlugins.
 	Plugins PluginsLook

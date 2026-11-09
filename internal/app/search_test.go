@@ -17,12 +17,12 @@ func TestOpenConversation(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	tb.SessionID = "11111111-1111-1111-1111-111111111111"
-	m.openConversation(&agents.Conversation{Kind: agents.Claude, ID: tb.SessionID, Dir: tb.Dir})
+	m.openConversation(&agents.Conversation{Kind: agents.Claude, ID: tb.SessionID, Dir: tb.Dir}, false)
 	if len(tb.ExtraAgents()) != 0 {
 		t.Fatal("the agent carrying it on is gone to, not started again")
 	}
 	id := "33333333-3333-3333-3333-333333333333"
-	m.openConversation(&agents.Conversation{Kind: agents.Codex, ID: id, Dir: tb.Dir})
+	m.openConversation(&agents.Conversation{Kind: agents.Codex, ID: id, Dir: tb.Dir}, false)
 	if len(tb.ExtraAgents()) != 1 || tb.ExtraAgents()[0].Agent != agents.Codex || tb.ExtraAgents()[0].SessionID != id {
 		t.Fatalf("a new pane should carry it on: %+v", tb.ExtraAgents())
 	}
@@ -37,7 +37,7 @@ func TestOpenConversation(t *testing.T) {
 		t.Fatal(err)
 	}
 	id = "44444444-4444-4444-4444-444444444444"
-	m.openConversation(&agents.Conversation{Kind: agents.Codex, ID: id, Dir: sub})
+	m.openConversation(&agents.Conversation{Kind: agents.Codex, ID: id, Dir: sub}, false)
 	a := tb.ExtraAgents()[1]
 	if a.SessionID != id || a.Dir != sub {
 		t.Fatalf("carried on in %s, want %s", a.Dir, sub)
@@ -50,7 +50,7 @@ func TestOpenConversation(t *testing.T) {
 	}
 
 	// A folder that is gone carries nothing on.
-	m.openConversation(&agents.Conversation{Kind: agents.Codex, ID: "55555555-5555-5555-5555-555555555555", Dir: filepath.Join(tb.Dir, "gone")})
+	m.openConversation(&agents.Conversation{Kind: agents.Codex, ID: "55555555-5555-5555-5555-555555555555", Dir: filepath.Join(tb.Dir, "gone")}, true)
 	if len(tb.ExtraAgents()) != 2 {
 		t.Fatal("a conversation carried on in a folder that is gone")
 	}

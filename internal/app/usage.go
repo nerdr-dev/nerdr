@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"time"
 
@@ -30,15 +31,7 @@ type usageDialog struct {
 	reading   bool
 	contexts  map[*core.Tab]*usage.Report // codex agents', from their logs
 	firstRead bool
-}
-
-// usageReadMsg is what codex's logs say: its account's limits, and the
-// context of each codex agent.
-type usageReadMsg struct {
-	d        *usageDialog
-	codex    *usage.Report
-	at       time.Time
-	contexts map[*core.Tab]*usage.Report
+	job       string // the read asked of core last
 }
 
 func (m *Model) openUsage() tea.Cmd {
@@ -50,35 +43,35 @@ func (m *Model) openUsage() tea.Cmd {
 	return m.readUsage(d)
 }
 
-// readUsage reads codex's logs for d, in the background.
+// readUsage has core read codex's logs for d, where codex runs.
 func (m *Model) readUsage(d *usageDialog) tea.Cmd {
 	d.reading = true
-	logs := map[*core.Tab]string{}
+	q := core.ReadUsage{}
 	for _, a := range m.AllAgents() {
 		if a.Agent == agents.Codex && a.SessionID != "" {
-			logs[a] = a.SessionID
+			q.Sessions = append(q.Sessions, core.AgentSession{A: m.Ref(a), Session: a.SessionID})
 		}
 	}
-	return func() tea.Msg {
-		msg := usageReadMsg{d: d, contexts: map[*core.Tab]*usage.Report{}}
-		if r, at, ok := usage.Codex(agents.CodexHome()); ok {
-			msg.codex, msg.at = &r, at
-		}
-		for a, id := range logs {
-			if path := agents.CodexLog(id); path != "" {
-				if r, ok := usage.CodexLog(path); ok {
-					msg.contexts[a] = &r
-				}
-			}
-		}
-		return msg
-	}
+	m.usageJobs++
+	d.job = "usage-" + strconv.Itoa(m.usageJobs)
+	q.Job = d.job
+	return m.do(q)
 }
 
-func (m *Model) onUsageRead(msg usageReadMsg) {
-	d := msg.d
+// onUsage takes what core read for the usage dialog's read asked last.
+func (m *Model) onUsage(ev core.UsageMsg) {
+	d, ok := m.dialog.(*usageDialog)
+	if !ok || ev.Job != d.job {
+		return
+	}
 	d.reading, d.firstRead = false, true
-	d.codex, d.codexAt, d.contexts = msg.codex, msg.at, msg.contexts
+	d.codex, d.codexAt, d.contexts = ev.Codex, ev.At, map[*core.Tab]*usage.Report{}
+	for _, c := range ev.Contexts {
+		if a := m.ByRef(c.A); a != nil {
+			r := c.R
+			d.contexts[a] = &r
+		}
+	}
 }
 
 func (d *usageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
