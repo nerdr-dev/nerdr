@@ -74,9 +74,9 @@ func TestSwitchWaitsForTheHandoff(t *testing.T) {
 	m := testModel(t)
 	tb := runningTab(t, m)
 	tb.Messages = nil
-	m.AddMessage(tb, "later work", true)
+	m.Core.AddMessage(tb, "later work", true)
 
-	m.AskHandoff(tb, agents.OpenCode)
+	m.Core.AskHandoff(tb, agents.OpenCode)
 	if tb.Handoff == nil || tb.Agent != agents.Claude {
 		t.Fatalf("not waiting: %+v", tb.Handoff)
 	}
@@ -87,7 +87,7 @@ func TestSwitchWaitsForTheHandoff(t *testing.T) {
 		t.Fatalf("the panel does not say it is waiting:\n%s", view)
 	}
 
-	l := launched(t, fromCore(m.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.HookKey(), Handoff: "THE SUMMARY"})))
+	l := launched(t, fromCore(m.Core.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.HookKey(), Handoff: "THE SUMMARY"})))
 	if tb.Agent != agents.OpenCode || tb.Handoff != nil {
 		t.Fatalf("not switched: agent %s, waiting %v", tb.Agent, tb.Handoff != nil)
 	}
@@ -114,12 +114,12 @@ func TestSwitchGoesAheadWithoutAHandoff(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			m := testModel(t)
 			tb := runningTab(t, m)
-			m.AskHandoff(tb, agents.OpenCode)
-			if m.CheckHandoff(tb, time.Now()) != nil {
+			m.Core.AskHandoff(tb, agents.OpenCode)
+			if m.Core.CheckHandoff(tb, time.Now()) != nil {
 				t.Fatal("gave up at once")
 			}
 			stall(tb)
-			l := launched(t, fromCore(m.CheckHandoff(tb, time.Now())))
+			l := launched(t, fromCore(m.Core.CheckHandoff(tb, time.Now())))
 			if tb.Agent != agents.OpenCode || tb.QueuePaused || len(tb.Messages) != 0 {
 				t.Fatalf("not switched cleanly: agent %s, paused %v, messages %+v", tb.Agent, tb.QueuePaused, tb.Messages)
 			}
@@ -146,9 +146,9 @@ func TestHandoffSentUnasked(t *testing.T) {
 	m := testModel(t)
 	// The switch menu offers only agents on the PATH, which CI has none
 	// of; cat stands in for opencode.
-	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.OpenCode: {Command: []string{"cat"}}}
+	m.Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.OpenCode: {Command: []string{"cat"}}}
 	tb := runningTab(t, m)
-	m.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.HookKey(), Handoff: "WRITTEN EARLIER"})
+	m.Core.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.HookKey(), Handoff: "WRITTEN EARLIER"})
 	if tb.Agent != agents.Claude || tb.HandoffReady == nil {
 		t.Fatal("an unasked handoff should be kept, not switch")
 	}
@@ -177,7 +177,7 @@ func TestCancelTheSwitch(t *testing.T) {
 	m := testModel(t)
 	tb := runningTab(t, m)
 	tb.Messages = nil
-	m.AskHandoff(tb, agents.OpenCode)
+	m.Core.AskHandoff(tb, agents.OpenCode)
 	m.openSwitchAgent()
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "Switch now") || !strings.Contains(view, "Cancel the switch") {
 		t.Fatalf("no way out of waiting:\n%s", view)

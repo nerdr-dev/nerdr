@@ -67,9 +67,9 @@ func TestRemoteReviewReadsThroughCore(t *testing.T) {
 		t.Fatalf("read through core: %v %v", r.files, r.err)
 	}
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	m.remote.Close("")
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	if r := read(); r.err == nil {
 		t.Fatalf("a read with the connection closed should fail, got %v", r.files)
 	}
@@ -86,20 +86,20 @@ func TestRemoteF4ReadsThroughCore(t *testing.T) {
 	}
 	until := func(what string, ok func() bool) { t.Helper(); untilTold(t, m, told, what, ok) }
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	tb := m.Cur()
-	if !m.Copy || m.contextItems(tb) != nil {
-		m.Mu.Unlock()
+	if !m.Core.Copy || m.contextItems(tb) != nil {
+		m.Core.Mu.Unlock()
 		t.Fatal("the copy read the list itself")
 	}
 	key := m.skills.ctxAsked
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	until("the list", func() bool { return m.skills.context.Key == key })
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	m.skills.fileAsked = file
 	m.tellCore(core.ReadContextFile{Job: file, File: file})
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	until("the file", func() bool { return m.skills.context.Shown == file })
 	if c := m.skills.context; !c.Exists || c.Text != "be brief\n" {
 		t.Fatalf("read %q, %v", c.Text, c.Exists)
@@ -107,14 +107,14 @@ func TestRemoteF4ReadsThroughCore(t *testing.T) {
 }
 
 // untilTold has m take in what core tells it, as the program does, until
-// ok, which is called with m.Mu held.
+// ok, which is called with m.Core.Mu held.
 func untilTold(t *testing.T, m *Model, told chan any, what string, ok func() bool) {
 	t.Helper()
 	deadline := time.After(5 * time.Second)
 	for {
-		m.Mu.Lock()
+		m.Core.Mu.Lock()
 		done := ok()
-		m.Mu.Unlock()
+		m.Core.Mu.Unlock()
 		if done {
 			return
 		}
@@ -135,31 +135,31 @@ func TestRemoteF5ReadsAndAllowsThroughCore(t *testing.T) {
 	m, _, _, told := remoteTUI(t, "sh", "-c", "sleep 30")
 	writePlugin(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "nerdr", "plugins"), "mine", "cat\n")
 	until := func(what string, ok func() bool) { t.Helper(); untilTold(t, m, told, what, ok) }
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	tb := m.Cur()
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	until("the list", func() bool { return len(m.pluginList(tb)) == 1 })
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	p := m.pluginList(tb)[0]
 	m.allowPlugin(p)
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 
 	yes := func(what string) {
 		t.Helper()
 		until(what, func() bool { _, ok := m.dialog.(*confirm); return ok })
-		m.Mu.Lock()
+		m.Core.Mu.Lock()
 		d := m.dialog.(*confirm)
 		m.dialog = nil
 		d.yes(m)
-		m.Mu.Unlock()
+		m.Core.Mu.Unlock()
 	}
 	yes("the plugin as it is, to allow")
 	until("the allowance", func() bool { return plugin.Allowed(core.PluginsAllowedFile(), p) })
 	until("the list's mark", func() bool { m.pluginList(tb); return m.plugins.allowed[p.Dir] })
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	m.disallowPlugin(p)
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	yes("the plugin as it is, to disallow")
 	until("the allowance taken away", func() bool { return !plugin.Allowed(core.PluginsAllowedFile(), p) })
 }
@@ -182,18 +182,18 @@ func TestRemoteSearchThroughCore(t *testing.T) {
 	}
 	until := func(what string, ok func() bool) { t.Helper(); untilTold(t, m, told, what, ok) }
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	m.openSearch()
 	d := m.dialog.(*searchDialog)
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	until("the logs read", func() bool { return !d.reading })
 	if d.n != 1 {
 		t.Fatalf("read %d conversations, want 1", d.n)
 	}
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	d.input.SetValue("flaky")
 	d.find(m)
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	until("the search", func() bool { return len(d.hits) == 1 })
 	if s := d.hits[0].Snippet(d.words, 40); !strings.Contains(s, "flaky") {
 		t.Fatalf("snippet %q", s)

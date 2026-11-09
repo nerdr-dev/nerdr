@@ -173,13 +173,13 @@ func (q *runQuestion) answered(m *Model) {
 // a sandbox, that it runs outside: a plugin that builds or runs what is in
 // the folder runs what the agent wrote there.
 func (m *Model) askPluginRun(q core.Question) {
-	a, p, vals, dir := m.ByRef(q.A), q.P, q.Vals, q.Dir
+	a, p, vals, dir := m.Core.ByRef(q.A), q.P, q.Vals, q.Dir
 	if a == nil {
 		m.do(core.Answer{ID: q.ID, Answer: core.RunBusy}) // gone already
 		return
 	}
 	o := a.Owner()
-	agent := m.AgentLabel(o, a)
+	agent := m.Core.AgentLabel(o, a)
 	bold := lipgloss.NewStyle().Bold(true)
 	lines := []string{o.Name + ": " + bold.Render(agent) + " would run it, as you, with", ""}
 	names := make([]string, 0, len(vals))

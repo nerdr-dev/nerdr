@@ -47,7 +47,7 @@ func (m *Model) onConfigSaved(ev core.ConfigSavedMsg) tea.Cmd {
 		return d.saved(m, ev)
 	}
 	if ev.Err != "" {
-		m.toast(cmp.Or(what, "settings") + ": not saved in " + m.ConfigPath() + ": " + ev.Err)
+		m.toast(cmp.Or(what, "settings") + ": not saved in " + m.Core.ConfigPath() + ": " + ev.Err)
 	}
 	if d, ok := m.dialog.(*settings); ok {
 		d.reload()

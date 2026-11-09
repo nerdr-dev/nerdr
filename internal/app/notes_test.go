@@ -21,7 +21,7 @@ import (
 // would have had, written so that codex reads them back as they were.
 func TestCodexIsToldTheNotes(t *testing.T) {
 	m := testModel(t)
-	m.Cfg.Install = config.InstallHome
+	m.Core.Cfg.Install = config.InstallHome
 	tb := m.Cur()
 	tb.Agent = agents.Codex
 	tb.Dir = t.TempDir()
@@ -50,14 +50,14 @@ func TestCodexIsToldTheNotes(t *testing.T) {
 		}
 		return c.DeveloperInstructions
 	}
-	if got := read(m.CodexNote(tb, []string{"codex"}, nil)); got != core.WorktreeNote {
+	if got := read(m.Core.CodexNote(tb, []string{"codex"}, nil)); got != core.WorktreeNote {
 		t.Fatalf("instructions %q", got)
 	}
 
 	own = "Answer in \"Nynorsk\".\nKeep it short\\brief.\x7f\x01"
-	m.Cfg.Review = config.Review{Auto: true, When: config.WhenReady}
+	m.Core.Cfg.Review = config.Review{Auto: true, When: config.WhenReady}
 	argv := []string{"codex", "--config=model=\"o3\"", "-cdeveloper_instructions=\"mine\"", "--no-daemon", "--", "-c not=this"}
-	if got, want := read(m.CodexNote(tb, argv, []string{"CODEX_HOME=/x"})), own+"\n\n"+core.WorktreeNote+"\n\n"+core.ReadyNote; got != want {
+	if got, want := read(m.Core.CodexNote(tb, argv, []string{"CODEX_HOME=/x"})), own+"\n\n"+core.WorktreeNote+"\n\n"+core.ReadyNote; got != want {
 		t.Fatalf("instructions %q, want %q", got, want)
 	}
 	if !slices.Equal(asked.argv, []string{"codex"}) || !slices.Equal(asked.env, []string{"CODEX_HOME=/x"}) || asked.dir != tb.Dir ||
@@ -66,18 +66,18 @@ func TestCodexIsToldTheNotes(t *testing.T) {
 	}
 
 	for _, p := range [][]string{{"-p", "work"}, {"--profile=work"}, {"-pwork"}} {
-		if args := m.CodexNote(tb, append([]string{"codex"}, p...), nil); args != nil {
+		if args := m.Core.CodexNote(tb, append([]string{"codex"}, p...), nil); args != nil {
 			t.Fatalf("%q: a profile's own are not read, so none should be added: %q", p, args)
 		}
 	}
 	core.CodexInstructions = func(argv, env, config []string, dir string) (string, error) {
 		return "", errors.New("no codex")
 	}
-	if args := m.CodexNote(tb, []string{"codex"}, nil); args != nil {
+	if args := m.Core.CodexNote(tb, []string{"codex"}, nil); args != nil {
 		t.Fatalf("not knowing the user's, none should be added: %q", args)
 	}
-	m.Cfg.EnabledSkills = []string{"nerdr-explain"}
-	if args := m.CodexNote(tb, []string{"codex"}, nil); args != nil {
+	m.Core.Cfg.EnabledSkills = []string{"nerdr-explain"}
+	if args := m.Core.CodexNote(tb, []string{"codex"}, nil); args != nil {
 		t.Fatalf("no skill to point to: %q", args)
 	}
 }
@@ -88,7 +88,7 @@ func TestCopilotIsToldTheNotes(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv(core.CopilotInstructionsVar, "/inherited")
 	m := testModel(t)
-	m.Cfg.Install = config.InstallHome
+	m.Core.Cfg.Install = config.InstallHome
 	tb := m.Cur()
 
 	dirOf := func(env []string, want string) string {
@@ -104,7 +104,7 @@ func TestCopilotIsToldTheNotes(t *testing.T) {
 		}
 		return strings.TrimPrefix(vals[0], want+",")
 	}
-	dir := dirOf(m.CopilotNote(tb, []string{"FOO=1"}), "/inherited")
+	dir := dirOf(m.Core.CopilotNote(tb, []string{"FOO=1"}), "/inherited")
 	b, err := os.ReadFile(filepath.Join(dir, ".github", "instructions", "nerdr.instructions.md"))
 	if err != nil {
 		t.Fatal(err)
@@ -113,18 +113,18 @@ func TestCopilotIsToldTheNotes(t *testing.T) {
 		t.Fatalf("instructions file:\n%s", b)
 	}
 
-	env := m.CopilotNote(tb, []string{"FOO=1", core.CopilotInstructionsVar + "=/mine"})
+	env := m.Core.CopilotNote(tb, []string{"FOO=1", core.CopilotInstructionsVar + "=/mine"})
 	if dirOf(env, "/mine") != dir || !slices.Contains(env, "FOO=1") {
 		t.Fatalf("env %q", env)
 	}
 
-	m.Cfg.Review = config.Review{Auto: true, When: config.WhenReady}
-	if other := dirOf(m.CopilotNote(tb, nil), "/inherited"); other == dir {
+	m.Core.Cfg.Review = config.Review{Auto: true, When: config.WhenReady}
+	if other := dirOf(m.Core.CopilotNote(tb, nil), "/inherited"); other == dir {
 		t.Fatal("another note should have a folder of its own")
 	}
 
-	m.Cfg.EnabledSkills = []string{"nerdr-explain"}
-	if env := m.CopilotNote(tb, []string{"FOO=1"}); !slices.Equal(env, []string{"FOO=1"}) {
+	m.Core.Cfg.EnabledSkills = []string{"nerdr-explain"}
+	if env := m.Core.CopilotNote(tb, []string{"FOO=1"}); !slices.Equal(env, []string{"FOO=1"}) {
 		t.Fatalf("no skill to point to: %q", env)
 	}
 }
@@ -148,10 +148,10 @@ func TestCodexStartsWithTheNotes(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := paneModel(t)
-	m.Cfg.Install = config.InstallHome
-	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
-	askedHelp(m.Cfg.Agents)
-	startAsked(t, m, m.NewAgent(m.Cur(), agents.Codex))
+	m.Core.Cfg.Install = config.InstallHome
+	m.Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
+	askedHelp(m.Core.Cfg.Agents)
+	startAsked(t, m, m.Core.NewAgent(m.Cur(), agents.Codex))
 	var args string
 	for i := 0; i < 100 && args == ""; i++ {
 		b, _ := os.ReadFile(started)
@@ -167,21 +167,21 @@ func TestCodexStartsWithTheNotes(t *testing.T) {
 // other agents are not.
 func TestOpenCodeIsToldTheNotes(t *testing.T) {
 	m := testModel(t)
-	m.Cfg.Install = config.InstallHome
+	m.Core.Cfg.Install = config.InstallHome
 	tb := m.Cur()
 	tb.Agent = agents.OpenCode
-	if !slices.Contains(m.AgentEnv(tb), "NERDR_OPENCODE_NOTE="+core.WorktreeNote) {
-		t.Fatalf("env %q", m.AgentEnv(tb))
+	if !slices.Contains(m.Core.AgentEnv(tb), "NERDR_OPENCODE_NOTE="+core.WorktreeNote) {
+		t.Fatalf("env %q", m.Core.AgentEnv(tb))
 	}
 	tb.Agent = agents.Claude
-	for _, kv := range m.AgentEnv(tb) {
+	for _, kv := range m.Core.AgentEnv(tb) {
 		if strings.HasPrefix(kv, "NERDR_OPENCODE_NOTE=") {
 			t.Fatalf("claude told %q", kv)
 		}
 	}
 	tb.Agent = agents.OpenCode
-	m.Cfg.EnabledSkills = []string{"nerdr-explain"}
-	for _, kv := range m.AgentEnv(tb) {
+	m.Core.Cfg.EnabledSkills = []string{"nerdr-explain"}
+	for _, kv := range m.Core.AgentEnv(tb) {
 		if strings.HasPrefix(kv, "NERDR_OPENCODE_NOTE=") {
 			t.Fatalf("no skill to point to: %q", kv)
 		}
@@ -191,9 +191,9 @@ func TestOpenCodeIsToldTheNotes(t *testing.T) {
 // Grok takes the notes as rules on its command line.
 func TestGrokIsToldTheNotes(t *testing.T) {
 	m := testModel(t)
-	m.Cfg.Install = config.InstallHome
+	m.Core.Cfg.Install = config.InstallHome
 	tb := m.Cur()
-	if args := m.GrokNote(tb); !slices.Equal(args, []string{"--rules", core.WorktreeNote}) {
+	if args := m.Core.GrokNote(tb); !slices.Equal(args, []string{"--rules", core.WorktreeNote}) {
 		t.Fatalf("args %q", args)
 	}
 }
@@ -203,11 +203,11 @@ func TestGrokIsToldTheNotes(t *testing.T) {
 func TestAgyIsToldTheNotes(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := testModel(t)
-	m.Cfg.Install = config.InstallHome
+	m.Core.Cfg.Install = config.InstallHome
 	tb := m.Cur()
 	tb.Dir = t.TempDir()
 
-	args := m.AgyNote(tb)
+	args := m.Core.AgyNote(tb)
 	if len(args) != 2 || args[0] != "--add-dir" || strings.HasPrefix(args[1], tb.Dir) {
 		t.Fatalf("args %q", args)
 	}
@@ -218,7 +218,7 @@ func TestAgyIsToldTheNotes(t *testing.T) {
 	if err := os.WriteFile(file, []byte("changed by an agent"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if again := m.AgyNote(tb); !slices.Equal(again, args) {
+	if again := m.Core.AgyNote(tb); !slices.Equal(again, args) {
 		t.Fatalf("the same tab moved: %q", again)
 	}
 	if b, _ := os.ReadFile(file); string(b) != core.WorktreeNote+"\n" {
@@ -227,12 +227,12 @@ func TestAgyIsToldTheNotes(t *testing.T) {
 
 	other := &core.Tab{AgentState: core.Agent{Tab: tb.Tab}}
 	other.Dir = t.TempDir()
-	if o := m.AgyNote(other); slices.Equal(o, args) {
+	if o := m.Core.AgyNote(other); slices.Equal(o, args) {
 		t.Fatal("another worktree should have a folder of its own")
 	}
 
-	m.Cfg.EnabledSkills = []string{"nerdr-explain"}
-	if args := m.AgyNote(tb); args != nil {
+	m.Core.Cfg.EnabledSkills = []string{"nerdr-explain"}
+	if args := m.Core.AgyNote(tb); args != nil {
 		t.Fatalf("no skill to point to: %q", args)
 	}
 }

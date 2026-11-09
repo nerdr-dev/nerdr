@@ -23,8 +23,8 @@ import (
 func paneModel(t *testing.T) *Model {
 	t.Helper()
 	m := testModel(t)
-	m.Cfg.Shell = "cat"
-	m.Cfg.PaneMinWidth = 50
+	m.Core.Cfg.Shell = "cat"
+	m.Core.Cfg.PaneMinWidth = 50
 	m.Cur().Dir = t.TempDir()
 	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
 	t.Cleanup(m.Shutdown)
@@ -128,7 +128,7 @@ func TestTabCyclesThePanes(t *testing.T) {
 	}
 	m.runCommand("tab")
 	m.reviewOpen = true
-	m.Cfg.PaneMinWidth = 20
+	m.Core.Cfg.PaneMinWidth = 20
 	m.resize()
 	m.runCommand("tab")
 	if m.focus != core.FocusReview {
@@ -147,11 +147,11 @@ func TestTabCyclesThePanes(t *testing.T) {
 
 // fakeAgent makes kind k start as cat, so a test can run it.
 func fakeAgent(m *Model, k agents.Kind) {
-	if m.Cfg.Agents == nil {
-		m.Cfg.Agents = map[agents.Kind]agents.Spec{}
+	if m.Core.Cfg.Agents == nil {
+		m.Core.Cfg.Agents = map[agents.Kind]agents.Spec{}
 	}
-	m.Cfg.Agents[k] = agents.Spec{Command: []string{"cat"}}
-	askedHelp(m.Cfg.Agents)
+	m.Core.Cfg.Agents[k] = agents.Spec{Command: []string{"cat"}}
+	askedHelp(m.Core.Cfg.Agents)
 }
 
 // TestAgentBesideTheTab: another agent starts in the tab's worktree, in a
@@ -163,7 +163,7 @@ func TestAgentBesideTheTab(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	tb.Light = core.StIdle
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	if len(tb.ExtraAgents()) != 1 {
 		t.Fatal("no agent beside the tab's")
 	}
@@ -171,7 +171,7 @@ func TestAgentBesideTheTab(t *testing.T) {
 	if a.PartOf != tb || a.Dir != tb.Dir || a.Pane == nil || m.focused(tb).A != a {
 		t.Fatalf("the agent should run in the tab's worktree, with the keyboard: %+v", a.Tab)
 	}
-	if got := m.AgentByHook(a.HookKey()); got != a {
+	if got := m.Core.AgentByHook(a.HookKey()); got != a {
 		t.Fatal("it should report as itself")
 	}
 	if m.CurAgent() != a {
@@ -192,8 +192,8 @@ func TestAgentBesideTheTab(t *testing.T) {
 	}
 
 	a.SessionID = "s-codex"
-	m.SaveSession()
-	sess, err := state.Load(m.Root)
+	m.Core.SaveSession()
+	sess, err := state.Load(m.Core.Root)
 	if err != nil || len(sess.Tabs) == 0 {
 		t.Fatalf("no session: %v", err)
 	}
@@ -206,9 +206,9 @@ func TestAgentBesideTheTab(t *testing.T) {
 	if kept == nil || len(kept.Agents) != 1 || kept.Agents[0].SessionID != "s-codex" || kept.Agents[0].Agent != agents.Codex {
 		t.Fatalf("the agent should be kept with its tab: %+v", kept)
 	}
-	m2 := New(m.Cfg, m.Root, nil, sess)
+	m2 := New(m.Core.Cfg, m.Core.Root, nil, sess)
 	var back *core.Tab
-	for _, x := range m2.Tabs {
+	for _, x := range m2.Core.Tabs {
 		if x.ID == tb.ID {
 			back = x
 		}
@@ -217,8 +217,8 @@ func TestAgentBesideTheTab(t *testing.T) {
 		t.Fatal("a restart should put the agent back in its pane")
 	}
 
-	m.ClosePane(tb, a.PaneOf())
-	if len(tb.Panes()) != 1 || m.Live(a) {
+	m.Core.ClosePane(tb, a.PaneOf())
+	if len(tb.Panes()) != 1 || m.Core.Live(a) {
 		t.Fatal("closing its pane should stop the agent")
 	}
 }
@@ -230,7 +230,7 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	fakeAgent(m, agents.Gemini)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	a := tb.ExtraAgents()[0]
 	m.runCommand("t r")
 	p := m.focused(tb)
@@ -238,7 +238,7 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 		t.Fatalf("the review should be of the agent whose pane had the keyboard: %+v", p)
 	}
 	tb.Light, a.Light = core.StIdle, core.StIdle
-	m.OnTree(core.TreeMsg{T: a, Why: core.TreeHand, Changed: true, Tree: "t1", By: core.Reviewer{Kind: agents.Gemini}})
+	m.Core.OnTree(core.TreeMsg{T: a, Why: core.TreeHand, Changed: true, Tree: "t1", By: core.Reviewer{Kind: agents.Gemini}})
 	if a.Review == nil || len(a.Review.Seats) != 1 || p.A != a.Review.Seats[0].R {
 		t.Fatal("the reviewer should start in the pane it was picked in")
 	}
@@ -246,7 +246,7 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 	if r.ReviewOf != a || r.Owner() != tb {
 		t.Fatal("the reviewer reviews the agent beside, in its tab")
 	}
-	m.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Changes, Summary: "s",
+	m.Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Changes, Summary: "s",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "wrong"}}}})
 	if len(a.Messages) != 1 || len(tb.Messages) != 0 {
 		t.Fatalf("the findings should go to the agent reviewed: %d, %d", len(a.Messages), len(tb.Messages))
@@ -257,7 +257,7 @@ func TestReviewOfTheAgentBeside(t *testing.T) {
 // terminal window does, the others staying.
 func TestExitClosesTheTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.Cfg.Shell = "sh"
+	m.Core.Cfg.Shell = "sh"
 	tb := m.Cur()
 	m.runCommand("t t")
 	m.runCommand("t t")
@@ -282,8 +282,8 @@ func TestAgentsAreNumbered(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two, three := tb.ExtraAgents()[0], tb.ExtraAgents()[1]
 	if tb.Num != 1 || two.Num != 2 || three.Num != 3 {
 		t.Fatalf("numbers %d, %d, %d", tb.Num, two.Num, three.Num)
@@ -291,8 +291,8 @@ func TestAgentsAreNumbered(t *testing.T) {
 	if v := ansi.Strip(m.View()); !strings.Contains(v, "1:claude") || !strings.Contains(v, "3:codex") {
 		t.Fatalf("the row should number the agents:\n%s", v)
 	}
-	m.ClosePane(tb, two.PaneOf())
-	m.NewAgent(tb, agents.Codex)
+	m.Core.ClosePane(tb, two.PaneOf())
+	m.Core.NewAgent(tb, agents.Codex)
 	if three.Num != 3 || tb.ExtraAgents()[1].Num != 2 {
 		t.Fatal("numbers stay; a new agent gets the lowest free one")
 	}
@@ -305,7 +305,7 @@ func TestAgentsSendEachOtherMessages(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	send := func(from *core.Tab, to int, text string) hooks.Answer {
 		reply := make(chan hooks.Answer, 1)
@@ -336,7 +336,7 @@ func TestTheFirstAgentStays(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	m.goToPane(tb, tb.Panes()[0])
 	m.runCommand("t x")
 	if len(tb.Panes()) != 2 || tb.Agent != agents.Claude || !strings.Contains(m.toastText, "stays as long as the tab") {
@@ -351,19 +351,19 @@ func TestOwnConversationsOnly(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	tb.SessionID = "s-one"
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	two.SessionID = "s-two"
 	two.Sessions = map[agents.Kind]string{agents.Claude: "s-two-claude"}
-	skip := m.OthersSessions(tb)
+	skip := m.Core.OthersSessions(tb)
 	if !skip["s-two"] || !skip["s-two-claude"] || skip["s-one"] {
 		t.Fatalf("the tab's agent passes over the other's conversations, not its own: %v", skip)
 	}
-	if m.SharesKind(tb) || !m.SharesKind(two) && two.Agent == tb.Agent {
+	if m.Core.SharesKind(tb) || !m.Core.SharesKind(two) && two.Agent == tb.Agent {
 		t.Fatal("sharesKind")
 	}
-	m.NewAgent(tb, agents.Codex)
-	if !m.SharesKind(two) {
+	m.Core.NewAgent(tb, agents.Codex)
+	if !m.Core.SharesKind(two) {
 		t.Fatal("two codex agents share their kind")
 	}
 }
@@ -375,10 +375,10 @@ func TestSwitchTheAgentBeside(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	fakeAgent(m, agents.Gemini)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	two.Light = core.StIdle
-	m.SwitchAgent(two, agents.Gemini, "")
+	m.Core.SwitchAgent(two, agents.Gemini, "")
 	if two.Agent != agents.Gemini || tb.Agent != agents.Claude || two.Sessions == nil {
 		t.Fatalf("the agent beside should switch: %s, %s", two.Agent, tb.Agent)
 	}
@@ -395,9 +395,9 @@ func TestClaimedConversation(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	tb.SessionID = "s-one"
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
-	if two.SessionID != "" || m.ClaimSession(two) == nil {
+	if two.SessionID != "" || m.Core.ClaimSession(two) == nil {
 		t.Fatal("codex has no id from nerdr: it is looked for after a turn")
 	}
 	m.Update(core.ClaimMsg{T: two, Id: "s-one", Pid: two.Pane})
@@ -405,7 +405,7 @@ func TestClaimedConversation(t *testing.T) {
 		t.Fatal("another agent's conversation is never claimed")
 	}
 	m.Update(core.ClaimMsg{T: two, Id: "s-two", Pid: two.Pane})
-	if two.SessionID != "s-two" || m.ClaimSession(two) != nil {
+	if two.SessionID != "s-two" || m.Core.ClaimSession(two) != nil {
 		t.Fatalf("its own is kept: %q", two.SessionID)
 	}
 }
@@ -417,14 +417,14 @@ func TestGivenConversationChecked(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	two.SessionID, two.SessionUnsure = "ses_given", true
-	if m.ClaimSession(two) == nil {
+	if m.Core.ClaimSession(two) == nil {
 		t.Fatal("an unsure id is checked")
 	}
 	m.Update(core.ClaimMsg{T: two, Id: "ses_given", Pid: two.Pane, Sure: true})
-	if two.SessionUnsure || two.SessionID != "ses_given" || m.ClaimSession(two) != nil {
+	if two.SessionUnsure || two.SessionID != "ses_given" || m.Core.ClaimSession(two) != nil {
 		t.Fatal("found, it is sure")
 	}
 	two.SessionUnsure = true
@@ -448,23 +448,23 @@ func TestSwitchBackToCodexBesideAnother(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	fakeAgent(m, agents.Gemini)
 	tb := m.Cur()
-	m.NewAgent(tb, agents.Codex)
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	two.SessionID = "codex-two"
 	two.Light = core.StIdle
-	l := launched(t, fromCore(m.SwitchAgent(two, agents.Gemini, "summary")))
+	l := launched(t, fromCore(m.Core.SwitchAgent(two, agents.Gemini, "summary")))
 	m.Update(l)
 	two.Light = core.StIdle
-	l = launched(t, fromCore(m.SwitchAgent(two, agents.Codex, "summary")))
+	l = launched(t, fromCore(m.Core.SwitchAgent(two, agents.Codex, "summary")))
 	if !l.Resume || l.L.SessionID != "codex-two" || !slices.Contains(l.L.Argv, "codex-two") {
 		t.Fatalf("its own codex conversation should be carried on: %+v", l.L)
 	}
 
 	three := tb.ExtraAgents()[1]
 	three.SessionID = "stale"
-	m.Spawn(three, agents.NewSession(m.Cfg.Agents, agents.Codex), false)
-	if three.SessionID != "" || m.ClaimSession(three) == nil {
+	m.Core.Spawn(three, agents.NewSession(m.Core.Cfg.Agents, agents.Codex), false)
+	if three.SessionID != "" || m.Core.ClaimSession(three) == nil {
 		t.Fatalf("a new codex conversation leaves no old id, and is looked for: %q", three.SessionID)
 	}
 }
@@ -497,11 +497,11 @@ func TestNewPanesGoLastAndMove(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	tb.Light = core.StIdle
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	m.runCommand("t t")
 	sh := m.focused(tb)
 	m.goToPane(tb, tb.OwnPane())
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	ps := slices.Clone(tb.Panes())
 	if len(ps) != 4 || ps[2] != sh || ps[3] != m.focused(tb) || ps[3].A.Num != 3 {
 		t.Fatal("the new agent should go last, after the terminal")
@@ -670,11 +670,11 @@ func TestAgentStartsAnotherWithAModel(t *testing.T) {
 	if two.Model != "gpt-5.5-mini" {
 		t.Fatalf("model %q", two.Model)
 	}
-	args := m.SpecsFor(two)[agents.Codex].Args
+	args := m.Core.SpecsFor(two)[agents.Codex].Args
 	if strings.Join(args, " ") != "--model gpt-5.5-mini" {
 		t.Fatalf("it starts with %q", args)
 	}
-	if m.SpecsFor(tb)[agents.Claude].Args != nil {
+	if m.Core.SpecsFor(tb)[agents.Claude].Args != nil {
 		t.Fatal("the tab's own agent keeps the config's")
 	}
 }
@@ -748,7 +748,7 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 	}
 	m.dialog = nil
 
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	m.openMessage(false)
 	d := m.dialog.(*messageDialog)
@@ -772,11 +772,11 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 		t.Fatalf("alt+2 picks agent 2: %+v", two.Messages)
 	}
 
-	m.ClosePane(tb, two.PaneOf())
+	m.Core.ClosePane(tb, two.PaneOf())
 	if len(tb.Inactive) != 2 || tb.Inactive[1].Gone != 2 || tb.Inactive[1].Text != "only for two" {
 		t.Fatalf("its tasks should stay, for agent 2: %+v", tb.Inactive)
 	}
-	m.NewAgent(tb, agents.Codex)
+	m.Core.NewAgent(tb, agents.Codex)
 	again := tb.ExtraAgents()[0]
 	if again.Num != 2 || len(again.Messages) != 0 {
 		t.Fatalf("a new agent 2 is not the one they were for: %d %+v", again.Num, again.Messages)
@@ -798,8 +798,8 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 		t.Fatalf("e gives it to the agent picked: %+v %+v", tb.Inactive, again.Messages)
 	}
 
-	m.SaveSession()
-	sess, err := state.Load(m.Root)
+	m.Core.SaveSession()
+	sess, err := state.Load(m.Core.Root)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -812,7 +812,7 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 
 func TestCloseBusyTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.Cfg.Shell = "bash --norc --noprofile -i"
+	m.Core.Cfg.Shell = "bash --norc --noprofile -i"
 	m.runCommand("t t")
 	tb := m.Cur()
 	p := m.focused(tb)

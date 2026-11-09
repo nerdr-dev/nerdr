@@ -19,7 +19,7 @@ type switcher struct {
 }
 
 func (m *Model) openSwitcher() tea.Cmd {
-	if len(m.Tabs) == 0 {
+	if len(m.Core.Tabs) == 0 {
 		return nil
 	}
 	in := textinput.New()
@@ -35,7 +35,7 @@ func (s *switcher) matches(m *Model) []int {
 	q := strings.ToLower(strings.TrimSpace(s.input.Value()))
 	type hit struct{ i, score int }
 	var hits []hit
-	for i, t := range m.Tabs {
+	for i, t := range m.Core.Tabs {
 		score, ok := fuzzy(q, strings.ToLower(t.Name+" "+t.GroupName()+" "+string(t.Agent)))
 		if !ok {
 			continue
@@ -43,7 +43,7 @@ func (s *switcher) matches(m *Model) []int {
 		hits = append(hits, hit{i, score})
 	}
 	sort.SliceStable(hits, func(a, b int) bool {
-		ta, tb := m.Tabs[hits[a].i], m.Tabs[hits[b].i]
+		ta, tb := m.Core.Tabs[hits[a].i], m.Core.Tabs[hits[b].i]
 		if hits[a].score != hits[b].score {
 			return hits[a].score > hits[b].score
 		}
@@ -127,7 +127,7 @@ func (s *switcher) view(m *Model, w, h int) string {
 			lines = append(lines, dim("  …"))
 			break
 		}
-		t := m.Tabs[i]
+		t := m.Core.Tabs[i]
 		line := light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName()+" · "+string(t.Agent)+" · "+t.Lit().Label())
 		if i == m.Active {
 			line += dim("  (here)")
@@ -169,8 +169,8 @@ func (r *renamer) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "enter":
 		m.dialog = nil
-		if name := strings.TrimSpace(r.input.Value()); name != "" && m.TabIndex(r.t) >= 0 {
-			m.do(core.RenameTab{T: m.Ref(r.t), Name: name})
+		if name := strings.TrimSpace(r.input.Value()); name != "" && m.Core.TabIndex(r.t) >= 0 {
+			m.do(core.RenameTab{T: m.Core.Ref(r.t), Name: name})
 			m.reportHerdr()
 		}
 		return nil
@@ -235,8 +235,8 @@ func (m *Model) renameGroup(g, name string) {
 		name = ""
 	}
 	moved := false
-	for _, i := range m.GroupTabs(g) {
-		moved = moved || len(m.Tabs[i].Worktrees) >= 2
+	for _, i := range m.Core.GroupTabs(g) {
+		moved = moved || len(m.Core.Tabs[i].Worktrees) >= 2
 	}
 	if !moved {
 		return
@@ -261,7 +261,7 @@ func branchOf(t *core.Tab) string {
 // moveTab moves the active tab one place left (-1) or right (1) among the
 // tabs of its group.
 func (m *Model) moveTab(delta int) tea.Cmd {
-	idx := m.GroupTabs(m.curGroup())
+	idx := m.Core.GroupTabs(m.curGroup())
 	for pos, i := range idx {
 		if i != m.Active {
 			continue
@@ -271,7 +271,7 @@ func (m *Model) moveTab(delta int) tea.Cmd {
 			return nil
 		}
 		j := idx[to]
-		a, b := m.Ref(m.Tabs[i]), m.Ref(m.Tabs[j])
+		a, b := m.Core.Ref(m.Core.Tabs[i]), m.Core.Ref(m.Core.Tabs[j])
 		m.Active = j
 		l := m.layout()
 		return m.do(core.SwapTabs{A: a, B: b, Layout: &l})

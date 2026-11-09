@@ -36,9 +36,9 @@ func (m *Model) notifyChange(t *core.Tab, visible bool, now time.Time) {
 	default:
 		return
 	}
-	name := m.AgentName(t)
-	if !m.Cfg.NotifyOn(what) {
-		core.Debugf("notify %s: not sent, notify = %q", name, m.Cfg.Notify)
+	name := m.Core.AgentName(t)
+	if !m.Core.Cfg.NotifyOn(what) {
+		core.Debugf("notify %s: not sent, notify = %q", name, m.Core.Cfg.Notify)
 		return
 	}
 	tl := m.tl(t)
@@ -96,7 +96,7 @@ func (m *Model) flushNotes(herdrBefore string) {
 		}
 		return
 	}
-	_, top := m.Neediest()
+	_, top := m.Core.Neediest()
 	herdrNotified := core.HerdrNotifies(herdrBefore, m.Herdr.State())
 	for _, n := range notes {
 		if herdrNotified && n.T == top {

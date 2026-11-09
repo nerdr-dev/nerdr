@@ -79,7 +79,7 @@ func (m *Model) needAllMotion() bool {
 	return p != nil && p.WantsAllMotion()
 }
 
-func (m *Model) mouseOn() bool { return m.Cfg.Mouse != nil && *m.Cfg.Mouse }
+func (m *Model) mouseOn() bool { return m.Core.Cfg.Mouse != nil && *m.Core.Cfg.Mouse }
 
 // syncMouse asks the terminal for the reports wantMouse says, if that has
 // changed.
@@ -246,7 +246,7 @@ func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 			return nil
 		}
 		if t != m.Cur() {
-			cmd = m.selectTab(m.TabIndex(t))
+			cmd = m.selectTab(m.Core.TabIndex(t))
 		}
 		cmd = tea.Batch(cmd, m.focusPane(t, p))
 		if !isWheel(ev) || !inside {
@@ -566,7 +566,7 @@ func (m *Model) checkCopied() {
 	if m.editor != nil {
 		panes = append(panes, m.editor)
 	}
-	for _, t := range m.Tabs {
+	for _, t := range m.Core.Tabs {
 		for _, p := range t.Panes() {
 			panes = append(panes, m.program(p))
 		}

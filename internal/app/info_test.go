@@ -35,13 +35,13 @@ func TestTabFollowsItsWorktreesBranch(t *testing.T) {
 		state.Tab{ID: "a", Name: "old", Dir: dir, Worktrees: wts},
 		state.Tab{ID: "b", Name: "mine", Dir: dir, Worktrees: append([]workspace.Worktree(nil), wts...)},
 	)
-	for _, tb := range m.Tabs {
-		m.SetInfo(core.InfoMsg{Id: tb.ID, Info: core.LookAt(tb.Worktrees, tb.Info, false, false)})
+	for _, tb := range m.Core.Tabs {
+		m.Core.SetInfo(core.InfoMsg{Id: tb.ID, Info: core.LookAt(tb.Worktrees, tb.Info, false, false)})
 	}
-	if a := m.Tabs[0]; a.Name != "new" || a.Worktrees[0].Branch != "new" {
+	if a := m.Core.Tabs[0]; a.Name != "new" || a.Worktrees[0].Branch != "new" {
 		t.Fatalf("tab named after its branch: name %q branch %q", a.Name, a.Worktrees[0].Branch)
 	}
-	if b := m.Tabs[1]; b.Name != "mine" || b.Worktrees[0].Branch != "new" {
+	if b := m.Core.Tabs[1]; b.Name != "mine" || b.Worktrees[0].Branch != "new" {
 		t.Fatalf("renamed tab: name %q branch %q", b.Name, b.Worktrees[0].Branch)
 	}
 }
@@ -90,20 +90,20 @@ func TestLookSkipsGitWhenNothingChanged(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
 	tb.Info = core.TabInfo{At: time.Now(), FullAt: time.Now()}
-	if skip, _ := m.MaySkip(tb, time.Now()); !skip {
+	if skip, _ := m.Core.MaySkip(tb, time.Now()); !skip {
 		t.Fatal("a quiet tab, looked at just now, may skip")
 	}
 	tb.Light = core.StWorking
-	if skip, _ := m.MaySkip(tb, time.Now()); skip {
+	if skip, _ := m.Core.MaySkip(tb, time.Now()); skip {
 		t.Fatal("a working agent edits files no watch reports")
 	}
 	tb.Light = core.StIdle
 	tb.Info.Stale = true
-	if skip, _ := m.MaySkip(tb, time.Now()); skip {
+	if skip, _ := m.Core.MaySkip(tb, time.Now()); skip {
 		t.Fatal("a look asked for should run git")
 	}
 	tb.Info.Stale = false
-	if skip, _ := m.MaySkip(tb, time.Now().Add(core.FullInfoEvery)); skip {
+	if skip, _ := m.Core.MaySkip(tb, time.Now().Add(core.FullInfoEvery)); skip {
 		t.Fatal("git should run after fullInfoEvery anyway")
 	}
 }
@@ -113,7 +113,7 @@ func TestLookSkipsGitWhenNothingChanged(t *testing.T) {
 func TestLineCountsOnTheActiveTabOnly(t *testing.T) {
 	m := testModel(t)
 	m.showDetails = true
-	for _, x := range m.Tabs[:2] {
+	for _, x := range m.Core.Tabs[:2] {
 		x.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", Add: 12, Del: 3}}}
 		x.Messages = []state.Message{{Text: "later"}}
 	}
@@ -151,16 +151,16 @@ func TestPushAndOpenPRWhenThereIsSomethingToDo(t *testing.T) {
 
 func TestGitHubEveryScalesWithTheSetting(t *testing.T) {
 	m := &Model{}
-	m.Client = m
-	if got := m.GithubEvery(core.IdlePREvery); got != core.IdlePREvery {
+	m.Core.Client = m
+	if got := m.Core.GithubEvery(core.IdlePREvery); got != core.IdlePREvery {
 		t.Fatalf("unset, the interval is %v, not %v", got, core.IdlePREvery)
 	}
-	m.Cfg.GitHubRefresh = config.DefaultGitHubRefresh
-	if got := m.GithubEvery(core.PrEvery); got != core.PrEvery {
+	m.Core.Cfg.GitHubRefresh = config.DefaultGitHubRefresh
+	if got := m.Core.GithubEvery(core.PrEvery); got != core.PrEvery {
 		t.Fatalf("at the default, the tab on screen is asked every %v, not %v", got, core.PrEvery)
 	}
-	m.Cfg.GitHubRefresh = 180
-	if got := m.GithubEvery(core.PrWatchEvery); got != 2*core.PrWatchEvery {
+	m.Core.Cfg.GitHubRefresh = 180
+	if got := m.Core.GithubEvery(core.PrWatchEvery); got != 2*core.PrWatchEvery {
 		t.Fatalf("at 180, the watch asks every %v, not %v", got, 2*core.PrWatchEvery)
 	}
 }

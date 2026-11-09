@@ -88,16 +88,16 @@ func (m *Model) program(p *core.PaneTab) core.Program {
 	if p == nil {
 		return nil
 	}
-	return m.programOf(core.ProgramRef{Pane: m.PaneRef(p)})
+	return m.programOf(core.ProgramRef{Pane: m.Core.PaneRef(p)})
 }
 
 // programOf is the program r names, nil when none runs there: core's
 // own, or with core's screens sent as rows, the copy kept of its screen.
 func (m *Model) programOf(r core.ProgramRef) core.Program {
 	if m.screens == nil {
-		return m.Program(r)
+		return m.Core.Program(r)
 	}
-	if !m.Runs(r) {
+	if !m.Core.Runs(r) {
 		return nil
 	}
 	return m.screens.Program(r)

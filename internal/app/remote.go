@@ -36,8 +36,8 @@ func NewRemote(cfg config.Config, root string, router *input.Router, conn *attac
 		return remote.Send(core.ReadForReview{Job: job, Q: q})
 	})
 	m.review = m.review.SetSource(m.reviewAsk)
-	m.Mu.Lock()
-	defer m.Mu.Unlock()
+	m.Core.Mu.Lock()
+	defer m.Core.Mu.Unlock()
 	// Asked before the client says what it shows, which core keeps as
 	// the layout from then on.
 	saved, err := m.remote.Run(core.SavedLayout{})
@@ -147,19 +147,19 @@ func (m *Model) clientState() core.ClientState {
 	for _, p := range fresh.PaneList {
 		delete(m.paneLooks, p)
 	}
-	for _, t := range m.Tabs {
-		tr := m.Ref(t)
+	for _, t := range m.Core.Tabs {
+		tr := m.Core.Ref(t)
 		if m.TabShown(tr) {
 			s.Shown = append(s.Shown, tr)
 		}
 		for _, p := range t.Panes() {
 			switch {
 			case p.Kind == core.PaneShell:
-				pr := m.PaneRef(p)
+				pr := m.Core.PaneRef(p)
 				w, h := m.ShellSize(tr, pr)
 				s.Sizes = append(s.Sizes, core.PaneSize{T: tr, P: pr, W: w, H: h})
 			case p.A != nil:
-				ar := m.Ref(p.A)
+				ar := m.Core.Ref(p.A)
 				if m.AgentVisible(ar) {
 					s.Visible = append(s.Visible, ar)
 				}
@@ -192,7 +192,7 @@ func (m *Model) wakeLocal(send func(tea.Msg), stop <-chan struct{}) {
 		select {
 		case <-stop:
 			return
-		case <-m.Wake:
+		case <-m.Core.Wake:
 		}
 		time.Sleep(16 * time.Millisecond) // a program drawing many times is one frame
 		send(core.FrameMsg{})
@@ -216,13 +216,13 @@ func (m *Model) initRemote() tea.Cmd {
 	cmds := []tea.Cmd{tea.SetWindowTitle(title), m.review.Init(), m.told(m.pending)}
 	m.pending = nil
 	switch {
-	case m.Cfg.Install == "":
+	case m.Core.Cfg.Install == "":
 		var then func(m *Model) tea.Cmd
-		if len(m.Tabs) == 0 {
+		if len(m.Core.Tabs) == 0 {
 			then = (*Model).openWizard
 		}
 		cmds = append(cmds, m.openSetup(then))
-	case len(m.Tabs) == 0:
+	case len(m.Core.Tabs) == 0:
 		cmds = append(cmds, m.openWizard())
 	default:
 		cmds = append(cmds, m.pinReview())
@@ -356,7 +356,7 @@ func (closeOrQuit) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 
 func (closeOrQuit) view(m *Model, w, _ int) string {
 	return box("Close or quit nerdr?", []string{
-		"Close: the agents work on; nerdr in " + m.Root,
+		"Close: the agents work on; nerdr in " + m.Core.Root,
 		"shows them again as they are.",
 		"Quit: the agents are stopped. Their tabs and conversations",
 		"are restored the next time you start nerdr there.",

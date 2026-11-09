@@ -166,7 +166,7 @@ func TestSmallSidebar(t *testing.T) {
 func TestSidebarDetailsOnTheTabsLine(t *testing.T) {
 	m := sideModel(t)
 	m.showDetails = true
-	for _, tb := range m.Tabs {
+	for _, tb := range m.Core.Tabs {
 		tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Add: 120, Del: 33}}}
 		tb.Info.Wts[0].Stats.Behind = 4
 	}

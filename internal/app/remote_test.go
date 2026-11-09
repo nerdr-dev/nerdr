@@ -108,10 +108,10 @@ func TestRemoteTUI(t *testing.T) {
 		return strings.Contains(v, "login") && strings.Contains(v, "ready")
 	})
 
-	m.Mu.Lock()
-	m.do(core.RenameTab{T: m.Ref(m.Cur()), Name: "signin"})
+	m.Core.Mu.Lock()
+	m.do(core.RenameTab{T: m.Core.Ref(m.Cur()), Name: "signin"})
 	name := m.Cur().Name
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	if name != "signin" {
 		t.Fatalf("the copy shows %q once core has done it", name)
 	}
@@ -126,9 +126,9 @@ func TestRemoteTUI(t *testing.T) {
 		t.Errorf("core goes by front %+v, %d×%d", front, w, h)
 	}
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	kp := m.keyPane()
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	if kp == nil {
 		t.Fatal("no program for the keys")
 	}
@@ -141,9 +141,9 @@ func TestRemoteTUI(t *testing.T) {
 func TestRemoteTUIConnectsAgain(t *testing.T) {
 	m, c, _, told := remoteTUI(t, "sh", "-c", `stty -echo; echo ready; while read l; do echo "got $l"; done`)
 	pump(t, m, told, "the agent", func(v string) bool { return strings.Contains(v, "ready") })
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	tab := m.Cur()
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 
 	loop := core.NewLoop(c, nil)
 	loop.StartSteps()
@@ -159,9 +159,9 @@ func TestRemoteTUIConnectsAgain(t *testing.T) {
 		c.Mu.Unlock()
 		return b, nil
 	})
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	m.remote.Close("") // as core gone would
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 
 	var back tea.Cmd
 	deadline := time.After(5 * time.Second)
@@ -176,16 +176,16 @@ func TestRemoteTUIConnectsAgain(t *testing.T) {
 		}
 	}
 	m.Update(back())
-	m.Mu.Lock()
-	m.do(core.RenameTab{T: m.Ref(m.Cur()), Name: "again"})
+	m.Core.Mu.Lock()
+	m.do(core.RenameTab{T: m.Core.Ref(m.Cur()), Name: "again"})
 	same, name := m.Cur() == tab, m.Cur().Name
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	if !same || name != "again" {
 		t.Fatalf("after connecting again: same tab %v, name %q", same, name)
 	}
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	kp := m.keyPane()
-	m.Mu.Unlock()
+	m.Core.Mu.Unlock()
 	kp.Input([]byte("hello\r"))
 	pump(t, m, told, "typed after connecting again", func(v string) bool { return strings.Contains(v, "got hello") })
 }

@@ -457,12 +457,12 @@ func TestPluginGoneStopsItsScreenAndRuns(t *testing.T) {
 	if err := os.RemoveAll(p.Dir); err != nil {
 		t.Fatal(err)
 	}
-	m.PluginsGoneAt = time.Time{}
-	m.CheckPluginsGone(time.Now().Add(10 * time.Second))
-	if m.PluginUIOf(tb, p) != nil {
+	m.Core.PluginsGoneAt = time.Time{}
+	m.Core.CheckPluginsGone(time.Now().Add(10 * time.Second))
+	if m.Core.PluginUIOf(tb, p) != nil {
 		t.Fatal("the screen of a gone plugin is still there")
 	}
-	if _, ok := m.PluginRuns.Runs[core.PluginUIKey(tb, p)]; ok {
+	if _, ok := m.Core.PluginRuns.Runs[core.PluginUIKey(tb, p)]; ok {
 		t.Fatal("the run of a gone plugin is still in F5")
 	}
 	for _, run := range []*core.PluginRun{first, second} {
@@ -488,7 +488,7 @@ func TestPluginGoneWaitsForAnEditor(t *testing.T) {
 	m.Update(keyMsg("enter"))
 	m.Update(keyMsg("y"))
 	p := m.pluginList(tb)[0]
-	if m.PluginUIOf(tb, p) == nil {
+	if m.Core.PluginUIOf(tb, p) == nil {
 		t.Fatal("the screen did not start")
 	}
 	toml := filepath.Join(p.Dir, plugin.File)
@@ -496,20 +496,20 @@ func TestPluginGoneWaitsForAnEditor(t *testing.T) {
 	if err := os.Rename(toml, tmp); err != nil {
 		t.Fatal(err)
 	}
-	m.PluginsGoneAt = time.Time{}
-	m.CheckPluginsGone(time.Now())
-	if m.PluginUIOf(tb, p) == nil {
+	m.Core.PluginsGoneAt = time.Time{}
+	m.Core.CheckPluginsGone(time.Now())
+	if m.Core.PluginUIOf(tb, p) == nil {
 		t.Fatal("a plugin.toml being written stopped its screen")
 	}
 	if err := os.Rename(tmp, toml); err != nil {
 		t.Fatal(err)
 	}
-	m.PluginsGoneAt = time.Time{}
-	m.CheckPluginsGone(time.Now().Add(2 * time.Second))
-	if m.PluginUIOf(tb, p) == nil {
+	m.Core.PluginsGoneAt = time.Time{}
+	m.Core.CheckPluginsGone(time.Now().Add(2 * time.Second))
+	if m.Core.PluginUIOf(tb, p) == nil {
 		t.Fatal("the screen did not stay")
 	}
-	for dir := range m.PluginsMissing {
+	for dir := range m.Core.PluginsMissing {
 		if dir == p.Dir {
 			t.Fatal("a restored plugin is still marked missing")
 		}

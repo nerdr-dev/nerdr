@@ -17,7 +17,7 @@ func TestProgramsInNoTabAreListed(t *testing.T) {
 		t.Fatal("a list of none")
 	}
 	now := time.Now()
-	m.Unseen = []core.UnseenProgram{
+	m.Core.Unseen = []core.UnseenProgram{
 		{ID: "agent/1", What: "a reviewer of tab parser's work", Pid: 41, Sandboxed: true, Started: now.Add(-3 * time.Hour)},
 		{ID: "shell/2", What: "terminal 1 of a tab since closed", Pid: 42, Started: now.Add(-5 * time.Minute)},
 	}

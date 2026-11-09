@@ -11,7 +11,7 @@ func (m *Model) commandOff(run string) string {
 			return "a branch is stacked on a tab with one repository"
 		}
 	case "i r":
-		return m.ReposOff(m.Cur())
+		return m.Core.ReposOff(m.Cur())
 	case "z v":
 		if m.splitTab() == nil && m.neighbour(m.Cur()) == nil {
 			return "two tabs need a second tab in this repository"

@@ -47,7 +47,7 @@ func (m *Model) branchAct(p *tabPanel, k string) (tea.Cmd, bool) {
 		return nil, false
 	}
 	p.busy = busy
-	q.T = m.Ref(p.t)
+	q.T = m.Core.Ref(p.t)
 	return m.do(q), true
 }
 
@@ -69,7 +69,7 @@ func (p *tabPanel) work(k string) (core.BranchWork, string, bool) {
 
 // prDone takes the result of an action.
 func (m *Model) prDone(msg core.BranchDoneMsg) tea.Cmd {
-	t := m.ByRef(msg.T)
+	t := m.Core.ByRef(msg.T)
 	if t == nil {
 		return nil
 	}
@@ -169,7 +169,7 @@ func (p *tabPanel) branchLines(m *Model, shown string) []string {
 				m.openURL(url)
 				return nil
 			}))
-		case m.NoGh:
+		case m.Core.NoGh:
 			lines = append(lines, "  "+dim("no gh CLI: pull requests unknown"))
 		default:
 			lines = append(lines, "  "+dim("no pull request"))
@@ -214,7 +214,7 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 						pr += " · CI " + wi.Pr.CI
 					}
 					row += pr
-				case !m.NoGh:
+				case !m.Core.NoGh:
 					row += dim("no PR")
 				}
 			}
@@ -245,7 +245,7 @@ func (p *tabPanel) tabNotes(m *Model) []string {
 	if t.Info.Merged() {
 		lines = append(lines, "", keyHint("merged")+" — closing the tab ("+m.pk("x")+") can delete the branch too.")
 	}
-	if ov := m.Overlaps[t.ID]; len(ov) > 0 {
+	if ov := m.Core.Overlaps[t.ID]; len(ov) > 0 {
 		lines = append(lines, "", warn("Also changed in other tabs — expect merge conflicts:"))
 		// The branches are enough to know what to merge with what; the
 		// files would fill the screen.

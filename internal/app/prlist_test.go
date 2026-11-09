@@ -115,11 +115,11 @@ func TestAgentRequestOpensAMessageForTheTab(t *testing.T) {
 	if m.Cur().ID != "b" || !d.picked[core.TabRef{Tab: "b"}] || d.input.Value() != "About `x` in a.go:3: why?" {
 		t.Fatalf("tab %s picked %v text %q", m.Cur().ID, d.picked, d.input.Value())
 	}
-	if len(m.Tabs[1].Messages) != 0 {
+	if len(m.Core.Tabs[1].Messages) != 0 {
 		t.Fatal("nothing may be queued before the user sends it")
 	}
 	d.key(m, keyMsg("enter"))
-	if q := m.Tabs[1].Messages; len(q) != 1 || !q[0].Auto || !strings.Contains(q[0].Text, "why?") {
+	if q := m.Core.Tabs[1].Messages; len(q) != 1 || !q[0].Auto || !strings.Contains(q[0].Text, "why?") {
 		t.Fatalf("enter should queue it for the tab: %v", q)
 	}
 }
@@ -165,8 +165,8 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 
 	// Opened as addTab does: active first, then selected.
 	c := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "c", Name: "c", Dir: "/w/c"}}}
-	m.Tabs = append(m.Tabs, c)
-	m.Active = len(m.Tabs) - 1
+	m.Core.Tabs = append(m.Core.Tabs, c)
+	m.Active = len(m.Core.Tabs) - 1
 	m.selectTab(m.Active)
 	if m.review.Screen() != (review.Screen{}) {
 		t.Fatalf("a new tab should start on F1, got %+v", m.review.Screen())
@@ -226,12 +226,12 @@ func TestPRListPointsAtTheTabsPR(t *testing.T) {
 func TestClosedTabLeavesNothingBehind(t *testing.T) {
 	m := testModel(t)
 	for range 2 {
-		for i := range m.Tabs {
+		for i := range m.Core.Tabs {
 			m.Active = i
 			m.pinReview()
 		}
 	}
-	active, other := m.Tabs[len(m.Tabs)-1], m.Tabs[0]
+	active, other := m.Core.Tabs[len(m.Core.Tabs)-1], m.Core.Tabs[0]
 	m.paneBars = map[*core.Tab]*barRow{active: {}, other: {}}
 	_, hasActive := m.panelScreens[active]
 	_, hasOther := m.panelScreens[other]

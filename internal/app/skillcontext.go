@@ -35,7 +35,7 @@ func (m *Model) contextItems(t *core.Tab) []core.ContextRow {
 	// answers (onContext), and another tab's shows nothing.
 	s := &m.skills
 	if s.ctxAsked != key || time.Since(s.ctxAskedAt) >= core.SkillsCheckEvery {
-		s.ctxAsked, s.ctxAskedAt, s.ctxTab = key, time.Now(), m.Ref(t)
+		s.ctxAsked, s.ctxAskedAt, s.ctxTab = key, time.Now(), m.Core.Ref(t)
 		m.tellCore(core.ReadContext{Job: key, T: s.ctxTab})
 	}
 	if key != v.Key {
@@ -53,7 +53,7 @@ func (m *Model) contextRows(t *core.Tab, items []agents.ContextItem) []core.Cont
 	}
 	switch t.Agent {
 	case agents.Claude, agents.Codex, agents.Copilot, agents.OpenCode, agents.Antigravity:
-		if note := m.AgentNote(t); note != "" {
+		if note := m.Core.AgentNote(t); note != "" {
 			rows = append(rows, core.ContextRow{ContextItem: agents.ContextItem{Group: core.ContextGroupNote, Size: int64(len(note))}, Note: note})
 		}
 	}
@@ -64,7 +64,7 @@ func (m *Model) contextRows(t *core.Tab, items []agents.ContextItem) []core.Cont
 // asked last.
 func (m *Model) onContext(ev core.ContextMsg) {
 	s := &m.skills
-	t := m.ByRef(s.ctxTab)
+	t := m.Core.ByRef(s.ctxTab)
 	if ev.Job != s.ctxAsked || t == nil {
 		return
 	}

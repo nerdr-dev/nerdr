@@ -170,19 +170,19 @@ func (m *Model) openClose() tea.Cmd {
 
 // openCloseFor asks about closing t.
 func (m *Model) openCloseFor(t *core.Tab) tea.Cmd {
-	if t == nil || m.TabIndex(t) < 0 || m.ReposHold(t) {
+	if t == nil || m.Core.TabIndex(t) < 0 || m.Core.ReposHold(t) {
 		return nil
 	}
 	c := &closeTab{t: t}
 	m.dialog = c
-	return tea.Batch(m.do(core.LookBeforeClose{T: m.Ref(t)}),
+	return tea.Batch(m.do(core.LookBeforeClose{T: m.Core.Ref(t)}),
 		tea.Tick(closeWait, func(time.Time) tea.Msg { return closeShowMsg{c} }))
 }
 
 // onCloseInfo has the close dialog of the tab show what closing it would
 // lose.
 func (m *Model) onCloseInfo(msg core.CloseInfoMsg) {
-	if c, ok := m.dialog.(*closeTab); ok && c.t == m.ByRef(msg.T) {
+	if c, ok := m.dialog.(*closeTab); ok && c.t == m.Core.ByRef(msg.T) {
 		c.dirty, c.unpushed, c.loaded = msg.Dirty, msg.Unpushed, true
 		c.mergedHeads, c.heads = msg.MergedHeads, msg.Heads
 	}
@@ -364,13 +364,13 @@ func (c *closeTab) view(m *Model, w, h int) string {
 // its worktrees once the agent is gone. With branchHeads, it deletes the
 // branches too, each only if it still points at its head there, by path.
 func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string]string) tea.Cmd {
-	i := m.TabIndex(t)
-	if i < 0 || m.ReposHold(t) {
+	i := m.Core.TabIndex(t)
+	if i < 0 || m.Core.ReposHold(t) {
 		return nil
 	}
 	group := t.GroupName()
 	beside, wasActive, cur := m.splitTab(), i == m.Active, m.Cur()
-	closed := m.do(core.CloseTab{T: m.Ref(t), Remove: remove, Force: force, BranchHeads: branchHeads})
+	closed := m.do(core.CloseTab{T: m.Core.Ref(t), Remove: remove, Force: force, BranchHeads: branchHeads})
 	delete(m.panelScreens, t)
 	delete(m.paneBars, t)
 	for _, p := range t.Panes() {
@@ -382,12 +382,12 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	delete(m.tabLooks, t)
 	if !wasActive {
 		// Another tab closed (from the inbox, say): you stay where you are.
-		m.Active = max(m.TabIndex(cur), 0)
+		m.Active = max(m.Core.TabIndex(cur), 0)
 	} else {
-		m.Active = min(max(m.Active, 0), max(len(m.Tabs)-1, 0))
+		m.Active = min(max(m.Active, 0), max(len(m.Core.Tabs)-1, 0))
 		// Stay in the group while it has tabs: the one after the closed
 		// tab, or the one before when it was the last.
-		if idx := m.GroupTabs(group); len(idx) > 0 {
+		if idx := m.Core.GroupTabs(group); len(idx) > 0 {
 			m.Active = idx[len(idx)-1]
 			for _, j := range idx {
 				if j >= i {
@@ -399,7 +399,7 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	}
 	if beside != nil && wasActive {
 		// The split's other tab has the window to itself.
-		m.Active, m.split = m.TabIndex(beside), nil
+		m.Active, m.split = m.Core.TabIndex(beside), nil
 	}
 	if t == m.split {
 		m.split = nil
@@ -408,10 +408,10 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	m.scrolling = false
 	m.saveLayout()
 	cmds := []tea.Cmd{m.track(), m.pinReview(), closed}
-	if len(m.Tabs) == 0 {
+	if len(m.Core.Tabs) == 0 {
 		m.setFocus(core.FocusAgent)
 		cmds = append(cmds, m.openWizard())
-	} else if pr := m.program(m.Tabs[m.Active].OwnPane()); pr != nil {
+	} else if pr := m.program(m.Core.Tabs[m.Active].OwnPane()); pr != nil {
 		pr.Focus(true)
 	}
 	m.reportHerdr()

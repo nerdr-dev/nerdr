@@ -50,7 +50,7 @@ var setupChoices = []struct{ value, label string }{
 }
 
 func (m *Model) openSetup(then func(m *Model) tea.Cmd) tea.Cmd {
-	d := &setupDialog{then: then, notesSet: m.Cfg.DataDirSet(), worktreesSet: m.Cfg.WorktreesDirSet()}
+	d := &setupDialog{then: then, notesSet: m.Core.Cfg.DataDirSet(), worktreesSet: m.Core.Cfg.WorktreesDirSet()}
 	d.worktrees = textinput.New()
 	d.worktrees.Prompt = "worktrees folder: "
 	d.worktrees.Placeholder = config.DefaultWorktreesDir
@@ -59,10 +59,10 @@ func (m *Model) openSetup(then func(m *Model) tea.Cmd) tea.Cmd {
 	d.notes = textinput.New()
 	d.notes.Prompt = "data folder: "
 	d.notes.Placeholder = "(empty: the repository's .git folder)"
-	d.notes.SetValue(m.Cfg.DataDir)
+	d.notes.SetValue(m.Core.Cfg.DataDir)
 	d.notes.CharLimit = 300
 	for i, choice := range setupChoices {
-		if choice.value == m.Cfg.Install {
+		if choice.value == m.Core.Cfg.Install {
 			d.choice = i
 		}
 	}
@@ -173,7 +173,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 	d.err = ""
 	var save tea.Cmd
 	d.saving, save = m.editCoreConfigJob("the setup", core.EditConfig{Keys: keys, MoveWtRoot: moveWtRoot, Now: true,
-		Apply: &core.ApplySkills{Otherwise: "saved in " + m.ConfigPath()}})
+		Apply: &core.ApplySkills{Otherwise: "saved in " + m.Core.ConfigPath()}})
 	return save
 }
 
@@ -182,7 +182,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 func (d *setupDialog) saved(m *Model, ev core.ConfigSavedMsg) tea.Cmd {
 	d.saving = ""
 	if ev.Err != "" {
-		d.err = "could not write " + m.ConfigPath() + ": " + ev.Err
+		d.err = "could not write " + m.Core.ConfigPath() + ": " + ev.Err
 		return nil
 	}
 	m.dialog = nil
@@ -217,7 +217,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		question(core.SetupWorktrees, "Where should new worktrees go?"),
 		dim("  Each tab gets a worktree of its own: a checkout of the repository on"),
 		dim("  the tab's branch, so tabs never get in each other's way."),
-		field(core.SetupWorktrees, &d.worktrees, "worktrees folder: "+core.TildePath(m.Cfg.WorktreesDir, home)),
+		field(core.SetupWorktrees, &d.worktrees, "worktrees folder: "+core.TildePath(m.Core.Cfg.WorktreesDir, home)),
 		dim("    absolute, e.g. ~/worktrees-nerdr — one folder for all repositories"),
 		dim("    relative, e.g. worktrees — in the folder nerdr is started in, or"),
 		dim("    beside it when that is a repository"),
@@ -230,26 +230,26 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 	}
 
 	var where []string
-	for _, tg := range skills.Home(home, m.Available()) {
+	for _, tg := range skills.Home(home, m.Core.Available()) {
 		var names []string
 		for _, k := range tg.Agents {
 			names = append(names, string(k))
 		}
 		where = append(where, core.TildePath(tg.Dir, home)+" ("+strings.Join(names, ", ")+")")
 	}
-	if slices.Contains(m.Available(), agents.OpenCode) {
+	if slices.Contains(m.Core.Available(), agents.OpenCode) {
 		where = append(where, core.TildePath(hooks.OpenCodePluginHome(home), home)+" (opencode's plugin, which says what it is doing)")
 	}
-	if slices.Contains(m.Available(), agents.Copilot) {
+	if slices.Contains(m.Core.Available(), agents.Copilot) {
 		where = append(where, core.TildePath(hooks.CopilotPluginHome(home), home)+" (copilot's plugin, which says what it is doing)")
 	}
-	if slices.Contains(m.Available(), agents.Antigravity) {
+	if slices.Contains(m.Core.Available(), agents.Antigravity) {
 		where = append(where, core.TildePath(hooks.AgyHooksHome(home), home)+" (nerdr's hooks for agy, which say what it is doing, beside any others)")
 	}
-	if slices.Contains(m.Available(), agents.Grok) {
+	if slices.Contains(m.Core.Available(), agents.Grok) {
 		where = append(where, core.TildePath(hooks.GrokHooksHome(home), home)+" (nerdr's hooks for grok, which say what it is doing)")
 	}
-	if slices.Contains(m.Available(), agents.Codex) {
+	if slices.Contains(m.Core.Available(), agents.Codex) {
 		where = append(where, core.TildePath(core.CodexConfig(home), home)+" (trust for nerdr's codex hooks, which say what it is doing)")
 	}
 	if len(where) == 0 {
@@ -278,7 +278,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		}
 	}
 
-	notesSet := m.Cfg.DataDir
+	notesSet := m.Core.Cfg.DataDir
 	if notesSet == "" {
 		notesSet = "(the repository's .git folder)"
 	}
@@ -294,7 +294,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		dim("    relative, e.g. .nerdr — inside each worktree, for agents in a sandbox"),
 		dim("    absolute, e.g. ~/nerdr-data — one folder, a subfolder per repository"),
 		"",
-		m.keys("enter", "save in "+core.TildePath(m.ConfigPath(), home), "tab", "next question", "esc", "ask next time"))
+		m.keys("enter", "save in "+core.TildePath(m.Core.ConfigPath(), home), "tab", "next question", "esc", "ask next time"))
 	if d.saving != "" {
 		lines = append(lines, "", dim("saving…"))
 	}

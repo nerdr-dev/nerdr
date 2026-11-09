@@ -99,7 +99,7 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 	if s := m.messagesLine(t); s != "" {
 		rows = append(rows, core.PanelRow{Label: "tasks:", Text: ansi.Truncate(s, textW, "…"), Dim: true})
 	}
-	if core.IsOn(m.Cfg.CloseMerged) && t.Info.Merged() {
+	if core.IsOn(m.Core.Cfg.CloseMerged) && t.Info.Merged() {
 		rows = append(rows, core.PanelRow{Label: "pr:", Text: ansi.Truncate(core.PrLabel(t.Info)+" · its work is in main · "+
 			m.pk("x")+" closes the tab", textW, "…"), Dim: true})
 	}
@@ -215,7 +215,7 @@ func (m *Model) reviewLine(t *core.Tab) string {
 			waits = true
 		case r.Light == core.StExited || !r.HasProgram():
 			each = append(each, string(r.Agent)+" is not running")
-		case (r.Light == core.StIdle || r.Light == core.StDone) && r.IdleUnasked() && r.Worked && m.CutOff(r) != "":
+		case (r.Light == core.StIdle || r.Light == core.StDone) && r.IdleUnasked() && r.Worked && m.Core.CutOff(r) != "":
 			each = append(each, string(r.Agent)+" could not send its review: its sandbox keeps it from nerdr")
 			waits = true
 		case (r.Light == core.StIdle || r.Light == core.StDone) && r.IdleUnasked() && r.Worked:
