@@ -48,6 +48,11 @@ type Emulator struct {
 
 	// The ANSI parser to use.
 	parser *ansi.Parser
+	// strLen is how much of the string (OSC, DCS, SOS, PM, APC) the
+	// parser is in it has kept, and strBig is set once one went over
+	// strKeep: see Write.
+	strLen int
+	strBig bool
 	cb     Callbacks
 
 	// The terminal's icon name and title.
@@ -86,7 +91,9 @@ func NewEmulator(w, h int) *Emulator {
 	t.scrs[1].cb = &t.cb
 	t.parser = ansi.NewParser()
 	t.parser.SetParamsSize(parser.MaxParamsSize)
-	t.parser.SetDataSize(1024 * 1024 * 4) // 4MB data buffer
+	// The string data grows as a string comes, up to maxStringData (see
+	// Write), rather than 4MB set aside for each terminal from the start.
+	t.parser.SetDataSize(-1)
 	t.parser.SetHandler(ansi.Handler{
 		Print:     t.handlePrint,
 		Execute:   t.handleControl,
@@ -273,7 +280,7 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 	}
 
 	for i := range p {
-		e.parser.Advance(p[i])
+		e.advance(p[i])
 		// Flush the last cluster once the whole slice is written. Every
 		// sequence handler flushes on its own way in, so a cluster only has to
 		// survive until either the next printable character extends it or the
@@ -283,6 +290,47 @@ func (e *Emulator) Write(p []byte) (n int, err error) {
 		}
 	}
 	return len(p), nil
+}
+
+// maxStringData is the most of a string (OSC, DCS, SOS, PM, APC) that is
+// kept: the rest of a longer one is dropped.
+const maxStringData = 4 << 20
+
+// strKeep is how much room for a string the parser keeps once the string
+// has ended; more is let go.
+const strKeep = 64 << 10
+
+// advance gives the parser b, but for the bytes of a string past
+// maxStringData, which it would only keep.
+func (e *Emulator) advance(b byte) {
+	if e.strLen >= maxStringData {
+		st := e.parser.State()
+		if next, action := parser.Table.Transition(st, b); action == parser.PutAction && next == st {
+			return
+		}
+	}
+	switch action := e.parser.Advance(b); {
+	case !inString(e.parser.State()):
+		e.strLen = 0
+		if e.strBig {
+			// Its room is let go; the next string starts small.
+			e.strBig = false
+			e.parser.SetDataSize(-1)
+		}
+	case action == parser.StartAction:
+		e.strLen = 0
+	case action == parser.PutAction:
+		e.strLen++
+		e.strBig = e.strBig || e.strLen > strKeep
+	}
+}
+
+func inString(s parser.State) bool {
+	switch s {
+	case parser.OscStringState, parser.DcsStringState, parser.SosStringState, parser.PmStringState, parser.ApcStringState:
+		return true
+	}
+	return false
 }
 
 // WriteString writes a string to the terminal output buffer.
