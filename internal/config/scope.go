@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 )
@@ -50,4 +51,31 @@ func ScopeOf(table, key string) string {
 		}
 	}
 	return ScopeCore
+}
+
+// wireConfig is a Config as JSON: its settings, and what the file sets of
+// those it says so of.
+type wireConfig struct {
+	plainConfig
+	DataDirSet      bool `json:"$dataDirSet,omitempty"`
+	WorktreesDirSet bool `json:"$worktreesDirSet,omitempty"`
+}
+
+type plainConfig Config
+
+// MarshalJSON writes c with what its file sets, for a core to send a
+// client its own settings.
+func (c Config) MarshalJSON() ([]byte, error) {
+	return json.Marshal(wireConfig{plainConfig(c), c.dataDirSet, c.worktreesDirSet})
+}
+
+// UnmarshalJSON reads what MarshalJSON wrote.
+func (c *Config) UnmarshalJSON(b []byte) error {
+	var w wireConfig
+	if err := json.Unmarshal(b, &w); err != nil {
+		return err
+	}
+	*c = Config(w.plainConfig)
+	c.dataDirSet, c.worktreesDirSet = w.DataDirSet, w.WorktreesDirSet
+	return nil
 }

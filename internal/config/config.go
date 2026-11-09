@@ -462,11 +462,25 @@ func SaveReviewRounds(n int) error {
 // table where not, and the table added at the end where there is none. An
 // edit that would not read as a config is refused, the file untouched.
 func SetKey(table, key, value string) error {
+	return SetKeys(Edit{table, key, value})
+}
+
+// Edit is a key to set by SetKeys, as SetKey takes it.
+type Edit struct {
+	Table, Key, Value string
+}
+
+// SetKeys is SetKey of each of edits, in one write of the file: all of
+// them, or none when the file would not read.
+func SetKeys(edits ...Edit) error {
 	return editConfig(func(text string) string {
-		if old, ok := renamed[key]; ok && table == "" {
-			text = setKey(text, "", old, "")
+		for _, e := range edits {
+			if old, ok := renamed[e.Key]; ok && e.Table == "" {
+				text = setKey(text, "", old, "")
+			}
+			text = setKey(text, e.Table, e.Key, e.Value)
 		}
-		return setKey(text, table, key, value)
+		return text
 	})
 }
 
@@ -798,15 +812,30 @@ func skillList(names []string) string {
 // Raw is what the config file sets, as TOML has it, without defaults: for
 // the settings dialog to tell a setting from its default.
 func Raw() (map[string]any, error) {
-	raw := map[string]any{}
 	data, err := os.ReadFile(Path())
 	if os.IsNotExist(err) {
-		return raw, nil
+		return map[string]any{}, nil
 	}
 	if err != nil {
-		return raw, err
+		return map[string]any{}, err
 	}
-	_, err = toml.Decode(string(data), &raw)
+	return RawText(string(data))
+}
+
+// Text is the config file as written, "" when there is none.
+func Text() (string, error) {
+	data, err := os.ReadFile(Path())
+	if os.IsNotExist(err) {
+		return "", nil
+	}
+	return string(data), err
+}
+
+// RawText is Raw of a config file's text, as Text read it, maybe on
+// another machine.
+func RawText(text string) (map[string]any, error) {
+	raw := map[string]any{}
+	_, err := toml.Decode(text, &raw)
 	for k, old := range renamed {
 		if v, ok := raw[old]; ok {
 			if _, set := raw[k]; !set {

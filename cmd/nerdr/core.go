@@ -70,6 +70,9 @@ func runCore(h *core.Held) error {
 		Wake: make(chan struct{}, 1),
 		Held: h,
 	}
+	// Its own settings from the file here, taken in again when it
+	// changes: a client may be on another machine.
+	c.WatchConfigFile(cfg)
 	now := time.Now()
 	c.Restore(sess, now)
 	var front, beside core.TabRef

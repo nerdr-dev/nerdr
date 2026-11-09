@@ -32,7 +32,7 @@ func init() {
 		ReposDoneMsg{}, ChangesMsg{}, BranchDoneMsg{}, CloseInfoMsg{}, ReposScannedMsg{}, RepoMadeMsg{}, RepoCheckedMsg{}, PlanMsg{}, IssueMsg{}, SetupProgressMsg{},
 		WorktreesMadeMsg{}, RepoPRsMsg{}, CheckoutMsg{}, ForkFetchedMsg{},
 		PRFetchedMsg{}, ReviewReadMsg{}, WatchingMsg{}, WorktreeChangedMsg{},
-		ContextMsg{}, ContextFileMsg{}, PluginFactsMsg{}, PluginAllowedMsg{},
+		ContextMsg{}, ContextFileMsg{}, ConfigSavedMsg{}, ConfigTextMsg{}, PluginFactsMsg{}, PluginAllowedMsg{},
 		ConversationsReadMsg{}, SearchHitsMsg{}, PromptsMsg{}, UsageMsg{},
 
 		ChangedMsg{}, RedrawMsg{}, FrameMsg{}, InfoTickMsg{}, WirePanic{},

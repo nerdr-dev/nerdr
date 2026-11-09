@@ -350,6 +350,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	case agentsFoundMsg:
 		m.onAgentsFound(ev)
 		return nil, true
+	case configRead:
+		return m.onConfigRead(ev), true
 	case PRAllMsg:
 		return m.OnPRAll(ev), true
 	case repoPRsMsg:
