@@ -21,6 +21,10 @@ import (
 // remoteTUI is a TUI as a client in a process of its own, of a core with
 // one tab whose agent runs argv; the core's loop runs as in its own
 // process. What the TUI is told outside Update comes to told.
+// remoteLayout, when set, is the layout the core of remoteTUI keeps from
+// its session.
+var remoteLayout *core.Layout
+
 func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, chan any) {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
@@ -36,6 +40,10 @@ func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, cha
 		Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/login", Branch: "login"}}}}
 	tb.Pane, tb.Light = pane, core.StIdle
 	c.Tabs = []*core.Tab{tb}
+	if remoteLayout != nil {
+		// As a core started from the session has it, before any client.
+		c.Client = core.Unattached(*remoteLayout, core.TabRef{})
+	}
 	a, b, err := attach.Pair()
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +64,7 @@ func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, cha
 	told := make(chan any, 64)
 	// A router, as in a terminal: what has the keyboard is told core.
 	router := input.New(strings.NewReader(""), 0x11)
-	m, err := NewRemote(cfg, c.Root, router, state.Session{}, b, func(msg any) {
+	m, err := NewRemote(cfg, c.Root, router, b, func(msg any) {
 		select {
 		case told <- msg:
 		default:
@@ -238,5 +246,17 @@ func TestRemoteTUICoreEnded(t *testing.T) {
 	}
 	if _, ok := quit().(tea.QuitMsg); !ok {
 		t.Fatal("not quit")
+	}
+}
+
+// TestRemoteTUIIsLaidOutAsCoreSays: a client in another process reads no
+// session of its own, which is core's, where core runs: it lays the tabs
+// out as core says the last client left them.
+func TestRemoteTUIIsLaidOutAsCoreSays(t *testing.T) {
+	remoteLayout = &core.Layout{SideWidth: 33}
+	t.Cleanup(func() { remoteLayout = nil })
+	m, _, _, _ := remoteTUI(t, "cat")
+	if m.sideWidth != 33 {
+		t.Fatalf("side width %d, want core's 33", m.sideWidth)
 	}
 }

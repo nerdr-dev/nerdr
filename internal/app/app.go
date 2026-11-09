@@ -336,13 +336,13 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	}
 	now := time.Now()
 	m.Restore(sess, now)
-	m.restoreLayout(sess)
+	m.restoreLayout(core.LayoutOf(sess))
 	m.Client = m
 	return m
 }
 
 // restoreLayout lays the tabs out as sess was left.
-func (m *Model) restoreLayout(sess state.Session) {
+func (m *Model) restoreLayout(sess core.Layout) {
 	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
 		m.Active = sess.Active
 	}

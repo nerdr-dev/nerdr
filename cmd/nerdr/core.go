@@ -84,7 +84,7 @@ func runCore(h *core.Held) error {
 			beside = c.Ref(t)
 		}
 	}
-	c.Client = core.Unattached(core.Layout{Active: sess.Active, Split: sess.Split, SplitLeft: sess.SplitLeft, SideWidth: sess.SideWidth}, front)
+	c.Client = core.Unattached(core.LayoutOf(sess), front)
 
 	// What comes to the hook socket before the loop is made waits for it
 	// rather than being lost: a plugin run's read just after a crash.

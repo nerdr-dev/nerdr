@@ -69,7 +69,6 @@ func runClient(start bool) error {
 	if coreVersion != version() {
 		fmt.Fprintf(os.Stderr, "nerdr: the core runs version %s, this is %s: quit and start nerdr again to use this one\n", coreVersion, version())
 	}
-	sess, _ := state.Load(root) // the layout, as the core saved it
 
 	old, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -81,7 +80,7 @@ func runClient(start bool) error {
 	router := input.New(os.Stdin, prefix)
 	var p *tea.Program
 	ready := make(chan struct{})
-	model, err := app.NewRemote(cfg, root, router, sess, conn, tellProgram(func() *tea.Program { <-ready; return p }))
+	model, err := app.NewRemote(cfg, root, router, conn, tellProgram(func() *tea.Program { <-ready; return p }))
 	if err != nil {
 		conn.Close("")
 		return err
