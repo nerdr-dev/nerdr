@@ -33,13 +33,13 @@ const (
 	OpCurrentPR     Op = "CurrentPR"
 	OpFailedRunLogs Op = "FailedRunLogs"
 
-	OpNotes            Op = "Notes"
-	OpOrder            Op = "Order"
-	OpWalkthrough      Op = "Walkthrough"
-	OpWriteWalkthrough Op = "WriteWalkthrough"
-	OpLoadProject      Op = "LoadProject"
-	OpImports          Op = "Imports"
-	OpRelations        Op = "Relations"
+	OpNotes           Op = "Notes"
+	OpOrder           Op = "Order"
+	OpWalkthrough     Op = "Walkthrough"
+	OpWalkthroughPage Op = "WalkthroughPage"
+	OpLoadProject     Op = "LoadProject"
+	OpImports         Op = "Imports"
+	OpRelations       Op = "Relations"
 )
 
 // Query is a call of a Source method, Op, with its arguments, as it goes
@@ -121,8 +121,10 @@ func (q Query) Run(s Source) Answer {
 		a.Order = s.Order(q.Wt, q.Branch)
 	case OpWalkthrough:
 		a.Walk, a.OK, a.Older = s.Walkthrough(q.Wt, q.Branch, q.Paths)
-	case OpWriteWalkthrough:
-		a.Text, a.OK, err = s.WriteWalkthrough(q.Wt, q.Branch)
+	case OpWalkthroughPage:
+		var page []byte
+		page, a.OK, err = s.WalkthroughPage(q.Wt, q.Branch)
+		a.Text = string(page)
 	case OpLoadProject:
 		a.Version = s.LoadProject(q.Wt)
 	case OpImports:
@@ -304,9 +306,13 @@ func (k *Asker) Walkthrough(wt, branch string, files []string) (walkthrough.Walk
 	return a.Walk, a.OK, a.Older
 }
 
-func (k *Asker) WriteWalkthrough(wt, branch string) (string, bool, error) {
-	a := k.ask(Query{Op: OpWriteWalkthrough, Wt: wt, Branch: branch})
-	return a.Text, a.OK || a.Err != "", a.err()
+func (k *Asker) WalkthroughPage(wt, branch string) ([]byte, bool, error) {
+	a := k.ask(Query{Op: OpWalkthroughPage, Wt: wt, Branch: branch})
+	var page []byte
+	if a.Text != "" {
+		page = []byte(a.Text)
+	}
+	return page, a.OK || a.Err != "", a.err()
 }
 
 func (k *Asker) LoadProject(wt string) int {
