@@ -23,10 +23,11 @@ var updateGitCalls = flag.Bool("update-gitcalls", false, "write testdata/gitcall
 
 // gitPkgs are the packages that run git and gh, or other programs.
 var gitPkgs = map[string]bool{
-	"github.com/nerdr-dev/nerdr/internal/workspace": true,
-	"github.com/nerdr-dev/nerdr/internal/git":       true,
-	"github.com/nerdr-dev/nerdr/internal/github":    true,
-	"github.com/nerdr-dev/nerdr/internal/gitsafe":   true,
+	"github.com/nerdr-dev/nerdr/internal/workspace":    true,
+	"github.com/nerdr-dev/nerdr/internal/git":          true,
+	"github.com/nerdr-dev/nerdr/internal/github":       true,
+	"github.com/nerdr-dev/nerdr/internal/gitsafe":      true,
+	"github.com/nerdr-dev/nerdr/internal/reviewsource": true,
 	"os/exec": true,
 }
 
@@ -41,6 +42,8 @@ func init() {
 		workspace.Plan.ExistingItems workspace.Plan.FromBase
 		workspace.Plan.SetupIn workspace.PlanItem.Merged
 		workspace.PlanItem.CanStartAnew
+		reviewsource.NewAsker reviewsource.*Asker.Answer
+		reviewsource.*Asker.FailAll
 	`) {
 		gitPure[s] = true
 	}

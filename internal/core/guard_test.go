@@ -14,8 +14,15 @@ func TestCoreHasNoUserInterface(t *testing.T) {
 		t.Fatalf("go list: %v\n%s", err, out)
 	}
 	for _, dep := range strings.Fields(string(out)) {
-		for _, ui := range []string{"bubbletea", "lipgloss", "bubbles", "nerdr/internal/app", "nerdr/internal/review"} {
+		for _, ui := range []string{"bubbletea", "lipgloss", "bubbles"} {
 			if strings.Contains(dep, ui) {
+				t.Errorf("core depends on %s", dep)
+			}
+		}
+		// The TUI and its review panel; reviewsource, what the panel
+		// reads, is core's to read.
+		for _, ui := range []string{"internal/app", "internal/review"} {
+			if dep == "github.com/nerdr-dev/nerdr/"+ui || strings.HasPrefix(dep, "github.com/nerdr-dev/nerdr/"+ui+"/") {
 				t.Errorf("core depends on %s", dep)
 			}
 		}

@@ -31,7 +31,7 @@ func init() {
 		UnseenMsg{}, SetupAnsweredMsg{}, SpinoffFailedMsg{}, SpinoffNextMsg{},
 		ReposDoneMsg{}, ChangesMsg{}, BranchDoneMsg{}, CloseInfoMsg{}, ReposScannedMsg{}, RepoMadeMsg{}, RepoCheckedMsg{}, PlanMsg{}, IssueMsg{}, SetupProgressMsg{},
 		WorktreesMadeMsg{}, RepoPRsMsg{}, CheckoutMsg{}, ForkFetchedMsg{},
-		PRFetchedMsg{},
+		PRFetchedMsg{}, ReviewReadMsg{},
 
 		ChangedMsg{}, RedrawMsg{}, FrameMsg{}, InfoTickMsg{}, WirePanic{},
 	)
