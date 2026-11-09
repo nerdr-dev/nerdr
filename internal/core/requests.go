@@ -1,12 +1,9 @@
 package core
 
 import (
-	"reflect"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
-	"github.com/nerdr-dev/nerdr/internal/store"
-	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // The requests a client may make of core; see Request. Each is done with
@@ -19,26 +16,16 @@ func init() {
 	)
 }
 
-// SetConfig is the config as the client changed it, and saved it when
-// it could: core goes by it from now on. With MoveWtRoot new worktrees go
-// to its worktrees_dir now, the setup having asked before any tab was
-// made; else from the next start.
+// SetConfig is the config as the client read it from its file: core
+// goes by the client's own settings in it from now on (config.Merge).
+// Core's own it never takes from a client, whose file may be on another
+// machine: it has them from the file where it runs (see EditConfig).
 type SetConfig struct {
-	Cfg        config.Config
-	MoveWtRoot bool
+	Cfg config.Config
 }
 
 func (q SetConfig) Do(m *Core) Cmd {
-	if q.Cfg.DataDir != m.Cfg.DataDir {
-		store.SetDataDir(q.Cfg.DataDir)
-	}
-	if !reflect.DeepEqual(q.Cfg.Agents, m.Cfg.Agents) {
-		m.LookForAgentsSoon()
-	}
-	m.Cfg = q.Cfg
-	if q.MoveWtRoot {
-		m.WtRoot = workspace.WorktreesRoot(m.Root, q.Cfg.WorktreesDir)
-	}
+	m.takeConfig(config.Merge(m.Cfg, q.Cfg))
 	return nil
 }
 

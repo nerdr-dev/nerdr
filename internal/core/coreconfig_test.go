@@ -172,3 +172,27 @@ func TestCopyTakesCoresOwnSettings(t *testing.T) {
 		t.Fatalf("the copy's prefix became %q", copied.Cfg.Prefix)
 	}
 }
+
+// TestSetConfigTakesOnlyTheClientsSettings: the config a client sends
+// never changes how core starts its agents, where its worktrees go, or
+// whether plugin runs are confirmed: the client's file may be on another
+// machine.
+func TestSetConfigTakesOnlyTheClientsSettings(t *testing.T) {
+	c := &Core{Cfg: config.Config{
+		Prefix:            "ctrl+b",
+		WorktreesDir:      "/srv/wt",
+		ConfirmPluginRuns: true,
+		Agents:            map[agents.Kind]agents.Spec{"claude": {Command: []string{"sandbox", "claude"}}},
+	}}
+	SetConfig{Cfg: config.Config{
+		Prefix:       "ctrl+a",
+		WorktreesDir: "/home/me/wt",
+		Agents:       map[agents.Kind]agents.Spec{"claude": {Command: []string{"claude"}}},
+	}}.Do(c)
+	if c.Cfg.Prefix != "ctrl+a" {
+		t.Errorf("the client's prefix not taken: %q", c.Cfg.Prefix)
+	}
+	if c.Cfg.WorktreesDir != "/srv/wt" || !c.Cfg.ConfirmPluginRuns || c.Cfg.Agents["claude"].Command[0] != "sandbox" {
+		t.Errorf("core's own settings taken from the client: %+v", c.Cfg)
+	}
+}
