@@ -53,8 +53,7 @@ func TestPanelBesideAnAgent(t *testing.T) {
 	}
 
 	m := NewEmbedded(Local{})
-	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
-	m = nm.(Model)
+	m = m.send(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m = pinNow(t, m, []Pin{{Repo: repo, Path: repo}})
 	m = m.SetShared(map[string][]string{SharedKey(repo, "a.go"): {"login"}})
 
@@ -162,8 +161,7 @@ func TestQuestionMarkIsHelpAndVStepsTheDiff(t *testing.T) {
 	}
 	v := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("v")}
 	for _, want := range []diffMode{diffModeNewFull, diffModeOld, diffModeHunk} {
-		nm, _ := m.Update(v)
-		m = nm.(Model)
+		m = m.send(v)
 		if m.diffMode != want {
 			t.Fatalf("v: diff mode %v, want %v", m.diffMode, want)
 		}
@@ -194,8 +192,7 @@ func settlePin(m Model, cmd tea.Cmd) Model {
 			m = nm.(Model)
 			for _, msg := range runCmds(more) {
 				if _, ok := msg.(diffMsg); ok {
-					nm, _ := m.Update(msg)
-					m = nm.(Model)
+					m = m.send(msg)
 				}
 			}
 		}

@@ -80,7 +80,6 @@ func (m Model) Pin(pins []Pin) (Model, tea.Cmd) {
 		m.repos = append(m.repos, git.Repo{Name: filepath.Base(p.Repo), Path: p.Repo})
 	}
 	m.repoIdx = 0
-	m.curRepo = ""
 	m.wtIdx = 0
 	m.overview = false
 	m.zoomed = false
@@ -104,12 +103,11 @@ func (m *Model) loadPinned() tea.Cmd {
 	}
 	m.pinPending = false
 	if m.repoIdx < 0 || m.repoIdx >= len(m.pins) || m.repoIdx >= len(m.repos) {
-		m.worktrees, m.curRepo, m.wtIdx = nil, "", 0
+		m.worktrees, m.wtIdx = nil, 0
 		m.switchWorktree()
 		return nil
 	}
 	repo, path := m.repos[m.repoIdx].Path, m.pins[m.repoIdx].Path
-	m.curRepo = repo
 	m.worktrees, m.wtIdx = []git.Worktree{{Path: path}}, 0
 	m.switchWorktree()
 	m.refreshing = true
@@ -144,6 +142,9 @@ func (m *Model) loadPinned() tea.Cmd {
 			c.Base = msg.base
 		}
 		msg.files, msg.stats, msg.err = src.Files(c)
+		if msg.err == nil {
+			msg.stamps = src.Stamps(path, filePaths(msg.files))
+		}
 		return msg
 	})
 	return tea.Batch(cmds...)
@@ -161,6 +162,7 @@ type pinnedMsg struct {
 	hasWalk  bool
 	files    []git.FileStatus
 	stats    map[string]git.LineCount
+	stamps   map[string]string
 	err      error
 }
 
@@ -185,9 +187,9 @@ func (m *Model) onPinned(msg pinnedMsg) tea.Cmd {
 	}
 	m.err = nil
 	m.fileStats = msg.stats
-	m.setFiles(msg.files, true)
+	m.setFiles(msg.files, msg.stamps, true)
 	m.setWalk(msg.walk, msg.hasWalk) // after the files, which it is older than or not
-	return tea.Batch(m.loadDiffLater(), m.walkArrived())
+	return tea.Batch(m.loadDiff(), m.walkArrived())
 }
 
 // Pins is what the panel is showing.
@@ -203,25 +205,6 @@ func samePins(a, b []Pin) bool {
 		}
 	}
 	return true
-}
-
-// pinnedPath is the worktree pinned for the repository at repoIdx.
-func (m Model) pinnedPath() string {
-	if m.repoIdx < 0 || m.repoIdx >= len(m.pins) {
-		return ""
-	}
-	return m.pins[m.repoIdx].Path
-}
-
-// filterPinned keeps only the pinned worktree of the current repository.
-func (m Model) filterPinned(wts []git.Worktree) []git.Worktree {
-	want := m.pinnedPath()
-	for _, w := range wts {
-		if samePath(w.Path, want) {
-			return []git.Worktree{w}
-		}
-	}
-	return nil
 }
 
 func samePath(a, b string) bool {

@@ -134,16 +134,14 @@ func TestScrollWithinTallDiffLine(t *testing.T) {
 	}
 
 	lay := m.layout(m.width, m.height)
-	nm, _ := m.Update(tea.MouseMsg{X: lay.diff.x + 5, Y: lay.diff.y + 3,
+	m = m.send(tea.MouseMsg{X: lay.diff.x + 5, Y: lay.diff.y + 3,
 		Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
-	m = nm.(Model)
 	if m.diffViewTop != wheelRows {
 		t.Fatalf("wheel top %d", m.diffViewTop)
 	}
 	// Clicking a continuation row must not jump back to the line's start.
-	nm, _ = m.Update(tea.MouseMsg{X: lay.diff.x + 5, Y: lay.diff.y + 2 + m.diffHeader(),
+	m = m.send(tea.MouseMsg{X: lay.diff.x + 5, Y: lay.diff.y + 2 + m.diffHeader(),
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = nm.(Model)
 	if m.diffViewTop != wheelRows || m.diffCursor != 0 {
 		t.Fatalf("click: top %d, cursor %d", m.diffViewTop, m.diffCursor)
 	}

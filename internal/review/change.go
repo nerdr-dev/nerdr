@@ -4,6 +4,8 @@ package review
 // and loading it into the diff pane in each of its views.
 
 import (
+	"time"
+
 	"github.com/nerdr-dev/nerdr/internal/git"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,21 +22,6 @@ func (m *Model) comparison() git.Comparison {
 	return c
 }
 
-// changedFiles returns the changed files, respecting the base-diff mode.
-func (m *Model) changedFiles() ([]git.FileStatus, error) {
-	files, stats, err := m.src.Files(m.comparison())
-	if err == nil {
-		m.fileStats = stats
-	}
-	return files, err
-}
-
-// changeDiff is the unified diff of path's change, whatever the diff pane
-// is set to show.
-func (m *Model) changeDiff(path string) (string, error) {
-	return m.src.Diff(m.comparison(), path, m.untracked(path), m.originalPath(path))
-}
-
 func (m *Model) originalPath(path string) string {
 	for _, f := range m.files {
 		if f.Path == path && f.OldPath != "" {
@@ -42,28 +29,6 @@ func (m *Model) originalPath(path string) string {
 		}
 	}
 	return path
-}
-
-// fileDiff returns the diff pane content for path, respecting both the
-// base-diff mode and the old/new-full view mode. Untracked files have no
-// prior version to diff against, so they always render as plain code
-// regardless of diffMode.
-func (m *Model) fileDiff(path string) (string, error) {
-	if m.untracked(path) {
-		return m.changeDiff(path)
-	}
-	switch m.diffMode {
-	case diffModeOld:
-		return m.src.OldFile(m.comparison(), m.originalPath(path))
-	case diffModeNewFull:
-		raw, err := m.changeDiff(path)
-		if err != nil {
-			return "", err
-		}
-		return m.src.FullNewFile(m.worktrees[m.wtIdx].Path, path, raw)
-	default:
-		return m.changeDiff(path)
-	}
 }
 
 // cycleDiffMode is v: the diff, then the whole file with the changes
@@ -91,73 +56,117 @@ func (m *Model) toggleBase() tea.Cmd {
 		return nil
 	}
 	m.showBase = !m.showBase
-	// Loaded at once, as moving to another worktree is: a refresh begun
-	// before is of the other comparison, and is overtaken.
-	m.filesToken++
-	m.filesBusy, m.filesAgain, m.refreshing = false, false, false
-	m.loadFiles()
-	// setFiles derives the ● markers from the difference between the old
-	// and new file lists, which here is a different comparison rather than
-	// anything anyone touched — the branch's committed work can be months
-	// old. Clear them instead of flagging the whole branch as live edits.
-	m.recent = map[string]int{}
-	m.loadDiff()
+	// A refresh begun before is of the other comparison, and is
+	// overtaken. The diff is read again when the list comes.
+	cmd := m.loadFiles()
 	if m.showBase {
 		m.setToast("showing changes against " + m.baseRef)
 	} else {
 		m.setToast("showing worktree changes")
 	}
-	return nil
+	return cmd
 }
 
+// loadDiff reads the diff of the file shown, or of the file peeked at, in
+// the background, and puts it in place when it comes (onDiff). Until then
+// the pane keeps what it had, with a spinner on its title once it takes a
+// while (diffSlowMsg).
 func (m *Model) loadDiff() tea.Cmd {
 	m.diffToken++ // a load in the background is overtaken
 	m.diffSel = lineSpan{}
-	if m.peek != nil {
-		return m.loadPeekDiff()
-	}
 	path, ok := m.currentFile()
+	if m.peek != nil {
+		path, ok = m.peek.file, true
+	}
 	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) || !ok {
 		m.diff = ""
 		m.diffLines = nil
+		m.diffAim = nil
+		m.diffPending, m.diffSlow = false, false
 		m.reloadRelations()
 		return nil
 	}
-	diff, err := m.fileDiff(path)
-	if err != nil {
-		m.err = err
-		m.diff = ""
-		m.diffLines = nil
-		return nil
+	r := diffReq{
+		src: m.src, wt: m.worktrees[m.wtIdx].Path, path: path,
+		token: m.diffToken, peek: m.peek != nil,
 	}
-	m.diff = diff
-	// reloadRelations must run first: annotateDiffLines below depends on the
-	// freshly computed m.symbols/m.symbolRefs for the selected file.
-	m.reloadRelations()
-	m.diffLines = m.buildDisplayLines(path, diff)
-	// Re-validate the cursor/viewport against the (possibly very different)
-	// newly loaded content. jumpTo/jumpBack override this afterwards when
-	// they need a specific position; plain navigation just needs the
-	// existing cursor clamped into range.
-	m.setDiffCursor(m.diffCursor)
-	return nil
+	if !r.peek {
+		r.c, r.mode = m.comparison(), m.diffMode
+		r.untracked, r.original = m.untracked(path), m.originalPath(path)
+	}
+	m.diffPending = true
+	token := m.diffToken
+	return tea.Batch(func() tea.Msg { return r.read() },
+		tea.Tick(diffSlowAfter, func(time.Time) tea.Msg { return diffSlowMsg{token} }))
 }
 
-// loadDiffLater is loadDiff for a refresh, in the background: the diff of
-// the file shown is read and its source fetched off the screen's time, and
-// put in place when they come (onDiff). Navigation loads at once instead.
-func (m *Model) loadDiffLater() tea.Cmd {
-	path, ok := m.currentFile()
-	if m.peek != nil || !ok || m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
-		return m.loadDiff()
-	}
-	m.diffToken++
-	snap, token, wt := *m, m.diffToken, m.curWT
-	return func() tea.Msg {
-		msg := diffMsg{wt: wt, token: token, path: path}
-		msg.diff, msg.err = snap.fileDiff(path)
-		msg.src, msg.srcOK = snap.highlightSourceFor(path)
+// diffSlowAfter is how long a diff may take before its title says it is
+// on its way.
+var diffSlowAfter = 150 * time.Millisecond
+
+// diffSlowMsg is a diff load, token, taking a while.
+type diffSlowMsg struct{ token int }
+
+// diffAim is where the diff cursor goes when the diff being loaded comes:
+// to a line of the file (line > 0), or else to row cursor with the view's
+// top at top.
+type diffAim struct {
+	line        int
+	cursor, top int
+}
+
+// diffReq is what loadDiff reads, taken from the model so the read runs
+// without it.
+type diffReq struct {
+	src       Source
+	c         git.Comparison
+	wt, path  string
+	original  string // path before a rename, or path
+	untracked bool
+	mode      diffMode
+	peek      bool // path is a file peeked at, shown as it is
+	token     int
+}
+
+// read is the diff and its source.
+func (r diffReq) read() diffMsg {
+	msg := diffMsg{wt: r.wt, path: r.path, token: r.token, peek: r.peek}
+	if r.peek {
+		msg.diff, msg.err = r.src.ReadFile(r.wt, r.path)
 		return msg
+	}
+	msg.diff, msg.err = r.fileDiff()
+	if r.mode == diffModeOld {
+		src, err := r.src.OldSource(r.c, r.original)
+		msg.src, msg.srcOK = src, err == nil
+	} else {
+		src, err := r.src.ReadFile(r.wt, r.path)
+		msg.src, msg.srcOK = src, err == nil
+	}
+	return msg
+}
+
+// fileDiff is the diff pane's content for the file, by the base-diff mode
+// and the view. A file not yet added has no prior version to diff
+// against, so it is always shown as plain code, whatever the view.
+func (r diffReq) fileDiff() (string, error) {
+	change := func() (string, error) {
+		return r.src.Diff(r.c, r.path, r.untracked, r.original)
+	}
+	if r.untracked {
+		return change()
+	}
+	switch r.mode {
+	case diffModeOld:
+		return r.src.OldFile(r.c, r.original)
+	case diffModeNewFull:
+		raw, err := change()
+		if err != nil {
+			return "", err
+		}
+		return r.src.FullNewFile(r.wt, r.path, raw)
+	default:
+		return change()
 	}
 }
 
@@ -165,6 +174,7 @@ func (m *Model) loadDiffLater() tea.Cmd {
 type diffMsg struct {
 	wt, path  string
 	token     int
+	peek      bool
 	diff, src string
 	srcOK     bool
 	err       error
@@ -174,32 +184,48 @@ type diffMsg struct {
 // file shown.
 func (m *Model) onDiff(msg diffMsg) {
 	path, ok := m.currentFile()
-	if msg.token != m.diffToken || msg.wt != m.curWT || !ok || path != msg.path || m.peek != nil {
+	if m.peek != nil {
+		path, ok = m.peek.file, true
+	}
+	if msg.token != m.diffToken || msg.wt != m.curWT || !ok || path != msg.path || msg.peek != (m.peek != nil) {
 		return
 	}
+	m.diffPending, m.diffSlow = false, false
+	aim := m.diffAim
+	m.diffAim = nil
 	if msg.err != nil {
 		m.err = msg.err
 		m.diff, m.diffLines = "", nil
 		return
 	}
 	m.diff = msg.diff
+	// reloadRelations must run first: annotateDiffLines depends on the
+	// freshly computed m.symbols/m.symbolRefs for the file.
 	m.reloadRelations()
-	m.diffLines = m.displayLines(path, msg.diff, msg.src, msg.srcOK)
+	if msg.peek {
+		m.diffLines = annotateWhyLines(plainSourceLines(path, msg.diff), path, m.whyIndex)
+	} else {
+		m.diffLines = m.displayLines(path, msg.diff, msg.src, msg.srcOK)
+	}
 	m.diffSel = lineSpan{}
-	m.setDiffCursor(m.diffCursor)
+	switch {
+	case aim == nil:
+		// The same cursor, kept within the new content.
+		m.setDiffCursor(m.diffCursor)
+	case aim.line > 0:
+		m.diffViewTop = 0 // fresh content: the old file's scroll means nothing
+		m.setDiffCursor(m.diffRowForLine(aim.line))
+	default:
+		m.diffViewTop = aim.top
+		m.setDiffCursor(aim.cursor)
+	}
 }
 
-// buildDisplayLines turns the raw diff text for path into the final lines
-// shown in the diff pane: word-highlighted, syntax-highlighted on unmarked
-// context lines, and annotated with symbol references. Computed once per
+// displayLines turns the raw diff text for path into the lines shown in
+// the diff pane: word-highlighted, syntax-highlighted on unmarked context
+// lines from src, and annotated with symbol references. Computed once per
 // load rather than per render frame, since chroma tokenisation of a full
-// file is too expensive to redo on every keystroke/scroll/tick.
-func (m *Model) buildDisplayLines(path, diff string) []diffLine {
-	src, ok := m.highlightSourceFor(path)
-	return m.displayLines(path, diff, src, ok)
-}
-
-// displayLines is buildDisplayLines with the source already read.
+// file is too expensive to redo on every keystroke, scroll or tick.
 func (m *Model) displayLines(path, diff, src string, srcOK bool) []diffLine {
 	lines := buildDiffLines(diff)
 	if srcOK {
@@ -207,17 +233,4 @@ func (m *Model) displayLines(path, diff, src string, srcOK bool) []diffLine {
 	}
 	lines = annotateDiffLines(lines, m.symbols, m.symbolRefs)
 	return annotateWhyLines(lines, path, m.whyIndex)
-}
-
-// highlightSourceFor returns the source text whose line numbers align with
-// the diff currently shown for path, for syntax-highlighting its unmarked
-// context lines: the pre-change content (from HEAD/base) in the old-code
-// view, otherwise the worktree's current content.
-func (m *Model) highlightSourceFor(path string) (string, bool) {
-	if m.diffMode == diffModeOld {
-		src, err := m.src.OldSource(m.comparison(), m.originalPath(path))
-		return src, err == nil
-	}
-	src, err := m.src.ReadFile(m.worktrees[m.wtIdx].Path, path)
-	return src, err == nil
 }

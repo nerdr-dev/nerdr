@@ -25,7 +25,8 @@ func TestBaseToggleOvertakesARefreshUnderWay(t *testing.T) {
 		t.Fatal("no refresh")
 	}
 	msg := pending().(filesMsg)
-	m.toggleBase()
+	cmd := m.toggleBase()
+	m = m.settle(cmd)
 	if !m.showBase || len(m.files) != 2 {
 		t.Fatalf("against the base: %v %v", m.showBase, m.files)
 	}

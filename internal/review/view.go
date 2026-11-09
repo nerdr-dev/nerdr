@@ -97,6 +97,9 @@ func (m Model) View() string {
 			diffTitle += "  [⚠ also changed in " + strings.Join(tabs, ", ") + "]"
 		}
 	}
+	if m.diffSlow {
+		diffTitle = m.spinner.View() + " " + diffTitle
+	}
 	if m.zoomed {
 		return lipgloss.JoinVertical(lipgloss.Left, append(m.menuPart(W), m.zoomedView(W, H, filesTitle, diffTitle))...)
 	}
@@ -419,6 +422,9 @@ func headerRows(header string) int {
 
 func (m Model) overviewView() string {
 	items := make([]string, len(m.ovItems))
+	if !m.ovListed {
+		items = []string{"listing the worktrees…"}
+	}
 	for i, it := range m.ovItems {
 		if !it.counted {
 			items[i] = fmt.Sprintf("%-28s %4s", it.label, "…")
