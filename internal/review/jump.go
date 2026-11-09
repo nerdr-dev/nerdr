@@ -42,9 +42,8 @@ func (m *Model) jumpToSelected() bool {
 }
 
 // openWhyDetail opens the full rationale of the ✎ line under the diff
-// cursor in the relations panel — beside an agent, where there is none,
-// under the line in the diff, or closes it there again. Reports whether
-// the cursor was on one.
+// cursor under the line in the diff, or closes it there again. Reports
+// whether the cursor was on one.
 func (m *Model) openWhyDetail() bool {
 	idx := clamp(m.diffCursor, 0, max(0, len(m.diffLines)-1))
 	if idx < 0 || idx >= len(m.diffLines) {
@@ -54,18 +53,7 @@ func (m *Model) openWhyDetail() bool {
 	if dl.kind != 'w' || dl.whyDetail == "" {
 		return false
 	}
-	if m.embedded {
-		m.toggleWhyInline(idx)
-		return true
-	}
-	m.whyDetail = dl.whyDetail
-	m.relationsTab = relationsTabWhy
-	m.relCursor, m.relViewTop = 0, 0
-	m.buildRelRows()
-	// Focus follows the text: the rationale is usually longer than the
-	// panel, and leaving focus on the diff would strand it — ↑/↓ would keep
-	// moving the diff cursor, and → would just re-open what is already open.
-	m.focus = focusRelations
+	m.toggleWhyInline(idx)
 	return true
 }
 

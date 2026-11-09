@@ -74,11 +74,8 @@ type scrollPane int
 const (
 	scrollNone scrollPane = iota
 	scrollDiff
-	scrollRelations
 	scrollPR
 	scrollFiles
-	scrollRepos
-	scrollWorktrees
 	scrollOverview
 )
 
@@ -89,14 +86,8 @@ func (m Model) onScrollbar(l paneLayout, x, y int) (scrollPane, rect, int) {
 	switch m.focus {
 	case focusDiff:
 		zoomed = scrollDiff
-	case focusRelations:
-		zoomed = scrollRelations
 	case focusFiles:
 		zoomed = scrollFiles
-	case focusRepos:
-		zoomed = scrollRepos
-	case focusWorktrees:
-		zoomed = scrollWorktrees
 	}
 	for _, c := range []struct {
 		p      scrollPane
@@ -104,11 +95,8 @@ func (m Model) onScrollbar(l paneLayout, x, y int) (scrollPane, rect, int) {
 		header int
 	}{
 		{scrollDiff, l.diff, m.diffHeader()},
-		{scrollRelations, l.relations, 0},
 		{scrollPR, l.prConv, 0},
 		{scrollFiles, l.files, m.filesHeader()},
-		{scrollRepos, l.repos, 0},
-		{scrollWorktrees, l.worktrees, 0},
 		{scrollOverview, l.overview, 0},
 		{zoomed, l.zoom, 0},
 	} {
@@ -139,8 +127,6 @@ func (m *Model) dragScrollbar(p scrollPane, r rect, header, y int) tea.Cmd {
 	case scrollDiff:
 		v := m.diffView()
 		m.scrollDiffTo(trackTop(v.rowOf(len(m.diffLines)), v.innerH, i))
-	case scrollRelations:
-		m.scrollRelTo(trackTop(len(m.relRows), m.relationsInnerHeight(), i))
 	case scrollPR:
 		rows, _ := m.prContent()
 		m.scrollPRPane(trackTop(len(rows), m.prConvInnerHeight(), i) - m.prConvViewTop)
@@ -152,16 +138,6 @@ func (m *Model) dragScrollbar(p scrollPane, r rect, header, y int) tea.Cmd {
 		if n := len(m.flatRows()); n > 0 && (peeked || at(n) != m.cursor) {
 			m.cursor = at(n)
 			return m.loadDiff()
-		}
-	case scrollRepos:
-		if n := len(m.repos); n > 0 && at(n) != m.repoIdx {
-			m.repoIdx = at(n)
-			return m.onRepoMove()
-		}
-	case scrollWorktrees:
-		if n := len(m.worktrees); n > 0 && at(n) != m.wtIdx {
-			m.wtIdx = at(n)
-			return m.onWorktreeMove()
 		}
 	case scrollOverview:
 		m.ovCursor = at(len(m.ovItems))
@@ -177,12 +153,4 @@ func (m *Model) scrollDiffTo(top int) {
 	m.diffViewTop = clamp(top, 0, v.maxTop())
 	m.diffCursor = clamp(m.diffCursor, max(0, v.lineAt(0, m.diffViewTop)), max(0, v.last(m.diffViewTop)))
 	m.diffCursor = clamp(m.diffCursor, 0, max(0, len(m.diffLines)-1))
-}
-
-// scrollRelTo is scrollDiffTo for the relations panel.
-func (m *Model) scrollRelTo(top int) {
-	innerH := m.relationsInnerHeight()
-	m.relViewTop = clamp(top, 0, max(0, len(m.relRows)-innerH))
-	m.relCursor = clamp(m.relCursor, m.relViewTop, min(m.relViewTop+innerH, len(m.relRows))-1)
-	m.relCursor = max(m.relCursor, 0)
 }

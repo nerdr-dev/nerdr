@@ -66,7 +66,7 @@ func (m *Model) switchWorktree() bool {
 		m.project = nil
 		m.baseRef = ""
 		m.pr, m.prOK, m.prMsg = github.PR{}, false, ""
-		m.whyIndex, m.whyDetail = why.Index{}, ""
+		m.whyIndex = why.Index{}
 		m.orderIndex = order.Index{}
 		m.setWalk(walkthrough.Walkthrough{}, false)
 		return true
@@ -78,7 +78,7 @@ func (m *Model) switchWorktree() bool {
 	m.pr, m.prOK, m.prMsg = github.PR{}, false, "looking up the PR…"
 	m.ctxLoad = wt
 	m.baseRef = ""
-	m.whyIndex, m.whyDetail = why.Index{}, ""
+	m.whyIndex = why.Index{}
 	m.orderIndex = order.Index{}
 	m.setWalk(walkthrough.Walkthrough{}, false)
 	return true
@@ -186,7 +186,6 @@ func (m *Model) changedGroups(files []git.FileStatus) []analysis.Group {
 // where each is referenced — what the diff pane annotates changed lines
 // with, and what those annotations jump to.
 func (m *Model) reloadRelations() {
-	defer m.buildRelRows()
 	m.symbols = nil
 	m.symbolRefs = nil
 	if m.project == nil {

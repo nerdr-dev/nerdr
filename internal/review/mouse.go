@@ -30,13 +30,10 @@ func (r rect) contentRow(y, headerRows int) int {
 // mouse hit-tests against it, which is the only way a click can be trusted
 // to land on the row it appears to be on.
 type paneLayout struct {
-	menu      rect
-	repos     rect
-	worktrees rect
-	files     rect
-	diff      rect
-	relations rect
-	prConv    rect
+	menu   rect
+	files  rect
+	diff   rect
+	prConv rect
 	// zoom is the single pane filling the window; which one it is follows
 	// m.focus, the same way zoomedView renders it.
 	zoom     rect
@@ -46,7 +43,7 @@ type paneLayout struct {
 // menuRect is where the menu's items are in width W: inside the end
 // columns that nerdr frames it with when embedded (see menuBar).
 func (m Model) menuRect(W int) rect {
-	if m.embedded && W > 2 {
+	if W > 2 {
 		return rect{1, 0, W - 2, m.menuRows()}
 	}
 	return rect{0, 0, W, m.menuRows()}
@@ -73,36 +70,7 @@ func (m Model) layout(W, H int) paneLayout {
 		l.zoom = rect{0, m.menuRows(), W, H - m.statusRows() - m.menuRows()}
 		return l
 	}
-	if m.embedded {
-		return m.embeddedLayout(W, H)
-	}
-
-	leftW, midW, rightW := paneWidths(W)
-	topH := m.topPaneHeight(H)
-	reposH := min(9, topH/2)
-
-	l.repos = rect{0, m.menuRows(), leftW, reposH}
-	l.worktrees = rect{0, m.menuRows() + reposH, leftW, topH - reposH}
-	l.files = rect{leftW, m.menuRows(), midW, topH}
-	l.diff = rect{leftW + midW, m.menuRows(), rightW, topH}
-	l.relations = rect{0, m.menuRows() + topH, W, m.relationsPaneHeight(H)}
-	return l
-}
-
-// paneWidths splits the window between the three columns of the review
-// layout. The two trailing columns the diff pane gives up keep the border
-// off the last cell, where some terminals wrap.
-func paneWidths(W int) (leftW, midW, rightW int) {
-	const gap = 1
-	leftW, midW = 22, 36
-	if W < 100 {
-		leftW, midW = 18, 28
-	}
-	rightW = W - leftW - midW - 2*gap
-	if rightW < 20 {
-		rightW = 20
-	}
-	return leftW, midW, rightW
+	return m.embeddedLayout(W, H)
 }
 
 // listStart is the first visible item of a pane whose viewport follows its
@@ -172,19 +140,11 @@ func (m *Model) wheel(l paneLayout, x, y, delta int) tea.Cmd {
 	case l.zoom.contains(x, y):
 		return m.scrollFocused(delta)
 
-	case l.repos.contains(x, y):
-		m.repoIdx = clamp(m.repoIdx+delta, 0, max(0, len(m.repos)-1))
-		return m.onRepoMove()
-	case l.worktrees.contains(x, y):
-		m.wtIdx = clamp(m.wtIdx+delta, 0, max(0, len(m.worktrees)-1))
-		return m.onWorktreeMove()
 	case l.files.contains(x, y):
 		m.moveCursor(delta)
 		return m.loadDiff()
 	case l.diff.contains(x, y):
 		m.scrollDiffTo(m.diffViewTop + delta)
-	case l.relations.contains(x, y):
-		m.scrollRelTo(m.relViewTop + delta)
 	}
 	return nil
 }
@@ -192,17 +152,9 @@ func (m *Model) wheel(l paneLayout, x, y, delta int) tea.Cmd {
 // scrollFocused scrolls whichever pane is zoomed, since only one is shown.
 func (m *Model) scrollFocused(delta int) tea.Cmd {
 	switch m.focus {
-	case focusRepos:
-		m.repoIdx = clamp(m.repoIdx+delta, 0, max(0, len(m.repos)-1))
-		return m.onRepoMove()
-	case focusWorktrees:
-		m.wtIdx = clamp(m.wtIdx+delta, 0, max(0, len(m.worktrees)-1))
-		return m.onWorktreeMove()
 	case focusFiles:
 		m.moveCursor(delta)
 		return m.loadDiff()
-	case focusRelations:
-		m.scrollRelTo(m.relViewTop + delta)
 	default:
 		m.scrollDiffTo(m.diffViewTop + delta)
 	}
@@ -229,7 +181,7 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 		}
 
 	case l.prConv.contains(x, y):
-		if y == l.prConv.y+1 && m.embedded {
+		if y == l.prConv.y+1 {
 			// The heading: the line of F2's views.
 			if v, ok := m.prViewAt(x - l.prConv.x - 1); ok {
 				return m.SetPRView(v)
@@ -244,26 +196,6 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 			m.selectConvRow(row)
 		}
 
-	case l.repos.contains(x, y):
-		m.focus = focusRepos
-		if i := l.repos.contentRow(y, 0); i >= 0 {
-			innerH := l.repos.h - 3 - hintRows
-			idx := listStart(m.repoIdx, innerH, len(m.repos)) + i
-			if idx < len(m.repos) && idx != m.repoIdx {
-				m.repoIdx = idx
-				return m.onRepoMove()
-			}
-		}
-	case l.worktrees.contains(x, y):
-		m.focus = focusWorktrees
-		if i := l.worktrees.contentRow(y, 0); i >= 0 {
-			innerH := l.worktrees.h - 3 - hintRows
-			idx := listStart(m.wtIdx, innerH, len(m.worktrees)) + i
-			if idx < len(m.worktrees) && idx != m.wtIdx {
-				m.wtIdx = idx
-				return m.onWorktreeMove()
-			}
-		}
 	case l.files.contains(x, y):
 		// The hint row is drawn only while the list has the keyboard, and
 		// each key on it is a button.
@@ -312,11 +244,6 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 			if line := m.diffView().lineAt(m.diffViewTop, i); line >= 0 {
 				m.setDiffCursor(line)
 			}
-		}
-	case l.relations.contains(x, y):
-		m.focus = focusRelations
-		if i := l.relations.contentRow(y, 0); i >= 0 {
-			m.setRelCursor(m.relViewTop + i)
 		}
 	}
 	return nil

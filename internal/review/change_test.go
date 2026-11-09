@@ -3,8 +3,6 @@ package review
 import (
 	"path/filepath"
 	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // A refresh begun before b switched the comparison is of the other one:
@@ -21,9 +19,7 @@ func TestBaseToggleOvertakesARefreshUnderWay(t *testing.T) {
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "feature")
 	writeFile(t, filepath.Join(repo, "a.txt"), "changed\n")
-	m := New(parent, Local{})
-	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
-	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
+	m := pinned(t, repo)
 	pending := m.refreshFiles()
 	if pending == nil {
 		t.Fatal("no refresh")

@@ -108,8 +108,8 @@ func TestWhyNoteOpensInTheDiff(t *testing.T) {
 	if strings.Join(texts, "|") != "@@ -1 +1 @@|✎ short|claude-code · today||the long reason|+x := 1" {
 		t.Fatalf("opened under the line: %q", texts)
 	}
-	if m.focus == focusRelations {
-		t.Fatal("the keyboard stays in the diff")
+	if m.focus != focusFiles {
+		t.Fatal("the keyboard stays where it was")
 	}
 	m.openWhyDetail()
 	if len(m.diffLines) != 3 {
@@ -172,6 +172,13 @@ func TestQuestionMarkIsHelpAndVStepsTheDiff(t *testing.T) {
 
 // pinNow pins pins and waits for what loadPinned reads in the background,
 // as the panel shows it once it has arrived; the diff is read with it.
+// pinned is the panel pinned to the worktree at path, as nerdr shows it,
+// with what the pin reads of it in place.
+func pinned(t *testing.T, path string) Model {
+	t.Helper()
+	return pinNow(t, NewEmbedded(Local{}), []Pin{{Repo: path, Path: path}})
+}
+
 func pinNow(t *testing.T, m Model, pins []Pin) Model {
 	t.Helper()
 	m, cmd := m.Pin(pins)
@@ -245,25 +252,5 @@ func TestPinRunsNoGitOnTheSpot(t *testing.T) {
 	m = settlePin(m, cmd)
 	if len(m.files) == 0 {
 		t.Fatal("the files should arrive")
-	}
-}
-
-// TestScrollbarBesideAnAgent: the diff's title is in its border beside an
-// agent, so its track starts a row higher than with a heading row, and a
-// click at its bottom still goes to the end.
-func TestScrollbarBesideAnAgent(t *testing.T) {
-	lines := make([]diffLine, 200)
-	for i := range lines {
-		lines[i] = diffLine{kind: ' ', text: "code"}
-	}
-	m := NewEmbedded(Local{})
-	m.width, m.height, m.diffLines = 120, 40, lines
-	lay := m.layout(m.width, m.height)
-	last := lay.diff.y + lay.diff.h - 2 - hintRows
-	nm, _ := m.Update(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: last,
-		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = nm.(Model)
-	if want := len(lines) - m.diffInnerHeight(); m.diffViewTop != want {
-		t.Fatalf("a click at the bottom of the track goes to the end: top %d, want %d", m.diffViewTop, want)
 	}
 }

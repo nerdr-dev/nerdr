@@ -32,17 +32,11 @@ var walkthroughRequest string
 
 // askExplain is E: ask the worktree's agent to explain the change.
 func (m *Model) askExplain() tea.Cmd {
-	if !m.embedded {
-		return nil
-	}
 	return m.askAgent(explainRequest)
 }
 
 // askForOne is how to get an explanation that is missing.
 func (m Model) askForOne() string {
-	if !m.embedded {
-		return "ask an agent in nerdr for one"
-	}
 	return "E asks the agent for one"
 }
 
@@ -102,17 +96,14 @@ func (m *Model) oldNote() string {
 	if !m.walkOld || m.walkWanted != "" {
 		return ""
 	}
-	if m.embedded {
-		return " — it is older than the change; G asks for a new one"
-	}
-	return " — it is older than the change"
+	return " — it is older than the change; G asks for a new one"
 }
 
 // askWalk is G, and g with no walkthrough: it asks the agent for a new
 // one, which opens when it is written. Pressed again while the agent
 // writes it, it says so; once more, it asks anew.
 func (m *Model) askWalk() tea.Cmd {
-	if !m.embedded || m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
+	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
 		return nil
 	}
 	wt := m.worktrees[m.wtIdx]

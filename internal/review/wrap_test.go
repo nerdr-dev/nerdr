@@ -70,7 +70,7 @@ func TestLongLinesWrap(t *testing.T) {
 func TestCursorOnAWrappedLineStaysInView(t *testing.T) {
 	lines := make([]diffLine, 60)
 	for i := range lines {
-		lines[i] = diffLine{kind: ' ', text: " " + strings.Repeat("x ", 100), newLine: i + 1}
+		lines[i] = diffLine{kind: ' ', text: " " + strings.Repeat("x ", 300), newLine: i + 1}
 	}
 	m := Model{src: Local{}, width: 120, height: 40, focus: focusDiff, diffLines: lines}
 	v := m.diffView()
@@ -119,7 +119,7 @@ func TestClickOnAWrappedRowSelectsItsLine(t *testing.T) {
 // attached to its source line.
 func TestScrollWithinTallDiffLine(t *testing.T) {
 	m := Model{src: Local{}, width: 120, height: 40, focus: focusDiff,
-		diffLines: []diffLine{{kind: '+', text: "+" + strings.Repeat("x", 4000) + "END", newLine: 1}}}
+		diffLines: []diffLine{{kind: '+', text: "+" + strings.Repeat("x", 12000) + "END", newLine: 1}}}
 	v := m.diffView()
 	if v.rows(0) <= v.innerH*2 {
 		t.Fatal("test needs more than two screens")
@@ -152,7 +152,7 @@ func TestScrollWithinTallDiffLine(t *testing.T) {
 	if m.diffViewTop != v.maxTop() {
 		t.Fatalf("scrollbar top %d, want %d", m.diffViewTop, v.maxTop())
 	}
-	pane := renderDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h, true, "diff", "", lineSpan{})
+	pane := renderTitledDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h, true, "diff", "", lineSpan{})
 	if !strings.Contains(ansi.Strip(pane), "END") {
 		t.Fatalf("end of line missing:\n%s", ansi.Strip(pane))
 	}

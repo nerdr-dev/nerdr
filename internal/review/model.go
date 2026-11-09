@@ -1,16 +1,13 @@
 package review
 
 import (
-	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/browser"
-	"github.com/nerdr-dev/nerdr/internal/editor"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
-	"github.com/nerdr-dev/nerdr/internal/launch"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/watch"
 	"github.com/nerdr-dev/nerdr/internal/why"
@@ -23,11 +20,8 @@ import (
 type focus int
 
 const (
-	focusRepos focus = iota
-	focusWorktrees
-	focusFiles
+	focusFiles focus = iota
 	focusDiff
-	focusRelations
 )
 
 // diffMode selects how the diff pane renders the currently selected file.
@@ -56,17 +50,16 @@ type Model struct {
 
 	cwd string
 
-	repos        []git.Repo
-	repoIdx      int
-	lastRepoScan time.Time
-	curRepo      string // path loadWorktrees last loaded, so a genuine repo change resets wtIdx to 0
-	worktrees    []git.Worktree
-	wtIdx        int
-	pinCounts    []int    // files each pinned worktree changes; see SetPinCounts
-	onRepoBar    bool     // the file list's cursor is on the repositories' bar
-	side         paneSide // where F1's file list is beside an agent
-	alone        bool     // no agent beside the panel (SetAlone)
-	diffColors   string   // the scheme changes are drawn in; see colors.go
+	repos      []git.Repo
+	repoIdx    int
+	curRepo    string // path loadWorktrees last loaded, so a genuine repo change resets wtIdx to 0
+	worktrees  []git.Worktree
+	wtIdx      int
+	pinCounts  []int    // files each pinned worktree changes; see SetPinCounts
+	onRepoBar  bool     // the file list's cursor is on the repositories' bar
+	side       paneSide // where F1's file list is beside an agent
+	alone      bool     // no agent beside the panel (SetAlone)
+	diffColors string   // the scheme changes are drawn in; see colors.go
 	// hidden is set by nerdr while the panel is not on screen; see
 	// SetShown. Off F1, or hidden, the file list is not refreshed, only
 	// marked stale, and refreshed on coming back.
@@ -158,8 +151,8 @@ type Model struct {
 	prConvViewTop int
 	prConvCursor  int  // which conversation block is selected
 	prBusy        bool // reading a failed build's log for f
-	// prShown is which of F2's views is on: only inside nerdr, which draws
-	// all your pull requests and the issues. prNews and issueNews are
+	// prShown is which of F2's views is on; nerdr draws all your pull
+	// requests and the issues. prNews and issueNews are
 	// whether nerdr has news of them not seen yet, marked on F2.
 	prShown   PRView
 	prNews    bool
@@ -196,24 +189,12 @@ type Model struct {
 	folderTree bool
 	showFolder bool
 
-	// whyIndex holds the rationale notes agents wrote for this worktree;
-	// whyDetail is the one currently opened in the relations panel.
-	whyIndex  why.Index
-	whyDetail string
+	// whyIndex holds the rationale notes agents wrote for this worktree.
+	whyIndex why.Index
 
 	// zoomed expands the focused pane to fill the window, for reading a
 	// long diff or a long answer without the other panes taking the space.
 	zoomed bool
-
-	// mouseOn reports whether mouse reporting is enabled. It is off by
-	// default: the terminal hands the app every click and drag once it is
-	// on, which takes select-and-copy away from a tool whose whole purpose
-	// is reading code.
-	mouseOn bool
-
-	relationsTab int
-	relCursor    int
-	relViewTop   int
 
 	// dragging is the pane whose scrollbar is being dragged, in dragRect,
 	// its column header dragHeader rows; see scrollbar.go.
@@ -229,7 +210,6 @@ type Model struct {
 	selecting bool
 	selRect   rect
 	selHeader int
-	relRows   []relLine // the active tab's rows, rebuilt by buildRelRows; the key handler acts on relRows[relCursor]
 
 	// symbols and their references drive the diff pane's "↳ used in"
 	// annotations, and the jump those rows offer.
@@ -247,10 +227,6 @@ type Model struct {
 	// refreshing, when the spinner is shown: each tick redraws the screen.
 	spinning bool
 
-	// embedded is set when the model runs as nerdr's review panel; see
-	// embed.go. pins are the tab's worktrees, and unfocused is whether the
-	// agent beside the panel has the keyboard.
-	embedded bool
 	// wideKey is the keys that make the panel as wide as the window, for
 	// its hints: nerdr's, after its prefix.
 	wideKey string
@@ -258,9 +234,8 @@ type Model struct {
 	// screensHint says how they are pressed; see SetScreenKeys.
 	screenKeys  []string
 	screensHint string
-	// menuOn is set inside nerdr while the panel is kept open, when it
-	// has its menu row as on its own, in place of nerdr's column; see
-	// SetMenu.
+	// menuOn is set while the panel is kept open, when it has its own
+	// menu row in place of nerdr's column; see SetMenu.
 	menuOn    bool
 	pins      []Pin
 	unfocused bool
@@ -269,52 +244,7 @@ type Model struct {
 	prOnRepos bool
 }
 
-// EnableMouse starts with mouse reporting on, for the --mouse flag. The
-// program has to be started with tea.WithMouseCellMotion() to match.
-func (m Model) EnableMouse() Model {
-	m.mouseOn = true
-	return m
-}
-
-// toggleMouse turns mouse reporting on or off while running. It is a toggle
-// rather than a setting because the cost is not the app's to judge: with it
-// on you get the wheel, with it off you get the terminal's own
-// select-and-copy, and which you want changes minute to minute.
-func (m *Model) toggleMouse() tea.Cmd {
-	m.mouseOn = !m.mouseOn
-	if m.mouseOn {
-		m.setToast("mouse on — the terminal's own text selection needs shift")
-		return tea.EnableMouseCellMotion
-	}
-	m.setToast("mouse off")
-	return tea.DisableMouse
-}
-
-// New creates the root model, discovering repositories under cwd
-// through src.
-func New(cwd string, src Source) Model {
-	repos, err := src.DiscoverRepos(cwd)
-	m := Model{
-		src:       src,
-		cwd:       cwd,
-		repos:     repos,
-		focus:     focusRepos,
-		err:       err,
-		expanded:  map[string]bool{},
-		showOrder: true,
-		recent:    map[string]int{},
-		spinner:   spinner.New(spinner.WithSpinner(spinner.MiniDot)),
-	}
-	m.filterInput = textinput.New()
-	m.filterInput.Prompt = "/"
-	m.filterInput.Placeholder = "filter files…"
-	m.buildRelRows()
-	return m
-}
-
 func (m Model) Init() tea.Cmd {
-	// A worktree picked in New has its context loaded by the first Update:
-	// the window size arrives at once.
 	return tickCmd()
 }
 
@@ -455,7 +385,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil // superseded, or about a worktree left behind
 		}
 		m.pr, m.prOK, m.prMsg = msg.pr, msg.ok, msg.msg
-		m.buildRelRows()
 		return m, nil
 
 	case prFixMsg:
@@ -503,15 +432,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.setMode(next)
 		case "M":
-			if m.embedded {
-				return m, nil // nerdr reads the terminal itself; see input.Router
-			}
-			return m, m.toggleMouse()
+			return m, nil // nerdr reads the terminal itself; see input.Router
 		case "?":
-			if m.embedded {
-				// ? is help everywhere in nerdr: its commands, keys and all.
-				return m, func() tea.Msg { return HelpMsg{} }
-			}
+			// ? is help everywhere in nerdr: its commands, keys and all.
+			return m, func() tea.Msg { return HelpMsg{} }
 		}
 		if m.nerdrDraws() {
 			// The shell has the keys while it runs; these arrive only
@@ -577,11 +501,6 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			if m.focus == focusRelations {
-				if cmd, handled := m.activateRelationsRow(); handled {
-					return m, cmd
-				}
-			}
 			m.focusRight()
 			return m, m.loadFocus()
 
@@ -597,7 +516,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 			}
-			if m.embedded && m.focus <= focusFiles {
+			if m.focus <= focusFiles {
 				if msg.String() == "esc" {
 					return m, m.quit()
 				}
@@ -621,18 +540,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.cycleDiffMode()
 
 		case "[":
-			if m.embedded {
-				return m, m.cyclePin(-1)
-			}
-			m.cycleWorktree(-1)
-			return m, nil
+			return m, m.cyclePin(-1)
 
 		case "]":
-			if m.embedded {
-				return m, m.cyclePin(1)
-			}
-			m.cycleWorktree(1)
-			return m, nil
+			return m, m.cyclePin(1)
 
 		case "w":
 			return m, m.toggleOverview()
@@ -641,10 +552,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.cycleDiffColors()
 
 		case "L":
-			if m.embedded {
-				return m, m.toggleSide()
-			}
-			return m, nil
+			return m, m.toggleSide()
 
 		case "/":
 			m.startFilter()
@@ -685,22 +593,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "z":
 			m.zoomed = !m.zoomed
-			// The viewports are sized from the pane heights, which just
-			// changed, so re-sync both cursors against the new geometry.
+			// The viewport is sized from the pane height, which just
+			// changed, so re-sync the cursor against the new geometry.
 			m.setDiffCursor(m.diffCursor)
-			m.setRelCursor(m.relCursor)
-			return m, nil
-
-		case "tab":
-			m.setRelationsTab(m.relationsTab + 1)
-			return m, nil
-
-		case "shift+tab":
-			m.setRelationsTab(m.relationsTab - 1)
-			return m, nil
-
-		case "1", "2":
-			m.setRelationsTab(int(msg.String()[0] - '1'))
 			return m, nil
 		}
 	}
@@ -708,73 +603,32 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// setRelationsTab selects a relations tab, wrapping at both ends so tab
-// and shift+tab cycle. The cursor is reset because the new tab's rows are
-// unrelated to the old ones.
-func (m *Model) setRelationsTab(i int) {
-	m.relationsTab = ((i % relationsTabCount) + relationsTabCount) % relationsTabCount
-	m.relCursor, m.relViewTop = 0, 0
-	m.buildRelRows()
-}
-
 // move shifts the cursor within the currently focused pane.
 func (m *Model) move(delta int) {
 	switch m.focus {
-	case focusRepos:
-		m.repoIdx = clamp(m.repoIdx+delta, 0, len(m.repos)-1)
-	case focusWorktrees:
-		m.wtIdx = clamp(m.wtIdx+delta, 0, len(m.worktrees)-1)
 	case focusFiles:
 		m.moveCursor(delta)
 	case focusDiff:
 		m.setDiffCursor(m.diffCursor + delta)
-	case focusRelations:
-		m.setRelCursor(m.relCursor + delta)
 	}
 }
 
 // onFocusMove reloads content when the cursor changes the selected context.
-// Browsing repos only refreshes the worktree list and blanks what sits
-// below it: which files changed is a property of a worktree, and a repo
-// with several of them has no answer until one is picked. Browsing
-// worktrees does load the files, so the list follows the selection.
 func (m *Model) onFocusMove() tea.Cmd {
-	switch m.focus {
-	case focusRepos:
-		return m.onRepoMove()
-	case focusWorktrees:
-		return m.onWorktreeMove()
-	case focusFiles:
+	if m.focus == focusFiles {
 		return m.loadDiff()
 	}
 	return nil
 }
 
-// onRepoMove and onWorktreeMove are what a move in those panes entails,
-// named separately because the mouse can move a pane it has not focused.
-func (m *Model) onRepoMove() tea.Cmd {
-	m.loadWorktrees()
-	m.resetFilesPane()
-	return nil
-}
-
-func (m *Model) onWorktreeMove() tea.Cmd {
-	m.loadFiles()
-	return m.loadDiff()
-}
-
 func (m *Model) focusRight() {
-	last := focusRelations
-	if m.embedded {
-		last = focusDiff // no relations pane beside an agent
-	}
-	if m.focus < last {
+	if m.focus < focusDiff {
 		m.focus++
 	}
 }
 
 func (m *Model) focusLeft() {
-	if m.focus > focusRepos {
+	if m.focus > focusFiles {
 		m.focus--
 	}
 }
@@ -782,14 +636,6 @@ func (m *Model) focusLeft() {
 // loadFocus loads the data required by the currently focused pane.
 func (m *Model) loadFocus() tea.Cmd {
 	switch m.focus {
-	case focusRepos:
-		return nil
-	case focusWorktrees:
-		// Entering the worktree pane picks the worktree the cursor is
-		// already on, so the files for it load here too.
-		m.loadWorktrees()
-		m.loadFiles()
-		return m.loadDiff()
 	case focusFiles:
 		return m.loadFiles()
 	case focusDiff:
@@ -801,34 +647,17 @@ func (m *Model) loadFocus() tea.Cmd {
 // page moves the focused pane's cursor by one screenful, in whichever
 // direction dir points.
 func (m *Model) page(dir int) {
-	switch m.focus {
-	case focusRelations:
-		m.setRelCursor(m.relCursor + dir*m.relationsInnerHeight())
-	default:
-		m.scrollDiffTo(m.diffViewTop + dir*m.diffInnerHeight())
-	}
+	m.scrollDiffTo(m.diffViewTop + dir*m.diffInnerHeight())
 }
 
-// openEditor opens the selected file in the user's editor: a terminal
-// one suspends the TUI until it exits, one with its own window is started
-// beside it.
+// openEditor asks nerdr to open the selected file in the user's editor.
 func (m *Model) openEditor() tea.Cmd {
 	path, line, ok := m.editorTarget()
 	if !ok {
 		return nil
 	}
 	dir := m.worktrees[m.wtIdx].Path
-	if m.embedded {
-		return func() tea.Msg { return EditMsg{Dir: dir, File: path, Line: line} }
-	}
-	c := editor.FileCommand(dir, path, line)
-	if c.Window {
-		if err := launch.Detached(c.Argv); err != nil {
-			m.setToast(c.Argv[0] + ": " + err.Error())
-		}
-		return nil
-	}
-	return tea.ExecProcess(exec.Command(c.Argv[0], c.Argv[1:]...), func(error) tea.Msg { return editorDoneMsg{} })
+	return func() tea.Msg { return EditMsg{Dir: dir, File: path, Line: line} }
 }
 
 // editorTarget is the selected file, as a full path, and the line being
@@ -925,28 +754,6 @@ func (m *Model) setToast(s string) {
 	m.toastTicks = 4
 }
 
-// relationsPaneHeight returns the height of the relations panel row. h is
-// m.height, or 0 to use the same fallback View() uses when the terminal
-// size is unknown.
-func (m Model) relationsPaneHeight(h int) int {
-	if h == 0 {
-		h = 32
-	}
-	if m.embedded {
-		return 0 // see embeddedLayout
-	}
-	if m.zoomed {
-		if m.focus == focusRelations {
-			return h - m.statusRows() - m.menuRows() // everything but the menu and status bar
-		}
-		return 0
-	}
-	if h-1 < 24 {
-		return 7
-	}
-	return 10
-}
-
 // topPaneHeight returns the height of the repo/worktree/files/diff row —
 // shared by View() (to lay out those panes) and the diff-pane cursor logic
 // (to know the viewport height without re-rendering). h is m.height, or 0
@@ -956,12 +763,9 @@ func (m Model) topPaneHeight(h int) int {
 		h = 32
 	}
 	if m.zoomed {
-		if m.focus == focusRelations {
-			return 3 // not shown; keep it valid for any incidental caller
-		}
 		return h - m.statusRows() - m.menuRows()
 	}
-	topH := h - m.statusRows() - m.menuRows() - m.relationsPaneHeight(h)
+	topH := h - m.statusRows() - m.menuRows()
 	if topH < 3 {
 		topH = 3
 	}
@@ -1001,7 +805,7 @@ func (m Model) diffView() diffView {
 // without re-rendering.
 func (m Model) diffInnerHeight() int {
 	paneH := m.topPaneHeight(m.height)
-	if m.embedded && !m.zoomed {
+	if !m.zoomed {
 		H := m.height
 		if H == 0 {
 			H = 32
@@ -1024,45 +828,6 @@ func (m Model) diffInnerHeight() int {
 func (m *Model) setDiffCursor(v int) {
 	m.diffCursor = clamp(v, 0, max(0, len(m.diffLines)-1))
 	m.diffViewTop = m.diffView().fit(m.diffViewTop, m.diffCursor)
-}
-
-// relationsInnerHeight returns the number of rows actually visible in the
-// relations panel, matching renderRelations's own innerH.
-func (m Model) relationsInnerHeight() int {
-	h := m.relationsPaneHeight(m.height) - 3 - hintRows
-	if h < 1 {
-		return 1
-	}
-	return h
-}
-
-// setRelCursor is the relations-panel counterpart of setDiffCursor: moves
-// the cursor within m.relRows (clamped) and keeps the persisted viewport in
-// sync using the same minimal-scroll rule.
-func (m *Model) setRelCursor(v int) {
-	m.relCursor = clamp(v, 0, max(0, len(m.relRows)-1))
-	innerH := m.relationsInnerHeight()
-	if m.relCursor < m.relViewTop {
-		m.relViewTop = m.relCursor
-	} else if m.relCursor >= m.relViewTop+innerH {
-		m.relViewTop = m.relCursor - innerH + 1
-	}
-	if m.relViewTop < 0 {
-		m.relViewTop = 0
-	}
-}
-
-// activateRelationsRow opens the GitHub URL carried by the row under the
-// relations-panel cursor, and reports whether there was one. Jumping to
-// code is the diff pane's own annotations; the panel only links out.
-func (m *Model) activateRelationsRow() (tea.Cmd, bool) {
-	if m.relCursor < 0 || m.relCursor >= len(m.relRows) {
-		return nil, false
-	}
-	if url := m.relRows[m.relCursor].openURL; url != "" {
-		return openInBrowser(url), true
-	}
-	return nil, false
 }
 
 // openInBrowser opens url in the user's browser; see internal/browser.

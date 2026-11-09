@@ -1,12 +1,11 @@
 package review
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
-
-	"github.com/nerdr-dev/nerdr/internal/git"
 )
 
 // TestLayoutMatchesWhatIsDrawn is the test this whole design exists for: a
@@ -14,25 +13,22 @@ import (
 // ones on screen. It renders the view and checks that each pane's heading
 // really is at the top-left corner layout claims for it.
 func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
-	m := Model{src: Local{},
-		width: 120, height: 40,
-		repos: []git.Repo{{Name: "myrepo"}},
-	}
+	m := Model{src: Local{}, width: 120, height: 40}
 	lay := m.layout(m.width, m.height)
 	screen := strings.Split(stripANSI(m.View()), "\n")
 
-	// The heading sits on the pane's second row, one cell in from its left
-	// border.
+	// The heading sits in the pane's top border, one cell in from its
+	// left corner.
 	headingAt := func(r rect) string {
-		if r.y+1 >= len(screen) {
+		if r.y >= len(screen) {
 			t.Fatalf("pane at %+v is off the bottom of a %d-row screen", r, len(screen))
 		}
-		row := []rune(screen[r.y+1])
+		row := []rune(screen[r.y])
 		if r.x+1 >= len(row) {
 			t.Fatalf("pane at %+v starts past the end of the row", r)
 		}
 		end := min(r.x+r.w-1, len(row))
-		return strings.TrimSpace(string(row[r.x+1 : end]))
+		return strings.TrimLeft(string(row[r.x+1:end]), "─ ")
 	}
 
 	for _, c := range []struct {
@@ -40,8 +36,6 @@ func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
 		r    rect
 		want string
 	}{
-		{"repos", lay.repos, "repo"},
-		{"worktrees", lay.worktrees, "worktree"},
 		{"files", lay.files, "files"},
 		{"diff", lay.diff, "diff"},
 	} {
@@ -51,52 +45,13 @@ func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
 		}
 	}
 
-	// The panes tile the top row without overlapping or leaving a gap.
-	if lay.repos.x+lay.repos.w != lay.files.x {
-		t.Errorf("gap or overlap between the repo column and the files pane: %+v %+v", lay.repos, lay.files)
-	}
-	if lay.files.x+lay.files.w != lay.diff.x {
+	// The panes meet without overlapping or leaving a gap.
+	if m.sideBySide(m.width) {
+		if lay.files.x+lay.files.w != lay.diff.x {
+			t.Errorf("gap or overlap between the files and diff panes: %+v %+v", lay.files, lay.diff)
+		}
+	} else if lay.files.y+lay.files.h != lay.diff.y {
 		t.Errorf("gap or overlap between the files and diff panes: %+v %+v", lay.files, lay.diff)
-	}
-	if lay.repos.y+lay.repos.h != lay.worktrees.y {
-		t.Errorf("repo and worktree panes do not meet: %+v %+v", lay.repos, lay.worktrees)
-	}
-}
-
-// TestClickSelectsTheRowUnderThePointer covers the arithmetic that turns a
-// screen row into a list index — off by one here means clicking a file
-// opens its neighbour.
-func TestClickSelectsTheRowUnderThePointer(t *testing.T) {
-	m := Model{src: Local{}, width: 120, height: 40, repos: []git.Repo{
-		{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"},
-	}}
-	lay := m.layout(m.width, m.height)
-
-	// Third item: border, heading, then the rows.
-	y := lay.repos.y + 2 + 2
-	nm, _ := m.Update(tea.MouseMsg{
-		X: lay.repos.x + 3, Y: y,
-		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
-	})
-	m = nm.(Model)
-
-	if m.repoIdx != 2 {
-		t.Fatalf("clicking the third row selected repo %d (%v), want 2",
-			m.repoIdx, m.repos[m.repoIdx].Name)
-	}
-	if m.focus != focusRepos {
-		t.Fatalf("a click should focus the pane it landed in, got %v", m.focus)
-	}
-
-	// A click on the pane's heading or border selects nothing.
-	before := m.repoIdx
-	nm, _ = m.Update(tea.MouseMsg{
-		X: lay.repos.x + 3, Y: lay.repos.y,
-		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
-	})
-	m = nm.(Model)
-	if m.repoIdx != before {
-		t.Fatalf("a click on the border moved the selection to %d", m.repoIdx)
 	}
 }
 
@@ -159,7 +114,7 @@ func TestScrollbar(t *testing.T) {
 	if want := len(lines) - m.diffInnerHeight(); m.diffViewTop != want {
 		t.Fatalf("a click at the bottom of the track goes to the end: top %d, want %d", m.diffViewTop, want)
 	}
-	nm, _ = m.Update(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: lay.diff.y + 2,
+	nm, _ = m.Update(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: lay.diff.y + 2 + m.diffHeader(),
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
 	m = nm.(Model)
 	if m.diffViewTop != 0 {
@@ -187,38 +142,6 @@ func TestThumb(t *testing.T) {
 		if pos, size := thumb(c.total, c.top, c.innerH); pos != c.pos || size != c.size {
 			t.Errorf("thumb(%d, %d, %d) = %d, %d; want %d, %d", c.total, c.top, c.innerH, pos, size, c.pos, c.size)
 		}
-	}
-}
-
-// TestMouseIsOffUntilAskedFor covers the default: text selection belongs to
-// the terminal until the user says otherwise.
-func TestMouseIsOffUntilAskedFor(t *testing.T) {
-	m := New(t.TempDir(), Local{})
-	if m.mouseOn {
-		t.Fatal("mouse reporting must be off by default")
-	}
-	if !m.EnableMouse().mouseOn {
-		t.Fatal("EnableMouse (the --mouse flag) should turn it on")
-	}
-
-	nm, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
-	m = nm.(Model)
-	if !m.mouseOn || cmd == nil {
-		t.Fatalf("M should turn the mouse on and tell the terminal: on=%v cmd=%v", m.mouseOn, cmd != nil)
-	}
-	// The message types are unexported, so compare against the command
-	// bubbletea itself would send.
-	if got := cmd(); got != tea.EnableMouseCellMotion() {
-		t.Fatalf("expected the enable command, got %#v", got)
-	}
-
-	nm, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("M")})
-	m = nm.(Model)
-	if m.mouseOn {
-		t.Fatal("M again should turn it back off")
-	}
-	if got := cmd(); got != tea.DisableMouse() {
-		t.Fatalf("expected the disable command, got %#v", got)
 	}
 }
 
@@ -254,7 +177,7 @@ func TestClickLeavingThePeekSelectsTheClickedFile(t *testing.T) {
 		"more.ts": "export const a = 1;\n",
 		"zed.ts":  "export const z = 1;\n",
 	})
-	m := New(repo, Local{})
+	m := pinned(t, filepath.Join(repo, "repo"))
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
@@ -273,7 +196,7 @@ func TestClickLeavingThePeekSelectsTheClickedFile(t *testing.T) {
 	}
 	lay := m.layout(m.width, m.height)
 	nm, _ = m.Update(tea.MouseMsg{
-		X: lay.files.x + 3, Y: lay.files.y + 2 + idx,
+		X: lay.files.x + 3, Y: lay.files.y + 2 + m.filesHeader() + idx,
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
 	})
 	m = nm.(Model)
@@ -297,7 +220,7 @@ func TestDraggingTheFilesScrollbarLeavesThePeek(t *testing.T) {
 		"more.ts": "export const a = 1;\n",
 		"zed.ts":  "export const z = 1;\n",
 	})
-	m := New(repo, Local{})
+	m := pinned(t, filepath.Join(repo, "repo"))
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff

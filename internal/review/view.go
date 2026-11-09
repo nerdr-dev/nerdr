@@ -13,7 +13,7 @@ import (
 // menuRows is the row the top-level menu occupies, above everything else;
 // none inside nerdr while it shows the screens in a column of its own.
 func (m Model) menuRows() int {
-	if m.embedded && !m.menuOn {
+	if !m.menuOn {
 		return 0
 	}
 	return 1
@@ -47,12 +47,6 @@ func (m Model) View() string {
 	// hit-tests against (see layout).
 	lay := m.layout(W, H)
 
-	reposPane := renderPane(m.repoItems(), m.repoIdx, lay.repos.w, lay.repos.h,
-		m.hasFocus(focusRepos), "repo", hintRepos)
-	wtPane := renderPane(m.wtItems(), m.wtIdx, lay.worktrees.w, lay.worktrees.h,
-		m.hasFocus(focusWorktrees), "worktree", hintWorktrees)
-	leftCol := lipgloss.JoinVertical(lipgloss.Left, reposPane, wtPane)
-
 	filesTitle := fmt.Sprintf("files (%d)", len(m.files))
 	if m.showBase {
 		filesTitle = fmt.Sprintf("files (%d) vs %s", len(m.files), m.baseRef)
@@ -79,7 +73,7 @@ func (m Model) View() string {
 		}
 		filesPane = renderBarPane(fileItems, fileIdx, lay.files.w, lay.files.h,
 			m.hasFocus(focusFiles), filesTitle, m.repoBarView(lay.files.w-2), m.filesHint())
-	case m.embedded:
+	default:
 		filesPane = renderTitledPane(fileItems, fileIdx, lay.files.w, lay.files.h,
 			m.hasFocus(focusFiles), filesTitle, m.filesHint())
 	}
@@ -107,26 +101,14 @@ func (m Model) View() string {
 		return lipgloss.JoinVertical(lipgloss.Left, append(m.menuPart(W), m.zoomedView(W, H, filesTitle, diffTitle))...)
 	}
 
-	diffPane := renderDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h,
+	diffPane := renderTitledDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h,
 		m.hasFocus(focusDiff), diffTitle, m.diffHint(), m.diffSel)
-	if m.embedded {
-		diffPane = renderTitledDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h,
-			m.hasFocus(focusDiff), diffTitle, m.diffHint(), m.diffSel)
-	}
 
-	top := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, filesPane, diffPane)
-	switch {
-	case m.embedded && m.sideBySide(W):
+	top := lipgloss.JoinVertical(lipgloss.Left, filesPane, diffPane)
+	if m.sideBySide(W) {
 		top = lipgloss.JoinHorizontal(lipgloss.Top, filesPane, diffPane)
-	case m.embedded:
-		top = lipgloss.JoinVertical(lipgloss.Left, filesPane, diffPane)
 	}
-
-	parts := append(m.menuPart(W), top)
-	if !m.embedded {
-		parts = append(parts, m.renderRelations(lay.relations.w, lay.relations.h))
-	}
-	return m.withStatus(W, parts...)
+	return m.withStatus(W, append(m.menuPart(W), top)...)
 }
 
 // withStatus puts the status bar, or the filter being typed, under parts,
@@ -150,14 +132,8 @@ func (m Model) zoomedView(W, H int, filesTitle, diffTitle string) string {
 
 	var pane string
 	switch m.focus {
-	case focusRepos:
-		pane = renderPane(m.repoItems(), m.repoIdx, W, body, true, "repo", hintRepos)
-	case focusWorktrees:
-		pane = renderPane(m.wtItems(), m.wtIdx, W, body, true, "worktree", hintWorktrees)
 	case focusFiles:
 		pane = renderPane(m.treeItems(W-2), m.cursor, W, body, true, filesTitle, m.filesHint())
-	case focusRelations:
-		pane = m.renderRelations(W, body)
 	default:
 		pane = renderDiff(m.diffLines, m.diffCursor, m.diffViewTop, W, body, true,
 			diffTitle+"  [z: back]", m.diffHint(), m.diffSel)
@@ -187,7 +163,7 @@ func (m Model) menuPart(W int) []string {
 // the active one highlighted. The keys are in the labels because a menu you
 // cannot see how to operate is not a menu.
 func (m Model) menuBar(width int) string {
-	if m.embedded && width > 2 {
+	if width > 2 {
 		// nerdr frames the menu: its sides go in the end columns.
 		return " " + m.menuItems(width-2) + " "
 	}
@@ -245,28 +221,21 @@ func (m Model) menuShown(width int) []string {
 // review layout's own keys live in its panes; the PR screen has no panes to
 // move between, so almost nothing is left to say here.
 func (m Model) globalHints() string {
-	if m.embedded {
-		menu := "m or F1-F5 menu"
-		if m.screensHint != "" {
-			menu = "m or " + m.screensHint + " menu"
-		}
-		if m.mode != modeReview {
-			return menu + " · esc agent"
-		}
-		zoom := "z pane alone"
-		if m.zoomed {
-			zoom = "z all panes"
-		}
-		if m.wideKey != "" {
-			zoom += " · " + m.wideKey + " full width"
-		}
-		return "↑↓ move · ←→ pane · enter in · " + zoom + " · m menu · esc agent"
+	menu := "m or F1-F5 menu"
+	if m.screensHint != "" {
+		menu = "m or " + m.screensHint + " menu"
 	}
-	switch m.mode {
-	case modePRs:
-		return "m or F1-F2 menu · M mouse · q quit"
+	if m.mode != modeReview {
+		return menu + " · esc agent"
 	}
-	return "↑↓ move · ←→ pane · enter in · m menu · M mouse · q quit"
+	zoom := "z pane alone"
+	if m.zoomed {
+		zoom = "z all panes"
+	}
+	if m.wideKey != "" {
+		zoom += " · " + m.wideKey + " full width"
+	}
+	return "↑↓ move · ←→ pane · enter in · " + zoom + " · m menu · esc agent"
 }
 
 func (m Model) statusBar(width int) string {
@@ -306,27 +275,21 @@ func (m Model) prView(W, H int) string {
 		cursor = entries[m.prConvCursor].row
 	}
 	hint := "r reload"
-	if m.prOK {
-		hint = "o open in browser · enter open comment · a draft a reply · A reply to all · f fix ci · r reload"
-	}
 	h := H - m.statusRows() - m.menuRows()
-	if m.embedded {
-		// nerdr has f, a and A on its row of keys above, as buttons.
-		if m.prOK {
-			hint = "o open in browser · enter open comment · r reload"
-		}
-		switch {
-		case m.OnRepoList():
-			hint = "↑↓ repository · enter comments · r reload"
-		case m.manyRepos():
-			hint = "← repositories · " + hint
-		}
-		// As nerdr draws all your pull requests: the title in the border,
-		// and the two views on the line below it, where they stay.
-		views := strings.Join(PRViews(ViewBranch, m.prNews, m.issueNews), "") + "  " + styleHints("tab next")
-		return renderTitledList(items, cursor, m.prConvViewTop, W, h, !m.unfocused, title, views, hint)
+	// nerdr has f, a and A on its row of keys above, as buttons.
+	if m.prOK {
+		hint = "o open in browser · enter open comment · r reload"
 	}
-	return renderScrollList(items, cursor, m.prConvViewTop, W, h, true, title, "", hint)
+	switch {
+	case m.OnRepoList():
+		hint = "↑↓ repository · enter comments · r reload"
+	case m.manyRepos():
+		hint = "← repositories · " + hint
+	}
+	// As nerdr draws all your pull requests: the title in the border,
+	// and the two views on the line below it, where they stay.
+	views := strings.Join(PRViews(ViewBranch, m.prNews, m.issueNews), "") + "  " + styleHints("tab next")
+	return renderTitledList(items, cursor, m.prConvViewTop, W, h, !m.unfocused, title, views, hint)
 }
 
 // renderTitledList is renderScrollList with title in the top border, the
@@ -471,26 +434,6 @@ func (m Model) overviewView() string {
 		H = 32
 	}
 	return renderPane(items, m.ovCursor, W, H, true, "worktrees", "enter select · esc back")
-}
-
-func (m Model) repoItems() []string {
-	items := make([]string, len(m.repos))
-	for i, r := range m.repos {
-		items[i] = r.Name
-	}
-	return items
-}
-
-func (m Model) wtItems() []string {
-	items := make([]string, len(m.worktrees))
-	for i, w := range m.worktrees {
-		branch := w.Branch
-		if branch == "" {
-			branch = "(detached)"
-		}
-		items[i] = branch
-	}
-	return items
 }
 
 // emptyFiles is what the file pane says when the change it shows has no
@@ -644,9 +587,7 @@ func elideLeft(s string, max int) string {
 // Each pane advertises the keys that act on it; the status bar carries
 // only what works anywhere.
 const (
-	hintRepos     = "w all worktrees"
-	hintWorktrees = "[ ] switch · b base"
-	hintFiles     = "/ filter · t order/tree"
+	hintFiles = "/ filter · t order/tree"
 	// n/p change the selected file without leaving the diff, which is
 	// where that is worth knowing — in the file pane the arrows already
 	// do it. The row only fits so many keys, so "u back" takes the
@@ -667,31 +608,27 @@ const (
 func (m *Model) filesHints() []string {
 	hints := strings.Split(hintFiles, hintSep)
 	switch {
-	case m.embedded && m.walkWanted != "" && m.walkWanted == m.curWT:
+	case m.walkWanted != "" && m.walkWanted == m.curWT:
 		hints = append(hints, "g guide…")
 	case m.walk && m.walkOld:
 		hints = append(hints, "g guide (old)")
 	case m.walk:
 		hints = append(hints, "g guide")
-	case m.embedded:
+	default:
 		hints = append(hints, "g make guide")
 	}
-	if m.walk && m.embedded {
+	if m.walk {
 		hints = append(hints, "G new guide")
 	}
-	if m.embedded {
-		where := "beside"
-		if m.sideBySide(m.width) {
-			where = "above"
-		}
-		hints = append(hints, "L files "+where)
+	where := "beside"
+	if m.sideBySide(m.width) {
+		where = "above"
 	}
+	hints = append(hints, "L files "+where)
 	if _, ok := m.explanation(); ok {
 		hints = append(hints, "e explanation")
 	}
-	if m.embedded {
-		hints = append(hints, "E agent, explain")
-	}
+	hints = append(hints, "E agent, explain")
 	return hints
 }
 
@@ -893,70 +830,4 @@ func fit(s string, w int) string {
 	}
 	trunc := lipgloss.NewStyle().MaxWidth(w).Render(s)
 	return trunc + strings.Repeat(" ", max(0, w-lipgloss.Width(trunc)))
-}
-
-// renderRelations renders the relations panel: tab line plus m.relRows
-// (already built for the active tab — see buildRelRows), with a cursor
-// marker on the selected row when the panel has focus, matching the diff
-// pane's viewport behaviour (cursor moves freely within view, scrolls only
-// at the edge).
-func (m Model) renderRelations(width, height int) string {
-	if height < 3 {
-		height = 3
-	}
-	innerW := width - 2
-	innerH := height - 3 - hintRows // tab line + top/bottom border + hints
-	if innerH < 1 {
-		innerH = 1
-	}
-	active := m.hasFocus(focusRelations)
-
-	// Built segment by segment rather than through headingRow: the tab
-	// labels are styled individually, so the bar's background has to be
-	// carried by each of them instead of wrapped around the whole row.
-	var b strings.Builder
-	for i, t := range relationsTabLabels {
-		if i == m.relationsTab {
-			b.WriteString(selectedStyle.Render(" " + t + " "))
-		} else {
-			b.WriteString(headingStyle.Render(" " + t + " "))
-		}
-	}
-	if pad := innerW - lipgloss.Width(b.String()); pad > 0 {
-		b.WriteString(headingStyle.Render(strings.Repeat(" ", pad)))
-	}
-	tabLine := fit(b.String(), innerW)
-
-	lines := m.relRows
-	viewTop := clamp(m.relViewTop, 0, max(0, len(lines)-1))
-	if m.relCursor < viewTop {
-		viewTop = m.relCursor
-	} else if m.relCursor >= viewTop+innerH {
-		viewTop = max(0, m.relCursor-innerH+1)
-	}
-	end := min(viewTop+innerH, len(lines))
-
-	rows := make([]string, 0, innerH)
-	for i, rl := range lines[viewTop:end] {
-		gutter := "  "
-		text := rl.text
-		if rl.actionable() {
-			text = refStyle.Render(rl.text)
-		}
-		if active && viewTop+i == m.relCursor {
-			gutter = cursorMarkStyle.Render("▶ ")
-		}
-		rows = append(rows, gutter+fit(text, innerW-2))
-	}
-	for len(rows) < innerH {
-		rows = append(rows, strings.Repeat(" ", innerW))
-	}
-
-	rows = append(rows, hintRow("tab/1-3 switch tab · enter opens the link on GitHub", innerW, active))
-
-	style := borderInactive
-	if active {
-		style = borderActive
-	}
-	return scrollbar(style.Render(tabLine+"\n"+strings.Join(rows, "\n")), len(lines), viewTop, innerH, 2, active)
 }
