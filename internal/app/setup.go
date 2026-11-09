@@ -9,7 +9,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
-	"github.com/nerdr-dev/nerdr/internal/store"
 	"github.com/nerdr-dev/nerdr/skills"
 
 	"github.com/charmbracelet/bubbles/textinput"
@@ -39,6 +38,9 @@ type setupDialog struct {
 	// are no tabs yet.
 	then func(m *Model) tea.Cmd
 	err  string
+	// saving is the job of the answers core is saving: the dialog stays
+	// until core says they are, and says why when they are not.
+	saving string
 }
 
 var setupChoices = []struct{ value, label string }{
@@ -72,7 +74,11 @@ func (m *Model) openSetup(then func(m *Model) tea.Cmd) tea.Cmd {
 }
 
 func (d *setupDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
-	switch k := msg.String(); k {
+	k := msg.String()
+	if d.saving != "" && k != "esc" && k != "ctrl+c" {
+		return nil // the answers are being saved
+	}
+	switch k {
 	case "esc", "ctrl+c":
 		// Asked again at the next start.
 		m.dialog = nil
@@ -161,20 +167,26 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		// Asked before any tab is made, so the new worktrees go there
 		// from now on, not only from the next start.
 		moveWtRoot = true
-		d.worktreesSet = true
 	}
-	m.Cfg.EnabledSkills = enabled
-	m.Cfg.Install = location
-	if notes != nil {
-		m.Cfg.DataDir = *notes
-		store.SetDataDir(*notes)
+	// Core's to write, in the file where it runs, and to go by once it
+	// has: what comes next waits for it to say so (saved).
+	d.err = ""
+	var save tea.Cmd
+	d.saving, save = m.editCoreConfigJob("the setup", core.EditConfig{Keys: keys, MoveWtRoot: moveWtRoot, Now: true,
+		Apply: &core.ApplySkills{Otherwise: "saved in " + m.ConfigPath()}})
+	return save
+}
+
+// saved is core's word on the answers being saved: the dialog closes and
+// what follows opens, or it stays, saying why they were not.
+func (d *setupDialog) saved(m *Model, ev core.ConfigSavedMsg) tea.Cmd {
+	d.saving = ""
+	if ev.Err != "" {
+		d.err = "could not write " + m.ConfigPath() + ": " + ev.Err
+		return nil
 	}
 	m.dialog = nil
-	// Core's to write, in the file where it runs; what is above is what
-	// the TUI shows until core's own state says so.
-	save := m.editCoreConfig("the setup", core.EditConfig{Keys: keys, MoveWtRoot: moveWtRoot, Now: true,
-		Apply: &core.ApplySkills{Otherwise: "saved in " + m.ConfigPath()}})
-	return tea.Batch(save, d.next(m))
+	return d.next(m)
 }
 
 func (d *setupDialog) next(m *Model) tea.Cmd {
@@ -283,6 +295,9 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		dim("    absolute, e.g. ~/nerdr-data — one folder, a subfolder per repository"),
 		"",
 		m.keys("enter", "save in "+core.TildePath(config.Path(), home), "tab", "next question", "esc", "ask next time"))
+	if d.saving != "" {
+		lines = append(lines, "", dim("saving…"))
+	}
 	if d.err != "" {
 		lines = append(lines, "", warn(d.err))
 	}

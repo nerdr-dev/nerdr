@@ -18,6 +18,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 	"github.com/nerdr-dev/nerdr/skills"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -473,5 +474,39 @@ func TestAgyHooksGoWithTheSkills(t *testing.T) {
 	m.InstallProjectSkills(tb)
 	if b, _ := os.ReadFile(kept); string(b) != "{}\n" {
 		t.Fatalf("the repository's hooks file was changed:\n%s", b)
+	}
+}
+
+// TestSetupWaitsUntilSaved: the setup's answers are core's to save, where
+// it runs. The dialog stays, and what follows does not open, until core
+// says they are saved; when they could not be, it stays with the answers
+// and says why.
+func TestSetupWaitsUntilSaved(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	cfgHome := filepath.Join(t.TempDir(), "not-a-folder")
+	if err := os.WriteFile(cfgHome, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_CONFIG_HOME", cfgHome) // the file cannot be written
+	m := testModel(t)
+	followed := false
+	m.openSetup(func(*Model) tea.Cmd { followed = true; return nil })
+	d := m.dialog.(*setupDialog)
+	cmd := d.key(m, keyMsg("enter"))
+	if m.dialog != d || followed {
+		t.Fatal("closed before core said the answers were saved")
+	}
+	if !strings.Contains(ansi.Strip(d.view(m, 120, 60)), "saving…") {
+		t.Fatal("does not say it is saving")
+	}
+	settle(m, cmd)
+	if m.dialog != d || followed || d.err == "" || d.saving != "" {
+		t.Fatalf("not saved: dialog %T, followed %v, err %q", m.dialog, followed, d.err)
+	}
+
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	settle(m, d.key(m, keyMsg("enter")))
+	if m.dialog != nil || !followed {
+		t.Fatalf("saved: dialog %T, followed %v, err %q", m.dialog, followed, d.err)
 	}
 }
