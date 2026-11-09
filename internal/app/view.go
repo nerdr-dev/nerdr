@@ -308,12 +308,21 @@ func (m *Model) activeBg() lipgloss.Color {
 // left leave them: msgRoom, or what the badges need when that is more,
 // though never more than half the row. It is kept whether a message
 // shows or not, so the entries do not move about as messages come and go.
+// hostBadge names the machine core runs on, when it is not this one.
+func (m *Model) hostBadge() string {
+	if m.coreHost == "" {
+		return ""
+	}
+	return m.tip(lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).Bold(true).
+		Render(" "+m.coreHost+" "), "The agents of these tabs run on "+m.coreHost)
+}
+
 func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	hint := " " + m.pk("?") + " help "
 	if m.focus == core.FocusReview {
 		hint = " review · esc → agent" + hint
 	}
-	status := m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
+	status := m.hostBadge() + m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
 		func(m *Model) tea.Cmd {
 			return m.openPalette()
 		}), "All commands")

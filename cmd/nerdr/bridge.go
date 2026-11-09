@@ -46,6 +46,11 @@ func runBridge(args []string) int {
 		fmt.Fprintln(os.Stderr, "usage: nerdr bridge FOLDER  (run by nerdr connect over ssh)")
 		return 2
 	}
+	// Nothing the ssh session left open goes to a core started here,
+	// which lives on: a connection it held would never close.
+	for fd := 3; fd < 1024; fd++ {
+		syscall.CloseOnExec(fd)
+	}
 	if _, err := os.Stdout.Write(attach.Preamble(version())); err != nil {
 		return 1
 	}

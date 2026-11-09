@@ -36,6 +36,9 @@ const usage = `nerdr — agents in git worktrees, one per tab, with a live revie
 
 usage:
   nerdr              start in the current folder (restores its tabs, if any)
+  nerdr connect HOST:FOLDER
+                     the tabs of FOLDER on HOST, over ssh (nerdr installed
+                     there too); FOLDER is ~ when not given
   nerdr help         this text
   nerdr version      which nerdr this is
 
@@ -183,7 +186,11 @@ func main() {
 			// ssh; see runBridge.
 			os.Exit(runBridge(os.Args[2:]))
 		case "connect":
-			if err := runClient(false); err != nil {
+			remote := ""
+			if len(os.Args) > 2 {
+				remote = os.Args[2]
+			}
+			if err := runClient(false, remote); err != nil {
 				fmt.Fprintln(os.Stderr, "nerdr:", err)
 				os.Exit(1)
 			}
@@ -209,7 +216,7 @@ func main() {
 		// The agents in a core of their own, which the terminal is a
 		// client of: what nerdr does unless NERDR_HOLDER=0, or a program
 		// in a tab started it.
-		if err := runClient(true); err != nil {
+		if err := runClient(true, ""); err != nil {
 			fmt.Fprintln(os.Stderr, "nerdr:", err)
 			os.Exit(1)
 		}

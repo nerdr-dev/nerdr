@@ -209,7 +209,11 @@ func (m *Model) StartLocal(send func(tea.Msg), stop <-chan struct{}) {
 // started the agents and keeps them; the TUI takes in what core told it
 // while it connected, and asks for a first tab when there is none.
 func (m *Model) initRemote() tea.Cmd {
-	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init(), m.told(m.pending)}
+	title := "nerdr"
+	if m.coreHost != "" {
+		title += " — " + m.coreHost
+	}
+	cmds := []tea.Cmd{tea.SetWindowTitle(title), m.review.Init(), m.told(m.pending)}
 	m.pending = nil
 	switch {
 	case m.Cfg.Install == "":
@@ -253,6 +257,13 @@ func (m *Model) coreGone(why string) tea.Cmd {
 	}
 	m.coreAway = true
 	m.toast("nerdr's core is gone: connecting again…")
+	return m.redialCore()
+}
+
+// redialCore tries to connect to core again, for coreGoneWait. A core on
+// another machine is tried again after that, for as long as the TUI runs:
+// a network that is down is no reason to end, and the agents work on.
+func (m *Model) redialCore() tea.Cmd {
 	redial := m.redial
 	return func() tea.Msg {
 		wait := 100 * time.Millisecond
@@ -279,6 +290,17 @@ var coreGoneWait = 20 * time.Second
 
 // coreEndedMsg is core not back within coreGoneWait, err the last try.
 type coreEndedMsg struct{ err error }
+
+// onCoreEnded ends the TUI when core is not back: when it is on another
+// machine, it says why and tries again.
+func (m *Model) onCoreEnded(msg coreEndedMsg) tea.Cmd {
+	if m.coreHost == "" {
+		m.goneErr = "nerdr's core has ended and did not come back (" + msg.err.Error() + "): start nerdr again"
+		return tea.Quit
+	}
+	m.toast(m.coreHost + ": " + msg.err.Error() + " — trying again")
+	return m.redialCore()
+}
 
 // coreBackMsg is a connection to core again, once it was gone.
 type coreBackMsg struct{ conn *attach.Conn }
