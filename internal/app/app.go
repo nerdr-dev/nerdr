@@ -15,6 +15,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/review"
+	"github.com/nerdr-dev/nerdr/internal/reviewsource"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
@@ -55,6 +56,9 @@ type Model struct {
 	remote  *core.CoreConn
 	said    core.ClientState
 	pending []core.Event
+	// reviewAsk is what the review panel reads the repositories through
+	// when core is in another process: it asks core (core.ReadForReview).
+	reviewAsk *reviewsource.Asker
 	// goneErr is why the TUI ended, its core gone; see GoneErr.
 	goneErr string
 	// closing is set once the TUI is ending of its own will: the

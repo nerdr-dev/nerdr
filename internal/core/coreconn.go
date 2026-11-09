@@ -140,14 +140,18 @@ func (cc *CoreConn) Run(r Request) ([]Event, error) {
 }
 
 // Send has core do r, waiting for nothing: what the user does in a screen,
-// and what the client shows.
-func (cc *CoreConn) Send(r Request) {
+// what the client shows, and what it asks from a goroutine of its own. It
+// reports false when r could not go.
+func (cc *CoreConn) Send(r Request) bool {
 	b, err := EncodeRequest(r)
 	if err != nil {
 		Debugf("core: %v", err)
-		return
+		return false
 	}
-	cc.conn.Send("", append([]byte{wireRequest}, b...))
+	cc.mu.Lock()
+	conn := cc.conn // Reconnect replaces it
+	cc.mu.Unlock()
+	return conn.Send("", append([]byte{wireRequest}, b...))
 }
 
 // takeUntil takes in the inbox, and reports whether the request of id is

@@ -68,6 +68,12 @@ func NewEmbedded(src Source) Model {
 	return m
 }
 
+// SetSource has the panel read the repositories through src from now on.
+func (m Model) SetSource(src Source) Model {
+	m.src = src
+	return m
+}
+
 // Pin points the panel at a tab's worktrees. Several worktrees (one tab
 // spanning several repositories) are switched between with [ and ].
 func (m Model) Pin(pins []Pin) (Model, tea.Cmd) {

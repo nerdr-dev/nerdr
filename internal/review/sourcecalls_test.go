@@ -20,7 +20,7 @@ import (
 )
 
 // The panel may run on another machine than the repositories it shows, so
-// it reads them through its Source (source.go) and nothing else.
+// it reads them through its Source (reviewsource) and nothing else.
 // TestReviewReadsThroughSource holds it to that: outside source.go, no use
 // of a function or method of the packages that run git and gh or read the
 // disk, but the pure ones in readPure and what testdata/sourcecalls.txt
@@ -31,17 +31,18 @@ var updateSourceCalls = flag.Bool("update-sourcecalls", false, "write testdata/s
 // readPkgs are the packages that run git, gh or other programs, or read
 // the disk.
 var readPkgs = map[string]bool{
-	"github.com/nerdr-dev/nerdr/internal/analysis":    true,
-	"github.com/nerdr-dev/nerdr/internal/codereview":  true,
-	"github.com/nerdr-dev/nerdr/internal/git":         true,
-	"github.com/nerdr-dev/nerdr/internal/github":      true,
-	"github.com/nerdr-dev/nerdr/internal/gitsafe":     true,
-	"github.com/nerdr-dev/nerdr/internal/order":       true,
-	"github.com/nerdr-dev/nerdr/internal/store":       true,
-	"github.com/nerdr-dev/nerdr/internal/walkthrough": true,
-	"github.com/nerdr-dev/nerdr/internal/watch":       true,
-	"github.com/nerdr-dev/nerdr/internal/why":         true,
-	"github.com/nerdr-dev/nerdr/internal/workspace":   true,
+	"github.com/nerdr-dev/nerdr/internal/analysis":     true,
+	"github.com/nerdr-dev/nerdr/internal/codereview":   true,
+	"github.com/nerdr-dev/nerdr/internal/git":          true,
+	"github.com/nerdr-dev/nerdr/internal/github":       true,
+	"github.com/nerdr-dev/nerdr/internal/gitsafe":      true,
+	"github.com/nerdr-dev/nerdr/internal/order":        true,
+	"github.com/nerdr-dev/nerdr/internal/reviewsource": true,
+	"github.com/nerdr-dev/nerdr/internal/store":        true,
+	"github.com/nerdr-dev/nerdr/internal/walkthrough":  true,
+	"github.com/nerdr-dev/nerdr/internal/watch":        true,
+	"github.com/nerdr-dev/nerdr/internal/why":          true,
+	"github.com/nerdr-dev/nerdr/internal/workspace":    true,
 	"os":      true,
 	"os/exec": true,
 }
@@ -149,7 +150,9 @@ func sourceCalls() (string, error) {
 			continue
 		}
 		name := fn.Pkg().Name() + "." + fn.Name()
-		if recv := fn.Type().(*types.Signature).Recv(); recv != nil {
+		if recv := fn.Type().(*types.Signature).Recv(); recv != nil && types.IsInterface(recv.Type()) {
+			continue // a Source's method: through m.src, as it should be
+		} else if recv != nil {
 			name = fn.Pkg().Name() + "." + types.TypeString(recv.Type(), func(*types.Package) string { return "" }) + "." + fn.Name()
 		}
 		base := filepath.Base(fset.Position(id.Pos()).Filename)

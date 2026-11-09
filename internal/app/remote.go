@@ -10,6 +10,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/reviewsource"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
@@ -27,6 +28,12 @@ func NewRemote(cfg config.Config, root string, router *input.Router, sess state.
 	m := New(cfg, root, router, state.Session{})
 	m.remote = core.Connect(conn, &m.Core, tell)
 	m.screens = m.remote.Screens
+	// The repositories are where core is, which may be another machine.
+	remote := m.remote
+	m.reviewAsk = reviewsource.NewAsker(func(job string, q reviewsource.Query) bool {
+		return remote.Send(core.ReadForReview{Job: job, Q: q})
+	})
+	m.review = m.review.SetSource(m.reviewAsk)
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
 	evs, err := m.remote.Run(core.ClientSays{State: m.clientState()})
@@ -196,6 +203,8 @@ func (m *Model) initRemote() tea.Cmd {
 // when no core comes back.
 func (m *Model) coreGone(why string) tea.Cmd {
 	m.remote.Close("")
+	// What the review panel asked will not be answered.
+	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
 	if m.closing {
 		return nil
 	}
