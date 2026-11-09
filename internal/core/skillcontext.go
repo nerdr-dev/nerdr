@@ -47,3 +47,55 @@ func FileSize(n int64) string {
 	}
 	return fmt.Sprintf("%.1f KB", float64(n)/1024)
 }
+
+// What F4 reads of the files the tab's agent reads, for a client whose
+// copy reads no file (Copy): read here, where they are. It names each
+// read by a Job of its own, and the answer by it.
+
+func init() { registerRequests(ReadContext{}, ReadContextFile{}) }
+
+// ReadContext reads what tab T's agent reads when it starts (see
+// agents.Context): told as a ContextMsg.
+type ReadContext struct {
+	Job string
+	T   TabRef
+}
+
+// ContextMsg is what ReadContext of Job found.
+type ContextMsg struct {
+	Job   string
+	Items []agents.ContextItem
+}
+
+func (q ReadContext) Do(m *Core) Cmd {
+	t := m.ByRef(q.T)
+	if t == nil {
+		return nil
+	}
+	agent, dir, repo := t.Agent, t.Dir, t.Info.Repo
+	return Later(func() Event {
+		return ContextMsg{Job: q.Job, Items: agents.Context(agent, dir, repo)}
+	})
+}
+
+// ReadContextFile reads the start of File, one ReadContext found, to show
+// (see skills.ReadShown): told as a ContextFileMsg.
+type ReadContextFile struct {
+	Job  string
+	File string
+}
+
+// ContextFileMsg is the text ReadContextFile of Job read, and whether the
+// file could be read.
+type ContextFileMsg struct {
+	Job    string
+	Text   string
+	Exists bool
+}
+
+func (q ReadContextFile) Do(m *Core) Cmd {
+	return Later(func() Event {
+		data, ok := skills.ReadShown(q.File)
+		return ContextFileMsg{Job: q.Job, Text: string(data), Exists: ok}
+	})
+}

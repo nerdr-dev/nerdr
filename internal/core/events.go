@@ -32,6 +32,7 @@ func init() {
 		ReposDoneMsg{}, ChangesMsg{}, BranchDoneMsg{}, CloseInfoMsg{}, ReposScannedMsg{}, RepoMadeMsg{}, RepoCheckedMsg{}, PlanMsg{}, IssueMsg{}, SetupProgressMsg{},
 		WorktreesMadeMsg{}, RepoPRsMsg{}, CheckoutMsg{}, ForkFetchedMsg{},
 		PRFetchedMsg{}, ReviewReadMsg{}, WatchingMsg{}, WorktreeChangedMsg{},
+		ContextMsg{}, ContextFileMsg{},
 
 		ChangedMsg{}, RedrawMsg{}, FrameMsg{}, InfoTickMsg{}, WirePanic{},
 	)

@@ -31,18 +31,64 @@ func (m *Model) contextItems(t *core.Tab) []core.ContextRow {
 	if key == v.Key && time.Since(v.At) < core.SkillsCheckEvery {
 		return v.Rows
 	}
+	if m.Copy {
+		// The files are core's to read: what was read stays until core
+		// answers (onContext), and another tab's shows nothing.
+		s := &m.skills
+		if s.ctxAsked != key || time.Since(s.ctxAskedAt) >= core.SkillsCheckEvery {
+			s.ctxAsked, s.ctxAskedAt, s.ctxTab = key, time.Now(), m.Ref(t)
+			m.tellCore(core.ReadContext{Job: key, T: s.ctxTab})
+		}
+		if key != v.Key {
+			return nil
+		}
+		return v.Rows
+	}
 	v.Key, v.At, v.Shown = key, time.Now(), ""
-	v.Rows = nil
-	for _, it := range agents.Context(t.Agent, t.Dir, repo) {
-		v.Rows = append(v.Rows, core.ContextRow{ContextItem: it})
+	v.Rows = m.contextRows(t, agents.Context(t.Agent, t.Dir, repo))
+	return v.Rows
+}
+
+// contextRows are the rows of what t's agent reads, items, with nerdr's
+// note.
+func (m *Model) contextRows(t *core.Tab, items []agents.ContextItem) []core.ContextRow {
+	var rows []core.ContextRow
+	for _, it := range items {
+		rows = append(rows, core.ContextRow{ContextItem: it})
 	}
 	switch t.Agent {
 	case agents.Claude, agents.Codex, agents.Copilot, agents.OpenCode, agents.Antigravity:
 		if note := m.AgentNote(t); note != "" {
-			v.Rows = append(v.Rows, core.ContextRow{ContextItem: agents.ContextItem{Group: core.ContextGroupNote, Size: int64(len(note))}, Note: note})
+			rows = append(rows, core.ContextRow{ContextItem: agents.ContextItem{Group: core.ContextGroupNote, Size: int64(len(note))}, Note: note})
 		}
 	}
-	return v.Rows
+	return rows
+}
+
+// onContext takes what core read of what an agent reads, for the read
+// asked last.
+func (m *Model) onContext(ev core.ContextMsg) {
+	s := &m.skills
+	t := m.ByRef(s.ctxTab)
+	if ev.Job != s.ctxAsked || t == nil {
+		return
+	}
+	v := &s.context
+	if v.Key != ev.Job {
+		v.Shown = "" // another tab's: its file is read anew
+	}
+	v.Key, v.At = ev.Job, time.Now()
+	v.Rows = m.contextRows(t, ev.Items)
+}
+
+// onContextFile takes the text of a file core read for the row picked.
+func (m *Model) onContextFile(ev core.ContextFileMsg) {
+	s := &m.skills
+	if ev.Job != s.fileAsked {
+		return
+	}
+	s.fileAsked = ""
+	s.context.Shown, s.context.Text, s.context.Exists = ev.Job, ev.Text, ev.Exists
 }
 
 // contextList is the list of what t's agent reads, and the text of the row
@@ -103,6 +149,13 @@ func (m *Model) contextList(t *core.Tab, rows []core.ContextRow, textW int) (hea
 	text = append(text, dim("  "+core.ContextName(r, home)))
 	c := &v.context
 	if c.Shown != r.Path {
+		if m.Copy {
+			if v.fileAsked != r.Path {
+				v.fileAsked = r.Path
+				m.tellCore(core.ReadContextFile{Job: r.Path, File: r.Path})
+			}
+			return head, append(text, "", dim("  Reading…")), picked
+		}
 		data, ok := skills.ReadShown(r.Path)
 		c.Shown, c.Text, c.Exists = r.Path, string(data), ok
 	}
