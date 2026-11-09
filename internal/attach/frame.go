@@ -61,7 +61,12 @@ func writeJSON(w io.Writer, typ byte, v any) error {
 // Generation is the generation of the protocol between client and core.
 // It changes only when a client and a core of different ones cannot work
 // together; what one may lack goes in the features instead.
-const Generation = 1
+//
+// 2: a client asks core to write core's own settings (core.EditConfig),
+// and a core takes only the client's own from it (core.SetConfig). A core
+// of 1 would take the edit for a request it does not know, and say it was
+// done, nothing saved.
+const Generation = 2
 
 // Hello is what a client says first. Env is the client's environment,
 // which the programs the core starts from then on run with, as they

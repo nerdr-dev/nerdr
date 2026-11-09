@@ -222,6 +222,14 @@ func TestRefused(t *testing.T) {
 	}
 	_ = c.Close()
 
+	// One of the generation before, as a client of the last release meets
+	// a core of this one, or this client one of the last that runs on.
+	c, _ = net.Dial("unix", sock)
+	_, _, err = Handshake(c, Hello{Gen: Generation - 1, Version: "client-1", Key: right})
+	if !errors.As(err, &re) || !strings.Contains(re.Reason, "quit that core") {
+		t.Errorf("generation before: %v", err)
+	}
+	_ = c.Close()
 }
 
 // TestSilent: a client that says nothing is refused in time.
