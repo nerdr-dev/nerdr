@@ -103,7 +103,7 @@ func (m Model) onScrollbar(l paneLayout, x, y int) (scrollPane, rect, int) {
 		r      rect
 		header int
 	}{
-		{scrollDiff, l.diff, 0},
+		{scrollDiff, l.diff, m.diffHeader()},
 		{scrollRelations, l.relations, 0},
 		{scrollPR, l.prConv, 0},
 		{scrollFiles, l.files, m.filesHeader()},

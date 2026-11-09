@@ -247,3 +247,23 @@ func TestPinRunsNoGitOnTheSpot(t *testing.T) {
 		t.Fatal("the files should arrive")
 	}
 }
+
+// TestScrollbarBesideAnAgent: the diff's title is in its border beside an
+// agent, so its track starts a row higher than with a heading row, and a
+// click at its bottom still goes to the end.
+func TestScrollbarBesideAnAgent(t *testing.T) {
+	lines := make([]diffLine, 200)
+	for i := range lines {
+		lines[i] = diffLine{kind: ' ', text: "code"}
+	}
+	m := NewEmbedded(Local{})
+	m.width, m.height, m.diffLines = 120, 40, lines
+	lay := m.layout(m.width, m.height)
+	last := lay.diff.y + lay.diff.h - 2 - hintRows
+	nm, _ := m.Update(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: last,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = nm.(Model)
+	if want := len(lines) - m.diffInnerHeight(); m.diffViewTop != want {
+		t.Fatalf("a click at the bottom of the track goes to the end: top %d, want %d", m.diffViewTop, want)
+	}
+}
