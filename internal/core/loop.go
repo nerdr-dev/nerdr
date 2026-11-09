@@ -286,12 +286,21 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		// Also here: with no client, nothing may draw for a frame.
 		return Batch(m.InfoTick(now), m.ExpireAsks(now)), InfoTickMsg{}
 	}
+	if q, ok := ev.(RequestEv); ok {
+		if _, quiet := q.R.(quietRequest); quiet {
+			return q.Run(m), nil
+		}
+	}
 	if cmd, ok := m.Handle(ev); ok {
 		m.Gen++
 		return cmd, ChangedMsg{}
 	}
 	return nil, ev
 }
+
+// quietRequest is a request of core's own that changes nothing a client
+// draws: done, Gen stays as it was, and the client is not told to draw.
+type quietRequest interface{ quiet() }
 
 // DetectAll looks at every agent. The client says which tabs are shown, and
 // does its part at the start and the end; with none, nothing is shown.

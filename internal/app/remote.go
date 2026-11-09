@@ -76,14 +76,23 @@ func (m *Model) tellCore(r core.Request) {
 func (m *Model) told(evs []core.Event) tea.Cmd {
 	var cmds []tea.Cmd
 	for _, ev := range evs {
-		switch ev.(type) {
-		case core.InfoTickMsg, core.WirePanic, core.ChangedMsg, core.RedrawMsg, core.FrameMsg:
+		if passedOn(ev) {
 			cmds = append(cmds, func() tea.Msg { return ev })
-		default:
+		} else {
 			cmds = append(cmds, fromCore(m.Tell(ev)))
 		}
 	}
 	return tea.Batch(cmds...)
+}
+
+// passedOn reports whether told passes ev on to Update as a message of its
+// own, rather than having the TUI take it there and then.
+func passedOn(ev core.Event) bool {
+	switch ev.(type) {
+	case core.InfoTickMsg, core.WirePanic, core.ChangedMsg, core.RedrawMsg, core.FrameMsg:
+		return true
+	}
+	return false
 }
 
 // clientState is what the TUI shows, as core asks it; see core.Client.

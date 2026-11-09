@@ -219,3 +219,18 @@ func TestLoopPanicLetsGoOfMu(t *testing.T) {
 		}
 	}
 }
+
+// TestLoopQuietRequest: a request of core's own that changes nothing drawn,
+// as a client's parts due to be looked at again, leaves Gen as it was and
+// has the client told nothing; one that may change something moves it on.
+func TestLoopQuietRequest(t *testing.T) {
+	c := &Core{Client: NoClient{}}
+	done := false
+	cmd, tell := c.loopEvent(RequestEv{R: flushParts{rc: &RemoteClient{later: true}}, Done: func() { done = true }})
+	if cmd != nil || tell != nil || c.Gen != 0 || !done {
+		t.Errorf("quiet: tell %#v, Gen %d, done %v", tell, c.Gen, done)
+	}
+	if _, tell := c.loopEvent(RequestEv{R: noRequest{}}); tell != (ChangedMsg{}) || c.Gen != 1 {
+		t.Errorf("not quiet: tell %#v, Gen %d", tell, c.Gen)
+	}
+}

@@ -4,6 +4,7 @@ package app
 
 import (
 	"os"
+	"slices"
 	"sync"
 	"time"
 
@@ -461,10 +462,17 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case core.InboxMsg:
-		cmd := m.told(m.remote.Take())
+		evs := m.remote.Take()
+		// What core sent leaves the review panel as it was when it is only
+		// what is passed on, each drawn by its own rules, and no part:
+		// a part moves Gen on. A program drawing sends a frame many
+		// times a second, and the panel is the costly part to draw.
+		m.reviewReuse = m.Gen == m.reviewGen && !slices.ContainsFunc(evs, func(ev core.Event) bool { return !passedOn(ev) })
+		cmd := m.told(evs)
 		if m.remote.Started() {
 			// A program core started at the size the TUI last said: it
 			// gets the size it is shown at now.
+			m.reviewReuse = false
 			m.resizePanes()
 		}
 		return cmd
