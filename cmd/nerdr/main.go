@@ -178,6 +178,10 @@ func main() {
 			// nerdr's core with no terminal, as its holder starts it;
 			// see runClient.
 			os.Exit(coreMain())
+		case "bridge":
+			// A client on another machine reaching the core here over
+			// ssh; see runBridge.
+			os.Exit(runBridge(os.Args[2:]))
 		case "connect":
 			if err := runClient(false); err != nil {
 				fmt.Fprintln(os.Stderr, "nerdr:", err)

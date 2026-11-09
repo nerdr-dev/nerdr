@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"syscall"
 	"time"
 
@@ -183,7 +184,7 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 			coreVersion = w.Version
 			return conn, nil
 		}
-		if err := startCore(root); err != nil {
+		if err := startCore(root, os.Environ()); err != nil {
 			return nil, err
 		}
 		deadline := time.Now().Add(coreStartWait)
@@ -248,10 +249,10 @@ func quitting(err error) bool {
 		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE) || errors.Is(err, io.EOF)
 }
 
-// startCore starts the holder and the core of root, in a session of their
-// own with no terminal: they live on when the client and its terminal
-// go. What they write goes to the core's log.
-func startCore(root string) error {
+// startCore starts the holder and the core of root, with env, in a session
+// of their own with no terminal: they live on when the client and its
+// terminal go, an ssh session too. What they write goes to the core's log.
+func startCore(root string, env []string) error {
 	bin, err := spawn.Bin()
 	if err != nil {
 		return err
@@ -276,7 +277,7 @@ func startCore(root string) error {
 	fmt.Fprintf(logf, "--- %s: nerdr %s starts its core in %s\n", time.Now().Format(time.RFC3339), version(), root)
 	cmd := exec.Command(bin, "holder", "--", bin, "core")
 	cmd.Dir = root
-	cmd.Env = append(os.Environ(), core.EnvHolder+"=1")
+	cmd.Env = append(slices.Clone(env), core.EnvHolder+"=1")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = null, logf, logf
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err := cmd.Start(); err != nil {
