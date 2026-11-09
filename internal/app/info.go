@@ -80,7 +80,7 @@ func (m *Model) details(t *core.Tab, bg lipgloss.Color, active bool) string {
 			parts = append(parts, m.tip(s, tip))
 		}
 	}
-	if len(m.Overlaps[t.ID]) > 0 {
+	if len(m.Core.Overlaps[t.ID]) > 0 {
 		parts = append(parts, m.tip(st("214").Render("⚠"), "Other tabs change some of the same files"))
 	}
 	if n := len(t.TaskRefs()); n > 0 {

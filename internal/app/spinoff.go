@@ -96,8 +96,8 @@ func (d *spinoffDialog) reset(m *Model) bool {
 	if d.agentIdx < len(d.agents) {
 		picked = d.agents[d.agentIdx]
 	}
-	d.agents, d.agentIdx = m.SpinoffKinds(pt), 0
-	if len(d.agents) == 0 && pt.Sandboxed && len(m.Available()) > 0 {
+	d.agents, d.agentIdx = m.Core.SpinoffKinds(pt), 0
+	if len(d.agents) == 0 && pt.Sandboxed && len(m.Core.Available()) > 0 {
 		return false
 	}
 	if i := slices.Index(d.agents, picked); i >= 0 {
@@ -120,7 +120,7 @@ func (d *spinoffDialog) reset(m *Model) bool {
 		// Named none of the tab's, and found another: not the tab's as
 		// well.
 		noneOwn := len(names) == len(pt.Repos)
-		all := m.OtherRepos(d.repos)
+		all := m.Core.OtherRepos(d.repos)
 		for _, n := range names {
 			i := slices.IndexFunc(all, func(r workspace.Repo) bool { return r.Name == n })
 			switch {
@@ -163,7 +163,7 @@ func (d *spinoffDialog) showOthers(m *Model) {
 		d.onRepos = d.onRepos && d.pickRepos()
 		return
 	}
-	more := m.OtherRepos(d.repos)
+	more := m.Core.OtherRepos(d.repos)
 	if len(more) == 0 {
 		d.err = "nerdr has no other repository: repo_dirs says where it looks"
 		return
@@ -203,7 +203,7 @@ func (d *spinoffDialog) pickRepos() bool { return len(d.repos) > 1 }
 func (d *spinoffDialog) part() spinoff.Part { return d.t.Spinoff.Next[0] }
 
 func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
-	if m.TabIndex(d.t) < 0 || d.t.Spinoff == nil || len(d.t.Spinoff.Next) == 0 {
+	if m.Core.TabIndex(d.t) < 0 || d.t.Spinoff == nil || len(d.t.Spinoff.Next) == 0 {
 		m.dialog = nil
 		return nil
 	}
@@ -277,7 +277,7 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // spinoffMake makes the branch and worktrees for the part asked about, in
 // the background.
 func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
-	if m.TabLimitReached() {
+	if m.Core.TabLimitReached() {
 		d.err = "the tab limit (max_tabs) is reached: close a tab first, or skip this part"
 		return nil
 	}
@@ -286,7 +286,7 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 		return nil
 	}
 	t, pt, kind := d.t, d.part(), d.agents[d.agentIdx]
-	if pt.Sandboxed && !m.SandboxedKind(kind) {
+	if pt.Sandboxed && !m.Core.SandboxedKind(kind) {
 		d.err = "an agent in a sandbox sent this part: pick one set sandboxed"
 		return nil
 	}
@@ -315,7 +315,7 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 		return nil
 	}
 	d.err = ""
-	return m.do(core.SpinoffCreate{T: m.Ref(t), Part: pt, Kind: kind, Name: name, Reuse: reuse, Elsewhere: elsewhere,
+	return m.do(core.SpinoffCreate{T: m.Core.Ref(t), Part: pt, Kind: kind, Name: name, Reuse: reuse, Elsewhere: elsewhere,
 		Group: group, Repos: repos, Own: own})
 }
 
@@ -344,7 +344,7 @@ func (m *Model) spinoffSkip(t *core.Tab, all bool) tea.Cmd {
 
 // spinoffNext has core record what became of t's first part, and move on.
 func (m *Model) spinoffNext(t *core.Tab, o spinoff.Outcome) tea.Cmd {
-	return m.do(core.SpinoffNext{T: m.Ref(t), Outcome: o})
+	return m.do(core.SpinoffNext{T: m.Core.Ref(t), Outcome: o})
 }
 
 // spinoffMoved is t's first part done with, left more to go through: the

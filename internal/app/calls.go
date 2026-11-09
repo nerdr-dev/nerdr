@@ -49,7 +49,7 @@ func (d *callsDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 func (d *callsDialog) move(m *Model, by int) {
 	calls, _ := proc.Counts()
 	names := []string{}
-	for _, r := range m.CallRows(calls) {
+	for _, r := range m.Core.CallRows(calls) {
 		names = append(names, r.Name)
 	}
 	names = append(names, core.AllCalls)
@@ -64,7 +64,7 @@ func (d *callsDialog) move(m *Model, by int) {
 
 func (d *callsDialog) view(m *Model, w, h int) string {
 	calls, since := proc.Counts()
-	rows := m.CallRows(calls)
+	rows := m.Core.CallRows(calls)
 	nameW := len("tab")
 	for _, r := range rows {
 		nameW = min(max(nameW, len([]rune(r.Name))), 30)
@@ -121,7 +121,7 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 		}
 	}
 	sinceOpen := map[string]int{}
-	for _, r := range m.CallRows(recent) {
+	for _, r := range m.Core.CallRows(recent) {
 		if r.Name == picked.Name || picked.Name == core.AllCalls {
 			for c, n := range r.Cmds {
 				sinceOpen[c] += n

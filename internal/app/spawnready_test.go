@@ -34,9 +34,9 @@ func startAsked(t *testing.T, m *Model, cmd core.Cmd) {
 	run(cmd)
 	select {
 	case ev := <-ready:
-		m.Mu.Lock()
-		next, _ := m.Handle(ev)
-		m.Mu.Unlock()
+		m.Core.Mu.Lock()
+		next, _ := m.Core.Handle(ev)
+		m.Core.Mu.Unlock()
 		if _, looked := ev.(core.SpawnLooked); looked {
 			startAsked(t, m, next)
 		}

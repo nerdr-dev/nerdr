@@ -123,15 +123,15 @@ func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // openConversation goes to the agent carrying on c, or carries it on in
 // a new pane of the tab working in its folder, unless that is gone.
 func (m *Model) openConversation(c *agents.Conversation, gone bool) tea.Cmd {
-	for _, a := range m.AllAgents() {
+	for _, a := range m.Core.AllAgents() {
 		if a.SessionID == c.ID && a.ReviewOf == nil {
 			m.setFocus(core.FocusAgent)
 			return tea.Batch(m.goToAgent(a), m.resize())
 		}
 	}
-	t := m.TabOfDir(c.Dir)
+	t := m.Core.TabOfDir(c.Dir)
 	if t == nil {
-		m.toast("no tab works in " + m.ShortDir(c.Dir) + "; carry it on there with " + core.ResumeHint(c))
+		m.toast("no tab works in " + m.Core.ShortDir(c.Dir) + "; carry it on there with " + core.ResumeHint(c))
 		return nil
 	}
 	if !agentAvailable(m, c.Kind) {
@@ -139,7 +139,7 @@ func (m *Model) openConversation(c *agents.Conversation, gone bool) tea.Cmd {
 		return nil
 	}
 	if gone {
-		m.toast(m.ShortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
+		m.toast(m.Core.ShortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
 		return nil
 	}
 	m.setFocus(core.FocusAgent)
@@ -147,21 +147,21 @@ func (m *Model) openConversation(c *agents.Conversation, gone bool) tea.Cmd {
 	// In the folder the conversation was had in, which may be one of the
 	// tab's repositories rather than the tab's own folder: the agent finds
 	// its conversations by folder, and its paths are from there.
-	cmd := m.do(core.CarryOnConversation{T: m.Ref(t), ID: core.NewTabID(), Kind: c.Kind, Session: c.ID, Dir: c.Dir})
+	cmd := m.do(core.CarryOnConversation{T: m.Core.Ref(t), ID: core.NewTabID(), Kind: c.Kind, Session: c.ID, Dir: c.Dir})
 	m.focusTerms(t)
 	return tea.Batch(sel, cmd, m.resize())
 }
 
 // selectTabCmd goes to t, if it is not the active tab.
 func (m *Model) selectTabCmd(t *core.Tab) tea.Cmd {
-	if i := m.TabIndex(t); i >= 0 && t != m.Cur() {
+	if i := m.Core.TabIndex(t); i >= 0 && t != m.Cur() {
 		return m.selectTab(i)
 	}
 	return nil
 }
 
 func agentAvailable(m *Model, k agents.Kind) bool {
-	for _, a := range m.Available() {
+	for _, a := range m.Core.Available() {
 		if a == k {
 			return true
 		}
@@ -195,8 +195,8 @@ func (d *searchDialog) view(m *Model, w, h int) string {
 	for i := d.top; i < min(len(d.hits), d.top+room); i++ {
 		hit := d.hits[i]
 		c := hit.Conv
-		where := m.ShortDir(c.Dir)
-		if t := m.TabOfDir(c.Dir); t != nil {
+		where := m.Core.ShortDir(c.Dir)
+		if t := m.Core.TabOfDir(c.Dir); t != nil {
 			where = t.Name
 		}
 		head := c.Modified.Format("Jan 2 15:04") + "  " + where + dim("  "+string(c.Kind))

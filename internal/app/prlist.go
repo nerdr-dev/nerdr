@@ -49,7 +49,7 @@ func headName(e core.PREntry) string {
 // again when that is old or there is none.
 func (m *Model) showPRs() tea.Cmd {
 	m.applyPRs()
-	if time.Since(m.PRWatch.At) < m.GithubEvery(core.PrWatchEvery) {
+	if time.Since(m.Core.PRWatch.At) < m.Core.GithubEvery(core.PrWatchEvery) {
 		return nil
 	}
 	return m.do(core.RefreshPRs{})
@@ -149,10 +149,10 @@ func (d *prTitleDialog) view(m *Model, w, h int) string {
 // there is none, whether to make one.
 func (m *Model) goToPR(e core.PREntry) tea.Cmd {
 	m.prPick = "" // a pick before this one is not gone on with
-	if t := m.TabOnBranch(e.Repo.Path, e.Branch()); t != nil {
+	if t := m.Core.TabOnBranch(e.Repo.Path, e.Branch()); t != nil {
 		m.dialog = nil
 		m.setFocus(core.FocusAgent)
-		return tea.Batch(m.selectTab(m.TabIndex(t)), m.resize())
+		return tea.Batch(m.selectTab(m.Core.TabIndex(t)), m.resize())
 	}
 	m.prPick, m.prPickOn = core.NewJobID(), m.dialog
 	return m.do(core.LookUpCheckout{Job: m.prPick, E: e})
@@ -176,14 +176,14 @@ func (m *Model) prCheckedOut(e core.PREntry, group *workspace.Group) tea.Cmd {
 	}
 	lines := []string{
 		"No worktree has " + e.Branch() + " checked out.",
-		"Make one in " + m.WtRoot + ", and a tab for it?",
+		"Make one in " + m.Core.WtRoot + ", and a tab for it?",
 	}
 	if e.PR.Fork != "" {
 		// Its branch is not on origin: a branch of its name made here
 		// would start from main, and not be the pull request at all.
 		lines = []string{
 			"#" + fmt.Sprint(e.PR.Number) + " is from " + e.PR.Fork + "'s fork, not a branch on origin.",
-			"Fetch it as " + e.Branch() + ", and make a worktree in " + m.WtRoot + " and a tab for it?",
+			"Fetch it as " + e.Branch() + ", and make a worktree in " + m.Core.WtRoot + " and a tab for it?",
 			"nerdr will not push it: the branch is in the fork.",
 		}
 	}
@@ -263,7 +263,7 @@ func (m *Model) openPRWizard(e core.PREntry) tea.Cmd {
 // spans several (group, as core found it with the worktree), or the
 // worktree alone when nerdr did not make it, or a tab has the folder open.
 func (m *Model) worktreeGroup(e core.PREntry, group *workspace.Group) workspace.Group {
-	if group != nil && m.TabOfDir(group.Dir) == nil {
+	if group != nil && m.Core.TabOfDir(group.Dir) == nil {
 		return *group
 	}
 	return workspace.Group{
@@ -276,7 +276,7 @@ func (m *Model) worktreeGroup(e core.PREntry, group *workspace.Group) workspace.
 // Where a PR's branch is, as the list's last glyph column says it.
 func (m *Model) prWhere(e core.PREntry) string {
 	switch {
-	case m.TabOnBranch(e.Repo.Path, e.Branch()) != nil:
+	case m.Core.TabOnBranch(e.Repo.Path, e.Branch()) != nil:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Render("tab")
 	case e.Wt != "":
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Render("disk")

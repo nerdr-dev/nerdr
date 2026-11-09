@@ -49,17 +49,17 @@ func TestFindOverlaps(t *testing.T) {
 	a := mk("a", map[string][]string{"/r/app": {"x.go", "y.go"}})
 	b := mk("b", map[string][]string{"/r/app": {"y.go", "z.go"}})
 	c := mk("c", map[string][]string{"/r/other": {"y.go"}}) // same name, other repo
-	m := &Model{Tabs: []*core.Tab{a, b, c}}
-	m.Client = m
-	m.FindOverlaps()
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{a, b, c}}}
+	m.Core.Client = m
+	m.Core.FindOverlaps()
 
-	if got := m.Overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
+	if got := m.Core.Overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
 		t.Fatalf("a: %+v", got)
 	}
-	if got := m.Overlaps["b"]; len(got) != 1 || got[0].With != a {
+	if got := m.Core.Overlaps["b"]; len(got) != 1 || got[0].With != a {
 		t.Fatalf("b: %+v", got)
 	}
-	if got := m.Overlaps["c"]; len(got) != 0 {
+	if got := m.Core.Overlaps["c"]; len(got) != 0 {
 		t.Fatalf("c: %+v", got)
 	}
 }
@@ -110,9 +110,9 @@ func TestNotesInsideHerdr(t *testing.T) {
 	}
 	top := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "top"}, Light: core.StBlocked}}
 	other := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "other"}, Light: core.StDone}}
-	m := &Model{Tabs: []*core.Tab{top, other}, Herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
-	m.Client = m
-	m.Cfg.Notify = "all"
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{top, other}}, Herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
+	m.Core.Client = m
+	m.Core.Cfg.Notify = "all"
 	now := time.Now()
 	m.notifyChange(top, false, now)
 	m.notifyChange(other, false, now)

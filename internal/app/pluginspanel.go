@@ -64,12 +64,12 @@ func (m *Model) pluginList(*core.Tab) []plugin.Plugin {
 	// The plugins are core's to read: the list is the one core read
 	// last, and core is asked to look again when it is old.
 	now := time.Now()
-	if v.stale || now.Sub(m.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
+	if v.stale || now.Sub(m.Core.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
 		v.stale, v.askedAt = false, now
 		m.tellCore(core.LookForPlugins{})
 	}
-	if !m.Plugins.At.Equal(v.at) {
-		v.at, v.list, v.allowed = m.Plugins.At, m.Plugins.List, m.Plugins.Allowed
+	if !m.Core.Plugins.At.Equal(v.at) {
+		v.at, v.list, v.allowed = m.Core.Plugins.At, m.Core.Plugins.List, m.Core.Plugins.Allowed
 		v.repick()
 	}
 	return v.list
@@ -118,7 +118,7 @@ func (m *Model) pluginUIPane() core.Program {
 	if !ok || core.PluginUIKey(t, p) != m.plugins.uiFocus {
 		return nil
 	}
-	if u := m.PluginUIOf(t, p); u.Running() {
+	if u := m.Core.PluginUIOf(t, p); u.Running() {
 		return m.programOf(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	}
 	return nil
@@ -154,11 +154,11 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "x":
 		if p, ok := m.pickedPlugin(t); ok {
-			return m.do(core.StopPluginUI{T: m.Ref(t), Dir: p.Dir})
+			return m.do(core.StopPluginUI{T: m.Core.Ref(t), Dir: p.Dir})
 		}
 	case "s":
 		if p, ok := m.pickedPlugin(t); ok {
-			return m.do(core.StopPickedRun{T: m.Ref(t), Dir: p.Dir})
+			return m.do(core.StopPickedRun{T: m.Core.Ref(t), Dir: p.Dir})
 		}
 	case "a":
 		if p, ok := m.pickedPlugin(t); ok {
@@ -180,7 +180,7 @@ func (m *Model) togglePluginUI() bool {
 	}
 	t := m.Cur()
 	p, ok := m.pickedPlugin(t)
-	if !ok || !m.PluginUIOf(t, p).Running() {
+	if !ok || !m.Core.PluginUIOf(t, p).Running() {
 		return false
 	}
 	key := core.PluginUIKey(t, p)
@@ -218,7 +218,7 @@ func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 			m.toast(clean.Line(q.Name) + " changed and has no screen to start now")
 			return nil
 		}
-		if u := m.PluginUIOf(t, q); u.Running() && u.Key == key {
+		if u := m.Core.PluginUIOf(t, q); u.Running() && u.Key == key {
 			m.plugins.uiFocus = core.PluginUIKey(t, q)
 			m.setFocus(core.FocusReview)
 			return nil
@@ -450,7 +450,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	keys := m.pluginKeys("↑↓", "pick", "enter", "open", "a", "allow", "d", "disallow", "esc", "agent")
 	if len(list) == 0 {
 		lines := []string{""}
-		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(m.ConfigPath()), core.HomeDir())+
+		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(m.Core.ConfigPath()), core.HomeDir())+
 			"/NAME, each a folder with a "+plugin.File+
 			". See https://nerdr.app/configure/plugins/.", textW, 20) {
 			lines = append(lines, " "+l)
@@ -458,8 +458,8 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		return append(fitLines(lines, w, h-1), ansi.Truncate(keys, w, "…"))
 	}
 	p := list[v.cursor]
-	u := m.PluginUIOf(t, p)
-	run := m.PluginRunOf(t, p)
+	u := m.Core.PluginUIOf(t, p)
+	run := m.Core.PluginRunOf(t, p)
 	// What the run printed, when the plugin shows it: below the rest, or
 	// above its screen, a few rows of it.
 	output := func(top []string, rows int) []string {
@@ -491,7 +491,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		switch {
 		case q.Err != "":
 			mark = warn("!")
-		case len(q.UI) > 0 && m.PluginUIOf(t, q).Running():
+		case len(q.UI) > 0 && m.Core.PluginUIOf(t, q).Running():
 			mark = lipgloss.NewStyle().Foreground(lipgloss.Color("71")).Render("▣")
 		case len(q.UI) > 0:
 			mark = "▣"
@@ -505,7 +505,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		if q.Err == "" && !v.allowed[q.Dir] {
 			name += warn("  not allowed")
 		}
-		if run := m.PluginRunOf(t, q); run != nil {
+		if run := m.Core.PluginRunOf(t, q); run != nil {
 			lt, what := m.runState(run)
 			name += "  " + lt + " " + dim(what)
 		}
@@ -606,7 +606,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 			return m.openPluginUI(t, p)
 		})
 	out := append(top, rule)
-	if uh := max(room, 3); w != m.PluginUIW || uh != m.PluginUIH {
+	if uh := max(room, 3); w != m.Core.PluginUIW || uh != m.Core.PluginUIH {
 		m.do(core.PluginUISize{W: w, H: uh})
 	}
 	if u == nil {
@@ -616,8 +616,8 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	if pr == nil {
 		return fitLines(out, w, h)
 	}
-	if pw, ph := pr.Size(); pw != m.PluginUIW || ph != m.PluginUIH {
-		pr.Resize(m.PluginUIW, m.PluginUIH)
+	if pw, ph := pr.Size(); pw != m.Core.PluginUIW || ph != m.Core.PluginUIH {
+		pr.Resize(m.Core.PluginUIW, m.Core.PluginUIH)
 	}
 	return fitLines(append(out, m.drawPane(pr, 0, inUI)...), w, h)
 }
@@ -651,8 +651,8 @@ func (m *Model) pluginsTitle(t *core.Tab) string {
 // startPluginUI starts plugin p's screen in t, as allowed with key, and gives
 // it the keyboard when focus is set.
 func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
-	cmd := m.do(core.StartPluginUI{T: m.Ref(t), Dir: p.Dir, Key: key})
-	if focus && m.PluginUIOf(t, p).Running() {
+	cmd := m.do(core.StartPluginUI{T: m.Core.Ref(t), Dir: p.Dir, Key: key})
+	if focus && m.Core.PluginUIOf(t, p).Running() {
 		m.plugins.uiFocus = core.PluginUIKey(t, p)
 		m.pluginUIFocus(t)
 	}

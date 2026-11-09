@@ -18,7 +18,7 @@ import (
 func TestUsageFromTheStatusLine(t *testing.T) {
 	m := testModel(t)
 	yes := true
-	m.Cfg.ClaudeStatusLine = &yes
+	m.Core.Cfg.ClaudeStatusLine = &yes
 	tb := m.Cur()
 	ctx := 34.0
 	reset := time.Now().Add(2 * time.Hour).Unix()
@@ -26,15 +26,15 @@ func TestUsageFromTheStatusLine(t *testing.T) {
 		Session: &usage.Window{Used: 23, ResetsAt: reset}, Weekly: &usage.Window{Used: 41},
 		Context: &ctx, Model: "Opus 5.5",
 	}})
-	if tb.Usage == nil || m.ClaudeLimits == nil || m.ClaudeLimits.Session.Used != 23 {
-		t.Fatalf("kept: %+v %+v", tb.Usage, m.ClaudeLimits)
+	if tb.Usage == nil || m.Core.ClaudeLimits == nil || m.Core.ClaudeLimits.Session.Used != 23 {
+		t.Fatalf("kept: %+v %+v", tb.Usage, m.Core.ClaudeLimits)
 	}
 	if s, ok := usage.LoadClaude(state.Dir()); !ok || s.Weekly.Used != 41 {
 		t.Fatalf("saved: %+v %v", s, ok)
 	}
-	m.ClaudeLimits = nil
+	m.Core.ClaudeLimits = nil
 	m.openUsage()
-	if m.ClaudeLimits == nil {
+	if m.Core.ClaudeLimits == nil {
 		t.Fatal("the saved limits should be read when none is known")
 	}
 	v := ansi.Strip(m.dialog.view(m, 120, 30))

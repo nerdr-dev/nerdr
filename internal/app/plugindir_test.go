@@ -165,7 +165,7 @@ func TestPluginRunRejectsOutsideDirectory(t *testing.T) {
 	if a := <-reply; !strings.Contains(a.Err, "within this tab") {
 		t.Fatalf("outside directory not refused: %+v", a)
 	}
-	if len(m.PluginRuns.ByID) != 0 {
+	if len(m.Core.PluginRuns.ByID) != 0 {
 		t.Fatal("a plugin was started")
 	}
 }

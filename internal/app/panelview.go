@@ -70,10 +70,10 @@ func (m *Model) panelBody(w, h int) []string {
 	// The branch's rows have zones in them, numbered for one frame only:
 	// drawn anew each time.
 	// Core may have changed it since Update, on its own goroutine.
-	if !m.reviewReuse || m.Gen != m.reviewGen || m.reviewView == "" || m.review.BranchPR() {
+	if !m.reviewReuse || m.Core.Gen != m.reviewGen || m.reviewView == "" || m.review.BranchPR() {
 		m.review = m.reviewSet(m.review, w)
 		m.reviewView = m.review.View()
-		m.reviewGen = m.Gen
+		m.reviewGen = m.Core.Gen
 	} else if reuseCheck {
 		if v := m.reviewSet(m.review, w).View(); v != m.reviewView {
 			panic(fmt.Sprintf("review panel reused, but it has changed:\n--- reused\n%s\n--- now\n%s", ansi.Strip(m.reviewView), ansi.Strip(v)))

@@ -30,7 +30,7 @@ func TestCallsDialog(t *testing.T) {
 		calls[c] -= n
 	}
 	var mine core.CallRow
-	for _, r := range m.CallRows(calls) {
+	for _, r := range m.Core.CallRows(calls) {
 		if r.Name == tb.Name {
 			mine = r
 		}

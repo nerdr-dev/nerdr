@@ -18,10 +18,10 @@ import (
 // focus. Clicking nerdr in herdr's agent list does that, and the entry
 // clicked was the tab reportHerdr described — so go to it.
 func (m *Model) onHerdrFocus() tea.Cmd {
-	if m.Herdr == nil || !*m.Cfg.HerdrFocusJump || m.dialog != nil || m.editor != nil {
+	if m.Herdr == nil || !*m.Core.Cfg.HerdrFocusJump || m.dialog != nil || m.editor != nil {
 		return nil
 	}
-	i, t := m.Neediest()
+	i, t := m.Core.Neediest()
 	if t == nil || i == m.Active || t.Attention() < 3 {
 		return nil
 	}
@@ -37,11 +37,11 @@ func (m *Model) openEditor(msg review.EditMsg) tea.Cmd {
 			return m.runEditor(c, "")
 		}
 		// A terminal editor runs where the file is, in a pane of the tab.
-		t := m.TabOfDir(msg.Dir)
+		t := m.Core.TabOfDir(msg.Dir)
 		if t == nil {
 			t = m.Cur()
 		}
-		return m.do(core.EditInTab{T: m.Ref(t), File: msg.File, Line: msg.Line, Setting: editor.File})
+		return m.do(core.EditInTab{T: m.Core.Ref(t), File: msg.File, Line: msg.Line, Setting: editor.File})
 	}
 	return m.runEditor(editor.FileCommand(msg.Dir, msg.File, msg.Line), msg.Dir)
 }
@@ -57,7 +57,7 @@ func (m *Model) openWorktreeEditor() tea.Cmd {
 		if c, ok := editor.RemoteDirCommand(m.coreHost, t.Dir); ok {
 			return m.runEditor(c, "")
 		}
-		return m.do(core.EditInTab{T: m.Ref(t), Setting: editor.Worktree})
+		return m.do(core.EditInTab{T: m.Core.Ref(t), Setting: editor.Worktree})
 	}
 	return m.runEditor(editor.DirCommand(t.Dir), t.Dir)
 }
@@ -76,7 +76,7 @@ func (m *Model) runEditor(c editor.Command, dir string) tea.Cmd {
 	if m.editor != nil {
 		return nil
 	}
-	p, err := term.Start(c.Argv, dir, core.ChildEnv(&core.Tab{}), m.width, m.height, m.Notify)
+	p, err := term.Start(c.Argv, dir, core.ChildEnv(&core.Tab{}), m.width, m.height, m.Core.Notify)
 	if err != nil {
 		m.toast(c.Argv[0] + ": " + err.Error())
 		return nil
@@ -102,7 +102,7 @@ func (m *Model) reportHerdr() {
 	if m.Herdr == nil {
 		return
 	}
-	_, t := m.Neediest()
+	_, t := m.Core.Neediest()
 	if t == nil {
 		t = m.Cur()
 	}
@@ -121,7 +121,7 @@ func (m *Model) reportHerdr() {
 		st = "unknown"
 	}
 	working := 0
-	for _, x := range m.Tabs {
+	for _, x := range m.Core.Tabs {
 		if x.Lit() == core.StWorking && x != t {
 			working++
 		}
@@ -138,7 +138,7 @@ func (m *Model) reportHerdr() {
 // $tabs, $working, $blocked and $done are the counts.
 func (m *Model) herdrTokens() map[string]string {
 	var working, blocked, done int
-	for _, t := range m.Tabs {
+	for _, t := range m.Core.Tabs {
 		switch t.Lit() {
 		case core.StWorking:
 			working++
@@ -148,7 +148,7 @@ func (m *Model) herdrTokens() map[string]string {
 			done++
 		}
 	}
-	summary := core.Plural(len(m.Tabs), "tab")
+	summary := core.Plural(len(m.Core.Tabs), "tab")
 	if working > 0 {
 		summary += fmt.Sprintf(" · %d working", working)
 	}
@@ -160,7 +160,7 @@ func (m *Model) herdrTokens() map[string]string {
 	}
 	return map[string]string{
 		"summary": summary,
-		"tabs":    strconv.Itoa(len(m.Tabs)),
+		"tabs":    strconv.Itoa(len(m.Core.Tabs)),
 		"working": strconv.Itoa(working),
 		"blocked": strconv.Itoa(blocked),
 		"done":    strconv.Itoa(done),

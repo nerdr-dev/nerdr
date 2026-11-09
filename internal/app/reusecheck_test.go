@@ -60,13 +60,13 @@ func TestReviewReuseAfterCoreChanged(t *testing.T) {
 		m.reviewOpen = true
 		m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 		m.View()
-		m.Mu.Lock()
+		m.Core.Mu.Lock()
 		rm, _ := m.review.Update(keyMsg("f3"))
 		m.review = rm.(review.Model)
 		if counted {
-			m.Gen++ // as the loop does for each event of core's
+			m.Core.Gen++ // as the loop does for each event of core's
 		}
-		m.Mu.Unlock()
+		m.Core.Mu.Unlock()
 		m.Update(core.RedrawMsg{})
 		func() {
 			defer func() {
@@ -91,11 +91,11 @@ func TestReviewReuseCheckedWhereDrawn(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	m.View()
 	m.Update(core.FrameMsg{}) // reuse allowed
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	rm, _ := m.review.Update(keyMsg("f3"))
 	m.review = rm.(review.Model)
-	m.Gen++ // as the loop does
-	m.Mu.Unlock()
+	m.Core.Gen++ // as the loop does
+	m.Core.Mu.Unlock()
 	m.View() // panics if the panel drawn at the Update is reused
 }
 
@@ -108,9 +108,9 @@ func TestCoreChangingTheClientCounts(t *testing.T) {
 	m.Update(keyMsg("f1"))
 	m.setFocus(core.FocusReview)
 	m.View()
-	before := m.Gen
-	m.Tell(core.SwitchedMsg{T: m.Ref(m.Cur())}) // core's way, through Client
-	if m.Gen == before {
+	before := m.Core.Gen
+	m.Tell(core.SwitchedMsg{T: m.Core.Ref(m.Cur())}) // core's way, through Client
+	if m.Core.Gen == before {
 		t.Fatal("core changing the focus did not count")
 	}
 	m.Update(core.RedrawMsg{})
@@ -127,10 +127,10 @@ func TestCoreWideningTheSidebarResizesTheAgent(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	before, _ := tb.Pane.Size()
 
-	m.Mu.Lock()
+	m.Core.Mu.Lock()
 	tb.Name = strings.Repeat("x", 30) // as FollowBranches does, on the loop
-	m.Gen++
-	m.Mu.Unlock()
+	m.Core.Gen++
+	m.Core.Mu.Unlock()
 	m.Update(core.ChangedMsg{})
 
 	after, _ := tb.Pane.Size()

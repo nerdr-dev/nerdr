@@ -369,12 +369,12 @@ func run() error {
 	router := input.New(os.Stdin, prefix)
 	model := app.New(cfg, root, router, sess)
 	if hookSrv != nil {
-		model.SetHookSocket(hookSrv.Path())
+		model.Core.SetHookSocket(hookSrv.Path())
 	} else {
-		model.SetHookSocketError(sockErr)
+		model.Core.SetHookSocketError(sockErr)
 	}
 	if taken != nil && hookSrv != nil {
-		model.SetSocketShared(taken)
+		model.Core.SetSocketShared(taken)
 	}
 	if loadErr != nil {
 		model.Notice("could not read the saved session, started fresh: " + loadErr.Error() +
@@ -392,7 +392,7 @@ func run() error {
 	p := tea.NewProgram(model, opts...)
 	router.SetSend(func(m any) { p.Send(m) })
 	model.Loop = core.NewLoop(&model.Core, func(ev core.Event) { p.Send(ev) })
-	model.FindAgents()
+	model.Core.FindAgents()
 	sendMu.Lock()
 	send = func(m any) { model.Loop.Post(m) }
 	sendMu.Unlock()

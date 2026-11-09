@@ -33,17 +33,17 @@ func (m *Model) prsShown() bool {
 // applyPRs shows what is known in the lists on screen.
 func (m *Model) applyPRs() {
 	var errs []string
-	for _, why := range m.PRWatch.Errs {
+	for _, why := range m.Core.PRWatch.Errs {
 		errs = append(errs, why)
 	}
 	sort.Strings(errs)
 	if d := m.prPanel; d != nil && d.all {
 		entries, errs := m.allPREntries()
 		d.apply(entries, errs)
-		d.loading = m.PRAll.Busy
+		d.loading = m.Core.PRAll.Busy
 	} else if d != nil {
-		d.apply(m.PRWatch.Entries, errs)
-		d.loading = m.PRWatch.Busy
+		d.apply(m.Core.PRWatch.Entries, errs)
+		d.loading = m.Core.PRWatch.Busy
 	}
 }
 
@@ -76,7 +76,7 @@ func (m *Model) tellPRNews(news []state.PRNews) {
 // seen yet; a click shows them in the review panel.
 func (m *Model) prBadge() string {
 	prs := map[string]bool{}
-	for _, n := range m.PRWatch.News {
+	for _, n := range m.Core.PRWatch.News {
 		prs[n.Key] = true
 	}
 	if len(prs) == 0 {

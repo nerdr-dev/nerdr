@@ -35,7 +35,7 @@ func (m *Model) track() tea.Cmd {
 	}
 	old := m.entered
 	m.entered = t
-	return m.do(core.SwitchTab{Left: m.Ref(old), To: m.Ref(t), Beside: m.Ref(m.splitTab())})
+	return m.do(core.SwitchTab{Left: m.Core.Ref(old), To: m.Core.Ref(t), Beside: m.Core.Ref(m.splitTab())})
 }
 
 // openSummary shows the active tab's last summary again.
@@ -159,7 +159,7 @@ type noteDialog struct {
 
 // openNote opens the note for t.
 func (m *Model) openNote(t *core.Tab) tea.Cmd {
-	if t == nil || m.TabIndex(t) < 0 {
+	if t == nil || m.Core.TabIndex(t) < 0 {
 		return nil
 	}
 	in := newTextArea("where you were, what is next…", min(max(m.width-16, 30), 80))
@@ -176,7 +176,7 @@ func (d *noteDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "enter":
 		m.dialog = nil
-		return m.do(core.NoteTab{T: m.Ref(d.t), Note: d.input.Value()})
+		return m.do(core.NoteTab{T: m.Core.Ref(d.t), Note: d.input.Value()})
 	}
 	var cmd tea.Cmd
 	d.input, cmd = d.input.Update(msg)
@@ -196,7 +196,7 @@ func (d *noteDialog) view(m *Model, w, h int) string {
 // nextWaiting goes to the agent that has waited longest for you: its tab,
 // and its pane.
 func (m *Model) nextWaiting() tea.Cmd {
-	for _, t := range m.Waiting() {
+	for _, t := range m.Core.Waiting() {
 		if t != m.CurAgent() {
 			return m.goToAgent(t)
 		}
@@ -215,7 +215,7 @@ func (m *Model) openInbox() tea.Cmd {
 }
 
 func (b *inbox) entries(m *Model) []*core.Tab {
-	return append(m.Waiting(), m.ColdTabs()...)
+	return append(m.Core.Waiting(), m.Core.ColdTabs()...)
 }
 
 func (b *inbox) key(m *Model, msg tea.KeyMsg) tea.Cmd {
@@ -244,15 +244,15 @@ func (b *inbox) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 
 func (b *inbox) view(m *Model, w, h int) string {
 	now := time.Now()
-	waiting, cold := m.Waiting(), m.ColdTabs()
+	waiting, cold := m.Core.Waiting(), m.Core.ColdTabs()
 	es := append(append([]*core.Tab{}, waiting...), cold...)
 	b.cursor = min(b.cursor, max(len(es)-1, 0))
 	inner := min(max(w-10, 40), 100)
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	var lines []string
 	row := func(i int, t *core.Tab, what string) {
-		line := light(t.AgentLit()) + " " + m.AgentName(t) + dim("  "+t.Owner().GroupName()) + "  " + what
-		if m.Cold(t, now) {
+		line := light(t.AgentLit()) + " " + m.Core.AgentName(t) + dim("  "+t.Owner().GroupName()) + "  " + what
+		if m.Core.Cold(t, now) {
 			line = lipgloss.NewStyle().Foreground(groupAccent).Render("❄") + " " + t.Name + dim("  "+t.GroupName()) + "  " + what
 		}
 		lines = append(lines, m.onClick(cursorLine(i == b.cursor, line, sel), func(m *Model) tea.Cmd {
@@ -277,18 +277,18 @@ func (b *inbox) view(m *Model, w, h int) string {
 		}
 		row(i, t, what+dim(" · waiting "+core.Duration(now.Sub(t.Changed))))
 	}
-	if n := m.CountStatus(core.StWorking); n > 0 {
+	if n := m.Core.CountStatus(core.StWorking); n > 0 {
 		lines = append(lines, "", dim(light(core.StWorking)+" "+core.Plural(n, "agent")+" working"))
 	}
 	if len(cold) > 0 {
-		lines = append(lines, "", dim("Gone cold — nothing done in them for "+strconv.Itoa(core.IntOr0(m.Cfg.ColdDays))+"+ days:"))
+		lines = append(lines, "", dim("Gone cold — nothing done in them for "+strconv.Itoa(core.IntOr0(m.Core.Cfg.ColdDays))+"+ days:"))
 		for j, t := range cold {
 			row(len(waiting)+j, t, dim("last active "+core.Duration(now.Sub(t.LastActive))+" ago"))
 		}
 	}
 	if b.cursor < len(waiting) {
 		t := waiting[b.cursor]
-		name := m.AgentName(t)
+		name := m.Core.AgentName(t)
 		lines = append(lines, "", dim("── "+name+" "+strings.Repeat("─", max(inner-lipgloss.Width(name)-4, 0))))
 		for _, l := range core.ScreenTail(t, 6) {
 			lines = append(lines, ansi.Truncate(l, inner, "…"))
@@ -302,7 +302,7 @@ func (b *inbox) view(m *Model, w, h int) string {
 // when one of them is asking something. A click opens the inbox.
 func (m *Model) waitingBadge() string {
 	n, blocked := 0, false
-	for _, t := range m.Waiting() {
+	for _, t := range m.Core.Waiting() {
 		if t != m.CurAgent() {
 			n++
 			blocked = blocked || t.Light == core.StBlocked
@@ -325,19 +325,19 @@ func (m *Model) waitingBadge() string {
 // most likely go: those whose work is merged, and those gone cold.
 func (m *Model) openTabLimit() {
 	now := time.Now()
-	items := []menuItem{{label: core.Plural(len(m.Tabs), "tab") + " open: the limit (max_tabs). Close one first."}}
-	for _, t := range m.Tabs {
+	items := []menuItem{{label: core.Plural(len(m.Core.Tabs), "tab") + " open: the limit (max_tabs). Close one first."}}
+	for _, t := range m.Core.Tabs {
 		why := ""
 		switch {
 		case t.Info.Merged():
 			why = "merged"
-		case m.Cold(t, now):
+		case m.Core.Cold(t, now):
 			why = "cold, last active " + core.Duration(now.Sub(t.LastActive)) + " ago"
 		default:
 			continue
 		}
 		items = append(items, menuItem{label: "Close " + t.Name + " · " + why + "…", run: func(m *Model) tea.Cmd {
-			return tea.Batch(m.selectTab(m.TabIndex(t)), m.openCloseFor(t))
+			return tea.Batch(m.selectTab(m.Core.TabIndex(t)), m.openCloseFor(t))
 		}})
 	}
 	if len(items) == 1 {
@@ -362,7 +362,7 @@ func (m *Model) offerRoom(then func(m *Model) tea.Cmd) bool {
 		return false
 	}
 	var merged []*core.Tab
-	for _, t := range m.Tabs {
+	for _, t := range m.Core.Tabs {
 		if t.Info.Merged() {
 			merged = append(merged, t)
 		}

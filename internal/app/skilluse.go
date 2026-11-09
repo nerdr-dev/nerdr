@@ -23,13 +23,13 @@ import (
 // skillTotals is the skills' use in tab t, or in every tab when F4 asks for
 // all of them or no tab is open. The file is read the first time.
 func (m *Model) skillTotals(t *core.Tab) map[string]*core.SkillTotal {
-	if m.SkillUse.Convs == nil {
+	if m.Core.SkillUse.Convs == nil {
 		m.do(core.ReadSkillUse{})
 	}
 	if m.skills.allTabs || t == nil {
-		return m.SkillUse.Totals("")
+		return m.Core.SkillUse.Totals("")
 	}
-	return m.SkillUse.Totals(t.Owner().ID)
+	return m.Core.SkillUse.Totals(t.Owner().ID)
 }
 
 // otherSkills are the skills on F4's other list, by name: those t's agent
@@ -42,7 +42,7 @@ func (m *Model) otherSkills(t *core.Tab, tot map[string]*core.SkillTotal) []skil
 		seen[s.Name] = true
 	}
 	var out []skills.Local
-	for _, l := range m.SkillLookOf(t).Others {
+	for _, l := range m.Core.SkillLookOf(t).Others {
 		seen[l.Name] = true
 		out = append(out, l)
 	}
@@ -63,11 +63,11 @@ func (m *Model) lookAtSkills(t *core.Tab) {
 		return
 	}
 	key := core.SkillKey(t)
-	v := m.SkillLookOf(t)
+	v := m.Core.SkillLookOf(t)
 	fresh := v.Key == key && time.Since(v.At) < core.SkillsCheckEvery
 	if fresh || key == m.skillsAsked && time.Since(m.skillsAskedAt) < core.SkillsCheckEvery {
 		return
 	}
 	m.skillsAsked, m.skillsAskedAt = key, time.Now()
-	m.tellCore(core.LookAtSkills{T: m.Ref(t)})
+	m.tellCore(core.LookAtSkills{T: m.Core.Ref(t)})
 }

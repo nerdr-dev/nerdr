@@ -35,7 +35,7 @@ type usageDialog struct {
 }
 
 func (m *Model) openUsage() tea.Cmd {
-	if m.ClaudeLimits == nil {
+	if m.Core.ClaudeLimits == nil {
 		m.do(core.ReadClaudeLimits{})
 	}
 	d := &usageDialog{}
@@ -47,9 +47,9 @@ func (m *Model) openUsage() tea.Cmd {
 func (m *Model) readUsage(d *usageDialog) tea.Cmd {
 	d.reading = true
 	q := core.ReadUsage{}
-	for _, a := range m.AllAgents() {
+	for _, a := range m.Core.AllAgents() {
 		if a.Agent == agents.Codex && a.SessionID != "" {
-			q.Sessions = append(q.Sessions, core.AgentSession{A: m.Ref(a), Session: a.SessionID})
+			q.Sessions = append(q.Sessions, core.AgentSession{A: m.Core.Ref(a), Session: a.SessionID})
 		}
 	}
 	m.usageJobs++
@@ -67,7 +67,7 @@ func (m *Model) onUsage(ev core.UsageMsg) {
 	d.reading, d.firstRead = false, true
 	d.codex, d.codexAt, d.contexts = ev.Codex, ev.At, map[*core.Tab]*usage.Report{}
 	for _, c := range ev.Contexts {
-		if a := m.ByRef(c.A); a != nil {
+		if a := m.Core.ByRef(c.A); a != nil {
 			r := c.R
 			d.contexts[a] = &r
 		}
@@ -106,12 +106,12 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "")
 	}
 	switch {
-	case !core.IsOn(m.Cfg.ClaudeStatusLine):
+	case !core.IsOn(m.Core.Cfg.ClaudeStatusLine):
 		account("Claude", "not known: claude_status_line is off", nil, time.Time{})
-	case m.ClaudeLimits == nil:
+	case m.Core.ClaudeLimits == nil:
 		account("Claude", "not known yet: a claude agent tells it after its first answer", nil, time.Time{})
 	default:
-		account("Claude", "from claude's status line", m.ClaudeLimits, m.ClaudeAt)
+		account("Claude", "from claude's status line", m.Core.ClaudeLimits, m.Core.ClaudeAt)
 	}
 	switch {
 	case d.codex != nil:
@@ -129,7 +129,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 		r          *usage.Report
 	}
 	var all []row
-	for _, t := range m.Tabs {
+	for _, t := range m.Core.Tabs {
 		for _, a := range t.AgentsIn() {
 			r := a.Usage
 			if a.Agent == agents.Codex {
@@ -141,7 +141,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 			name := t.Name
 			if a != t {
 				if p := a.PaneOf(); p != nil {
-					name += " · " + m.PaneName(t, p)
+					name += " · " + m.Core.PaneName(t, p)
 				}
 			}
 			all = append(all, row{name, string(a.Agent), r})

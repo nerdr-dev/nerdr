@@ -162,7 +162,7 @@ func panelKey(k string) bool {
 
 // functionKeys is whether hints name the panel's screens F1 to F5.
 func (m *Model) functionKeys() bool {
-	return m.Cfg.FunctionKeys == nil || *m.Cfg.FunctionKeys
+	return m.Core.Cfg.FunctionKeys == nil || *m.Core.Cfg.FunctionKeys
 }
 
 // screenKey is how a hint names the review panel's screen n (1 to 4):
@@ -216,7 +216,7 @@ func (m *Model) startPrefix() {
 	// The arrows start on the tab row, among the repository's own tabs —
 	// unless it has only the one, when ← → can only mean the next
 	// repository.
-	m.onGroups = len(m.Groups()) > 1 && len(m.GroupTabs(m.curGroup())) < 2
+	m.onGroups = len(m.Core.Groups()) > 1 && len(m.Core.GroupTabs(m.curGroup())) < 2
 }
 
 // navKey is whether k, after the prefix, goes to another tab or moves this
@@ -306,7 +306,7 @@ func (m *Model) runCommand(run string) tea.Cmd {
 // letter twice quits, as ctrl+q q does. "" when the prefix's letter is no
 // command's.
 func (m *Model) swappedKey() string {
-	l, ok := strings.CutPrefix(m.Cfg.PrefixKey(), "ctrl+")
+	l, ok := strings.CutPrefix(m.Core.Cfg.PrefixKey(), "ctrl+")
 	if !ok || len(l) != 1 || l < "a" || l > "z" || l == "q" {
 		return ""
 	}
@@ -349,11 +349,11 @@ func (m *Model) shownKeys(keys string) string {
 
 // pk is the prefix and the keys after it, as they are pressed, for hints.
 func (m *Model) pk(keys string) string {
-	return m.Cfg.Prefix + " " + m.shownKeys(keys)
+	return m.Core.Cfg.Prefix + " " + m.shownKeys(keys)
 }
 
 func (m *Model) isPrefix(msg tea.KeyMsg) bool {
-	return strings.EqualFold(msg.String(), m.Cfg.PrefixKey())
+	return strings.EqualFold(msg.String(), m.Core.Cfg.PrefixKey())
 }
 
 // command runs the key pressed after the prefix.
@@ -403,7 +403,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		if k == "left" {
 			delta = -1
 		}
-		if !m.onGroups && len(m.GroupTabs(m.curGroup())) < 2 && len(m.Groups()) > 1 {
+		if !m.onGroups && len(m.Core.GroupTabs(m.curGroup())) < 2 && len(m.Core.Groups()) > 1 {
 			m.onGroups = true // a tab alone in its repository has no neighbour to go to
 		}
 		if m.onGroups {
@@ -422,7 +422,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			}
 			return m.stepInGroup(delta)
 		}
-		m.onGroups = k == "up" && len(m.Groups()) > 1
+		m.onGroups = k == "up" && len(m.Core.Groups()) > 1
 		return nil
 	case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 		return m.selectInGroup(int(k[0] - '1'))
@@ -500,10 +500,10 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		// Restarting cuts the turn short: what the agent has not written to
 		// its log yet is lost.
 		m.dialog = &confirm{
-			title: "Restart " + m.AgentName(t) + "?",
+			title: "Restart " + m.Core.AgentName(t) + "?",
 			lines: restartLines(t),
 			yes: func(m *Model) tea.Cmd {
-				if !m.Live(t) {
+				if !m.Core.Live(t) {
 					return nil
 				}
 				return m.restart(t)
@@ -515,7 +515,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "p":
 		// Send the prefix key itself to the agent (or the shell).
 		if p := m.keyPane(); p != nil {
-			if b, err := m.Cfg.PrefixByte(); err == nil {
+			if b, err := m.Core.Cfg.PrefixByte(); err == nil {
 				p.Write([]byte{b})
 			}
 		}
@@ -529,7 +529,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			title: "Quit nerdr?",
 			lines: []string{
 				"The agents are stopped. Their tabs and conversations are",
-				"restored the next time you start nerdr in " + m.Root + ".",
+				"restored the next time you start nerdr in " + m.Core.Root + ".",
 			},
 			yes: func(m *Model) tea.Cmd { return m.quit() },
 		}
@@ -608,7 +608,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			return nil
 		}
 		m.hideGroups = !m.hideGroups
-		if len(m.Groups()) < 2 {
+		if len(m.Core.Groups()) < 2 {
 			m.toast("Only one repository: its row shows once there are two")
 		}
 		return nil
@@ -692,11 +692,11 @@ func (m *Model) altScrollKey(p core.Program, msg tea.KeyMsg, w, h int) {
 
 // restart starts the tab's agent again, continuing its conversation.
 func (m *Model) restart(t *core.Tab) tea.Cmd {
-	if m.ReposHold(t) {
+	if m.Core.ReposHold(t) {
 		return nil
 	}
 	m.scrolling = false
-	return m.do(core.Restart{A: m.Ref(t)})
+	return m.do(core.Restart{A: m.Core.Ref(t)})
 }
 
 // keyBytes encodes a key the way a terminal would have sent it. It is

@@ -25,7 +25,7 @@ import (
 
 func TestScanZones(t *testing.T) {
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	var hit []string
 	fn := func(name string) zoneFn {
 		return func(*Model, tea.MouseMsg) tea.Cmd { hit = append(hit, name); return nil }
@@ -150,7 +150,7 @@ func TestWheelBurst(t *testing.T) {
 func TestWheelAfterFocus(t *testing.T) {
 	m := testModel(t)
 	no := false
-	m.Cfg.HerdrFocusJump = &no
+	m.Core.Cfg.HerdrFocusJump = &no
 	m.View()
 	wheel := func() {
 		m.lastWheelStep = time.Time{} // not what this is about
@@ -264,7 +264,7 @@ func TestDragTheSideEdge(t *testing.T) {
 	if w := m.sideW(); w != auto+10 {
 		t.Fatalf("sidebar %d columns after the drag, want %d", w, auto+10)
 	}
-	if s, _ := state.Load(m.Root); s.SideWidth != auto+9 {
+	if s, _ := state.Load(m.Core.Root); s.SideWidth != auto+9 {
 		t.Fatalf("saved width %d, want %d", s.SideWidth, auto+9)
 	}
 	m.Update(tea.MouseMsg{X: m.sideW() - 1, Y: y, Button: tea.MouseButtonRight, Action: tea.MouseActionPress})
@@ -326,7 +326,7 @@ func TestTooltip(t *testing.T) {
 // requests, and a click on "this branch" goes back to the branch's.
 func TestClickPRViews(t *testing.T) {
 	m := testModel(t)
-	m.PRWatch.At = time.Now() // known already: GitHub is not asked
+	m.Core.PRWatch.At = time.Now() // known already: GitHub is not asked
 	m.handleKey(keyMsg("f2"))
 	// As my PRs has it: the title in the border, the views right below.
 	lines := strings.Split(ansi.Strip(m.View()), "\n")
@@ -354,7 +354,7 @@ func TestDragCopiesFromATerminalPane(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nprintf 'hello-panel'\nsleep 5\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m.Cfg.Shell = script
+	m.Core.Cfg.Shell = script
 	m.Cur().Dir = dir
 	m.runCommand("t t")
 	defer m.Shutdown()
@@ -394,7 +394,7 @@ func TestTerminalBesideTheAgentScrollsAndCopies(t *testing.T) {
 	if err := os.WriteFile(script, []byte("#!/bin/sh\nfor i in $(seq 1 100); do echo line-$i; done\necho last-line\nsleep 5\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	m.Cfg.Shell = script
+	m.Core.Cfg.Shell = script
 	m.Cur().Dir = dir
 	agent, err := term.Start([]string{"sh", "-c", "echo agent-here; sleep 5"}, dir, os.Environ(), 40, 10, func() {})
 	if err != nil {
@@ -467,7 +467,7 @@ func TestOSC52OnlyFromThePaneInUse(t *testing.T) {
 		t.Cleanup(func() { p.Stop(time.Second) })
 		return p
 	}
-	m.Tabs[0].Pane, m.Tabs[1].Pane = copying("here"), copying("elsewhere")
+	m.Core.Tabs[0].Pane, m.Core.Tabs[1].Pane = copying("here"), copying("elsewhere")
 	time.Sleep(300 * time.Millisecond)
 
 	// Nobody has typed: nothing is taken, from the pane in use either.
@@ -484,7 +484,7 @@ func TestOSC52OnlyFromThePaneInUse(t *testing.T) {
 	if len(copied) != 0 {
 		t.Fatalf("copied unasked: %q", copied)
 	}
-	m.Tabs[0].Pane, m.Tabs[1].Pane = copying("here"), copying("elsewhere")
+	m.Core.Tabs[0].Pane, m.Core.Tabs[1].Pane = copying("here"), copying("elsewhere")
 	time.Sleep(300 * time.Millisecond)
 	m.checkCopied()
 	if len(copied) != 1 || copied[0] != "here" {
@@ -509,7 +509,7 @@ func TestClickPRNumber(t *testing.T) {
 	m := testModel(t)
 	m.showDetails = true
 	for i, n := range []int{7, 8} {
-		m.Tabs[i].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true,
+		m.Core.Tabs[i].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true,
 			Pr: github.Status{Number: n, State: "OPEN", URL: "https://github.com/o/app/pull/" + strconv.Itoa(n)}}}}
 	}
 	m.selectTab(0)

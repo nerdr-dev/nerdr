@@ -23,7 +23,7 @@ func num(n int) *int { return &n }
 
 func TestPanelShowsTheLastMessageInTwoRowsAtMost(t *testing.T) {
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Goal: "the first task", Last: strings.Repeat("make the login form remember the user ", 10)}}}
 	lines := m.taskLines(tb, 40, 30)
 	if len(lines) != core.LastMaxLines+1 {
@@ -52,9 +52,9 @@ func TestPanelShowsTheLastMessageInTwoRowsAtMost(t *testing.T) {
 		t.Fatalf("Claude's recap in the last message's place: %q", ansi.Strip(strings.Join(lines, "\n")))
 	}
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // the session saved is not the user's
-	m.Tabs = []*core.Tab{tb}
-	m.SetLast(tb, "now make it forget")
-	m.Tabs = nil
+	m.Core.Tabs = []*core.Tab{tb}
+	m.Core.SetLast(tb, "now make it forget")
+	m.Core.Tabs = nil
 	lines = m.taskLines(tb, 40, 30)
 	if !strings.HasPrefix(ansi.Strip(lines[0]), " last:   now make it forget") {
 		t.Fatalf("a message sent after the recap takes its place: %q", ansi.Strip(strings.Join(lines, "\n")))
@@ -76,9 +76,9 @@ func TestPanelShowsTheLastMessageInTwoRowsAtMost(t *testing.T) {
 
 func TestPanelTakesRowsFromThePane(t *testing.T) {
 	m := &Model{width: 100, height: 40}
-	m.Client = m
+	m.Core.Client = m
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Goal: "fix it"}}}
-	m.Tabs = []*core.Tab{a}
+	m.Core.Tabs = []*core.Tab{a}
 	_, full := m.agentSize()
 	if _, h := m.tabSize(a); h != full-2 {
 		t.Fatalf("pane height %d, want %d", h, full-2)
@@ -139,10 +139,10 @@ func TestWaitingOrder(t *testing.T) {
 	doneOld := mk("done-old", core.StDone, time.Hour)
 	doneNew := mk("done-new", core.StDone, time.Minute)
 	blocked := mk("blocked", core.StBlocked, time.Second)
-	m := &Model{Tabs: []*core.Tab{doneNew, mk("working", core.StWorking, time.Hour), doneOld, blocked}}
-	m.Client = m
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{doneNew, mk("working", core.StWorking, time.Hour), doneOld, blocked}}}
+	m.Core.Client = m
 	var got []string
-	for _, x := range m.Waiting() {
+	for _, x := range m.Core.Waiting() {
 		got = append(got, x.ID)
 	}
 	if strings.Join(got, ",") != "blocked,done-old,done-new" {
@@ -152,33 +152,33 @@ func TestWaitingOrder(t *testing.T) {
 
 func TestCold(t *testing.T) {
 	now := time.Now()
-	m := &Model{Cfg: config.Config{ColdDays: num(5)}}
-	m.Client = m
+	m := &Model{Core: core.Core{Cfg: config.Config{ColdDays: num(5)}}}
+	m.Core.Client = m
 	old := &core.Tab{AgentState: core.Agent{Tab: state.Tab{LastActive: now.Add(-6 * 24 * time.Hour)}, Light: core.StIdle}}
-	if !m.Cold(old, now) {
+	if !m.Core.Cold(old, now) {
 		t.Fatal("six days idle is cold")
 	}
 	old.Light = core.StWorking
-	if m.Cold(old, now) {
+	if m.Core.Cold(old, now) {
 		t.Fatal("a working agent is not cold")
 	}
 	recent := &core.Tab{AgentState: core.Agent{Tab: state.Tab{LastActive: now.Add(-24 * time.Hour)}, Light: core.StIdle}}
-	if m.Cold(recent, now) {
+	if m.Core.Cold(recent, now) {
 		t.Fatal("one day is not cold")
 	}
-	m.Cfg.ColdDays = num(0)
+	m.Core.Cfg.ColdDays = num(0)
 	old.Light = core.StIdle
-	if m.Cold(old, now) {
+	if m.Core.Cold(old, now) {
 		t.Fatal("cold_days = 0 turns it off")
 	}
 }
 
 func TestLeavingAndComingBack(t *testing.T) {
 	m := &Model{lastInGroup: map[string]core.TabRef{}}
-	m.Client = m
+	m.Core.Client = m
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "a"}, Light: core.StIdle}}
 	b := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "b"}, Light: core.StIdle}}
-	m.Tabs = []*core.Tab{a, b}
+	m.Core.Tabs = []*core.Tab{a, b}
 	m.entered = a
 
 	m.track() // nothing changed
@@ -208,7 +208,7 @@ func TestLeavingAndComingBack(t *testing.T) {
 	if !s.Finished || s.Log.Done != 1 {
 		t.Fatalf("summary %+v", s)
 	}
-	m.OnSummary(s)
+	m.Core.OnSummary(s)
 	if m.dialog != nil {
 		t.Fatalf("coming back to a tab opens no dialog, got %T", m.dialog)
 	}
@@ -221,7 +221,7 @@ func TestLeavingAndComingBack(t *testing.T) {
 // with the prefix goes straight on.
 func TestLeavingAsksNothing(t *testing.T) {
 	m := testModel(t)
-	login, logout := m.Tabs[0], m.Tabs[1]
+	login, logout := m.Core.Tabs[0], m.Core.Tabs[1]
 	m.entered = login
 
 	m.Update(tea.KeyMsg{Type: tea.KeyCtrlQ})
@@ -236,13 +236,13 @@ func TestLeavingAsksNothing(t *testing.T) {
 }
 
 func TestMergedTabSaysSoWithoutADialog(t *testing.T) {
-	m := &Model{Cfg: config.Config{CloseMerged: on(), Prefix: "ctrl+b"}, lastInGroup: map[string]core.TabRef{}}
-	m.Client = m
+	m := &Model{Core: core.Core{Cfg: config.Config{CloseMerged: on(), Prefix: "ctrl+b"}}, lastInGroup: map[string]core.TabRef{}}
+	m.Core.Client = m
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "a", Worktrees: []workspace.Worktree{{Path: "/x"}}}}}
 	b := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "b"}}}
 	a.Info.Wts = []core.WtInfo{{HasPR: true, Pr: github.Status{Number: 3, State: "MERGED"}}}
 	a.Info.At = time.Now()
-	m.Tabs = []*core.Tab{b, a}
+	m.Core.Tabs = []*core.Tab{b, a}
 	m.entered = b
 	m.Active = 1
 	m.track()
@@ -256,9 +256,9 @@ func TestMergedTabSaysSoWithoutADialog(t *testing.T) {
 }
 
 func TestTabLimit(t *testing.T) {
-	m := &Model{Cfg: config.Config{MaxTabs: num(2)}, width: 100, height: 40}
-	m.Client = m
-	m.Tabs = []*core.Tab{{}, {}}
+	m := &Model{Core: core.Core{Cfg: config.Config{MaxTabs: num(2)}}, width: 100, height: 40}
+	m.Core.Client = m
+	m.Core.Tabs = []*core.Tab{{}, {}}
 	m.openWizard()
 	if _, ok := m.dialog.(*menu); !ok {
 		t.Fatalf("at the limit a new tab is refused, got %T", m.dialog)
@@ -286,7 +286,7 @@ func runBatch(cmd tea.Cmd) []tea.Msg {
 // has Claude's recap when one was written after you left.
 func TestSummaryShowsTheAgentAsItIsNow(t *testing.T) {
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	left := time.Now().Add(-time.Hour)
 	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Name: "login", Agent: "claude"}, Light: core.StWorking}}
 	d := &summaryDialog{s: core.Summary{T: tb, Since: left, Away: 30 * time.Minute}}
@@ -312,29 +312,29 @@ func TestSummaryShowsTheAgentAsItIsNow(t *testing.T) {
 func TestRecapGoesWithTheNextMessage(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // the session saved is not the user's
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	at := time.Now()
 	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Last: "go on", Recap: "half done", RecapAt: at}}}
-	m.Tabs = []*core.Tab{tb}
+	m.Core.Tabs = []*core.Tab{tb}
 
-	m.SetLatest(tb, agents.Latest{Prompt: "go on", PromptAt: at.Add(time.Minute), Recap: "half done", RecapAt: at})
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "go on", PromptAt: at.Add(time.Minute), Recap: "half done", RecapAt: at})
 	if tb.Recap != "" {
 		t.Fatalf("the log has go on again after the recap, and the recap stays: %q", tb.Recap)
 	}
 
 	tb.Recap, tb.RecapAt = "half done", at
-	m.SetLast(tb, "go on")
+	m.Core.SetLast(tb, "go on")
 	if tb.Recap != "" || tb.Last != "go on" {
 		t.Fatalf("go on sent again, and the recap stays: %q", tb.Recap)
 	}
 
 	// The log read again: the recap is from before the prompt, and does
 	// not come back; a later one does.
-	m.SetLatest(tb, agents.Latest{Prompt: "go on", PromptAt: at.Add(time.Minute), Recap: "half done", RecapAt: at})
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "go on", PromptAt: at.Add(time.Minute), Recap: "half done", RecapAt: at})
 	if tb.Recap != "" {
 		t.Fatalf("an old recap came back: %q", tb.Recap)
 	}
-	m.SetLatest(tb, agents.Latest{Prompt: "go on", PromptAt: at.Add(time.Minute), Recap: "all done", RecapAt: at.Add(5 * time.Minute)})
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "go on", PromptAt: at.Add(time.Minute), Recap: "all done", RecapAt: at.Add(5 * time.Minute)})
 	if tb.Recap != "all done" {
 		t.Fatalf("the new recap: %q", tb.Recap)
 	}
@@ -346,19 +346,19 @@ func TestRecapGoesWithTheNextMessage(t *testing.T) {
 func TestLogDoesNotPutBackAnOlderPrompt(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	tb := &core.Tab{}
-	m.Tabs = []*core.Tab{tb}
-	m.SetLast(tb, "the newest prompt")
-	m.SetLatest(tb, agents.Latest{Prompt: "the one before", PromptAt: time.Now().Add(-time.Minute)})
+	m.Core.Tabs = []*core.Tab{tb}
+	m.Core.SetLast(tb, "the newest prompt")
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "the one before", PromptAt: time.Now().Add(-time.Minute)})
 	if tb.Last != "the newest prompt" {
 		t.Fatalf("an older prompt from the log took its place: %q", tb.Last)
 	}
-	m.SetLatest(tb, agents.Latest{Prompt: "the newest prompt, as logged", PromptAt: time.Now().Add(-time.Second)})
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "the newest prompt, as logged", PromptAt: time.Now().Add(-time.Second)})
 	if tb.Last != "the newest prompt, as logged" {
 		t.Fatalf("the log's own copy of it should be taken: %q", tb.Last)
 	}
-	m.SetLatest(tb, agents.Latest{Prompt: "a later one", PromptAt: time.Now().Add(time.Minute)})
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "a later one", PromptAt: time.Now().Add(time.Minute)})
 	if tb.Last != "a later one" {
 		t.Fatalf("a later prompt: %q", tb.Last)
 	}
@@ -376,21 +376,21 @@ func TestLogDoesNotPutBackAnOlderPrompt(t *testing.T) {
 func TestPanelShowsWhatABriefAnswerAnswers(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Goal: "the first task"}}}
-	m.Tabs = []*core.Tab{tb}
+	m.Core.Tabs = []*core.Tab{tb}
 	draw := func(w int) string {
 		lines := m.taskLines(tb, w, 30)
 		return ansi.Strip(strings.Join(lines[:len(lines)-1], "\n"))
 	}
 
-	m.SetLast(tb, "yes")
+	m.Core.SetLast(tb, "yes")
 	if got := draw(60); !strings.HasPrefix(got, " last:   the first task → yes") {
 		t.Fatalf("with nothing before it, what it answers is the task: %q", got)
 	}
-	m.SetLast(tb, "make the login form remember the user")
-	m.SetLast(tb, "ja")
-	m.SetLast(tb, "ok, do it")
+	m.Core.SetLast(tb, "make the login form remember the user")
+	m.Core.SetLast(tb, "ja")
+	m.Core.SetLast(tb, "ok, do it")
 	if got := draw(60); !strings.HasPrefix(got, " last:   make the login form remember the user → ok, do it") {
 		t.Fatalf("the last request before the answers: %q", got)
 	}
@@ -404,17 +404,17 @@ func TestPanelShowsWhatABriefAnswerAnswers(t *testing.T) {
 			t.Fatalf("row is %d wide, want 40: %q", w, ansi.Strip(l))
 		}
 	}
-	m.SetLast(tb, "now make it forget the user too")
+	m.Core.SetLast(tb, "now make it forget the user too")
 	if got := draw(60); !strings.HasPrefix(got, " last:   now make it forget the user too") || strings.Contains(got, "→") {
 		t.Fatalf("a request of its own is shown alone: %q", got)
 	}
-	m.SetLast(tb, "go on")
-	m.SetLast(tb, "go on")
+	m.Core.SetLast(tb, "go on")
+	m.Core.SetLast(tb, "go on")
 	if n := len(tb.Prompts); n != 7 {
 		t.Fatalf("go on sent twice is in the list twice: %d prompts", n)
 	}
 	for range core.PromptsKept {
-		m.SetLast(tb, "again")
+		m.Core.SetLast(tb, "again")
 	}
 	if n := len(tb.Prompts); n != core.PromptsKept {
 		t.Fatalf("the list keeps %d, has %d", core.PromptsKept, n)
@@ -426,16 +426,16 @@ func TestPanelShowsWhatABriefAnswerAnswers(t *testing.T) {
 func TestBriefAnswerInATabFromBefore(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Goal: "build the login page", Last: "fix the password reset redirect"}}}
-	m.Tabs = []*core.Tab{tb}
-	m.SetLast(tb, "yes")
+	m.Core.Tabs = []*core.Tab{tb}
+	m.Core.SetLast(tb, "yes")
 	lines := m.taskLines(tb, 80, 30)
 	if got := ansi.Strip(lines[0]); !strings.HasPrefix(got, " last:   fix the password reset redirect → yes") {
 		t.Fatalf("drawn %q", got)
 	}
 	tb.Prompts, tb.Last = nil, "fix the password reset redirect"
-	m.SetLatest(tb, agents.Latest{Prompt: "yes", PromptAt: time.Now()})
+	m.Core.SetLatest(tb, agents.Latest{Prompt: "yes", PromptAt: time.Now()})
 	if len(tb.Prompts) != 2 || tb.Prompts[0].Text != "fix the password reset redirect" {
 		t.Fatalf("read from the log, the same: %+v", tb.Prompts)
 	}
@@ -444,11 +444,11 @@ func TestBriefAnswerInATabFromBefore(t *testing.T) {
 func TestSentDialogListsTheLatestFirst(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	m := &Model{}
-	m.Client = m
+	m.Core.Client = m
 	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Name: "login", Agent: agents.Codex}}}
-	m.Tabs = []*core.Tab{tb}
-	m.SetLast(tb, "make the login form remember the user\nand add a test")
-	m.SetLast(tb, "yes")
+	m.Core.Tabs = []*core.Tab{tb}
+	m.Core.SetLast(tb, "make the login form remember the user\nand add a test")
+	m.Core.SetLast(tb, "yes")
 	m.openSentOf(tb)
 	d, ok := m.dialog.(*sentDialog)
 	if !ok {
@@ -467,7 +467,7 @@ func TestSentDialogListsTheLatestFirst(t *testing.T) {
 	for i := range 30 {
 		long += fmt.Sprintf("line %d of a long request\n", i+1)
 	}
-	m.SetLast(tb, long)
+	m.Core.SetLast(tb, long)
 	d.list, d.pick = tb.Prompts, 0
 	view = ansi.Strip(d.view(m, 80, 40))
 	if strings.Contains(view, "line 11 ") || !strings.Contains(view, "20 rows more") {

@@ -47,7 +47,7 @@ type wizardPRs struct {
 // GitHub's.
 func (w *wizard) loadPRs(m *Model) tea.Cmd {
 	picked := w.pickedRepos()
-	if len(picked) != 1 || m.NoGh {
+	if len(picked) != 1 || m.Core.NoGh {
 		w.pulls = wizardPRs{}
 		return nil
 	}
@@ -56,8 +56,8 @@ func (w *wizard) loadPRs(m *Model) tea.Cmd {
 		return nil
 	}
 	w.pulls = wizardPRs{repo: r.Path}
-	if got, ok := m.PRAll.Repos[r.Path]; ok && m.PRAll.Asked != nil && time.Since(got.At) < m.GithubEvery(core.PrAllEvery) {
-		w.setPRs(m, got, m.PRAll.Asked)
+	if got, ok := m.Core.PRAll.Repos[r.Path]; ok && m.Core.PRAll.Asked != nil && time.Since(got.At) < m.Core.GithubEvery(core.PrAllEvery) {
+		w.setPRs(m, got, m.Core.PRAll.Asked)
 		return nil
 	}
 	w.pulls.loading = true
@@ -69,7 +69,7 @@ func (w *wizard) loadPRs(m *Model) tea.Cmd {
 func (w *wizard) setPRs(m *Model, got core.RepoPRs, asked map[string]bool) {
 	w.pulls.entries = nil
 	for _, e := range markedPRs(got, asked) {
-		if m.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
+		if m.Core.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
 			w.pulls.entries = append(w.pulls.entries, e)
 		}
 	}
@@ -81,7 +81,7 @@ func (w *wizard) setPRs(m *Model, got core.RepoPRs, asked map[string]bool) {
 // the dialog that asked.
 func (m *Model) onWizardPRs(msg core.RepoPRsMsg) {
 	if w, ok := m.dialog.(*wizard); ok && w.id == msg.Job && w.pulls.repo == msg.Repo {
-		w.setPRs(m, m.PRAll.Repos[msg.Repo], m.PRAll.Asked)
+		w.setPRs(m, m.Core.PRAll.Repos[msg.Repo], m.Core.PRAll.Asked)
 		if msg.AskedErr != "" && w.pulls.err == "" {
 			w.pulls.err = msg.AskedErr
 		}

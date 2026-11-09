@@ -11,10 +11,10 @@ import (
 )
 
 func notifyModel(notify string, tabs ...*core.Tab) *Model {
-	m := &Model{Tabs: tabs}
-	m.Client = m
-	m.Cfg.Notify = notify
-	m.Cfg.Prefix = "ctrl+q"
+	m := &Model{Core: core.Core{Tabs: tabs}}
+	m.Core.Client = m
+	m.Core.Cfg.Notify = notify
+	m.Core.Cfg.Prefix = "ctrl+q"
 	return m
 }
 

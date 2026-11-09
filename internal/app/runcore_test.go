@@ -18,7 +18,7 @@ func runNow(m *Model, c core.Cmd) {
 			runNow(m, c)
 		}
 	default:
-		next, _ := m.Handle(ev)
+		next, _ := m.Core.Handle(ev)
 		runNow(m, next)
 	}
 }

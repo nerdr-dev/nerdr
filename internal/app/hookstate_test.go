@@ -106,14 +106,14 @@ func TestNestedSessionDoesNotReplaceTheTabs(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // the session saved is not the user's
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.SessionID = "main"
-	m := &Model{Tabs: []*core.Tab{tb}}
-	m.Client = m
-	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "herdr:claude", Agent: "claude",
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{tb}}}
+	m.Core.Client = m
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "herdr:claude", Agent: "claude",
 		SessionID: "nested", SessionSource: "startup"})
 	if tb.SessionID != "main" {
 		t.Fatalf("nested start took over: %q", tb.SessionID)
 	}
-	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "herdr:claude", Agent: "claude",
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "herdr:claude", Agent: "claude",
 		SessionID: "cleared", SessionSource: "clear"})
 	if tb.SessionID != "cleared" {
 		t.Fatalf("/clear not taken: %q", tb.SessionID)
@@ -125,9 +125,9 @@ func TestReportedResumeCommandIsKept(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.Agent = "my-agent"
-	m := &Model{Tabs: []*core.Tab{tb}}
-	m.Client = m
-	m.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{tb}}}
+	m.Core.Client = m
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
 		State: "idle", ResumeArgv: []string{"my-agent", "--resume", "s-1"}})
 	if strings.Join(tb.ResumeArgv, " ") != "my-agent --resume s-1" {
 		t.Fatalf("resume command = %q", tb.ResumeArgv)
@@ -141,14 +141,14 @@ func TestResumeCommandFollowsTheConversation(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.Agent = "my-agent"
-	m := &Model{Tabs: []*core.Tab{tb}}
-	m.Client = m
-	m.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{tb}}}
+	m.Core.Client = m
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
 		State: "idle", SessionID: "s1", SessionSource: "startup", ResumeArgv: []string{"my-agent", "--resume", "s1"}})
 	if tb.SessionID != "s1" || strings.Join(tb.ResumeArgv, " ") != "my-agent --resume s1" {
 		t.Fatalf("after start: %q, %q", tb.SessionID, tb.ResumeArgv)
 	}
-	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), Source: "my-agent", Agent: "my-agent",
 		SessionID: "s2", SessionSource: "clear"})
 	if tb.SessionID != "s2" || tb.ResumeArgv != nil {
 		t.Fatalf("after /clear: %q, %q", tb.SessionID, tb.ResumeArgv)
@@ -197,11 +197,11 @@ func TestReportUnderTheTabsIDIsIgnored(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	tb := claudeTab(t, claudePromptScreen, "auto mode")
 	tb.SessionID = "main"
-	m := &Model{Tabs: []*core.Tab{tb}}
-	m.Client = m
-	m.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.ID, Source: "herdr:claude", Agent: "claude",
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{tb}}}
+	m.Core.Client = m
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.ID, Source: "herdr:claude", Agent: "claude",
 		SessionID: "other", SessionSource: "clear"})
-	m.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.ID, Handoff: "planted"})
+	m.Core.OnHandoff(hooks.Report{Method: hooks.Handoff, Pane: tb.ID, Handoff: "planted"})
 	if tb.SessionID != "main" || tb.HandoffReady != nil {
 		t.Fatalf("taken: session %q, handoff %v", tb.SessionID, tb.HandoffReady)
 	}
@@ -250,9 +250,9 @@ func TestWaitingOnBackgroundSubagentsStaysWorking(t *testing.T) {
 	t.Parallel()
 	waiting := claudeTab(t, claudePromptScreen, "auto mode")
 	interrupted := claudeTab(t, claudePromptScreen, "auto mode")
-	m := &Model{Tabs: []*core.Tab{waiting}}
-	m.Client = m
-	m.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: waiting.HookKey(), Source: hooks.ClaudeSource, Agent: "claude",
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{waiting}}}
+	m.Core.Client = m
+	m.Core.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: waiting.HookKey(), Source: hooks.ClaudeSource, Agent: "claude",
 		State: "working", Background: true})
 	reported(interrupted, detect.Working, 0)
 	time.Sleep(core.InterruptQuiet + 200*time.Millisecond)
@@ -339,15 +339,15 @@ func TestBackgroundProcessRanksBelowWork(t *testing.T) {
 func TestNeediestTakesABackgroundProcess(t *testing.T) {
 	idle := &core.Tab{AgentState: core.Agent{Light: core.StIdle}}
 	background := &core.Tab{AgentState: core.Agent{Light: core.StBackground}}
-	m := &Model{Tabs: []*core.Tab{idle, background}}
-	if i, got := m.Neediest(); got != background || i != 1 {
+	m := &Model{Core: core.Core{Tabs: []*core.Tab{idle, background}}}
+	if i, got := m.Core.Neediest(); got != background || i != 1 {
 		t.Fatalf("picked tab %d", i)
 	}
 	working := &core.Tab{AgentState: core.Agent{Light: core.StWorking}}
 	working.Changed = time.Now().Add(-time.Hour)
 	background.Changed = time.Now()
-	m.Tabs = append(m.Tabs, working)
-	if i, got := m.Neediest(); got != working || i != 2 {
+	m.Core.Tabs = append(m.Core.Tabs, working)
+	if i, got := m.Core.Neediest(); got != working || i != 2 {
 		t.Fatalf("with one working: picked tab %d", i)
 	}
 }
