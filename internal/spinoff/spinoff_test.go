@@ -103,6 +103,7 @@ func TestReportTellsTheAgentWhatBecameOfEachPart(t *testing.T) {
 	for start, want := range map[string]string{
 		StartBegun:   "has started on it",
 		StartStalled: "did not take the prompt up",
+		StartUnsent:  "never sent",
 		StartExited:  "stopped before it started",
 		StartClosed:  "closed that tab",
 		StartSlow:    "not been seen starting",

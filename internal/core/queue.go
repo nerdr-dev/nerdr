@@ -7,6 +7,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/detect"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
@@ -29,6 +30,16 @@ const (
 	// working, asked something, nor drawn anything counts as not having
 	// taken the message (herdr's agent_prompt_stalled).
 	StallAfter = 5 * time.Second
+	// EnterAgainAfter is how long after enter an agent with a hook that has
+	// not reported taking the prompt up gets enter again, up to
+	// EnterAgainMax times, each that much later. Claude drops an enter
+	// that comes in its first second or so, though the text typed in
+	// before it stays in its input box; a second enter sends it.
+	EnterAgainAfter = 1500 * time.Millisecond
+	EnterAgainMax   = 2
+	// UnsentAfter is how long after enter an agent with a hook that has not
+	// reported taking the prompt up counts as not having been sent it.
+	UnsentAfter = 8 * time.Second
 )
 
 // SendEnter is the moment to press enter after a message typed in to agent ID,
@@ -102,6 +113,8 @@ func (a *Agent) AtPrompt() bool {
 func (a *Agent) TypeMessage(msg string, now time.Time) Cmd {
 	a.Pane.Input(Paste(msg))
 	a.AwaitWork, a.SentAt, a.EnterAt = true, now, time.Time{}
+	a.EnterAgain, a.Unsent = 0, false
+	a.SentCommand = strings.HasPrefix(msg, "/") || strings.HasPrefix(msg, "!")
 	return After(EnterAfter, SendEnter{ID: a.ID, Gen: a.Gen})
 }
 
@@ -116,14 +129,20 @@ func (a *Agent) PressEnter(gen uint64, now time.Time) {
 
 // CheckSent follows a message sent from the queue until the agent is seen
 // taking it up: working, or asking something (Classify clears AwaitWork
-// then). One that answers too fast to be seen working has drawn something
-// and gone still again. One that has done nothing at all has stalled, and
-// CheckSent reports that once.
+// then). An agent with nerdr's hooks reports taking a prompt (UserPromptSubmit);
+// until it has, the prompt has not been sent, however much the agent drew
+// (it draws the text typed in), and it is given enter again while at its
+// prompt. One with no such hook that answers too fast to be seen working has
+// drawn something and gone still again. One that has done nothing at all
+// has stalled, and CheckSent reports that once.
 func (a *Agent) CheckSent(now time.Time) (stalled bool) {
 	if !a.AwaitWork || a.EnterAt.IsZero() || a.Pane == nil {
 		return false
 	}
 	since := now.Sub(a.EnterAt)
+	if hooks.ReportsPrompt(a.Hook.Source) && !a.SentCommand {
+		return a.checkSubmitted(since)
+	}
 	if since < StallAfter {
 		return false
 	}
@@ -137,6 +156,22 @@ func (a *Agent) CheckSent(now time.Time) (stalled bool) {
 		return true
 	case since > QueueGiveUp:
 		a.AwaitWork, a.Begun = false, true // still drawing, never idle: carry on
+	}
+	return false
+}
+
+// checkSubmitted is CheckSent for an agent with a hook, since after enter.
+func (a *Agent) checkSubmitted(since time.Duration) (stalled bool) {
+	switch {
+	case a.Hook.WorkingAt.After(a.EnterAt):
+		a.AwaitWork, a.Begun = false, true // Classify has most likely seen to it
+	case since >= UnsentAfter:
+		a.AwaitWork = false
+		a.QueuePaused, a.Unsent = true, true
+		return true
+	case a.EnterAgain < EnterAgainMax && since >= time.Duration(a.EnterAgain+1)*EnterAgainAfter && a.AtPrompt():
+		a.Pane.Input([]byte("\r"))
+		a.EnterAgain++
 	}
 	return false
 }
@@ -180,11 +215,14 @@ func (m *Core) CheckSent(t *Tab, now time.Time) {
 	if !t.CheckSent(now) {
 		return
 	}
-	if t.AutoCount() > 0 {
-		m.Toast(t.Name + ": the agent did not take the task up — have a look; the rest of its queue waits")
-	} else {
-		m.Toast(t.Name + ": the agent did not take the task up — have a look")
+	msg := t.Name + ": the agent did not take the task up — have a look"
+	if t.Unsent {
+		msg = t.Name + ": the task was typed in to the agent but not sent, though enter was pressed again — press enter in its pane"
 	}
+	if t.AutoCount() > 0 {
+		msg += "; the rest of its queue waits"
+	}
+	m.Toast(msg)
 }
 
 // NewLineHint is the hint for a new line in a newTextArea. macOS's

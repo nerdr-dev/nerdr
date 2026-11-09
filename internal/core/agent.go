@@ -110,6 +110,16 @@ type Agent struct {
 	// the agent did not take the message up, until the user has looked.
 	EnterAt     time.Time
 	QueuePaused bool
+	// EnterAgain is how many more times enter was pressed after EnterAt,
+	// for an agent whose hook had not said it took the prompt; Unsent is
+	// set with QueuePaused when the hook never did, so the prompt is most
+	// likely still in its input box.
+	EnterAgain int
+	Unsent     bool
+	// SentCommand is set when the message is a slash command or a shell
+	// command (/compact, !ls), which an agent may run with no
+	// UserPromptSubmit: its screen says whether it was taken up.
+	SentCommand bool
 
 	// Hook is what the integration in the agent has reported.
 	Hook HookAuthority
@@ -128,6 +138,10 @@ type HookAuthority struct {
 	At     time.Time // when state was reported
 	Msg    string
 	Seq    map[string]int64 // the last sequence number taken, per source
+	// WorkingAt is when the agent last reported work of its own, with no
+	// commands left running in the background: it took a prompt then (the
+	// UserPromptSubmit hook), or went on with one.
+	WorkingAt time.Time
 	// Background says the agent's turn is over, but it waits on work it
 	// started in the background, subagents or commands: its screen is
 	// still and at the prompt meanwhile, and says nothing of it.

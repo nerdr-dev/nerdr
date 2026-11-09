@@ -116,6 +116,8 @@ func (m *Core) SpinoffStart(id string) string {
 	switch nt := m.Tabs[i]; {
 	case nt.Begun:
 		return spinoff.StartBegun
+	case nt.QueuePaused && nt.Unsent:
+		return spinoff.StartUnsent
 	case nt.QueuePaused:
 		return spinoff.StartStalled
 	case nt.Light == StExited:

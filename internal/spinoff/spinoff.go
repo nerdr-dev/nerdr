@@ -180,6 +180,7 @@ type Outcome struct {
 const (
 	StartBegun   = "begun"   // seen taking the prompt up
 	StartStalled = "stalled" // the prompt typed in, and not taken up
+	StartUnsent  = "unsent"  // the prompt typed in, but never sent
 	StartExited  = "exited"  // the agent stopped before it took it up
 	StartClosed  = "closed"  // the user closed the tab first
 	StartSlow    = "slow"    // not seen taking it up in the time waited
@@ -274,6 +275,8 @@ func Report(done []Outcome, branch string) string {
 			switch o.Start {
 			case StartBegun:
 				b.WriteString(" Its agent has started on it: leave this part to it.")
+			case StartUnsent:
+				b.WriteString(" Its prompt was typed in but never sent: it is still in the agent's input box. The user has been told and sees to it: leave this part alone.")
 			case StartStalled:
 				b.WriteString(" Its agent did not take the prompt up; the user has been told and sees to it: leave this part alone.")
 			case StartExited:
