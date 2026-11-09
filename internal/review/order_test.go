@@ -76,8 +76,7 @@ func TestTCyclesTheFileList(t *testing.T) {
 	m.focus = focusFiles
 
 	press := func() {
-		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
-		m = nm.(Model)
+		m = m.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("t")})
 	}
 	press()
 	if m.showOrder || m.folderTree {

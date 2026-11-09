@@ -13,56 +13,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m *Model) loadWorktrees() tea.Cmd {
-	if m.repoIdx < 0 || m.repoIdx >= len(m.repos) {
-		m.worktrees = nil
-		m.curRepo = ""
-		return nil
-	}
-	repoPath := m.repos[m.repoIdx].Path
-	wts, err := m.src.ListWorktrees(repoPath)
-	if err != nil {
-		m.err = err
-		return nil
-	}
-	wts = m.filterPinned(wts)
-	if repoPath != m.curRepo {
-		// A genuinely different repo: default to its primary worktree
-		// rather than reusing whatever index happened to be selected in
-		// the previous repo, which may point at an unrelated worktree.
-		m.curRepo = repoPath
-		m.wtIdx = 0
-	}
-	m.worktrees = wts
-	m.wtIdx = clamp(m.wtIdx, 0, len(wts)-1)
-	return nil
-}
-
+// loadFiles reads the file list again in the background, overtaking a
+// refresh under way: the comparison changed (b), so the list that comes is
+// a new one, not the old one edited (see filesMsg.anew).
 func (m *Model) loadFiles() tea.Cmd {
-	wtChanged := m.ensureWorktreeContext()
 	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
 		return nil
 	}
-	files, err := m.changedFiles()
-	if err != nil {
-		m.err = err
-		return nil
-	}
-	m.err = nil
-	if m.setFiles(files, wtChanged) {
-		m.loadDiff()
-	}
-	m.refreshing = false
-	return nil
+	m.filesToken++
+	m.filesBusy, m.filesAgain, m.refreshing = true, false, true
+	return m.readFiles(true)
 }
 
+// refreshFiles reads the file list again in the background, one read at a
+// time.
 func (m *Model) refreshFiles() tea.Cmd {
-	if m.ensureWorktreeContext() {
-		// Another worktree: loaded at once, as moving to it asked.
-		m.filesToken++
-		m.filesBusy, m.filesAgain = false, false
-		return m.loadFiles()
-	}
 	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
 		return nil
 	}
@@ -72,21 +37,41 @@ func (m *Model) refreshFiles() tea.Cmd {
 	}
 	m.filesBusy, m.refreshing = true, true
 	m.filesToken++
+	return m.readFiles(false)
+}
+
+// readFiles is the command that reads the file list, the lines changed in
+// each file and when each was written.
+func (m *Model) readFiles(anew bool) tea.Cmd {
 	c, token, wt, src := m.comparison(), m.filesToken, m.curWT, m.src
 	return func() tea.Msg {
-		files, stats, err := src.Files(c)
-		return filesMsg{wt: wt, token: token, files: files, stats: stats, err: err}
+		msg := filesMsg{wt: wt, token: token, anew: anew}
+		msg.files, msg.stats, msg.err = src.Files(c)
+		if msg.err == nil {
+			msg.stamps = src.Stamps(c.Worktree, filePaths(msg.files))
+		}
+		return msg
 	}
+}
+
+func filePaths(files []git.FileStatus) []string {
+	paths := make([]string, len(files))
+	for i, f := range files {
+		paths[i] = f.Path
+	}
+	return paths
 }
 
 // filesMsg is a refresh of the file list, done in the background: git is
 // not run on the screen's time.
 type filesMsg struct {
-	wt    string
-	token int
-	files []git.FileStatus
-	stats map[string]git.LineCount
-	err   error
+	wt     string
+	token  int
+	anew   bool // a list of another comparison; see setFiles
+	files  []git.FileStatus
+	stats  map[string]git.LineCount
+	stamps map[string]string // see Source.Stamps
+	err    error
 }
 
 // onFiles takes a refresh of the file list: the files, and the notes and
@@ -115,7 +100,7 @@ func (m *Model) onFiles(msg filesMsg) tea.Cmd {
 	orderChanged := m.orderIndex.Read() != orderBefore
 
 	m.fileStats = msg.stats
-	reloadDiff := m.setFiles(msg.files, false)
+	reloadDiff := m.setFiles(msg.files, msg.stamps, msg.anew)
 	m.setWalk(walkthrough.Load(m.worktrees[m.wtIdx].Path, m.worktrees[m.wtIdx].Branch))
 	cmds := []tea.Cmd{m.walkArrived()}
 	// The project is read again in the background, and the tree and diff
@@ -131,7 +116,7 @@ func (m *Model) onFiles(msg filesMsg) tea.Cmd {
 	}
 	// New notes can land on hunks whose files didn't otherwise change.
 	if reloadDiff || notesChanged {
-		cmds = append(cmds, m.loadDiffLater())
+		cmds = append(cmds, m.loadDiff())
 	}
 	if again {
 		cmds = append(cmds, m.refreshIfShown())
@@ -177,14 +162,14 @@ func (m *Model) resetFilesPane() {
 }
 
 // setFiles updates the changed-file list, rebuilding the tree and analysis
-// state when file paths/status changed OR the worktree they belong
-// to did (checked before listing files — two worktrees can have the same,
+// state when file paths/status changed OR the list is of another
+// worktree or comparison (anew) (checked before listing files — two worktrees can have the same,
 // often empty, file list, which must still force a refresh rather than
 // leaving the previous worktree's project/diff content showing).
 //
 // It reports whether the diff shown is to be loaded again, which the
 // caller does, at once or in the background.
-func (m *Model) setFiles(files []git.FileStatus, wtChanged bool) (reloadDiff bool) {
+func (m *Model) setFiles(files []git.FileStatus, stamps map[string]string, anew bool) (reloadDiff bool) {
 	old := m.files
 	filesChanged := !sameFiles(old, files)
 	prev, _ := m.currentFile()
@@ -192,14 +177,14 @@ func (m *Model) setFiles(files []git.FileStatus, wtChanged bool) (reloadDiff boo
 
 	// An agent editing a file that is already changed leaves the list as
 	// it was, so the files' write stamps are what show it.
-	stamps := m.fileStamps(files)
 	edited := map[string]bool{}
 	if m.recent == nil {
 		m.recent = map[string]int{}
 	}
-	if wtChanged {
+	if anew {
 		// Recent-touch markers compare old vs new files to spot live edits
-		// within the same worktree; across a worktree switch that
+		// within the same list; across a worktree switch, or to another
+		// comparison (b), whose committed work can be months old, that
 		// comparison is meaningless, so just clear them instead.
 		m.recent = map[string]int{}
 	} else {
@@ -221,7 +206,7 @@ func (m *Model) setFiles(files []git.FileStatus, wtChanged bool) (reloadDiff boo
 	}
 	m.stamps = stamps
 
-	if filesChanged || wtChanged {
+	if filesChanged || anew {
 		m.rebuildTree(prev)
 		// The diff (not just the relations) so the cached diff pane
 		// content — text, syntax highlighting and annotations — stays in
@@ -344,20 +329,6 @@ func (m *Model) markRecent(old, new []git.FileStatus) {
 			m.recent[f.Path] = recentTicks
 		}
 	}
-}
-
-// fileStamps records when and to what size each changed file was last
-// written. A deleted file has none, and a change to that shows up in its
-// status instead.
-func (m *Model) fileStamps(files []git.FileStatus) map[string]string {
-	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
-		return map[string]string{}
-	}
-	paths := make([]string, len(files))
-	for i, f := range files {
-		paths[i] = f.Path
-	}
-	return m.src.Stamps(m.worktrees[m.wtIdx].Path, paths)
 }
 
 func sameFiles(a, b []git.FileStatus) bool {

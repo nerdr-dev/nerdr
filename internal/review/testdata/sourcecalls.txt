@@ -3,9 +3,7 @@ context.go: analysis.*Project.Index 2
 context.go: analysis.*Project.References 1
 context.go: analysis.*Project.Symbols 1
 context.go: analysis.LoadProject 2
-context.go: order.Load 1
 context.go: store.CommonDir 1
-context.go: walkthrough.Load 1
 context.go: watch.*Watcher.Close 1
 context.go: watch.*Watcher.Wait 1
 context.go: watch.New 1

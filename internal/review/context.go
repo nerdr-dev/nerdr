@@ -17,27 +17,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ensureWorktreeContext reloads project/agent/base state when the selected
-// worktree has actually changed, and reports whether it did — callers use
-// that to force a refresh even when the new worktree's file list happens
-// to look the same as the old one (e.g. both clean), which otherwise would
-// leave stale context (wrong project, wrong diff content) showing.
-func (m *Model) ensureWorktreeContext() bool {
-	if !m.switchWorktree() {
-		return false
-	}
-	if wt := m.curWT; wt != "" {
-		m.baseRef = m.src.DetectBase(wt)
-		m.whyIndex = loadNotes(wt)
-		m.orderIndex = order.Load(wt, m.worktrees[m.wtIdx].Branch)
-		m.setWalk(walkthrough.Load(wt, m.worktrees[m.wtIdx].Branch))
-	}
-	return true
-}
-
-// switchWorktree is ensureWorktreeContext without the parts that run git:
-// the base, the notes and the reading order are left empty, for the
-// caller to fill in, at once or in the background.
+// switchWorktree moves the panel to the worktree selected, if it is
+// another, and reports whether it was. The base, the notes and the reading
+// order are left empty, for the caller to read in the background.
 func (m *Model) switchWorktree() bool {
 	wt := ""
 	if m.wtIdx >= 0 && m.wtIdx < len(m.worktrees) {
@@ -91,6 +73,7 @@ type worktreeContextMsg struct {
 	pr      github.PR
 	prOK    bool
 	prMsg   string
+	noGh    bool           // gh is not installed
 	watcher *watch.Watcher // nil when the watch could not be set up
 }
 
@@ -107,6 +90,7 @@ func loadContextCmd(src Source, wt string) tea.Cmd {
 			}
 		}
 		msg.pr, msg.prOK, msg.prMsg = src.CurrentPR(wt)
+		msg.noGh = !src.GhAvailable()
 		return msg
 	}
 }

@@ -234,15 +234,15 @@ func (m Model) Screen() Screen { return Screen{mode: m.mode, view: m.prShown} }
 
 // SetScreen goes to s, without the switching F2 does when pressed again.
 func (m *Model) SetScreen(s Screen) tea.Cmd {
+	var left tea.Cmd
 	if m.mode == modeReview && s.mode != modeReview {
-		m.leaveJumps()
+		left = m.leaveJumps()
 	}
 	m.mode, m.prShown = s.mode, s.view
-	switch {
-	case m.mode == modePRs && m.prShown == ViewBranch && time.Since(m.lastPRLoad) >= m.prRefresh():
-		return m.reloadPR()
+	if m.mode == modePRs && m.prShown == ViewBranch && time.Since(m.lastPRLoad) >= m.prRefresh() {
+		return tea.Batch(left, m.reloadPR())
 	}
-	return m.refreshIfStale()
+	return tea.Batch(left, m.refreshIfStale())
 }
 
 // ShowBranchPR goes to F2's view of the worktree's own pull request.
@@ -311,6 +311,7 @@ type prReloadMsg struct {
 	pr    github.PR
 	ok    bool
 	msg   string
+	noGh  bool // gh is not installed
 }
 
 // prFixMsg carries the failing jobs' log, read for the message asking the
@@ -342,14 +343,15 @@ func (m *Model) setMode(mode uiMode) tea.Cmd {
 	if mode == m.mode {
 		return nil
 	}
+	var left tea.Cmd
 	if m.mode == modeReview {
-		m.leaveJumps()
+		left = m.leaveJumps()
 	}
 	m.mode = mode
 	if mode == modePRs && m.prShown == ViewBranch && time.Since(m.lastPRLoad) >= m.prRefresh() {
-		return m.reloadPR()
+		return tea.Batch(left, m.reloadPR())
 	}
-	return m.refreshIfStale()
+	return tea.Batch(left, m.refreshIfStale())
 }
 
 // reloadPR fetches the worktree's PR again, leaving what is on screen
@@ -364,7 +366,7 @@ func (m *Model) reloadPR() tea.Cmd {
 	token, src := m.prToken, m.src
 	return func() tea.Msg {
 		pr, ok, msg := src.CurrentPR(wt)
-		return prReloadMsg{wt: wt, token: token, pr: pr, ok: ok, msg: msg}
+		return prReloadMsg{wt: wt, token: token, pr: pr, ok: ok, msg: msg, noGh: !src.GhAvailable()}
 	}
 }
 
@@ -401,7 +403,7 @@ func (m Model) prOwnContent() ([]relLine, []convEntry) {
 	switch {
 	case m.curWT == "":
 		return []relLine{{text: "(no worktree)"}}, nil
-	case !m.src.GhAvailable():
+	case m.noGh:
 		return []relLine{{text: "(the gh CLI is not installed)"}}, nil
 	case !m.prOK:
 		msg := m.prMsg

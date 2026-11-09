@@ -10,7 +10,7 @@ import (
 
 // ovItem is a single entry in the global worktree overview.
 type ovItem struct {
-	repoIdx, wtIdx  int
+	repoIdx         int
 	label           string
 	path            string
 	counted         bool // files, add and del have arrived; see ovStatsMsg
@@ -31,33 +31,53 @@ func (m *Model) toggleOverview() tea.Cmd {
 		m.overview = false
 		return nil
 	}
-	m.overview = true
+	m.overview, m.ovListed = true, false
 	return m.buildOverview()
 }
 
-// buildOverview lists every worktree at once and returns the command that
-// counts their changes: that is a git status and a diff per worktree, too
-// slow across many repositories to do before the list can be shown.
+// buildOverview lists every worktree of the tab's repositories, and then
+// counts their changes, in the background: a git status and a diff per
+// worktree, too slow across many repositories to wait for.
 func (m *Model) buildOverview() tea.Cmd {
 	m.ovItems = nil
 	m.ovToken++
-	for ri, repo := range m.repos {
-		wts, err := m.src.ListWorktrees(repo.Path)
-		if err != nil {
-			continue
-		}
-		for wi, wt := range wts {
-			branch := wt.Branch
-			if branch == "" {
-				branch = "(detached)"
+	repos, token, src := m.repos, m.ovToken, m.src
+	return func() tea.Msg {
+		msg := ovListMsg{token: token}
+		for ri, repo := range repos {
+			wts, err := src.ListWorktrees(repo.Path)
+			if err != nil {
+				continue
 			}
-			m.ovItems = append(m.ovItems, ovItem{
-				repoIdx: ri, wtIdx: wi,
-				label: repo.Name + " / " + branch,
-				path:  wt.Path,
-			})
+			for _, wt := range wts {
+				branch := wt.Branch
+				if branch == "" {
+					branch = "(detached)"
+				}
+				msg.items = append(msg.items, ovItem{
+					repoIdx: ri,
+					label:   repo.Name + " / " + branch,
+					path:    wt.Path,
+				})
+			}
 		}
+		return msg
 	}
+}
+
+// ovListMsg carries the worktrees of the overview built as token.
+type ovListMsg struct {
+	token int
+	items []ovItem
+}
+
+// onOverviewList shows the worktrees listed, and counts their changes.
+func (m *Model) onOverviewList(msg ovListMsg) tea.Cmd {
+	if msg.token != m.ovToken {
+		return nil
+	}
+	m.ovItems = msg.items
+	m.ovListed = true
 	if m.ovCursor >= len(m.ovItems) {
 		m.ovCursor = 0
 	}
@@ -98,19 +118,21 @@ func (m Model) handleOverviewKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.ovCursor = clamp(m.ovCursor+1, 0, len(m.ovItems)-1)
 		return m, nil
 	case "enter":
-		if m.ovCursor >= 0 && m.ovCursor < len(m.ovItems) {
-			it := m.ovItems[m.ovCursor]
-			m.peek = nil
-			m.jumpHistory = nil
-			m.repoIdx = it.repoIdx
-			m.loadWorktrees()
-			m.wtIdx = clamp(it.wtIdx, 0, len(m.worktrees)-1)
-			m.loadFiles()
-			m.loadDiff()
-			m.overview = false
-			m.setToast(it.label)
+		if m.ovCursor < 0 || m.ovCursor >= len(m.ovItems) {
+			return m, nil
 		}
-		return m, nil
+		// The panel shows the tab's worktree of each repository, so this
+		// is the repository's.
+		it := m.ovItems[m.ovCursor]
+		m.overview = false
+		m.setToast(it.label)
+		m.peek = nil
+		m.jumpHistory = nil
+		if it.repoIdx != m.repoIdx {
+			m.repoIdx = it.repoIdx
+			m.cursor = 0
+		}
+		return m, m.loadPinned()
 	}
 	return m, nil
 }

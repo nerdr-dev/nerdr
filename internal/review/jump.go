@@ -26,19 +26,18 @@ type jumpState struct {
 
 // jumpToSelected jumps to the reference target of the diff line currently
 // under the cursor (the top of the visible viewport), if any. It reports
-// whether a jump happened.
-func (m *Model) jumpToSelected() bool {
+// whether a jump happened, and returns the command loading its target.
+func (m *Model) jumpToSelected() (tea.Cmd, bool) {
 	idx := clamp(m.diffCursor, 0, max(0, len(m.diffLines)-1))
 	if idx < 0 || idx >= len(m.diffLines) {
-		return false
+		return nil, false
 	}
 	dl := m.diffLines[idx]
 	if dl.kind != 'a' || dl.refFile == "" {
-		return false
+		return nil, false
 	}
 	m.pushJumpState()
-	m.jumpTo(dl.refFile, dl.refLine)
-	return true
+	return m.jumpTo(dl.refFile, dl.refLine), true
 }
 
 // openWhyDetail opens the full rationale of the ✎ line under the diff
@@ -86,24 +85,22 @@ func (m *Model) toggleWhyInline(idx int) {
 // (switching to the full-file view so the target line is guaranteed
 // visible) if it's one of the changed files, otherwise opening a
 // read-only "peek" of its current worktree content.
-func (m *Model) jumpTo(file string, line int) {
+// The cursor goes to line once the file has loaded.
+func (m *Model) jumpTo(file string, line int) tea.Cmd {
 	if idx, ok := m.rowForFile(file); ok {
 		m.peek = nil
 		m.cursor = idx
 		m.diffMode = diffModeNewFull
-		m.loadDiff()
-		m.diffViewTop = 0 // fresh content: compute the viewport from scratch, not the old file's scroll state
-		m.setDiffCursor(m.diffRowForLine(line))
-		return
+	} else {
+		m.peek = &peekTarget{file: file}
+		// Rebuild so the tree carries the peek row, and put the file-pane
+		// cursor on it: otherwise the tree keeps marking the file jumped
+		// from while the diff pane shows a different one.
+		m.rebuildTree(file)
 	}
-	m.peek = &peekTarget{file: file}
-	m.loadDiff()
-	// Rebuild so the tree carries the peek row, and put the file-pane
-	// cursor on it: otherwise the tree keeps marking the file jumped from
-	// while the diff pane shows a different one.
-	m.rebuildTree(file)
-	m.diffViewTop = 0
-	m.setDiffCursor(m.diffRowForLine(line))
+	cmd := m.loadDiff()
+	m.diffAim = &diffAim{line: max(line, 1)}
+	return cmd
 }
 
 // clearPeek leaves the peeked file, dropping its row from the tree so the
@@ -203,30 +200,30 @@ func (m *Model) pushJumpState() {
 }
 
 // jumpBack restores the diff-pane position saved before the last jump.
-func (m *Model) jumpBack() {
+func (m *Model) jumpBack() tea.Cmd {
 	if len(m.jumpHistory) == 0 {
 		m.setToast("no earlier position")
-		return
+		return nil
 	}
 	st := m.jumpHistory[len(m.jumpHistory)-1]
 	m.jumpHistory = m.jumpHistory[:len(m.jumpHistory)-1]
-	m.restoreJump(st)
+	return m.restoreJump(st)
 }
 
 // leaveJumps undoes every jump at once, back to where the first one was
 // made. Leaving the review layout does this: a file opened from a
 // reference or a note, still listed on coming back with nothing on screen
 // saying how it got there, reads as part of the change.
-func (m *Model) leaveJumps() {
+func (m *Model) leaveJumps() tea.Cmd {
 	if len(m.jumpHistory) == 0 {
-		return
+		return nil
 	}
 	st := m.jumpHistory[0]
 	m.jumpHistory = nil
-	m.restoreJump(st)
+	return m.restoreJump(st)
 }
 
-func (m *Model) restoreJump(st jumpState) {
+func (m *Model) restoreJump(st jumpState) tea.Cmd {
 	// Rebuild before restoring the cursor: the saved index refers to a tree
 	// without the peek row, so it has to be gone again before the index
 	// means what it did when it was saved.
@@ -234,25 +231,7 @@ func (m *Model) restoreJump(st jumpState) {
 	m.rebuildTree("")
 	m.cursor = st.cursor
 	m.diffMode = st.diffMode
-	m.loadDiff()
-	m.diffViewTop = st.diffViewTop
-	m.setDiffCursor(st.diffCursor)
-}
-
-// loadPeekDiff renders m.peek's file as plain syntax-highlighted code (no
-// diff markers, since it isn't necessarily changed) for the diff pane.
-func (m *Model) loadPeekDiff() tea.Cmd {
-	wt := m.worktrees[m.wtIdx].Path
-	src, err := m.src.ReadFile(wt, m.peek.file)
-	if err != nil {
-		m.err = err
-		m.diff = ""
-		m.diffLines = nil
-		return nil
-	}
-	m.diff = src
-	m.diffLines = annotateWhyLines(plainSourceLines(m.peek.file, src), m.peek.file, m.whyIndex)
-	m.reloadRelations()
-	m.setDiffCursor(m.diffCursor)
-	return nil
+	cmd := m.loadDiff()
+	m.diffAim = &diffAim{cursor: st.diffCursor, top: st.diffViewTop}
+	return cmd
 }

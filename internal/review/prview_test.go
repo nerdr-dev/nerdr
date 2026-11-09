@@ -173,8 +173,7 @@ func TestMenuSwitchesModes(t *testing.T) {
 		} else {
 			msg = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)}
 		}
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
+		m = m.send(msg)
 	}
 
 	send("f2")
@@ -324,8 +323,7 @@ func TestConvNavigationStepsBlockByBlock(t *testing.T) {
 		t.Fatalf("expected 3 blocks, got %d", len(entries))
 	}
 	send := func(k tea.KeyType) {
-		nm, _ := m.Update(tea.KeyMsg{Type: k})
-		m = nm.(Model)
+		m = m.send(tea.KeyMsg{Type: k})
 	}
 	send(tea.KeyDown)
 	if m.prConvCursor != 1 {

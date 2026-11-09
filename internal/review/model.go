@@ -52,7 +52,6 @@ type Model struct {
 
 	repos      []git.Repo
 	repoIdx    int
-	curRepo    string // path loadWorktrees last loaded, so a genuine repo change resets wtIdx to 0
 	worktrees  []git.Worktree
 	wtIdx      int
 	pinCounts  []int    // files each pinned worktree changes; see SetPinCounts
@@ -70,14 +69,20 @@ type Model struct {
 	// from one overtaken.
 	filesToken, diffToken int
 	filesBusy, filesAgain bool
-	files                 []git.FileStatus
-	tree                  []*treeNode
-	cursor                int
-	expanded              map[string]bool
-	unseen                map[string]map[string]bool
-	recent                map[string]int
+	// diffPending is set while a diff is being loaded; diffAim is where
+	// the cursor goes when it comes, nil to keep it; diffSlow is set once
+	// it takes a while.
+	diffPending bool
+	diffAim     *diffAim
+	diffSlow    bool
+	files       []git.FileStatus
+	tree        []*treeNode
+	cursor      int
+	expanded    map[string]bool
+	unseen      map[string]map[string]bool
+	recent      map[string]int
 	// stamps are the changed files' write stamps at the last refresh; see
-	// fileStamps.
+	// Source.Stamps.
 	stamps      map[string]string
 	diff        string
 	diffLines   []diffLine
@@ -101,7 +106,8 @@ type Model struct {
 	overview bool
 	ovItems  []ovItem
 	ovCursor int
-	ovToken  int // which buildOverview a count belongs to
+	ovToken  int  // which buildOverview a list or count belongs to
+	ovListed bool // the worktrees have been listed; see ovListMsg
 
 	filter      string
 	filtering   bool
@@ -139,6 +145,7 @@ type Model struct {
 	pr    github.PR
 	prOK  bool
 	prMsg string
+	noGh  bool // gh is not installed, as the PR's last reading found
 
 	// mode is the top-level menu selection. The PR screen (F2) shows pr,
 	// the worktree's own; these are its cursor and what it is waiting on.
@@ -263,7 +270,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return nm, cmd
 	}
-	if mm.refreshing && !mm.spinning {
+	if (mm.refreshing || mm.diffSlow) && !mm.spinning {
 		mm.spinning = true
 		cmd = tea.Batch(cmd, mm.spinner.Tick)
 	}
@@ -277,6 +284,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case ovListMsg:
+		return m, m.onOverviewList(msg)
+
 	case ovStatsMsg:
 		if msg.token != m.ovToken || len(msg.stats) != len(m.ovItems) {
 			return m, nil // counts for an overview that has been rebuilt
@@ -301,7 +311,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			wait = waitForChange(m.watcher, msg.wt)
 		}
 		m.project = msg.project
-		m.pr, m.prOK, m.prMsg = msg.pr, msg.prOK, msg.prMsg
+		m.pr, m.prOK, m.prMsg, m.noGh = msg.pr, msg.prOK, msg.prMsg, msg.noGh
 		m.lastPRLoad = time.Now()
 		// The tree groups files by the project's imports, and the diff is
 		// annotated from it, so both are rebuilt now it has arrived.
@@ -309,8 +319,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			path, _ := m.currentFile()
 			m.rebuildTree(path)
 		}
-		m.loadDiff()
-		return m, wait
+		return m, tea.Batch(wait, m.loadDiff())
 
 	case projectMsg:
 		if msg.wt != m.curWT {
@@ -329,8 +338,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
+	case diffSlowMsg:
+		if msg.token == m.diffToken && m.diffPending {
+			m.diffSlow = true
+		}
+
 	case spinner.TickMsg:
-		if !m.refreshing {
+		if !m.refreshing && !m.diffSlow {
 			m.spinning = false
 			return m, nil
 		}
@@ -384,7 +398,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.token != m.prToken || msg.wt != m.curWT {
 			return m, nil // superseded, or about a worktree left behind
 		}
-		m.pr, m.prOK, m.prMsg = msg.pr, msg.ok, msg.msg
+		m.pr, m.prOK, m.prMsg, m.noGh = msg.pr, msg.ok, msg.msg, msg.noGh
 		return m, nil
 
 	case prFixMsg:
@@ -497,7 +511,10 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.focus == focusDiff {
-				if m.jumpToSelected() || m.openWhyDetail() {
+				if cmd, ok := m.jumpToSelected(); ok {
+					return m, cmd
+				}
+				if m.openWhyDetail() {
 					return m, nil
 				}
 			}
@@ -505,8 +522,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.loadFocus()
 
 		case "u":
-			m.jumpBack()
-			return m, nil
+			return m, m.jumpBack()
 
 		case "left", "esc", "h":
 			if msg.String() != "esc" && m.focus == focusFiles {
@@ -637,7 +653,7 @@ func (m *Model) focusLeft() {
 func (m *Model) loadFocus() tea.Cmd {
 	switch m.focus {
 	case focusFiles:
-		return m.loadFiles()
+		return m.refreshFiles()
 	case focusDiff:
 		return m.loadDiff()
 	}

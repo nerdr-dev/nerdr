@@ -27,13 +27,11 @@ func annotationIndex(t *testing.T, m Model) int {
 // the single worktree of a repo with no linked worktrees).
 func openFileDiff(t *testing.T, m Model, path string) Model {
 	t.Helper()
-	send := func(msg tea.Msg) Model {
-		nm, _ := m.Update(msg)
-		return nm.(Model)
-	}
 	// The project the annotations come from loads in the background; hand
-	// it over as the program would once it has.
-	m = send(loadContextCmd(m.src, m.curWT)())
+	// it over as the program would once it has. Its commands are left: one
+	// waits on the watch, and the diff is loaded below.
+	nm, _ := m.Update(loadContextCmd(m.src, m.curWT)())
+	m = nm.(Model)
 	found := false
 	for i, r := range m.flatRows() {
 		if !r.node.isDir && r.node.path == path {
@@ -45,7 +43,7 @@ func openFileDiff(t *testing.T, m Model, path string) Model {
 	if !found {
 		t.Fatalf("file %q not found in tree", path)
 	}
-	m = send(tea.KeyMsg{Type: tea.KeyEnter}) // files -> diff
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter}) // files -> diff
 	if m.diff == "" {
 		t.Fatalf("expected non-empty diff for %q", path)
 	}
@@ -68,8 +66,7 @@ func TestJumpToReferenceOutsideTree(t *testing.T) {
 	m.diffCursor = idx
 	m.focus = focusDiff
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	if m.peek == nil || m.peek.file != "caller.ts" {
 		t.Fatalf("expected peek at caller.ts, got %#v", m.peek)
@@ -81,8 +78,7 @@ func TestJumpToReferenceOutsideTree(t *testing.T) {
 		t.Fatalf("expected one saved jump state, got %d", len(m.jumpHistory))
 	}
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
 	if m.peek != nil {
 		t.Fatalf("expected peek cleared after jumping back, got %#v", m.peek)
 	}
@@ -117,8 +113,7 @@ func TestJumpToReferenceInsideTree(t *testing.T) {
 	m.diffCursor = idx
 	m.focus = focusDiff
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	if m.peek != nil {
 		t.Fatalf("expected no peek (caller.ts is in the tree), got %#v", m.peek)
@@ -218,8 +213,7 @@ func TestPeekIsMarkedInTheFileTree(t *testing.T) {
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
 
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	if m.peek == nil {
 		t.Fatal("expected a peek at caller.ts")
@@ -230,8 +224,7 @@ func TestPeekIsMarkedInTheFileTree(t *testing.T) {
 	}
 
 	// Going back drops the row again and restores the original selection.
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("u")})
 	for _, r := range m.flatRows() {
 		if r.node.path == "caller.ts" {
 			t.Fatal("the peek row should be gone once the peek is left")
@@ -254,12 +247,10 @@ func TestMovingTheCursorLeavesThePeek(t *testing.T) {
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 
 	m.focus = focusFiles
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyDown})
 
 	if m.peek != nil {
 		t.Fatal("browsing the tree should leave the peek")
@@ -285,15 +276,12 @@ func TestLeavingTheReviewLayoutEndsThePeek(t *testing.T) {
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.peek == nil {
 		t.Fatal("expected a peek at caller.ts")
 	}
 
-	nm, _ = m.Update(tea.KeyMsg{Type: tea.KeyF2})
-	nm, _ = nm.(Model).Update(tea.KeyMsg{Type: tea.KeyF1})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyF2}).send(tea.KeyMsg{Type: tea.KeyF1})
 	if m.peek != nil || len(m.jumpHistory) != 0 {
 		t.Fatalf("expected the peek and its history gone, got %#v and %d", m.peek, len(m.jumpHistory))
 	}

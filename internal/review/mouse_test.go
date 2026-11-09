@@ -66,10 +66,9 @@ func TestWheelScrollsWithoutTakingFocus(t *testing.T) {
 	m := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines}
 	lay := m.layout(m.width, m.height)
 
-	nm, _ := m.Update(tea.MouseMsg{
+	m = m.send(tea.MouseMsg{
 		X: lay.diff.x + 5, Y: lay.diff.y + 5, Button: tea.MouseButtonWheelDown,
 	})
-	m = nm.(Model)
 
 	if m.diffViewTop != wheelRows {
 		t.Fatalf("wheel over the diff scrolled it to %d, want %d", m.diffViewTop, wheelRows)
@@ -81,10 +80,9 @@ func TestWheelScrollsWithoutTakingFocus(t *testing.T) {
 		t.Fatalf("the wheel took focus from the files pane, now %v", m.focus)
 	}
 
-	nm, _ = m.Update(tea.MouseMsg{
+	m = m.send(tea.MouseMsg{
 		X: lay.diff.x + 5, Y: lay.diff.y + 5, Button: tea.MouseButtonWheelUp,
 	})
-	m = nm.(Model)
 	if m.diffViewTop != 0 {
 		t.Fatalf("wheel up should have scrolled back to 0, got %d", m.diffViewTop)
 	}
@@ -108,20 +106,17 @@ func TestScrollbar(t *testing.T) {
 	}
 
 	last := lay.diff.y + lay.diff.h - 2 - hintRows
-	nm, _ := m.Update(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: last,
+	m = m.send(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: last,
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m = nm.(Model)
 	if want := len(lines) - m.diffInnerHeight(); m.diffViewTop != want {
 		t.Fatalf("a click at the bottom of the track goes to the end: top %d, want %d", m.diffViewTop, want)
 	}
-	nm, _ = m.Update(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: lay.diff.y + 2 + m.diffHeader(),
+	m = m.send(tea.MouseMsg{X: lay.diff.x + lay.diff.w - 1, Y: lay.diff.y + 2 + m.diffHeader(),
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-	m = nm.(Model)
 	if m.diffViewTop != 0 {
 		t.Fatalf("dragging to the top goes to the start, got %d", m.diffViewTop)
 	}
-	nm, _ = m.Update(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
-	m = nm.(Model)
+	m = m.send(tea.MouseMsg{X: 0, Y: 0, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 	if m.dragging != scrollNone {
 		t.Fatal("letting go ends the drag")
 	}
@@ -151,8 +146,7 @@ func TestThumb(t *testing.T) {
 func TestMenuIsReachableWithoutFunctionKeys(t *testing.T) {
 	m := Model{src: Local{}, width: 120, height: 40}
 	press := func() {
-		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
-		m = nm.(Model)
+		m = m.send(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
 	}
 	modes := m.menuModes()
 	for i := 1; i <= len(modes); i++ {
@@ -181,8 +175,7 @@ func TestClickLeavingThePeekSelectsTheClickedFile(t *testing.T) {
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.peek == nil {
 		t.Fatal("setup: expected a peek")
 	}
@@ -195,11 +188,10 @@ func TestClickLeavingThePeekSelectsTheClickedFile(t *testing.T) {
 		}
 	}
 	lay := m.layout(m.width, m.height)
-	nm, _ = m.Update(tea.MouseMsg{
+	m = m.send(tea.MouseMsg{
 		X: lay.files.x + 3, Y: lay.files.y + 2 + m.filesHeader() + idx,
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress,
 	})
-	m = nm.(Model)
 	if path, ok := m.currentFile(); !ok || path != "lib.ts" {
 		t.Fatalf("clicked lib.ts, selected %q", path)
 	}
@@ -224,8 +216,7 @@ func TestDraggingTheFilesScrollbarLeavesThePeek(t *testing.T) {
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
-	nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = nm.(Model)
+	m = m.send(tea.KeyMsg{Type: tea.KeyEnter})
 	if m.peek == nil {
 		t.Fatal("setup: expected a peek")
 	}

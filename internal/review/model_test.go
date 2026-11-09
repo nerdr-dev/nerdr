@@ -181,8 +181,13 @@ func TestOverviewCountsInTheBackground(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, map[string]string{"b.go": "package b\n"})
 	m := pinned(t, filepath.Join(parent, "repo"))
 	cmd := m.toggleOverview()
-	if !m.overview || len(m.ovItems) != 1 || m.ovItems[0].counted {
-		t.Fatalf("expected one uncounted item at once, got %+v", m.ovItems)
+	if !m.overview || len(m.ovItems) != 0 || !strings.Contains(stripANSI(m.View()), "listing the worktrees") {
+		t.Fatalf("expected the overview open, listing, got %+v", m.ovItems)
+	}
+	nm, cmd := m.Update(cmd())
+	m = nm.(Model)
+	if len(m.ovItems) != 1 || m.ovItems[0].counted {
+		t.Fatalf("expected one uncounted item once listed, got %+v", m.ovItems)
 	}
 	msg := cmd()
 	stale := msg.(ovStatsMsg)
@@ -197,43 +202,51 @@ func TestOverviewCountsInTheBackground(t *testing.T) {
 }
 
 func (m Model) send(msg tea.Msg) Model {
-	nm, _ := m.Update(msg)
-	return nm.(Model)
+	nm, cmd := m.Update(msg)
+	return nm.(Model).settle(cmd)
 }
 
 // settle runs cmd, and what the panel does with its answers, as the
 // program would: the file list and diff refreshed in the background come
 // back. A command that waits longer (a tick, the next change on a watch)
 // is left.
+func init() {
+	// settle waits for every command, the one saying a diff is slow too.
+	diffSlowAfter = time.Millisecond
+}
+
 func (m Model) settle(cmd tea.Cmd) Model {
-	var queue []tea.Cmd
-	if cmd != nil {
-		queue = append(queue, cmd)
-	}
-	for len(queue) > 0 {
-		c := queue[0]
-		queue = queue[1:]
-		got := make(chan tea.Msg, 1)
+	// The commands run side by side, so the ones that wait (a tick, the
+	// watch) cost one wait between them, not one each.
+	got := make(chan tea.Msg, 64)
+	pending := 0
+	run := func(c tea.Cmd) {
+		pending++
 		go func() { got <- c() }()
-		var msg tea.Msg
+	}
+	if cmd != nil {
+		run(cmd)
+	}
+	for pending > 0 {
 		select {
-		case msg = <-got:
-		case <-time.After(300 * time.Millisecond):
-			continue
-		}
-		switch msg := msg.(type) {
-		case tea.BatchMsg:
-			for _, c := range msg {
-				if c != nil {
-					queue = append(queue, c)
+		case msg := <-got:
+			pending--
+			switch msg := msg.(type) {
+			case tea.BatchMsg:
+				for _, c := range msg {
+					if c != nil {
+						run(c)
+					}
+				}
+			case filesMsg, diffMsg, projectMsg, pinnedMsg, ovListMsg, ovStatsMsg:
+				nm, next := m.Update(msg)
+				m = nm.(Model)
+				if next != nil {
+					run(next)
 				}
 			}
-		case filesMsg, diffMsg, projectMsg:
-			nm, next := m.Update(msg)
-			m = nm.(Model)
-			if next != nil {
-				queue = append(queue, next)
-			}
+		case <-time.After(300 * time.Millisecond):
+			return m
 		}
 	}
 	return m
@@ -289,8 +302,9 @@ func TestEmptyChangeOffersTheBranch(t *testing.T) {
 
 	l := m.layout(100, 40)
 	_, button := m.emptyFiles()
-	m.handleMouse(tea.MouseMsg{X: l.files.x + 3, Y: l.files.y + 2 + m.filesHeader() + button,
+	cmd := m.handleMouse(tea.MouseMsg{X: l.files.x + 3, Y: l.files.y + 2 + m.filesHeader() + button,
 		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m = m.settle(cmd)
 	if !m.showBase || len(m.files) != 1 || m.files[0].Path != "gone.sh" || m.files[0].Code[0] != 'D' {
 		t.Fatalf("the button should show the branch, deletion included: base %v files %v", m.showBase, m.files)
 	}

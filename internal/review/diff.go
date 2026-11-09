@@ -101,7 +101,7 @@ func gitHeader(line string) bool {
 
 // highlightContextLines applies chroma-based syntax colouring to unmarked
 // (context) lines, using source (the full file content whose line numbers
-// align with this diff — see Model.highlightSourceFor) so that unchanged
+// align with this diff — see diffReq.read) so that unchanged
 // code isn't left monochrome and hard to read next to the coloured
 // added/removed lines. Added/removed lines keep their existing diff
 // colouring untouched.

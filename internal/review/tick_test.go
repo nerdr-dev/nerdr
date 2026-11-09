@@ -69,8 +69,7 @@ func TestBaseToggleDoesNotMarkEverythingAsJustTouched(t *testing.T) {
 
 	m := pinned(t, repo)
 	send := func(msg tea.Msg) {
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
+		m = m.send(msg)
 	}
 	if len(m.files) != 1 {
 		t.Fatalf("expected only the live edit in the worktree diff, got %#v", m.files)
@@ -98,7 +97,10 @@ func TestBaseToggleDoesNotMarkEverythingAsJustTouched(t *testing.T) {
 func TestWatchRefreshesTheFiles(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, nil)
 	m := pinned(t, filepath.Join(parent, "repo"))
-	m = m.send(loadContextCmd(m.src, m.curWT)())
+	// Not send: its wait on the watch would take the change this test
+	// waits for.
+	nm, _ := m.Update(loadContextCmd(m.src, m.curWT)())
+	m = nm.(Model)
 	if m.watcher == nil {
 		t.Skip("the kernel refused the watch")
 	}
