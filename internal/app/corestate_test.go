@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strings"
@@ -133,6 +134,22 @@ func TestTUIChangesCoreByRequest(t *testing.T) {
 		}
 	}
 	t.Log("changes to core go by m.do(core.Request); when one listed is gone, run go test -run TestTUIChangesCoreByRequest -update-corestate")
+}
+
+// TestModelNamesItsCore holds Model to reaching core by its named field,
+// m.Core, never by one of core's types embedded: with core's fields and
+// methods promoted, a use of core does not say it is one, and the TUI is
+// to show more than one core (the fleet), each a copy of its own.
+func TestModelNamesItsCore(t *testing.T) {
+	for f := range reflect.TypeFor[Model]().Fields() {
+		ft := f.Type
+		if ft.Kind() == reflect.Pointer {
+			ft = ft.Elem()
+		}
+		if f.Anonymous && ft.PkgPath() == corePkg {
+			t.Errorf("Model embeds %s: name the field, and reach core by it", f.Type)
+		}
+	}
 }
 
 func lines(s string) []string {
@@ -399,20 +416,6 @@ func (c *checker) clientsOwn(e ast.Expr) bool {
 	}
 }
 
-// embedded is the type the field sel selects is promoted from, the first
-// embedded field on its way.
-func (c *checker) embedded(sel *types.Selection) types.Type {
-	t := sel.Recv()
-	if p, ok := t.Underlying().(*types.Pointer); ok {
-		t = p.Elem()
-	}
-	st, ok := t.Underlying().(*types.Struct)
-	if !ok {
-		return nil
-	}
-	return st.Field(sel.Index()[0]).Type()
-}
-
 func isCoreCore(t types.Type) bool {
 	if t == nil {
 		return false
@@ -433,9 +436,6 @@ func (c *checker) throughCore(e ast.Expr) bool {
 		sel := c.info.Selections[x]
 		if sel == nil || sel.Kind() != types.FieldVal {
 			return false
-		}
-		if p := sel.Obj().Pkg(); p != nil && p.Path() == corePkg && len(sel.Index()) > 1 && isCoreCore(c.embedded(sel)) {
-			return true // a field of core.Core's, in Model
 		}
 		return isCore(c.info.Types[x.X].Type) || c.throughCore(x.X)
 	case *ast.IndexExpr:
