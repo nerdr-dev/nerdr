@@ -22,10 +22,9 @@ func (m *Model) comparison() git.Comparison {
 
 // changedFiles returns the changed files, respecting the base-diff mode.
 func (m *Model) changedFiles() ([]git.FileStatus, error) {
-	c := m.comparison()
-	files, err := c.Files()
+	files, stats, err := m.src.Files(m.comparison())
 	if err == nil {
-		m.fileStats = c.NumStat()
+		m.fileStats = stats
 	}
 	return files, err
 }
@@ -33,7 +32,7 @@ func (m *Model) changedFiles() ([]git.FileStatus, error) {
 // changeDiff is the unified diff of path's change, whatever the diff pane
 // is set to show.
 func (m *Model) changeDiff(path string) (string, error) {
-	return m.comparison().Diff(path, m.untracked(path), m.originalPath(path))
+	return m.src.Diff(m.comparison(), path, m.untracked(path), m.originalPath(path))
 }
 
 func (m *Model) originalPath(path string) string {
@@ -55,13 +54,13 @@ func (m *Model) fileDiff(path string) (string, error) {
 	}
 	switch m.diffMode {
 	case diffModeOld:
-		return m.comparison().OldFile(m.originalPath(path))
+		return m.src.OldFile(m.comparison(), m.originalPath(path))
 	case diffModeNewFull:
 		raw, err := m.changeDiff(path)
 		if err != nil {
 			return "", err
 		}
-		return git.FullNewFileWithMarkers(m.worktrees[m.wtIdx].Path, path, raw)
+		return m.src.FullNewFile(m.worktrees[m.wtIdx].Path, path, raw)
 	default:
 		return m.changeDiff(path)
 	}
@@ -216,9 +215,9 @@ func (m *Model) displayLines(path, diff, src string, srcOK bool) []diffLine {
 // view, otherwise the worktree's current content.
 func (m *Model) highlightSourceFor(path string) (string, bool) {
 	if m.diffMode == diffModeOld {
-		src, err := m.comparison().OldSource(m.originalPath(path))
+		src, err := m.src.OldSource(m.comparison(), m.originalPath(path))
 		return src, err == nil
 	}
-	src, err := git.ReadWorktreeFile(m.worktrees[m.wtIdx].Path, path)
+	src, err := m.src.ReadFile(m.worktrees[m.wtIdx].Path, path)
 	return src, err == nil
 }

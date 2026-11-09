@@ -16,7 +16,7 @@ import (
 
 func TestFolderArrowNavigation(t *testing.T) {
 	for _, embedded := range []bool{false, true} {
-		m := NewEmbedded()
+		m := NewEmbedded(Local{})
 		m.embedded = embedded
 		m.tree = buildFolderTree([]git.FileStatus{{Path: "src/main.go", Code: " M"}})
 		folder := m.tree[0]
@@ -43,7 +43,7 @@ func TestFolderArrowNavigation(t *testing.T) {
 }
 
 func TestSinceVisitMarkerSurvivesLiveMarkerDecayAndIsWorktreeScoped(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m.worktrees = []git.Worktree{{Path: "/a"}, {Path: "/b"}}
 	m.files = []git.FileStatus{{Path: "a.txt", Code: " M"}}
 	m.rebuildTree("")
@@ -79,7 +79,7 @@ func TestModelNavigation(t *testing.T) {
 	runGit(t, repo, "worktree", "add", "-q", "-b", "feature/x", wt)
 	writeFile(t, filepath.Join(wt, "a.txt"), "hello\nworld\n")
 
-	m := New(parent)
+	m := New(parent, Local{})
 	if len(m.repos) != 1 || m.repos[0].Name != "myrepo" {
 		t.Fatalf("expected one repo, got %#v", m.repos)
 	}
@@ -138,7 +138,7 @@ func TestSwitchingRepoResetsWorktreeIndex(t *testing.T) {
 	makeRepoWithTwoWorktrees("repo-a")
 	makeRepoWithTwoWorktrees("repo-b")
 
-	m := New(parent)
+	m := New(parent, Local{})
 	if len(m.repos) != 2 {
 		t.Fatalf("expected 2 repos, got %#v", m.repos)
 	}
@@ -212,7 +212,7 @@ func writeFile(t *testing.T, path, content string) {
 // the line being read, not line 1. Rows with no line of their own — the
 // hunk header, an ✎ rationale — belong to the code below them.
 func TestCurrentNewLineIsTheLineUnderTheDiffCursor(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		diffLines: []diffLine{
 			{kind: '@', text: "@@ -1,3 +1,4 @@"},
 			{kind: ' ', text: " one", newLine: 1},
@@ -237,7 +237,7 @@ func TestCurrentNewLineIsTheLineUnderTheDiffCursor(t *testing.T) {
 
 	// Nothing selected in an empty diff: no +N argument at all, rather than
 	// vim being sent to a line that doesn't exist.
-	empty := Model{}
+	empty := Model{src: Local{}}
 	if got := empty.currentNewLine(); got != 0 {
 		t.Errorf("empty diff: got line %d, want 0", got)
 	}
@@ -246,7 +246,7 @@ func TestCurrentNewLineIsTheLineUnderTheDiffCursor(t *testing.T) {
 // TestEditorOpensTheFileOnTheLineBeingRead covers the o key handing the
 // editor the real worktree path and the line the cursor is on.
 func TestEditorOpensTheFileOnTheLineBeingRead(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		worktrees: []git.Worktree{{Path: "/wt"}},
 		tree:      []*treeNode{{name: "src/a.go", path: "src/a.go"}},
 		diffLines: []diffLine{{kind: '+', text: "+x", newLine: 42}},
@@ -262,7 +262,7 @@ func TestEditorOpensTheFileOnTheLineBeingRead(t *testing.T) {
 	}
 
 	// Nothing selected: no editor at all, rather than one on a directory.
-	empty := Model{}
+	empty := Model{src: Local{}}
 	if _, _, ok := empty.editorTarget(); ok {
 		t.Fatal("expected no editor command when no file is selected")
 	}
@@ -287,7 +287,7 @@ func TestEditingAChangedFileReloadsItsDiff(t *testing.T) {
 	repo := filepath.Join(parent, "repo")
 	writeFile(t, filepath.Join(repo, "a.go"), "package a\n\nvar first = 1\n")
 
-	m := New(parent)
+	m := New(parent, Local{})
 	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
 	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
 	if path, ok := m.currentFile(); !ok || path != "a.go" {
@@ -311,7 +311,7 @@ func TestEditingAChangedFileReloadsItsDiff(t *testing.T) {
 // and its counts arriving afterwards, for the overview they were made for.
 func TestOverviewCountsInTheBackground(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, map[string]string{"b.go": "package b\n"})
-	m := New(parent)
+	m := New(parent, Local{})
 	cmd := m.toggleOverview()
 	if !m.overview || len(m.ovItems) != 1 || m.ovItems[0].counted {
 		t.Fatalf("expected one uncounted item at once, got %+v", m.ovItems)
@@ -375,7 +375,7 @@ func (m Model) settle(cmd tea.Cmd) Model {
 // worktree's agent about the line, the file or the whole change, with the
 // question left for the user to write after s.
 func TestAskTurnsWhereYouStandIntoAMessage(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		focus: focusDiff, height: 40, curWT: "/wt",
 		worktrees: []git.Worktree{{Path: "/wt"}},
 		diffLines: []diffLine{
@@ -416,7 +416,7 @@ func TestEmptyChangeOffersTheBranch(t *testing.T) {
 	runGit(t, repo, "rm", "-q", "gone.sh")
 	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "drop")
 
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m = pinNow(t, m, []Pin{{Repo: repo, Path: repo}})
 	m = m.send(tea.WindowSizeMsg{Width: 100, Height: 40})
 	m.refreshFiles()

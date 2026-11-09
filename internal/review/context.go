@@ -27,7 +27,7 @@ func (m *Model) ensureWorktreeContext() bool {
 		return false
 	}
 	if wt := m.curWT; wt != "" {
-		m.baseRef = git.DetectBase(wt)
+		m.baseRef = m.src.DetectBase(wt)
 		m.whyIndex = loadNotes(wt)
 		m.orderIndex = order.Load(wt, m.worktrees[m.wtIdx].Branch)
 		m.setWalk(walkthrough.Load(wt, m.worktrees[m.wtIdx].Branch))
@@ -97,7 +97,7 @@ type worktreeContextMsg struct {
 // loadContextCmd walks the worktree's code, sets up the watch on it and
 // asks GitHub for its PR: the parts of a worktree's context too slow to do
 // while the key is held.
-func loadContextCmd(wt string) tea.Cmd {
+func loadContextCmd(src Source, wt string) tea.Cmd {
 	return func() tea.Msg {
 		msg := worktreeContextMsg{wt: wt, project: analysis.LoadProject(wt)}
 		msg.project.Index()
@@ -106,7 +106,7 @@ func loadContextCmd(wt string) tea.Cmd {
 				msg.watcher = w
 			}
 		}
-		msg.pr, msg.prOK, msg.prMsg = github.CurrentPR(wt)
+		msg.pr, msg.prOK, msg.prMsg = src.CurrentPR(wt)
 		return msg
 	}
 }

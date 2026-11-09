@@ -18,7 +18,7 @@ func TestTickReschedulesItself(t *testing.T) {
 	refreshInterval = 10 * time.Millisecond
 	defer func() { refreshInterval = old }()
 
-	m := Model{focus: focusRepos}
+	m := Model{src: Local{}, focus: focusRepos}
 	_, cmd := m.Update(tickMsg{})
 	if cmd == nil {
 		t.Fatal("a tick produced no follow-up command, so the clock stops after one tick")
@@ -67,7 +67,7 @@ func TestBaseToggleDoesNotMarkEverythingAsJustTouched(t *testing.T) {
 	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "earlier work")
 	writeFile(t, filepath.Join(repo, "a.txt"), "hello\nworld\n")
 
-	m := New(parent)
+	m := New(parent, Local{})
 	send := func(msg tea.Msg) {
 		nm, _ := m.Update(msg)
 		m = nm.(Model)
@@ -99,9 +99,9 @@ func TestBaseToggleDoesNotMarkEverythingAsJustTouched(t *testing.T) {
 // the worktree rather than the tick: the new file is listed without a poll.
 func TestWatchRefreshesTheFiles(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, nil)
-	m := New(parent)
+	m := New(parent, Local{})
 	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
-	m = m.send(loadContextCmd(m.curWT)())
+	m = m.send(loadContextCmd(m.src, m.curWT)())
 	if m.watcher == nil {
 		t.Skip("the kernel refused the watch")
 	}
@@ -129,7 +129,7 @@ func TestWatchRefreshesTheFiles(t *testing.T) {
 // change only marks the file list stale; coming back refreshes it once.
 func TestFilesWaitWhileF1IsNotShown(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, nil)
-	m := New(parent)
+	m := New(parent, Local{})
 	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
 	listed := func(m Model, path string) bool {
 		for _, f := range m.files {

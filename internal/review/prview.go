@@ -9,7 +9,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 )
 
@@ -377,9 +376,9 @@ func (m *Model) reloadPR() tea.Cmd {
 	}
 	m.prToken++
 	m.lastPRLoad = time.Now()
-	token := m.prToken
+	token, src := m.prToken, m.src
 	return func() tea.Msg {
-		pr, ok, msg := github.CurrentPR(wt)
+		pr, ok, msg := src.CurrentPR(wt)
 		return prReloadMsg{wt: wt, token: token, pr: pr, ok: ok, msg: msg}
 	}
 }
@@ -420,7 +419,7 @@ func (m Model) prOwnContent() ([]relLine, []convEntry) {
 	switch {
 	case m.curWT == "":
 		return []relLine{{text: "(no worktree)"}}, nil
-	case !github.Available():
+	case !m.src.GhAvailable():
 		return []relLine{{text: "(the gh CLI is not installed)"}}, nil
 	case !m.prOK:
 		msg := m.prMsg
@@ -696,9 +695,9 @@ func (m *Model) startPRFix() tea.Cmd {
 	}
 	m.prBusy = true
 	m.setToast("reading the build log…")
-	wt, pr := m.curWT, m.pr
+	wt, pr, src := m.curWT, m.pr, m.src
 	return func() tea.Msg {
-		logs, err := github.FailedRunLogs(wt, pr.Checks, LogLimit)
+		logs, err := src.FailedRunLogs(wt, pr.Checks, LogLimit)
 		return prFixMsg{wt: wt, pr: pr, logs: logs, err: err}
 	}
 }
@@ -1091,7 +1090,7 @@ func (m *Model) rescanRepos() {
 	if m.embedded {
 		return // pinned to the tab's worktrees
 	}
-	repos, err := git.DiscoverRepos(m.cwd)
+	repos, err := m.src.DiscoverRepos(m.cwd)
 	if err != nil || len(repos) == 0 {
 		return
 	}

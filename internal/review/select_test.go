@@ -17,7 +17,7 @@ func TestDragCopiesTheDiffLines(t *testing.T) {
 		{kind: '+', text: "+\treturn 2", newLine: 2},
 		{kind: ' ', text: " }", newLine: 3},
 	}
-	m := Model{width: 120, height: 40, focus: focusFiles, diffLines: lines}
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines}
 	lay := m.layout(m.width, m.height)
 	row := func(i int) int { return lay.diff.y + 2 + m.diffHeader() + i }
 	send := func(y int, a tea.MouseAction) tea.Cmd {

@@ -5,8 +5,6 @@ package review
 import (
 	"sync"
 
-	"github.com/nerdr-dev/nerdr/internal/git"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -44,7 +42,7 @@ func (m *Model) buildOverview() tea.Cmd {
 	m.ovItems = nil
 	m.ovToken++
 	for ri, repo := range m.repos {
-		wts, err := git.ListWorktrees(repo.Path)
+		wts, err := m.src.ListWorktrees(repo.Path)
 		if err != nil {
 			continue
 		}
@@ -67,7 +65,7 @@ func (m *Model) buildOverview() tea.Cmd {
 	for i, it := range m.ovItems {
 		paths[i] = it.path
 	}
-	token := m.ovToken
+	token, src := m.ovToken, m.src
 	return func() tea.Msg {
 		stats := make([]ovStat, len(paths))
 		var wg sync.WaitGroup
@@ -78,10 +76,7 @@ func (m *Model) buildOverview() tea.Cmd {
 				defer wg.Done()
 				sem <- struct{}{}
 				defer func() { <-sem }()
-				if fs, err := git.ChangedFiles(p); err == nil {
-					stats[i].files = len(fs)
-				}
-				_, stats[i].add, stats[i].del = git.ShortStat(p)
+				stats[i].files, stats[i].add, stats[i].del = src.Summary(p)
 			}()
 		}
 		wg.Wait()

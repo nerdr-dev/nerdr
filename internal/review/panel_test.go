@@ -52,7 +52,7 @@ func TestPanelBesideAnAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	nm, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 30})
 	m = nm.(Model)
 	m = pinNow(t, m, []Pin{{Repo: repo, Path: repo}})
@@ -90,7 +90,7 @@ func TestPanelBesideAnAgent(t *testing.T) {
 }
 
 func TestWhyNoteOpensInTheDiff(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m.width, m.height = 80, 30
 	m.diffLines = []diffLine{
 		{kind: '@', text: "@@ -1 +1 @@"},
@@ -118,7 +118,7 @@ func TestWhyNoteOpensInTheDiff(t *testing.T) {
 }
 
 func TestFileMarks(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m.fileStats = map[string]git.LineCount{"a": {Add: 2}, "b": {Del: 4}, "c": {Binary: true}}
 	for path, want := range map[string]string{"a": " +2 ✎", "b": " −4", "c": " bin", "d": ""} {
 		if got := stripANSI(m.fileMarks(path, path == "a")); got != want {
@@ -130,7 +130,7 @@ func TestFileMarks(t *testing.T) {
 // E in the file list asks the worktree's agent to explain its change, in
 // a self-contained request, without needing a skill installed.
 func TestExplainAsksTheAgent(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m.worktrees = []git.Worktree{{Path: "/a"}}
 	m.wtIdx, m.focus = 0, focusFiles
 	E := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("E")}
@@ -152,7 +152,7 @@ func TestExplainAsksTheAgent(t *testing.T) {
 // ? in nerdr's panel is help, as everywhere in nerdr; v steps the diff
 // through the whole file and the old code, back to the diff.
 func TestQuestionMarkIsHelpAndVStepsTheDiff(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("?")})
 	if cmd == nil {
 		t.Fatal("? asks for nothing")
@@ -231,7 +231,7 @@ func TestPinRunsNoGitOnTheSpot(t *testing.T) {
 		}
 		return n
 	}
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m, _ = m.SetShown(false)
 	before := gitCalls()
 	m, cmd := m.Pin([]Pin{{Repo: repo, Path: repo}})

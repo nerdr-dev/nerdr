@@ -35,7 +35,7 @@ func openFileDiff(t *testing.T, m Model, path string) Model {
 	m = send(tea.KeyMsg{Type: tea.KeyRight}) // worktrees -> files
 	// The project the annotations come from loads in the background; hand
 	// it over as the program would once it has.
-	m = send(loadContextCmd(m.curWT)())
+	m = send(loadContextCmd(m.src, m.curWT)())
 	found := false
 	for i, r := range m.flatRows() {
 		if !r.node.isDir && r.node.path == path {
@@ -61,7 +61,7 @@ func TestJumpToReferenceOutsideTree(t *testing.T) {
 		"lib.ts": "export function helper() { return 1; }\n",
 	})
 
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	idx := annotationIndex(t, m)
 	if !strings.Contains(m.diffLines[idx].text, "caller.ts") {
@@ -113,7 +113,7 @@ func TestJumpToReferenceInsideTree(t *testing.T) {
 		"caller.ts": caller,
 	})
 
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	idx := annotationIndex(t, m)
 	m.diffCursor = idx
@@ -155,7 +155,7 @@ func TestJumpToEachOfMultipleReferences(t *testing.T) {
 		"b.ts":   "import * as lib from './lib';\n\n\nexport function useB() { return lib.helper(); }\n",
 	})
 
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 
 	var refRows []int
@@ -215,7 +215,7 @@ func TestPeekIsMarkedInTheFileTree(t *testing.T) {
 		"lib.ts": "export function helper() { return 1; }\n",
 	})
 
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
@@ -252,7 +252,7 @@ func TestMovingTheCursorLeavesThePeek(t *testing.T) {
 		"lib.ts": "export function helper() { return 1; }\n",
 	})
 
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
@@ -283,7 +283,7 @@ func TestLeavingTheReviewLayoutEndsThePeek(t *testing.T) {
 		"lib.ts": "export function helper() { return 1; }\n",
 	})
 
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff

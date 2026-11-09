@@ -3,8 +3,6 @@ package review
 import (
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
-
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -65,7 +63,7 @@ func (m Model) whyRelLines() []relLine {
 }
 
 func (m Model) githubRelLines() []relLine {
-	if !github.Available() {
+	if !m.src.GhAvailable() {
 		return []relLine{{text: "(the gh CLI is not installed)"}}
 	}
 	if !m.prOK {

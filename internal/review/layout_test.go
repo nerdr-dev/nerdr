@@ -38,7 +38,7 @@ func TestLayoutDoesNotOverflow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := New(parent)
+	m := New(parent, Local{})
 	send := func(msg tea.Msg) {
 		nm, _ := m.Update(msg)
 		m = nm.(Model)
@@ -86,7 +86,7 @@ func writeFileDirs(path, content string) error {
 // TestStatusBarKeepsToastVisible guards feedback the user just triggered
 // from being squeezed out by the (long) hint line.
 func TestStatusBarKeepsToastVisible(t *testing.T) {
-	m := Model{cwd: "/home/user/develop", toast: "select a line of code to ask about"}
+	m := Model{src: Local{}, cwd: "/home/user/develop", toast: "select a line of code to ask about"}
 	got := m.statusBar(120)
 	if !strings.Contains(got, "select a line of code") {
 		t.Fatalf("toast was dropped from the status bar:\n%q", got)

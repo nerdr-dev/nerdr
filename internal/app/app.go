@@ -300,7 +300,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		Root:        root,
 		router:      router,
 		Herdr:       herdr.Detect(),
-		review:      review.NewEmbedded(),
+		review:      review.NewEmbedded(review.Local{}),
 		reviewWidth: cfg.PanelWidth,
 		splitWidth:  50,
 		Wake:        make(chan struct{}, 1),

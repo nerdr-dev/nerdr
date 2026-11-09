@@ -24,7 +24,7 @@ func orderModel(t *testing.T) Model {
 		{Path: "internal/cache/cache_test.go", Code: "??"},
 		{Path: "internal/ui/view.go", Code: " M"},
 	}
-	m := Model{height: 40, width: 120, showOrder: true, expanded: map[string]bool{}, recent: map[string]int{}}
+	m := Model{src: Local{}, height: 40, width: 120, showOrder: true, expanded: map[string]bool{}, recent: map[string]int{}}
 	m.files = files
 	return m
 }

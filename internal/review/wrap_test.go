@@ -72,7 +72,7 @@ func TestCursorOnAWrappedLineStaysInView(t *testing.T) {
 	for i := range lines {
 		lines[i] = diffLine{kind: ' ', text: " " + strings.Repeat("x ", 100), newLine: i + 1}
 	}
-	m := Model{width: 120, height: 40, focus: focusDiff, diffLines: lines}
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusDiff, diffLines: lines}
 	v := m.diffView()
 	if v.rows(0) < 2 {
 		t.Fatalf("the test needs lines that wrap, got %d row", v.rows(0))
@@ -97,7 +97,7 @@ func TestClickOnAWrappedRowSelectsItsLine(t *testing.T) {
 		{kind: ' ', text: " " + strings.Repeat("y ", 100), newLine: 1},
 		{kind: ' ', text: " short", newLine: 2},
 	}
-	m := Model{width: 120, height: 40, focus: focusFiles, diffLines: lines}
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines}
 	lay := m.layout(m.width, m.height)
 	rows := m.diffView().rows(0)
 
@@ -118,7 +118,7 @@ func TestClickOnAWrappedRowSelectsItsLine(t *testing.T) {
 // and click targets must follow the screen row while the cursor stays
 // attached to its source line.
 func TestScrollWithinTallDiffLine(t *testing.T) {
-	m := Model{width: 120, height: 40, focus: focusDiff,
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusDiff,
 		diffLines: []diffLine{{kind: '+', text: "+" + strings.Repeat("x", 4000) + "END", newLine: 1}}}
 	v := m.diffView()
 	if v.rows(0) <= v.innerH*2 {

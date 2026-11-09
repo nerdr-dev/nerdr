@@ -5,8 +5,6 @@ package review
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/git"
@@ -23,7 +21,7 @@ func (m *Model) loadWorktrees() tea.Cmd {
 		return nil
 	}
 	repoPath := m.repos[m.repoIdx].Path
-	wts, err := git.ListWorktrees(repoPath)
+	wts, err := m.src.ListWorktrees(repoPath)
 	if err != nil {
 		m.err = err
 		return nil
@@ -82,14 +80,10 @@ func (m *Model) refreshFiles() tea.Cmd {
 	}
 	m.filesBusy, m.refreshing = true, true
 	m.filesToken++
-	c, token, wt := m.comparison(), m.filesToken, m.curWT
+	c, token, wt, src := m.comparison(), m.filesToken, m.curWT, m.src
 	return func() tea.Msg {
-		files, err := c.Files()
-		msg := filesMsg{wt: wt, token: token, files: files, err: err}
-		if err == nil {
-			msg.stats = c.NumStat()
-		}
-		return msg
+		files, stats, err := src.Files(c)
+		return filesMsg{wt: wt, token: token, files: files, stats: stats, err: err}
 	}
 }
 
@@ -364,17 +358,14 @@ func (m *Model) markRecent(old, new []git.FileStatus) {
 // written. A deleted file has none, and a change to that shows up in its
 // status instead.
 func (m *Model) fileStamps(files []git.FileStatus) map[string]string {
-	out := make(map[string]string, len(files))
 	if m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
-		return out
+		return map[string]string{}
 	}
-	wt := m.worktrees[m.wtIdx].Path
-	for _, f := range files {
-		if fi, err := os.Stat(filepath.Join(wt, filepath.FromSlash(f.Path))); err == nil {
-			out[f.Path] = fmt.Sprintf("%d/%d", fi.ModTime().UnixNano(), fi.Size())
-		}
+	paths := make([]string, len(files))
+	for i, f := range files {
+		paths[i] = f.Path
 	}
-	return out
+	return m.src.Stamps(m.worktrees[m.wtIdx].Path, paths)
 }
 
 func sameFiles(a, b []git.FileStatus) bool {
