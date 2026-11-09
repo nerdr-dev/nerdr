@@ -267,11 +267,15 @@ var PartsEvery = 100 * time.Millisecond
 // never sent.
 type flushParts struct{ rc *RemoteClient }
 
-// Done as a request, it moves Gen on, and the flush after looks.
+// Done once PartsEvery has gone by, the flush after it looks. It is quiet:
+// a change of Gen would have every part looked at again, and the client
+// draw again, ten times a second while a program draws.
 func (q flushParts) Do(*Core) Cmd {
 	q.rc.later = false
 	return nil
 }
+
+func (flushParts) quiet() {}
 
 // FlushClient sends a client in a process of its own what changed, after
 // an event of the loop. Mu is held.

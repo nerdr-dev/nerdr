@@ -19,8 +19,11 @@ type Core struct {
 	// Gen counts the changes that can change what a client draws: the
 	// events the loop handles as core's, and the client's own state changed
 	// by core through Client. A client that drew something at one Gen need
-	// not draw it again while Gen is the same.
-	Gen uint64
+	// not draw it again while Gen is the same. It is not sent: a copy
+	// counts its own (see Mirror.Apply), and in the part it would have
+	// core's whole part sent again for every change, though nothing else
+	// in it changed.
+	Gen uint64 `json:"-"`
 
 	// ID tells this core from the others a client may show, in a TabRef;
 	// "" for the one on this machine.

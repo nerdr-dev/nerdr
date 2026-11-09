@@ -142,6 +142,11 @@ func TestMirrorChanges(t *testing.T) {
 	if parts, _ := m.Parts(&sent); len(parts) != 0 {
 		t.Errorf("%d parts with nothing changed", len(parts))
 	}
+	// Gen is not sent: core's part is not sent again for it alone.
+	m.Gen++
+	if parts, _ := m.Parts(&sent); len(parts) != 0 {
+		t.Errorf("%d parts with only Gen changed", len(parts))
+	}
 	b.Name = "docs 2"
 	a.PaneList[1].A.Light = StDone
 	parts, _ = m.Parts(&sent)
