@@ -45,6 +45,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(m.resize())
 	case core.SetupAnsweredMsg:
 		return toCore(m.setupAnswered(ev.Token))
+	case core.ContextMsg:
+		m.onContext(ev)
+	case core.ContextFileMsg:
+		m.onContextFile(ev)
 	case core.WatchingMsg:
 		m.review = m.review.Watching(ev.Wt, ev.OK)
 	case core.WorktreeChangedMsg:

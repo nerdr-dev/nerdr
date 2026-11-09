@@ -45,6 +45,12 @@ type skillsView struct {
 	allTabs        bool
 
 	context core.ContextView
+	// ctxAsked is the context read last asked of core, for tab ctxTab, at
+	// ctxAskedAt; fileAsked the file. See contextItems.
+	ctxAsked   string
+	ctxAskedAt time.Time
+	ctxTab     core.TabRef
+	fileAsked  string
 }
 
 // panelSkills reports whether the review panel shows the skills.
