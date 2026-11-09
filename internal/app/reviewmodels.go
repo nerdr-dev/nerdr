@@ -69,10 +69,9 @@ func (m *Model) pickModel(of *core.Tab, k agents.Kind, model string) tea.Cmd {
 		if model != "" {
 			value = config.Quote(model)
 		}
-		if err := config.SetKey("review.models", string(k), value); err != nil {
-			m.toast(string(k) + ": " + cmp.Or(model, "its own model") + " for now; not saved: " + err.Error())
-		}
-		return tea.Batch(m.do(core.SetConfig{Cfg: m.Cfg}), m.startReviewWith(of, core.Reviewer{Kind: k, Model: model}))
+		save := m.editCoreConfig(string(k)+"'s model", core.EditConfig{
+			Keys: []config.Edit{{Table: "review.models", Key: string(k), Value: value}}})
+		return tea.Batch(save, m.startReviewWith(of, core.Reviewer{Kind: k, Model: model}))
 	}
 	return m.startReviewWith(of, core.Reviewer{Kind: k, Model: model})
 }

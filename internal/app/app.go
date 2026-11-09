@@ -90,7 +90,11 @@ type Model struct {
 	// cfgMod is the config file's time when last taken in; restartNoted
 	// the settings read only at start that the file has changed, and to
 	// what, told once (see reloadConfig).
-	cfgMod       time.Time
+	cfgMod time.Time
+	// cfgJob numbers what the TUI asks core of its config file, and
+	// cfgWhat names each change asked, for a toast should it fail.
+	cfgJob       int
+	cfgWhat      map[string]string
 	restartNoted map[string]string
 	router       *input.Router
 

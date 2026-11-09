@@ -38,3 +38,22 @@ func scanned(m *Model) {
 		m.Update(cmd())
 	}
 }
+
+// settle runs cmd and gives m what comes of it, then the same of what m
+// does with that, as the program would: for what core does away from its
+// loop, as writing its config file, to be done. A few rounds at most.
+func settle(m *Model, cmd tea.Cmd) {
+	for range 4 {
+		var next []tea.Cmd
+		for _, msg := range runBatch(cmd) {
+			if msg == nil {
+				continue
+			}
+			_, c := m.Update(msg)
+			next = append(next, c)
+		}
+		if cmd = tea.Batch(next...); cmd == nil {
+			return
+		}
+	}
+}

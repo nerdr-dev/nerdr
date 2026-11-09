@@ -85,18 +85,19 @@ func testModel(t *testing.T) *Model {
 }
 
 // clickOn clicks the first place the screen shows s, with button b.
-func clickOn(t *testing.T, m *Model, s string, b tea.MouseButton) {
+func clickOn(t *testing.T, m *Model, s string, b tea.MouseButton) tea.Cmd {
 	t.Helper()
 	for y, line := range strings.Split(ansi.Strip(m.View()), "\n") {
 		if i := strings.Index(line, s); i >= 0 {
 			x := ansi.StringWidth(line[:i])
-			m.Update(tea.MouseMsg{X: x, Y: y, Button: b, Action: tea.MouseActionPress})
-			m.Update(tea.MouseMsg{X: x, Y: y, Button: b, Action: tea.MouseActionRelease})
+			_, press := m.Update(tea.MouseMsg{X: x, Y: y, Button: b, Action: tea.MouseActionPress})
+			_, release := m.Update(tea.MouseMsg{X: x, Y: y, Button: b, Action: tea.MouseActionRelease})
 			m.View()
-			return
+			return tea.Batch(press, release)
 		}
 	}
 	t.Fatalf("%q is not on the screen:\n%s", s, ansi.Strip(m.View()))
+	return nil
 }
 
 func TestClickTabsAndGroups(t *testing.T) {

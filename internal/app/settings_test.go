@@ -54,7 +54,7 @@ func TestSettingsDialog(t *testing.T) {
 	pickSetting(t, d, "agents.claude", "args")
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, "--model claude-opus-5-5")
-	m.dialog.key(m, keyMsg("enter"))
+	settle(m, m.dialog.key(m, keyMsg("enter")))
 	l := agents.NewSession(m.Cfg.Agents, agents.Claude)
 	if !strings.Contains(strings.Join(l.Argv, " "), "claude --model claude-opus-5-5 --session-id") {
 		t.Fatalf("claude starts as %q (%s)", l.Argv, d.err)
@@ -69,7 +69,7 @@ func TestSettingsDialog(t *testing.T) {
 	pickSetting(t, d, "agents.opencode", "config_model")
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, "anthropic/claude-opus-5-5")
-	m.dialog.key(m, keyMsg("enter"))
+	settle(m, m.dialog.key(m, keyMsg("enter")))
 	if got := m.Cfg.Agents[agents.OpenCode].ConfigModel; got != "anthropic/claude-opus-5-5" {
 		t.Fatalf("config_model %q", got)
 	}
@@ -78,7 +78,7 @@ func TestSettingsDialog(t *testing.T) {
 	pickSetting(t, d, "agents.claude", "env")
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, `A=1 B="two words"`)
-	m.dialog.key(m, keyMsg("enter"))
+	settle(m, m.dialog.key(m, keyMsg("enter")))
 	if env := m.Cfg.Agents[agents.Claude].Env; env["A"] != "1" || env["B"] != "two words" {
 		t.Fatalf("env %v (%s)", env, d.err)
 	}
@@ -101,7 +101,7 @@ func TestSettingsDialog(t *testing.T) {
 	pickSetting(t, d, "", "max_tabs")
 	m.dialog.key(m, keyMsg("enter"))
 	typeText(m, "x")
-	m.dialog.key(m, keyMsg("enter"))
+	settle(m, m.dialog.key(m, keyMsg("enter")))
 	if d.err == "" {
 		t.Fatal("max_tabs = x was taken")
 	}

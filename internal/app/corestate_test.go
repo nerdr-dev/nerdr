@@ -56,7 +56,7 @@ func init() {
 		*Core.KnownGroupNames *Core.GroupCount *Core.CutOff
 		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
 		*Core.PRNewsByKey *Core.IssueNewsByKey *Core.Runs *Tab.HasProgram
-		*Core.ClosedGroups *Core.Available
+		*Core.ClosedGroups *Core.Available *Core.ConfigPath
 
 		*Core.SkillStates *Core.SkillLookOf *Core.SkillOn *Core.AgentNote
 		*Loop.Run
@@ -307,7 +307,8 @@ func (c *checker) write(file string, e ast.Expr) {
 }
 
 // configTold counts function fd when it changes the config but does not
-// tell core so, by core.SetConfig.
+// tell core so: by core.SetConfig of the client's own settings, or by
+// core.EditConfig, which has core write its own where it runs.
 func (c *checker) configTold(file string, fd *ast.FuncDecl) {
 	changes, tells := false, false
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
@@ -320,7 +321,7 @@ func (c *checker) configTold(file string, fd *ast.FuncDecl) {
 			changes = changes || c.inConfig(x.X)
 		case *ast.CompositeLit:
 			if n, ok := types.Unalias(c.info.Types[x].Type).(*types.Named); ok &&
-				n.Obj().Name() == "SetConfig" && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == corePkg {
+				(n.Obj().Name() == "SetConfig" || n.Obj().Name() == "EditConfig") && n.Obj().Pkg() != nil && n.Obj().Pkg().Path() == corePkg {
 				tells = true
 			}
 		}

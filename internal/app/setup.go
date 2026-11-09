@@ -145,22 +145,21 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		v := strings.TrimSpace(d.notes.Value())
 		notes = &v
 	}
-	if err := config.SaveSetup(location, notes, enabled); err != nil {
-		d.err = "could not write " + config.Path() + ": " + err.Error()
-		return nil
+	keys := []config.Edit{
+		{Key: "install", Value: config.Quote(location)},
+		{Key: "enabled_skills", Value: config.List(enabled)},
+	}
+	if notes != nil {
+		keys = append(keys, config.Edit{Key: "data_dir", Value: config.Quote(*notes)})
 	}
 	if !d.worktreesSet {
 		v := strings.TrimSpace(d.worktrees.Value())
 		if v == "" {
 			v = config.DefaultWorktreesDir
 		}
-		if err := config.SaveWorktreesDir(v); err != nil {
-			d.err = "could not write " + config.Path() + ": " + err.Error()
-			return nil
-		}
+		keys = append(keys, config.Edit{Key: "worktrees_dir", Value: config.Quote(v)})
 		// Asked before any tab is made, so the new worktrees go there
 		// from now on, not only from the next start.
-		m.Cfg.WorktreesDir = config.ExpandHome(v)
 		moveWtRoot = true
 		d.worktreesSet = true
 	}
@@ -171,9 +170,11 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 		store.SetDataDir(*notes)
 	}
 	m.dialog = nil
-	m.do(core.SetConfig{Cfg: m.Cfg, MoveWtRoot: moveWtRoot})
-	m.do(core.ApplySkills{Otherwise: "saved in " + config.Path()})
-	return d.next(m)
+	// Core's to write, in the file where it runs; what is above is what
+	// the TUI shows until core's own state says so.
+	save := m.editCoreConfig("the setup", core.EditConfig{Keys: keys, MoveWtRoot: moveWtRoot, Now: true,
+		Apply: &core.ApplySkills{Otherwise: "saved in " + m.ConfigPath()}})
+	return tea.Batch(save, d.next(m))
 }
 
 func (d *setupDialog) next(m *Model) tea.Cmd {
