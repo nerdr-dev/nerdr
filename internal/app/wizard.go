@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
-	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -220,10 +219,10 @@ func (w *wizard) rescanned(m *Model) tea.Cmd {
 
 // noAgentHint says what to do when no agent is found, the first thing the
 // dialog says then: nothing can be started without one.
-func noAgentHint() []string {
+func noAgentHint(m *Model) []string {
 	return []string{
 		warn("Found no agent on PATH: claude, opencode, copilot, codex, cursor-agent, gemini or agy."),
-		"Install one, or name the command of yours in " + dim(config.Path()) + ":",
+		"Install one, or name the command of yours in " + dim(m.ConfigPath()) + ":",
 		"  " + dim(`[agents.my-agent]`) + "  " + dim(`command = ["my-agent"]`),
 	}
 }
@@ -580,7 +579,7 @@ func (w *wizard) openExisting(m *Model, i int) tea.Cmd {
 		return nil
 	}
 	if len(w.agents) == 0 {
-		w.err = "there is no agent to start: see " + config.Path()
+		w.err = "there is no agent to start: see " + m.ConfigPath()
 		return nil
 	}
 	g := gs[i]
@@ -815,7 +814,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 	switch w.step {
 	case stepRepos:
 		if len(w.agents) == 0 {
-			lines = append(lines, noAgentHint()...)
+			lines = append(lines, noAgentHint(m)...)
 			lines = append(lines, "")
 		}
 		lines = append(lines, "Repositories in "+dim(strings.Join(append([]string{m.Root}, m.Cfg.RepoDirs...), ", "))+":", "")
@@ -829,7 +828,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 				lines = append(lines, "  Start nerdr in a folder with repositories right under it (or in")
 			}
 			lines = append(lines,
-				"  one), or list the folders to look in, in "+dim(config.Path())+":", "",
+				"  one), or list the folders to look in, in "+dim(m.ConfigPath())+":", "",
 				"    "+dim(`repo_dirs = ["~/code", "~/work"]`))
 		}
 		repoList := scrollList{start: len(lines), n: len(w.repos), cursor: w.cursor}
@@ -952,7 +951,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 			lines = append(lines, "")
 		}
 		if len(w.agents) == 0 {
-			lines = append(lines, noAgentHint()...)
+			lines = append(lines, noAgentHint(m)...)
 		} else {
 			lines = append(lines, "Agent:")
 			for i, a := range w.agents {

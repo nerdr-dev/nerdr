@@ -69,6 +69,8 @@ func init() {
 		config.Config.DataDirSet config.Config.NotifyOn
 		config.Config.PrefixByte config.Config.PrefixKey
 		config.Config.SkillEnabled config.Config.WorktreesDirSet
+		config.Merge config.ScopeOf config.Quote config.List config.Table
+		config.RawText
 		skills.All skills.Printable skills.Skill.Body
 		skills.Skill.Description skills.Skill.Without
 		fs.FileInfo.ModTime
