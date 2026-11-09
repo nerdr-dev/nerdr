@@ -73,9 +73,12 @@ type Core struct {
 	// ConfigFile is where Cfg's own settings are read from, on the
 	// machine core runs on; see WatchConfigFile. cfgMod is when it was
 	// last changed as core took it in, cfgWatch whether core watches it.
-	ConfigFile  string
-	cfgMod      time.Time
-	cfgWatch    bool
+	ConfigFile string
+	cfgMod     time.Time
+	cfgWatch   bool
+	// cfgNoted are the settings read only at start that changed in the
+	// file, and to what, told once; see keepAtStart.
+	cfgNoted    map[string]string
 	Root        string // the folder nerdr was started in
 	Tabs        []*Tab `json:"-"`
 	AgentModels map[agents.Kind]ModelList

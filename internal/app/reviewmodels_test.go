@@ -157,7 +157,7 @@ func TestReviewPaneModelButton(t *testing.T) {
 	if m.reviewPick == nil || m.reviewPick.kind != agents.Codex {
 		t.Fatal("the button picks codex's model")
 	}
-	clickOn(t, m, "gpt-6-astra", tea.MouseButtonLeft)
+	settle(m, clickOn(t, m, "gpt-6-astra", tea.MouseButtonLeft))
 	if m.reviewPick != nil || m.Cfg.Review.Models[agents.Codex] != "gpt-6-astra" {
 		t.Fatalf("picked %q", m.Cfg.Review.Models[agents.Codex])
 	}

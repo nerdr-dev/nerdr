@@ -55,6 +55,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.onSent(ev)
 	case core.ConversationsReadMsg, core.SearchHitsMsg:
 		return toCore(m.onSearchAnswer(ev))
+	case core.ConfigSavedMsg:
+		return toCore(m.onConfigSaved(ev))
+	case core.ConfigTextMsg:
+		m.onConfigText(ev)
 	case core.ContextMsg:
 		m.onContext(ev)
 	case core.ContextFileMsg:

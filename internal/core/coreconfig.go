@@ -1,8 +1,10 @@
 package core
 
 import (
+	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
@@ -25,10 +27,14 @@ func init() { registerRequests(EditConfig{}, ReadConfig{}) }
 // With MoveWtRoot new worktrees go to the worktrees_dir the file then has
 // from now on, not only from the next start, as the first-start setup
 // asks before any tab is made; with Apply, the skills are applied after.
+// With Now, the settings core reads only at start (atStart) are taken at
+// once too, as the setup and the skills' list do; else they wait for the
+// next start, as when the file is edited by hand.
 type EditConfig struct {
 	Job        string
 	Keys       []config.Edit
 	MoveWtRoot bool
+	Now        bool
 	Apply      *ApplySkills `json:",omitempty"`
 }
 
@@ -137,7 +143,11 @@ func (m *Core) onConfigRead(ev configRead) Cmd {
 		m.cfgMod = ev.mod // an error in the file is told once
 	}
 	if ev.err == nil {
-		m.takeConfig(config.Merge(ev.cfg, m.Cfg))
+		c := config.Merge(ev.cfg, m.Cfg)
+		if ev.edit == nil || !ev.edit.Now {
+			c = m.keepAtStart(c)
+		}
+		m.takeConfig(c)
 	}
 	if ev.edit == nil {
 		if ev.err != nil {
@@ -159,6 +169,48 @@ func (m *Core) onConfigRead(ev configRead) Cmd {
 		}
 	}
 	return Batch(append(cmds, m.Tell(saved))...)
+}
+
+// atStart are core's settings it reads only when it starts, by name:
+// changed in the file, they keep their value until then.
+var atStart = []struct {
+	key string
+	get func(*config.Config) any
+}{
+	{"worktrees_dir", func(c *config.Config) any { return &c.WorktreesDir }},
+	{"install", func(c *config.Config) any { return &c.Install }},
+	{"data_dir", func(c *config.Config) any { return &c.DataDir }},
+	{"enabled_skills", func(c *config.Config) any { return &c.EnabledSkills }},
+}
+
+// keepAtStart is c with what atStart has as core has it now, and a toast
+// of those c would change, once for each new value. Mu is held.
+func (m *Core) keepAtStart(c config.Config) config.Config {
+	if m.cfgNoted == nil {
+		m.cfgNoted = map[string]string{}
+	}
+	var pending []string
+	for _, s := range atStart {
+		now := reflect.ValueOf(s.get(&m.Cfg)).Elem()
+		next := reflect.ValueOf(s.get(&c)).Elem()
+		v := fmt.Sprint(next.Interface())
+		switch {
+		case reflect.DeepEqual(now.Interface(), next.Interface()):
+			delete(m.cfgNoted, s.key)
+		case m.cfgNoted[s.key] != v:
+			m.cfgNoted[s.key] = v
+			pending = append(pending, s.key)
+		}
+		next.Set(now)
+	}
+	switch len(pending) {
+	case 0:
+	case 1:
+		m.Toast(pending[0] + " changed: restart nerdr to use it")
+	default:
+		m.Toast(strings.Join(pending, ", ") + " changed: restart nerdr to use them")
+	}
+	return c
 }
 
 // takeConfig has core go by c from now on. Mu is held.

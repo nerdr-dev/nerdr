@@ -108,12 +108,10 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 		if m.Cfg.Install == "" {
 			return m.openSetup(nil)
 		}
-		if err := config.SaveSkills(enabled); err != nil {
-			m.toast(err.Error())
-			return nil
-		}
 		m.Cfg.EnabledSkills = enabled
-		return tea.Batch(m.do(core.SetConfig{Cfg: m.Cfg}), m.do(core.ApplySkills{Say: skillsChangedNote}))
+		return m.editCoreConfig("skills", core.EditConfig{Now: true,
+			Keys:  []config.Edit{{Key: "enabled_skills", Value: config.List(enabled)}},
+			Apply: &core.ApplySkills{Say: skillsChangedNote}})
 	case "s":
 		return m.openSettingsAt("install")
 	case "pgdown", "ctrl+d":

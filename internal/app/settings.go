@@ -1,6 +1,7 @@
 package app
 
 import (
+	"cmp"
 	"fmt"
 	"os"
 	"sort"
@@ -61,10 +62,17 @@ func (r settingRow) heading() bool { return r.key == "" }
 
 // settings is the dialog's state.
 type settings struct {
-	rows   []settingRow
-	raw    map[string]any
-	cursor int
-	top    int
+	rows []settingRow
+	// raw is what the TUI's config file sets, coreRaw what core's does,
+	// read where core runs (see readCoreConfig): each setting is shown
+	// from the file it is read from (config.ScopeOf). coreJob names the
+	// read asked of core last, coreErr says why it failed.
+	raw     map[string]any
+	coreRaw map[string]any
+	coreJob string
+	coreErr string
+	cursor  int
+	top     int
 	// editing is set while a value is typed in input.
 	editing bool
 	input   textinput.Model
@@ -88,7 +96,7 @@ func (m *Model) openSettingsAt(key string) tea.Cmd {
 		}
 	}
 	m.dialog = d
-	return nil
+	return m.readCoreConfig(d)
 }
 
 // layoutNotes say what layout's choices look like.
@@ -401,6 +409,9 @@ func (d *settings) reload() {
 // value is what the file sets for r, and whether it sets it.
 func (d *settings) value(r settingRow) (any, bool) {
 	cur := d.raw
+	if config.ScopeOf(r.table, r.key) == config.ScopeCore {
+		cur = d.coreRaw
+	}
 	if r.table != "" {
 		for _, part := range strings.Split(r.table, ".") {
 			next, ok := cur[part].(map[string]any)
@@ -574,6 +585,11 @@ func (m *Model) saveSetting(d *settings, r settingRow, text string) tea.Cmd {
 		d.err = r.key + ": " + err.Error()
 		return nil
 	}
+	if config.ScopeOf(r.table, r.key) == config.ScopeCore {
+		// Core's to write, where it runs; the dialog reads it again
+		// once saved.
+		return m.editCoreConfig(r.key, core.EditConfig{Keys: []config.Edit{{Table: r.table, Key: r.key, Value: value}}})
+	}
 	if err := config.SetKey(r.table, r.key, value); err != nil {
 		d.err = r.key + ": not saved: " + err.Error()
 		return nil
@@ -654,6 +670,11 @@ func (m *Model) reloadConfig() tea.Cmd {
 		return nil
 	}
 	old := m.Cfg
+	if m.remote != nil {
+		// Core's own settings are in the file where it runs, which it
+		// watches itself; this one's are the TUI's alone.
+		c = config.Merge(old, c)
+	}
 	var pending []string
 	if m.restartNoted == nil {
 		m.restartNoted = map[string]string{}
@@ -862,8 +883,8 @@ func (d *settings) footer(m *Model, w int) []string {
 	r := d.rows[d.cursor]
 	var out []string
 	home, _ := os.UserHomeDir()
-	if d.err != "" {
-		out = append(out, warn(ansi.Truncate(d.err, w, "…")))
+	if d.err != "" || d.coreErr != "" {
+		out = append(out, warn(ansi.Truncate(cmp.Or(d.err, m.ConfigPath()+": "+d.coreErr), w, "…")))
 	} else {
 		out = append(out, dim(ansi.Truncate("Saved to "+core.TildePath(config.Path(), home)+" as you go; dimmed is the default.", w, "…")))
 	}

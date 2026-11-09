@@ -45,7 +45,7 @@ func TestEditConfigWritesCoresOwnFile(t *testing.T) {
 	c.WatchConfigFile(cfg)
 	c.Cfg.Prefix = "ctrl+a" // the client's, as it sent it
 
-	cmd := EditConfig{Job: "j1", MoveWtRoot: true, Keys: []config.Edit{
+	cmd := EditConfig{Job: "j1", MoveWtRoot: true, Now: true, Keys: []config.Edit{
 		{Key: "worktrees_dir", Value: config.Quote("/srv/wt")},
 		{Table: "review", Key: "rounds", Value: "4"},
 	}}.Do(c)
@@ -88,11 +88,13 @@ func TestEditConfigThatFails(t *testing.T) {
 }
 
 // TestCoreTakesInItsConfigFileWhenChanged: edited by hand on the machine
-// core runs on, its own settings are taken in; the client's stay as the
+// core runs on, its own settings are taken in, but for those read only at
+// start, which wait for it and are told once; the client's stay as the
 // client sent them.
 func TestCoreTakesInItsConfigFileWhenChanged(t *testing.T) {
 	configHome(t, "worktrees_dir = \"/one\"\n")
-	c := &Core{Client: &eventsClient{}}
+	cl := &eventsClient{}
+	c := &Core{Client: cl}
 	cfg, _ := config.Load()
 	c.WatchConfigFile(cfg)
 	c.Cfg.Prefix = "ctrl+a"
@@ -110,8 +112,11 @@ func TestCoreTakesInItsConfigFileWhenChanged(t *testing.T) {
 		t.Fatal("the change was not seen")
 	}
 	c.Handle(ev)
-	if c.Cfg.WorktreesDir != "/two" {
-		t.Fatalf("worktrees %q", c.Cfg.WorktreesDir)
+	if c.Cfg.WorktreesDir != "/one" {
+		t.Fatalf("worktrees %q before a restart", c.Cfg.WorktreesDir)
+	}
+	if len(cl.told) != 1 || cl.told[0] != ToastMsg("worktrees_dir changed: restart nerdr to use it") {
+		t.Fatalf("told %#v", cl.told)
 	}
 	if got := c.Cfg.Agents["claude"].Command; len(got) != 2 || got[0] != "sandbox" {
 		t.Fatalf("claude's command %q", got)

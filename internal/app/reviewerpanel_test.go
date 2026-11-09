@@ -181,7 +181,7 @@ func TestRoundsInAReviewPane(t *testing.T) {
 	tb := m.Cur()
 	m.runCommand("t r")
 	p := m.focused(tb)
-	m.handleKey(keyMsg("+"))
+	settle(m, m.handleKey(keyMsg("+")))
 	if m.Cfg.Review.Rounds != 3 {
 		t.Fatalf("+ gives %d rounds", m.Cfg.Review.Rounds)
 	}

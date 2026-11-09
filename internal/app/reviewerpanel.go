@@ -257,9 +257,6 @@ func (m *Model) setRounds(t *core.Tab, d int) tea.Cmd {
 		return cmd
 	}
 	m.Cfg.Review.Rounds = n
-	cmd = tea.Batch(cmd, m.do(core.SetConfig{Cfg: m.Cfg}))
-	if err := config.SaveReviewRounds(n); err != nil {
-		m.toast("rounds: " + strconv.Itoa(n) + " for now; not saved: " + err.Error())
-	}
-	return cmd
+	return tea.Batch(cmd, m.editCoreConfig("rounds", core.EditConfig{
+		Keys: []config.Edit{{Table: "review", Key: "rounds", Value: strconv.Itoa(n)}}}))
 }

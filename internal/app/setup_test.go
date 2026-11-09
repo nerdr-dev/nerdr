@@ -120,7 +120,7 @@ func TestFirstStartTurnsAllSkillsOnAndF6ChangesThem(t *testing.T) {
 	d := m.dialog.(*setupDialog)
 	d.key(m, keyMsg("tab")) // to the skills
 	d.key(m, keyMsg("2"))
-	d.key(m, keyMsg("enter"))
+	settle(m, d.key(m, keyMsg("enter")))
 	if m.dialog != nil {
 		t.Fatalf("enter should save and close, dialog %T", m.dialog)
 	}
@@ -138,7 +138,7 @@ func TestFirstStartTurnsAllSkillsOnAndF6ChangesThem(t *testing.T) {
 		tb.Dir = t.TempDir()
 		tb.Worktrees = nil
 	}
-	m.skillsKey(keyMsg(" ")) // first skill: explain
+	settle(m, m.skillsKey(keyMsg(" "))) // first skill: explain
 	cfg, err = config.Load()
 	if err != nil || cfg.SkillEnabled("nerdr-explain") {
 		t.Fatalf("F4 did not disable: %v", err)
@@ -191,7 +191,7 @@ func TestFirstStartAsksWhereWorktreesGo(t *testing.T) {
 	if strings.Index(view, "worktrees go?") > strings.Index(view, "plugins and hooks?") {
 		t.Fatalf("worktrees should be asked first:\n%s", view)
 	}
-	d.key(m, keyMsg("enter"))
+	settle(m, d.key(m, keyMsg("enter")))
 	want := filepath.Join(home, "wt")
 	if m.WtRoot != want {
 		t.Fatalf("wtRoot %q, want %q", m.WtRoot, want)
