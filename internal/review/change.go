@@ -6,6 +6,7 @@ package review
 import (
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -83,12 +84,12 @@ func (m *Model) loadDiff() tea.Cmd {
 		m.diffLines = nil
 		m.diffAim = nil
 		m.diffPending, m.diffSlow = false, false
-		m.reloadRelations()
+		m.symbols, m.symbolRefs = nil, nil
 		return nil
 	}
 	r := diffReq{
 		src: m.src, wt: m.worktrees[m.wtIdx].Path, path: path,
-		token: m.diffToken, peek: m.peek != nil,
+		token: m.diffToken, peek: m.peek != nil, relations: m.projectVer != 0,
 	}
 	if !r.peek {
 		r.c, r.mode = m.comparison(), m.diffMode
@@ -125,12 +126,16 @@ type diffReq struct {
 	untracked bool
 	mode      diffMode
 	peek      bool // path is a file peeked at, shown as it is
+	relations bool // the worktree's code has been read, for its symbols
 	token     int
 }
 
 // read is the diff and its source.
 func (r diffReq) read() diffMsg {
 	msg := diffMsg{wt: r.wt, path: r.path, token: r.token, peek: r.peek}
+	if r.relations {
+		msg.symbols, msg.refs = r.src.Relations(r.wt, r.path)
+	}
 	if r.peek {
 		msg.diff, msg.err = r.src.ReadFile(r.wt, r.path)
 		return msg
@@ -177,6 +182,8 @@ type diffMsg struct {
 	peek      bool
 	diff, src string
 	srcOK     bool
+	symbols   []analysis.Symbol // what path declares, and where each is used
+	refs      [][]analysis.Ref
 	err       error
 }
 
@@ -199,9 +206,8 @@ func (m *Model) onDiff(msg diffMsg) {
 		return
 	}
 	m.diff = msg.diff
-	// reloadRelations must run first: annotateDiffLines depends on the
-	// freshly computed m.symbols/m.symbolRefs for the file.
-	m.reloadRelations()
+	// First: displayLines annotates the lines with them.
+	m.symbols, m.symbolRefs = msg.symbols, msg.refs
 	if msg.peek {
 		m.diffLines = annotateWhyLines(plainSourceLines(path, msg.diff), path, m.whyIndex)
 	} else {

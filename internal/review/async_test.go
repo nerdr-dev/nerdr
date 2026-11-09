@@ -8,8 +8,12 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/why"
 )
 
 // countingSource is Local, counting the calls made through it.
@@ -81,6 +85,41 @@ func (s countingSource) CurrentPR(wt string) (github.PR, bool, string) {
 func (s countingSource) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
 	s.n.Add(1)
 	return "", nil
+}
+
+func (s countingSource) Notes(wt string) why.Index {
+	s.n.Add(1)
+	return s.Local.Notes(wt)
+}
+
+func (s countingSource) Order(wt, branch string) order.Index {
+	s.n.Add(1)
+	return s.Local.Order(wt, branch)
+}
+
+func (s countingSource) Walkthrough(wt, branch string, files []string) (walkthrough.Walkthrough, bool, bool) {
+	s.n.Add(1)
+	return s.Local.Walkthrough(wt, branch, files)
+}
+
+func (s countingSource) WriteWalkthrough(wt, branch string) (string, bool, error) {
+	s.n.Add(1)
+	return s.Local.WriteWalkthrough(wt, branch)
+}
+
+func (s countingSource) LoadProject(wt string) int {
+	s.n.Add(1)
+	return s.Local.LoadProject(wt)
+}
+
+func (s countingSource) Imports(wt string, paths []string) map[string][]string {
+	s.n.Add(1)
+	return s.Local.Imports(wt, paths)
+}
+
+func (s countingSource) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
+	s.n.Add(1)
+	return s.Local.Relations(wt, file)
 }
 
 // TestUpdateReadsNothingOnTheSpot: the panel's Source may be on another

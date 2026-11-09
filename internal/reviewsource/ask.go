@@ -7,8 +7,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/why"
 )
 
 // Op is a Source method, as a Query names it.
@@ -28,6 +32,14 @@ const (
 	OpGhAvailable   Op = "GhAvailable"
 	OpCurrentPR     Op = "CurrentPR"
 	OpFailedRunLogs Op = "FailedRunLogs"
+
+	OpNotes            Op = "Notes"
+	OpOrder            Op = "Order"
+	OpWalkthrough      Op = "Walkthrough"
+	OpWriteWalkthrough Op = "WriteWalkthrough"
+	OpLoadProject      Op = "LoadProject"
+	OpImports          Op = "Imports"
+	OpRelations        Op = "Relations"
 )
 
 // Query is a call of a Source method, Op, with its arguments, as it goes
@@ -37,6 +49,7 @@ type Query struct {
 	Op        Op
 	Repo      string         `json:",omitempty"`
 	Wt        string         `json:",omitempty"`
+	Branch    string         `json:",omitempty"`
 	C         git.Comparison `json:",omitzero"`
 	File      string         `json:",omitempty"`
 	Original  string         `json:",omitempty"`
@@ -60,6 +73,15 @@ type Answer struct {
 	PR        github.PR                `json:",omitzero"`
 	Msg       string                   `json:",omitempty"`
 	Err       string                   `json:",omitempty"`
+
+	Notes   why.Index               `json:",omitzero"`
+	Order   order.Index             `json:",omitzero"`
+	Walk    walkthrough.Walkthrough `json:",omitzero"`
+	Older   bool                    `json:",omitempty"`
+	Version int                     `json:",omitempty"`
+	Imports map[string][]string     `json:",omitempty"`
+	Symbols []analysis.Symbol       `json:",omitempty"`
+	Refs    [][]analysis.Ref        `json:",omitempty"`
 }
 
 // Run makes q's call of s.
@@ -93,6 +115,20 @@ func (q Query) Run(s Source) Answer {
 		a.PR, a.OK, a.Msg = s.CurrentPR(q.Wt)
 	case OpFailedRunLogs:
 		a.Text, err = s.FailedRunLogs(q.Wt, q.Checks, q.Limit)
+	case OpNotes:
+		a.Notes = s.Notes(q.Wt)
+	case OpOrder:
+		a.Order = s.Order(q.Wt, q.Branch)
+	case OpWalkthrough:
+		a.Walk, a.OK, a.Older = s.Walkthrough(q.Wt, q.Branch, q.Paths)
+	case OpWriteWalkthrough:
+		a.Text, a.OK, err = s.WriteWalkthrough(q.Wt, q.Branch)
+	case OpLoadProject:
+		a.Version = s.LoadProject(q.Wt)
+	case OpImports:
+		a.Imports = s.Imports(q.Wt, q.Paths)
+	case OpRelations:
+		a.Symbols, a.Refs = s.Relations(q.Wt, q.File)
 	default:
 		err = fmt.Errorf("no such read: %q", q.Op)
 	}
@@ -253,4 +289,35 @@ func (k *Asker) CurrentPR(wt string) (github.PR, bool, string) {
 func (k *Asker) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
 	a := k.ask(Query{Op: OpFailedRunLogs, Wt: wt, Checks: checks, Limit: limit})
 	return a.Text, a.err()
+}
+
+func (k *Asker) Notes(wt string) why.Index {
+	return k.ask(Query{Op: OpNotes, Wt: wt}).Notes
+}
+
+func (k *Asker) Order(wt, branch string) order.Index {
+	return k.ask(Query{Op: OpOrder, Wt: wt, Branch: branch}).Order
+}
+
+func (k *Asker) Walkthrough(wt, branch string, files []string) (walkthrough.Walkthrough, bool, bool) {
+	a := k.ask(Query{Op: OpWalkthrough, Wt: wt, Branch: branch, Paths: files})
+	return a.Walk, a.OK, a.Older
+}
+
+func (k *Asker) WriteWalkthrough(wt, branch string) (string, bool, error) {
+	a := k.ask(Query{Op: OpWriteWalkthrough, Wt: wt, Branch: branch})
+	return a.Text, a.OK || a.Err != "", a.err()
+}
+
+func (k *Asker) LoadProject(wt string) int {
+	return k.ask(Query{Op: OpLoadProject, Wt: wt}).Version
+}
+
+func (k *Asker) Imports(wt string, paths []string) map[string][]string {
+	return k.ask(Query{Op: OpImports, Wt: wt, Paths: paths}).Imports
+}
+
+func (k *Asker) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
+	a := k.ask(Query{Op: OpRelations, Wt: wt, File: file})
+	return a.Symbols, a.Refs
 }

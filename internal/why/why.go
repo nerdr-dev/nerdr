@@ -206,3 +206,22 @@ func (ix Index) With(extra []Note, read int) Index {
 	ix.read += read
 	return ix
 }
+
+// indexJSON is an Index as JSON, as it goes from core to a client.
+type indexJSON struct {
+	Notes []Note `json:"notes,omitempty"`
+	Read  int    `json:"read,omitempty"`
+}
+
+func (ix Index) MarshalJSON() ([]byte, error) {
+	return json.Marshal(indexJSON{Notes: ix.notes, Read: ix.read})
+}
+
+func (ix *Index) UnmarshalJSON(b []byte) error {
+	var j indexJSON
+	if err := json.Unmarshal(b, &j); err != nil {
+		return err
+	}
+	ix.notes, ix.read = j.Notes, j.Read
+	return nil
+}

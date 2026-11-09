@@ -1,41 +1,26 @@
 package review
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
-
-	"github.com/nerdr-dev/nerdr/internal/analysis"
 )
 
 // TestProjectIsReadAgainInTheBackground covers the refresh not walking the
-// worktree on the UI's goroutine: the project arrives as a message, and
-// replaces the one shown only when it is for the worktree still selected
-// and its files changed.
+// worktree on the UI's goroutine: nerdr reads it again and says its
+// version, and the tree and diff are read again only when it is for the
+// worktree still selected and its code changed.
 func TestProjectIsReadAgainInTheBackground(t *testing.T) {
-	dir := t.TempDir()
-	write := func(name string) {
-		t.Helper()
-		if err := os.WriteFile(filepath.Join(dir, name), []byte("export const x = 1\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	write("a.ts")
-	shown := analysis.LoadProject(dir)
-	m := Model{src: Local{}, curWT: dir, project: shown, projectLoad: true}
+	m := Model{src: Local{}, curWT: "/wt", watchAsked: "/wt", projectVer: 1, projectLoad: true}
 
-	nm, _ := m.Update(projectMsg{wt: "elsewhere", project: analysis.LoadProject(dir)})
-	if got := nm.(Model); got.project != shown || !got.projectLoad {
+	nm, _ := m.Update(projectMsg{wt: "elsewhere", version: 2})
+	if got := nm.(Model); got.projectVer != 1 || !got.projectLoad {
 		t.Fatal("a load for another worktree was taken")
 	}
-	nm, _ = m.Update(projectMsg{wt: dir, project: analysis.LoadProject(dir)})
-	if got := nm.(Model); got.project != shown || got.projectLoad {
-		t.Fatal("an unchanged project replaced the one shown, or the load stayed pending")
+	nm, cmd := m.Update(projectMsg{wt: "/wt", version: 1})
+	if got := nm.(Model); got.projectVer != 1 || got.projectLoad || cmd != nil {
+		t.Fatal("an unchanged project was read again, or the load stayed pending")
 	}
-	write("b.ts")
-	next := analysis.LoadProject(dir)
-	nm, _ = m.Update(projectMsg{wt: dir, project: next})
-	if got := nm.(Model); got.project != next {
+	nm, _ = m.Update(projectMsg{wt: "/wt", version: 2})
+	if got := nm.(Model); got.projectVer != 2 {
 		t.Fatal("a changed project was not taken")
 	}
 }

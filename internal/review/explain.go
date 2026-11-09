@@ -87,7 +87,7 @@ func (m *Model) openWalkthrough() tea.Cmd {
 	if m.walkKey != m.walkBefore {
 		m.walkWanted = "" // the one asked for, opened by hand
 	}
-	return showWalkthrough(m.worktrees[m.wtIdx], m.oldNote())
+	return showWalkthrough(m.src, m.worktrees[m.wtIdx], m.oldNote())
 }
 
 // oldNote is what g says after opening a walkthrough the change has moved
@@ -122,19 +122,14 @@ func (m *Model) askWalk() tea.Cmd {
 }
 
 // setWalk puts the walkthrough in force for the worktree shown in place:
-// w, if there is one, and whether the change has moved on since.
-func (m *Model) setWalk(w walkthrough.Walkthrough, ok bool) {
+// w, if there is one, and whether the change has moved on since (older).
+func (m *Model) setWalk(w walkthrough.Walkthrough, ok, older bool) {
 	m.walk, m.walkKey, m.walkOld = ok, "", false
 	if !ok || m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
 		return
 	}
 	key, _ := json.Marshal(w)
-	m.walkKey = string(key)
-	files := make([]string, 0, len(m.files))
-	for _, f := range m.files {
-		files = append(files, f.Path)
-	}
-	m.walkOld = walkthrough.Older(m.worktrees[m.wtIdx].Path, w, files)
+	m.walkKey, m.walkOld = string(key), older
 }
 
 // walkArrived opens the walkthrough g or G asked for, once it is there:
@@ -145,7 +140,7 @@ func (m *Model) walkArrived() tea.Cmd {
 		return nil
 	}
 	m.walkWanted = ""
-	return showWalkthrough(m.worktrees[m.wtIdx], "")
+	return showWalkthrough(m.src, m.worktrees[m.wtIdx], "")
 }
 
 // lookForWalk reads whether the walkthrough asked for is there yet,
@@ -156,37 +151,36 @@ func (m *Model) lookForWalk() tea.Cmd {
 	if m.f1Shown() || m.walkWanted == "" || m.wtIdx < 0 || m.wtIdx >= len(m.worktrees) {
 		return nil
 	}
-	wt := m.worktrees[m.wtIdx]
+	wt, src, paths := m.worktrees[m.wtIdx], m.src, filePaths(m.files)
 	return func() tea.Msg {
-		w, ok := walkthrough.Load(wt.Path, wt.Branch)
-		return walkMsg{wt: wt.Path, walk: w, ok: ok}
+		w, ok, older := src.Walkthrough(wt.Path, wt.Branch, paths)
+		return walkMsg{wt: wt.Path, walk: w, ok: ok, older: older}
 	}
 }
 
 // walkMsg is lookForWalk's answer for worktree wt.
 type walkMsg struct {
-	wt   string
-	walk walkthrough.Walkthrough
-	ok   bool
+	wt        string
+	walk      walkthrough.Walkthrough
+	ok, older bool
 }
 
 func (m *Model) onWalk(msg walkMsg) tea.Cmd {
 	if msg.wt != m.curWT {
 		return nil
 	}
-	m.setWalk(msg.walk, msg.ok)
+	m.setWalk(msg.walk, msg.ok, msg.older)
 	return m.walkArrived()
 }
 
 // showWalkthrough draws worktree wt's walkthrough and opens it, saying
 // note after that it did.
-func showWalkthrough(wt git.Worktree, note string) tea.Cmd {
+func showWalkthrough(src Source, wt git.Worktree, note string) tea.Cmd {
 	return func() tea.Msg {
-		w, ok := walkthrough.Load(wt.Path, wt.Branch)
+		path, ok, err := src.WriteWalkthrough(wt.Path, wt.Branch)
 		if !ok {
 			return toastMsg{"no walkthrough of this branch any more"}
 		}
-		path, err := walkthrough.Write(wt.Path, w)
 		if err != nil {
 			return toastMsg{"walkthrough: " + err.Error()}
 		}

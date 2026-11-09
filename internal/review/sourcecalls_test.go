@@ -59,7 +59,7 @@ var readStays = map[string]bool{
 
 func init() {
 	for _, s := range strings.Fields(`
-		analysis.ParseSymbolDecl analysis.*Project.Same
+		analysis.ParseSymbolDecl analysis.GroupEdges
 		git.ParseDiff github.Failed
 		order.Label order.Roles
 		order.Index.Files order.Index.For order.Index.Len

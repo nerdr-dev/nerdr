@@ -119,7 +119,11 @@ type Model struct {
 	err        error
 	refreshing bool
 
-	project *analysis.Project
+	// projectVer is the version of the worktree's code as nerdr last read
+	// it, 0 before (see Source.LoadProject); imports is the import graph
+	// among the changed files read from it, which groups the tree.
+	projectVer int
+	imports    map[string][]string
 	// ctxLoad is a worktree whose project and PR are still to be loaded;
 	// see Update.
 	ctxLoad string
@@ -305,29 +309,34 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.wt != m.curWT {
 			return m, nil // the cursor has moved on to another worktree
 		}
-		m.project = msg.project
+		m.projectVer = msg.projectVer
 		m.pr, m.prOK, m.prMsg, m.noGh = msg.pr, msg.prOK, msg.prMsg, msg.noGh
 		m.lastPRLoad = time.Now()
 		// The tree groups files by the project's imports, and the diff is
-		// annotated from it, so both are rebuilt now it has arrived.
-		if m.peek == nil {
-			path, _ := m.currentFile()
-			m.rebuildTree(path)
-		}
-		return m, m.loadDiff()
+		// annotated from it, so both are read again now it has arrived.
+		return m, tea.Batch(m.readImports(), m.loadDiff())
 
 	case projectMsg:
 		if msg.wt != m.curWT {
 			return m, nil // a worktree left behind; its load was forgotten
 		}
 		m.projectLoad = false
-		if m.project == nil || m.project.Same(msg.project) {
+		if m.projectVer == 0 || msg.version == m.projectVer {
 			return m, nil
 		}
-		m.project = msg.project
-		path, _ := m.currentFile()
-		m.rebuildTree(path)
-		return m, m.loadDiff()
+		m.projectVer = msg.version
+		return m, tea.Batch(m.readImports(), m.loadDiff())
+
+	case importsMsg:
+		if msg.wt != m.curWT || msg.version != m.projectVer {
+			return m, nil
+		}
+		m.imports = msg.imports
+		if m.peek == nil {
+			path, _ := m.currentFile()
+			m.rebuildTree(path)
+		}
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width

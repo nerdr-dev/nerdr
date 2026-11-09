@@ -9,6 +9,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/why"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -41,14 +42,26 @@ func (m *Model) refreshFiles() tea.Cmd {
 }
 
 // readFiles is the command that reads the file list, the lines changed in
-// each file and when each was written.
+// each file and when each was written, with what the agent may have
+// written of the change meanwhile: the notes, the reading order and the
+// walkthrough; and, once the worktree's code has been read, the files'
+// imports of each other.
 func (m *Model) readFiles(anew bool) tea.Cmd {
 	c, token, wt, src := m.comparison(), m.filesToken, m.curWT, m.src
+	branch, version := m.worktrees[m.wtIdx].Branch, m.projectVer
 	return func() tea.Msg {
 		msg := filesMsg{wt: wt, token: token, anew: anew}
 		msg.files, msg.stats, msg.err = src.Files(c)
-		if msg.err == nil {
-			msg.stamps = src.Stamps(c.Worktree, filePaths(msg.files))
+		if msg.err != nil {
+			return msg
+		}
+		paths := filePaths(msg.files)
+		msg.stamps = src.Stamps(c.Worktree, paths)
+		msg.notes = src.Notes(wt)
+		msg.order = src.Order(wt, branch)
+		msg.walk, msg.hasWalk, msg.walkOld = src.Walkthrough(wt, branch, paths)
+		if version != 0 {
+			msg.version, msg.imports = version, src.Imports(wt, paths)
 		}
 		return msg
 	}
@@ -72,6 +85,13 @@ type filesMsg struct {
 	stats  map[string]git.LineCount
 	stamps map[string]string // see Source.Stamps
 	err    error
+
+	notes            why.Index
+	order            order.Index
+	walk             walkthrough.Walkthrough
+	hasWalk, walkOld bool
+	version          int                 // of the code imports was read from, 0 for none
+	imports          map[string][]string // see Model.imports
 }
 
 // onFiles takes a refresh of the file list: the files, and the notes and
@@ -89,26 +109,27 @@ func (m *Model) onFiles(msg filesMsg) tea.Cmd {
 	}
 	m.err = nil
 
-	notesBefore := m.whyIndex.Read()
-	m.whyIndex = loadNotes(m.worktrees[m.wtIdx].Path)
-	notesChanged := m.whyIndex.Read() != notesBefore
+	notesChanged := msg.notes.Read() != m.whyIndex.Read()
+	m.whyIndex = msg.notes
 
 	// The reading order is written by the agent when asked, so it arrives
 	// while you are looking at the change it describes.
-	orderBefore := m.orderIndex.Read()
-	m.orderIndex = order.Load(m.worktrees[m.wtIdx].Path, m.worktrees[m.wtIdx].Branch)
-	orderChanged := m.orderIndex.Read() != orderBefore
+	orderChanged := msg.order.Read() != m.orderIndex.Read()
+	m.orderIndex = msg.order
 
+	if msg.version != 0 && msg.version == m.projectVer {
+		m.imports = msg.imports // before the tree is built from them
+	}
 	m.fileStats = msg.stats
 	reloadDiff := m.setFiles(msg.files, msg.stamps, msg.anew)
-	m.setWalk(walkthrough.Load(m.worktrees[m.wtIdx].Path, m.worktrees[m.wtIdx].Branch))
+	m.setWalk(msg.walk, msg.hasWalk, msg.walkOld)
 	cmds := []tea.Cmd{m.walkArrived()}
 	// The project is read again in the background, and the tree and diff
 	// rebuilt when it arrives changed; one read at a time, as a busy agent
 	// reports changes faster than a large tree is read.
-	if m.project != nil && !m.projectLoad {
+	if m.projectVer != 0 && !m.projectLoad {
 		m.projectLoad = true
-		cmds = append(cmds, loadProjectCmd(m.curWT))
+		cmds = append(cmds, loadProjectCmd(m.src, m.curWT))
 	}
 	if orderChanged && m.showOrder {
 		path, _ := m.currentFile()
@@ -158,7 +179,7 @@ func (m *Model) resetFilesPane() {
 	m.diff = ""
 	m.diffLines, m.diffSel = nil, lineSpan{}
 	m.diffCursor, m.diffViewTop = 0, 0
-	m.reloadRelations()
+	m.symbols, m.symbolRefs = nil, nil
 }
 
 // setFiles updates the changed-file list, rebuilding the tree and analysis

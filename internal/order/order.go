@@ -244,3 +244,24 @@ func Prune(worktreePath string) (int, error) {
 		return !before(e, c)
 	})
 }
+
+// indexJSON is an Index as JSON, as it goes from core to a client.
+type indexJSON struct {
+	Summary string           `json:"summary,omitempty"`
+	ByFile  map[string]Entry `json:"byFile,omitempty"`
+	Seen    []string         `json:"seen,omitempty"`
+	Read    int              `json:"read,omitempty"`
+}
+
+func (ix Index) MarshalJSON() ([]byte, error) {
+	return json.Marshal(indexJSON{Summary: ix.summary, ByFile: ix.byFile, Seen: ix.seen, Read: ix.read})
+}
+
+func (ix *Index) UnmarshalJSON(b []byte) error {
+	var j indexJSON
+	if err := json.Unmarshal(b, &j); err != nil {
+		return err
+	}
+	ix.summary, ix.byFile, ix.seen, ix.read = j.Summary, j.ByFile, j.Seen, j.Read
+	return nil
+}
