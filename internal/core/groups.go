@@ -9,10 +9,10 @@ import (
 
 // Groups lists the groups that have tabs: repositories alphabetically,
 // multi last.
-func (m *Core) Groups() []string {
+func (l TabList) Groups() []string {
 	seen := map[string]bool{}
 	var out []string
-	for _, t := range m.Tabs {
+	for _, t := range l {
 		g := t.GroupName()
 		if !seen[g] {
 			seen[g] = true
@@ -28,10 +28,10 @@ func (m *Core) Groups() []string {
 	return out
 }
 
-// GroupTabs is the indexes into m.tabs of the tabs in group g, in order.
-func (m *Core) GroupTabs(g string) []int {
+// GroupTabs is the indexes into l of the tabs in group g, in order.
+func (l TabList) GroupTabs(g string) []int {
 	var out []int
-	for i, t := range m.Tabs {
+	for i, t := range l {
 		if t.GroupName() == g {
 			out = append(out, i)
 		}
@@ -41,10 +41,10 @@ func (m *Core) GroupTabs(g string) []int {
 
 // GroupStatus is the light a group shows: that of the tab in it that most
 // needs attention, so a question in a group not in view is still seen.
-func (m *Core) GroupStatus(g string) Status {
+func (l TabList) GroupStatus(g string) Status {
 	best := StExited
-	for _, i := range m.GroupTabs(g) {
-		if s := m.Tabs[i].Lit(); StatusRank(s) > StatusRank(best) {
+	for _, i := range l.GroupTabs(g) {
+		if s := l[i].Lit(); StatusRank(s) > StatusRank(best) {
 			best = s
 		}
 	}
@@ -54,10 +54,10 @@ func (m *Core) GroupStatus(g string) Status {
 // GroupCount is how many of group g's tabs are lit st, for its entry to
 // say so beside its own light, which is one tab's: a done tab's green
 // outranks working ones, and alone reads as if the group were all done.
-func (m *Core) GroupCount(g string, st Status) int {
+func (l TabList) GroupCount(g string, st Status) int {
 	n := 0
-	for _, i := range m.GroupTabs(g) {
-		if m.Tabs[i].Lit() == st {
+	for _, i := range l.GroupTabs(g) {
+		if l[i].Lit() == st {
 			n++
 		}
 	}

@@ -131,12 +131,12 @@ func Duration(d time.Duration) string {
 	return strconv.Itoa(int(d.Hours())/24) + "d " + strconv.Itoa(int(d.Hours())%24) + "h"
 }
 
-// waiting are the agents that need you, a tab's own or another in one of
+// Waiting are the agents that need you, a tab's own or another in one of
 // its panes: those asking something first, then those that have finished,
 // each the longest waiting first.
-func (m *Core) Waiting() []*Tab {
+func (l TabList) Waiting() []*Tab {
 	var out []*Tab
-	for _, o := range m.Tabs {
+	for _, o := range l {
 		for _, t := range append([]*Tab{o}, o.ExtraAgents()...) {
 			if t.Light == StBlocked || t.Light == StDone {
 				out = append(out, t)
@@ -177,10 +177,10 @@ func (m *Core) ColdTabs() []*Tab {
 	return out
 }
 
-// countStatus is how many tabs have status s.
-func (m *Core) CountStatus(s Status) int {
+// CountStatus is how many tabs have status s.
+func (l TabList) CountStatus(s Status) int {
 	n := 0
-	for _, t := range m.Tabs {
+	for _, t := range l {
 		if t.Lit() == s {
 			n++
 		}
