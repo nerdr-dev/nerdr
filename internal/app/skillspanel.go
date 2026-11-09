@@ -124,6 +124,7 @@ func (m *Model) skillsMissing(t *core.Tab) int {
 	if m.Cfg.Install != config.InstallOff || t == nil {
 		return 0
 	}
+	m.lookAtSkills(t)
 	n := 0
 	for _, s := range skills.All() {
 		if m.Cfg.SkillEnabled(s.Name) && !m.SkillOn(t, s.Name) {
@@ -251,6 +252,7 @@ func (m *Model) nerdrSkillsList(t *core.Tab, tot map[string]*core.SkillTotal, te
 	all := skills.All()
 	v := &m.skills
 	v.cursor = min(max(v.cursor, 0), len(all)-1)
+	m.lookAtSkills(t)
 	found, states := m.SkillStates(t)
 	agent := "the agent"
 	if t != nil {

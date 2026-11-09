@@ -107,6 +107,9 @@ type Core struct {
 	// sandbox since the core started, by kind and command; see
 	// CheckSandbox.
 	SandboxChecks map[string]bool `json:"-"`
+	// Copy is set in a client's copy of core's state (see Mirror): what
+	// core reads from disk, the copy has only as core sent it.
+	Copy bool `json:"-"`
 	// ClientEnv is the environment of the client last connected, nil
 	// before one sends it: what the programs started since run with,
 	// in place of the core's own. See BaseEnv.

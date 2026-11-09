@@ -3,6 +3,7 @@ package app
 import (
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/skills"
@@ -35,6 +36,7 @@ func (m *Model) skillTotals(t *core.Tab) map[string]*core.SkillTotal {
 // can find (File is set), and those used in the tab or tabs shown, as the
 // agents' own built-in and plugin skills are in no folder nerdr looks in.
 func (m *Model) otherSkills(t *core.Tab, tot map[string]*core.SkillTotal) []skills.Local {
+	m.lookAtSkills(t)
 	m.SkillStates(t)
 	seen := map[string]bool{}
 	for _, s := range skills.All() {
@@ -52,4 +54,22 @@ func (m *Model) otherSkills(t *core.Tab, tot map[string]*core.SkillTotal) []skil
 	}
 	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name) })
 	return out
+}
+
+// lookAtSkills has core look again at where t's agent has the skills, when
+// the TUI's copy of core reads no folder and what it has is old or for
+// another tab: it comes in SkillLook. One ask at a time a tab, every
+// SkillsCheckEvery at most.
+func (m *Model) lookAtSkills(t *core.Tab) {
+	if !m.Copy || t == nil {
+		return
+	}
+	key := core.SkillKey(t)
+	v := m.SkillLook
+	fresh := v.Key == key && time.Since(v.At) < core.SkillsCheckEvery
+	if fresh || key == m.skillsAsked && time.Since(m.skillsAskedAt) < core.SkillsCheckEvery {
+		return
+	}
+	m.skillsAsked, m.skillsAskedAt = key, time.Now()
+	m.tellCore(core.LookAtSkills{T: m.Ref(t)})
 }
