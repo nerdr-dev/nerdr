@@ -9,7 +9,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
-	"github.com/nerdr-dev/nerdr/internal/watch"
 	"github.com/nerdr-dev/nerdr/internal/why"
 
 	"github.com/charmbracelet/bubbles/spinner"
@@ -127,15 +126,15 @@ type Model struct {
 	// projectLoad is set while the selected worktree's project is being
 	// read again in the background; see refreshFiles.
 	projectLoad bool
-	// watcher reports changes to the selected worktree, so its files are
-	// refreshed when something happens rather than polled for. nil until
-	// it is set up, or when the kernel refused it; the tick polls then.
-	watcher *watch.Watcher
+	// watching is set while nerdr's watch on the selected worktree is in
+	// place, so its files are refreshed when something happens rather
+	// than polled for; without it the tick polls. watchAsked is the
+	// worktree last asked to be watched; see WatchMsg.
+	watching   bool
+	watchAsked string
 	// pollTicks counts ticks since the files were last polled with a
 	// watch in place; see tickMsg.
 	pollTicks int
-	// watchN counts the changes the watch has reported; see WatchChanges.
-	watchN int
 	// pinPending is set while the worktree pinned last is still to be
 	// shown, as the panel was not on screen; pinToken tells the reads of
 	// one pinned apart from those of the one before. See loadPinned.
@@ -274,6 +273,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		mm.spinning = true
 		cmd = tea.Batch(cmd, mm.spinner.Tick)
 	}
+	if mm.curWT != mm.watchAsked {
+		wt := mm.curWT
+		mm.watchAsked = wt
+		cmd = tea.Batch(cmd, func() tea.Msg { return WatchMsg{Wt: wt} })
+	}
 	if mm.ctxLoad == "" {
 		return mm, cmd
 	}
@@ -299,16 +303,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case worktreeContextMsg:
 		if msg.wt != m.curWT {
-			if msg.watcher != nil {
-				msg.watcher.Close()
-			}
 			return m, nil // the cursor has moved on to another worktree
-		}
-		var wait tea.Cmd
-		if msg.watcher != nil {
-			m.stopWatch()
-			m.watcher = msg.watcher
-			wait = waitForChange(m.watcher, msg.wt)
 		}
 		m.project = msg.project
 		m.pr, m.prOK, m.prMsg, m.noGh = msg.pr, msg.prOK, msg.prMsg, msg.noGh
@@ -319,7 +314,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			path, _ := m.currentFile()
 			m.rebuildTree(path)
 		}
-		return m, tea.Batch(wait, m.loadDiff())
+		return m, m.loadDiff()
 
 	case projectMsg:
 		if msg.wt != m.curWT {
@@ -361,18 +356,11 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// the tick still polls now and then, in case it missed one.
 		var refresh tea.Cmd
 		m.pollTicks++
-		if m.watcher == nil || m.pollTicks >= watchedPollTicks {
+		if !m.watching || m.pollTicks >= watchedPollTicks {
 			m.pollTicks = 0
 			refresh = m.refreshIfShown()
 		}
 		return m, tea.Batch(refresh, m.autoRefresh(), tickCmd())
-
-	case fsChangedMsg:
-		if m.watcher == nil || msg.wt != m.curWT {
-			return m, nil // a watch that has been replaced
-		}
-		m.watchN++
-		return m, tea.Batch(m.refreshIfShown(), m.lookForWalk(), waitForChange(m.watcher, msg.wt))
 
 	case walkMsg:
 		return m, m.onWalk(msg)

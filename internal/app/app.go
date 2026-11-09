@@ -603,6 +603,9 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case review.EditMsg:
 		return m.openEditor(msg)
 
+	case review.WatchMsg:
+		return m.do(core.WatchForReview{Wt: msg.Wt})
+
 	case review.AgentMsg:
 		return m.askAgent(msg)
 

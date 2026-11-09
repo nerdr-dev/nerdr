@@ -328,6 +328,10 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return ev.Run(m), true
 	case Reply:
 		return m.Tell(ev.Ev), true
+	case watchStarted:
+		return m.onWatchStarted(ev), true
+	case watchFired:
+		return m.onWatchFired(ev), true
 	case PRAllMsg:
 		return m.OnPRAll(ev), true
 	case repoPRsMsg:

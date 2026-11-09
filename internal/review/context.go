@@ -1,17 +1,15 @@
 package review
 
 // context.go holds what belongs to the selected worktree beyond its files —
-// its code's structure, its PR, the watch on it — much of it loaded in
-// the background.
+// its code's structure, its PR, the watch core keeps on it — much of it
+// loaded in the background.
 
 import (
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
-	"github.com/nerdr-dev/nerdr/internal/store"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
-	"github.com/nerdr-dev/nerdr/internal/watch"
 	"github.com/nerdr-dev/nerdr/internal/why"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -30,7 +28,7 @@ func (m *Model) switchWorktree() bool {
 	}
 	m.curWT = wt
 	m.walkWanted = "" // a walkthrough asked for elsewhere does not open here
-	m.stopWatch()
+	m.watching = false
 	m.project = nil
 	m.projectLoad = false
 	m.ctxLoad = ""
@@ -73,22 +71,15 @@ type worktreeContextMsg struct {
 	pr      github.PR
 	prOK    bool
 	prMsg   string
-	noGh    bool           // gh is not installed
-	watcher *watch.Watcher // nil when the watch could not be set up
+	noGh    bool // gh is not installed
 }
 
-// loadContextCmd walks the worktree's code, sets up the watch on it and
-// asks GitHub for its PR: the parts of a worktree's context too slow to do
-// while the key is held.
+// loadContextCmd walks the worktree's code and asks GitHub for its PR: the
+// parts of a worktree's context too slow to do while the key is held.
 func loadContextCmd(src Source, wt string) tea.Cmd {
 	return func() tea.Msg {
 		msg := worktreeContextMsg{wt: wt, project: analysis.LoadProject(wt)}
 		msg.project.Index()
-		if dir := store.CommonDir(wt); dir != "" {
-			if w, err := watch.New(wt, dir); err == nil {
-				msg.watcher = w
-			}
-		}
 		msg.pr, msg.prOK, msg.prMsg = src.CurrentPR(wt)
 		msg.noGh = !src.GhAvailable()
 		return msg
@@ -116,36 +107,27 @@ func loadProjectCmd(wt string) tea.Cmd {
 // a watch is in place: a safety net, not how changes are found.
 const watchedPollTicks = 20
 
-// WatchChanges is the worktree watched for changes, and how many it has
-// reported in all, for others to tell when something there changed: a
-// file edited, which git's own files do not show. wt is "" with no watch.
-func (m Model) WatchChanges() (wt string, n int) {
-	if m.watcher == nil {
-		return "", m.watchN
+// WatchMsg asks nerdr to watch worktree Wt for changes, the one the panel
+// shows, in place of the one before; "" for none. nerdr tells the panel
+// whether the watch is in place (Watching), and each change (Changed).
+type WatchMsg struct{ Wt string }
+
+// Watching tells the panel whether the watch on worktree wt is in place:
+// with it, the files are refreshed when it reports a change, and polled
+// only now and then.
+func (m Model) Watching(wt string, ok bool) Model {
+	if wt == m.curWT {
+		m.watching = ok
 	}
-	return m.curWT, m.watchN
+	return m
 }
 
-// fsChangedMsg is the watch on worktree wt reporting a change.
-type fsChangedMsg struct{ wt string }
-
-// waitForChange waits for w's next report. It ends without a message once
-// w is closed, which is what ends the wait for a worktree left behind.
-func waitForChange(w *watch.Watcher, wt string) tea.Cmd {
-	return func() tea.Msg {
-		if !w.Wait() {
-			return nil
-		}
-		return fsChangedMsg{wt: wt}
+// Changed is the watch on worktree wt reporting a change.
+func (m Model) Changed(wt string) (Model, tea.Cmd) {
+	if wt != m.curWT {
+		return m, nil // a worktree left behind
 	}
-}
-
-// stopWatch ends the watch on the worktree being left.
-func (m *Model) stopWatch() {
-	if m.watcher != nil {
-		m.watcher.Close()
-		m.watcher = nil
-	}
+	return m, tea.Batch(m.refreshIfShown(), m.lookForWalk())
 }
 
 // changedGroups clusters the changed files by

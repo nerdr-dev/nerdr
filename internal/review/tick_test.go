@@ -92,30 +92,40 @@ func TestBaseToggleDoesNotMarkEverythingAsJustTouched(t *testing.T) {
 	}
 }
 
-// TestWatchRefreshesTheFiles covers a change arriving through the watch on
-// the worktree rather than the tick: the new file is listed without a poll.
+// TestWatchRefreshesTheFiles covers the panel asking nerdr to watch the
+// worktree it shows, and a change nerdr's watch reports being listed
+// without a poll; while the watch is in place, the tick polls seldom.
 func TestWatchRefreshesTheFiles(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, nil)
-	m := pinned(t, filepath.Join(parent, "repo"))
-	// Not send: its wait on the watch would take the change this test
-	// waits for.
-	nm, _ := m.Update(loadContextCmd(m.src, m.curWT)())
-	m = nm.(Model)
-	if m.watcher == nil {
-		t.Skip("the kernel refused the watch")
+	wt := filepath.Join(parent, "repo")
+	m := NewEmbedded(Local{})
+	m, cmd := m.Pin([]Pin{{Repo: wt, Path: wt}})
+	// Pin is called from outside Update, which asks for the watch once
+	// what Pin read comes.
+	asked := false
+	for _, msg := range runCmds(cmd) {
+		if _, ok := msg.(pinnedMsg); !ok {
+			continue
+		}
+		nm, more := m.Update(msg)
+		m = nm.(Model)
+		for _, msg := range runCmds(more) {
+			if w, ok := msg.(WatchMsg); ok && w.Wt == wt {
+				asked = true
+			}
+		}
 	}
-	defer m.watcher.Close()
+	if !asked {
+		t.Fatal("the panel did not ask for its worktree to be watched")
+	}
+	m = m.Watching(wt, true)
+	if !m.watching {
+		t.Fatal("the watch in place was not taken")
+	}
 
-	writeFile(t, filepath.Join(parent, "repo", "b.go"), "package a\n")
-	got := make(chan tea.Msg, 1)
-	go func() { got <- waitForChange(m.watcher, m.curWT)() }()
-	select {
-	case msg := <-got:
-		nm, cmd := m.Update(msg)
-		m = nm.(Model).settle(cmd)
-	case <-time.After(3 * time.Second):
-		t.Fatal("the watch reported nothing")
-	}
+	writeFile(t, filepath.Join(wt, "b.go"), "package a\n")
+	m, cmd = m.Changed(wt)
+	m = m.settle(cmd)
 	for _, f := range m.files {
 		if f.Path == "b.go" {
 			return

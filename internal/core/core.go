@@ -89,6 +89,9 @@ type Core struct {
 	// NoGh is set when the gh CLI was not found, the last time core
 	// looked; see GhMsg.
 	NoGh bool
+	// ReviewWatch is the watch on the worktree the review panel shows;
+	// see reviewwatch.go.
+	ReviewWatch reviewWatch `json:"-"`
 	// GroupNames is the group name given to each folder of worktrees in
 	// several repositories, kept when its tab is closed; see addTab.
 	GroupNames map[string]string

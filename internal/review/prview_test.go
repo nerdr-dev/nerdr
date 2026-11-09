@@ -268,7 +268,9 @@ func TestConversationEntriesAnchorEachBlock(t *testing.T) {
 // "all of them" in the list.
 // prModel is the PR screen on a worktree whose PR is pr.
 func prModel(pr github.PR) Model {
-	return Model{src: Local{}, height: 40, width: 120, mode: modePRs, curWT: "/wt",
+	// watchAsked: the watch on /wt is asked for already, as Pin's first
+	// Update would have.
+	return Model{src: Local{}, height: 40, width: 120, mode: modePRs, curWT: "/wt", watchAsked: "/wt",
 		worktrees: []git.Worktree{{Path: "/wt"}}, pr: pr, prOK: true}
 }
 
