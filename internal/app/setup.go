@@ -217,26 +217,26 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 	}
 
 	var where []string
-	for _, tg := range skills.Home(home, agents.Available(m.Cfg.Agents)) {
+	for _, tg := range skills.Home(home, m.Available()) {
 		var names []string
 		for _, k := range tg.Agents {
 			names = append(names, string(k))
 		}
 		where = append(where, core.TildePath(tg.Dir, home)+" ("+strings.Join(names, ", ")+")")
 	}
-	if slices.Contains(agents.Available(m.Cfg.Agents), agents.OpenCode) {
+	if slices.Contains(m.Available(), agents.OpenCode) {
 		where = append(where, core.TildePath(hooks.OpenCodePluginHome(home), home)+" (opencode's plugin, which says what it is doing)")
 	}
-	if slices.Contains(agents.Available(m.Cfg.Agents), agents.Copilot) {
+	if slices.Contains(m.Available(), agents.Copilot) {
 		where = append(where, core.TildePath(hooks.CopilotPluginHome(home), home)+" (copilot's plugin, which says what it is doing)")
 	}
-	if slices.Contains(agents.Available(m.Cfg.Agents), agents.Antigravity) {
+	if slices.Contains(m.Available(), agents.Antigravity) {
 		where = append(where, core.TildePath(hooks.AgyHooksHome(home), home)+" (nerdr's hooks for agy, which say what it is doing, beside any others)")
 	}
-	if slices.Contains(agents.Available(m.Cfg.Agents), agents.Grok) {
+	if slices.Contains(m.Available(), agents.Grok) {
 		where = append(where, core.TildePath(hooks.GrokHooksHome(home), home)+" (nerdr's hooks for grok, which say what it is doing)")
 	}
-	if slices.Contains(agents.Available(m.Cfg.Agents), agents.Codex) {
+	if slices.Contains(m.Available(), agents.Codex) {
 		where = append(where, core.TildePath(core.CodexConfig(home), home)+" (trust for nerdr's codex hooks, which say what it is doing)")
 	}
 	if len(where) == 0 {

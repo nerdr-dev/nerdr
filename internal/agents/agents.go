@@ -163,6 +163,12 @@ func Known(k Kind) bool {
 // Available reports which kinds have their command on PATH: the ones in
 // All, in that order, then those only the config names, by name.
 func Available(specs map[Kind]Spec) []Kind {
+	return AvailableIn(specs, os.Getenv("PATH"))
+}
+
+// AvailableIn is Available with path for PATH: a client's, whose agents
+// core starts.
+func AvailableIn(specs map[Kind]Spec, path string) []Kind {
 	kinds := append([]Kind{}, All...)
 	var custom []Kind
 	for k := range specs {
@@ -177,7 +183,7 @@ func Available(specs map[Kind]Spec) []Kind {
 		if len(s.Command) == 0 {
 			continue
 		}
-		if _, err := exec.LookPath(s.Command[0]); err == nil {
+		if onPath(s.Command[0], path) {
 			out = append(out, k)
 		}
 	}
@@ -1352,4 +1358,27 @@ func WithModel(specs map[Kind]Spec, k Kind, model string) map[Kind]Spec {
 	s.Args = append(args, flags[0], model)
 	out[k] = s
 	return out
+}
+
+// onPath reports whether command is an executable file, found in path as
+// exec.LookPath would in PATH: a name with a slash is taken as it is, and
+// a relative folder in path, as the current one, is not looked in.
+func onPath(command, path string) bool {
+	if strings.Contains(command, "/") {
+		return executable(command)
+	}
+	for _, dir := range filepath.SplitList(path) {
+		if !filepath.IsAbs(dir) {
+			continue
+		}
+		if executable(filepath.Join(dir, command)) {
+			return true
+		}
+	}
+	return false
+}
+
+func executable(file string) bool {
+	fi, err := os.Stat(file)
+	return err == nil && !fi.IsDir() && fi.Mode()&0o111 != 0
 }

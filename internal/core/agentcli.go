@@ -287,7 +287,7 @@ func (m *Core) TabRepos(t *Tab, name string, confined bool) ([]workspace.Repo, e
 // KindList is the agents on PATH, as words.
 func (m *Core) KindList() string {
 	var names []string
-	for _, k := range agents.Available(m.Cfg.Agents) {
+	for _, k := range m.Available() {
 		names = append(names, string(k))
 	}
 	return strings.Join(names, ", ")
@@ -604,7 +604,7 @@ func (m *Core) OnNewTab(r hooks.Report) Cmd {
 	if r.Kind != "" {
 		k = agents.Kind(strings.ToLower(r.Kind))
 	}
-	if !slices.Contains(agents.Available(m.Cfg.Agents), k) {
+	if !slices.Contains(m.Available(), k) {
 		reply(hooks.Answer{Err: fmt.Sprintf("there is no agent %q here; those there are: %s", k, m.KindList())})
 		return nil
 	}

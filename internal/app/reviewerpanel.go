@@ -228,7 +228,7 @@ func (m *Model) stopReview() tea.Cmd {
 // those reviewing are left out.
 func (m *Model) reviewKinds(t *core.Tab) []agents.Kind {
 	var kinds []agents.Kind
-	for _, k := range append([]agents.Kind{m.ReviewKind(t)}, agents.Available(m.Cfg.Agents)...) {
+	for _, k := range append([]agents.Kind{m.ReviewKind(t)}, m.Available()...) {
 		if (t.InSandbox || m.SandboxedKind(t.Agent)) && !m.SandboxedKind(k) {
 			continue
 		}

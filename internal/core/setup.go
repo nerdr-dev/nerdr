@@ -157,7 +157,7 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 			return ""
 		}
 		var wrote []string
-		for _, tg := range skills.Home(home, agents.Available(m.Cfg.Agents)) {
+		for _, tg := range skills.Home(home, m.Available()) {
 			names, err := skills.Sync(tg.Dir, m.Cfg.SkillEnabled)
 			if err != nil {
 				return "skills: " + err.Error()
@@ -166,7 +166,7 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 				wrote = append(wrote, TildePath(tg.Dir, home))
 			}
 		}
-		if slices.Contains(agents.Available(m.Cfg.Agents), agents.OpenCode) {
+		if slices.Contains(m.Available(), agents.OpenCode) {
 			// With the skills, nerdr's plugin, which tells nerdr what
 			// opencode is doing.
 			file := hooks.OpenCodePluginHome(home)
@@ -176,7 +176,7 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 				wrote = append(wrote, TildePath(file, home))
 			}
 		}
-		if slices.Contains(agents.Available(m.Cfg.Agents), agents.Copilot) {
+		if slices.Contains(m.Available(), agents.Copilot) {
 			// And nerdr's plugin, whose hooks tell nerdr what copilot is
 			// doing.
 			dir := hooks.CopilotPluginHome(home)
@@ -186,7 +186,7 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 				wrote = append(wrote, TildePath(dir, home))
 			}
 		}
-		if slices.Contains(agents.Available(m.Cfg.Agents), agents.Antigravity) {
+		if slices.Contains(m.Available(), agents.Antigravity) {
 			// And nerdr's hooks in agy's hooks file, beside any others.
 			file := hooks.AgyHooksHome(home)
 			if ok, _, err := hooks.InstallAgyHooks(file); err != nil {
@@ -195,7 +195,7 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 				wrote = append(wrote, TildePath(file, home))
 			}
 		}
-		if slices.Contains(agents.Available(m.Cfg.Agents), agents.Grok) {
+		if slices.Contains(m.Available(), agents.Grok) {
 			// And nerdr's own hooks file among grok's.
 			file := hooks.GrokHooksHome(home)
 			if ok, _, err := hooks.InstallGrokHooks(file); err != nil {
@@ -204,7 +204,7 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 				wrote = append(wrote, TildePath(file, home))
 			}
 		}
-		if slices.Contains(agents.Available(m.Cfg.Agents), agents.Codex) {
+		if slices.Contains(m.Available(), agents.Codex) {
 			// codex runs nerdr's hooks, which tell nerdr what it is
 			// doing, once it trusts them, in its own config.
 			if ok, err := trust(true); ok {

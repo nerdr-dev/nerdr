@@ -1,6 +1,7 @@
 package core
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
@@ -30,6 +31,9 @@ type SetConfig struct {
 func (q SetConfig) Do(m *Core) Cmd {
 	if q.Cfg.DataDir != m.Cfg.DataDir {
 		store.SetDataDir(q.Cfg.DataDir)
+	}
+	if !reflect.DeepEqual(q.Cfg.Agents, m.Cfg.Agents) {
+		m.LookForAgentsSoon()
 	}
 	m.Cfg = q.Cfg
 	if q.MoveWtRoot {

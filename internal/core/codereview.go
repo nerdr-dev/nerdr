@@ -30,7 +30,7 @@ func (m *Core) Live(t *Tab) bool {
 // "other", another kind than t's that is installed — codex for claude and
 // claude for the rest, where they are — or t's own when there is no other.
 func (m *Core) ReviewKind(t *Tab) agents.Kind {
-	avail := agents.Available(m.Cfg.Agents)
+	avail := m.Available()
 	confined := m.Confined(hooks.Report{}, t)
 	if k := agents.Kind(m.Cfg.Review.Agent); k != config.ReviewOther && k != "" {
 		if !confined || m.SandboxedKind(k) {
@@ -199,7 +199,7 @@ func (m *Core) OnReady(rep hooks.Report) Cmd {
 	ask := &ReadyAsk{Focus: rep.Focus}
 	if k := agents.Kind(rep.Kind); k != "" {
 		switch {
-		case !Contains(agents.Available(m.Cfg.Agents), k):
+		case !Contains(m.Available(), k):
 			m.Toast(t.Name + ": there is no agent " + string(k) + " here to review with; the configured reviewer reviews")
 		case rep.Model != "" && !agents.TakesModel(k):
 			m.Toast(t.Name + ": nerdr cannot start " + string(k) + " with a model of its choosing; it reviews with its own")
