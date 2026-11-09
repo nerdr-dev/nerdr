@@ -61,6 +61,10 @@ func NewRemote(cfg config.Config, root string, router *input.Router, conn *attac
 	return m, nil
 }
 
+// SetCoreHost says core runs on host, a machine reached over ssh: what
+// opens files or the worktree is then made to reach them there.
+func (m *Model) SetCoreHost(host string) { m.coreHost = host }
+
 // Remote reports whether the TUI is a client of a core in another
 // process.
 func (m *Model) Remote() bool { return m.remote != nil }

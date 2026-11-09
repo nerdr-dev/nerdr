@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -55,9 +56,9 @@ func styleOf(argv []string) (style, bool) {
 	return s, ok
 }
 
-// fileEditor is the editor setting, then $VISUAL, then $EDITOR, then vim.
-func fileEditor() []string {
-	for _, s := range []string{File, os.Getenv("VISUAL"), os.Getenv("EDITOR")} {
+// fileEditor is setting, then $VISUAL, then $EDITOR by getenv, then vim.
+func fileEditor(setting string, getenv func(string) string) []string {
+	for _, s := range []string{setting, getenv("VISUAL"), getenv("EDITOR")} {
 		if f := strings.Fields(s); len(f) > 0 {
 			return f
 		}
@@ -68,7 +69,14 @@ func fileEditor() []string {
 // FileCommand opens path, a file in the worktree dir, on line (none when
 // 0).
 func FileCommand(dir, path string, line int) Command {
-	argv := fileEditor()
+	return FileCommandIn(File, os.Getenv, dir, path, line)
+}
+
+// FileCommandIn is FileCommand with setting for the editor setting, and
+// getenv for $VISUAL and $EDITOR: those where the file is, which may be
+// another machine than nerdr's own.
+func FileCommandIn(setting string, getenv func(string) string, dir, path string, line int) Command {
+	argv := fileEditor(setting, getenv)
 	s, window := styleOf(argv)
 	switch {
 	case s == vscode:
@@ -96,11 +104,85 @@ func FileCommand(dir, path string, line int) Command {
 
 // DirCommand opens the worktree dir: in the worktree_editor setting, else
 // VS Code.
-func DirCommand(dir string) Command {
-	argv := strings.Fields(Worktree)
+func DirCommand(dir string) Command { return DirCommandIn(Worktree, dir) }
+
+// DirCommandIn is DirCommand with setting for the worktree_editor setting.
+func DirCommandIn(setting, dir string) Command {
+	argv := strings.Fields(setting)
 	if len(argv) == 0 {
 		argv = []string{"code"}
 	}
 	_, window := styleOf(argv)
 	return Command{Argv: append(argv, dir), Window: window}
+}
+
+// RemoteFileCommand is FileCommand for a file on host, a machine reached
+// over ssh, in a window editor started here that edits over ssh itself:
+// VS Code and its kin by their ssh remote, Zed by an ssh:// address. It
+// is false for an editor that cannot, a terminal one above all, which is
+// to run on host instead; and for a path that is not absolute and plain:
+// what names a file on another machine is not to be read as an option.
+func RemoteFileCommand(host, dir, path string, line int) (Command, bool) {
+	return remote(fileEditor(File, os.Getenv), host, dir, path, line)
+}
+
+// RemoteDirCommand is DirCommand for a worktree on host; see
+// RemoteFileCommand.
+func RemoteDirCommand(host, dir string) (Command, bool) {
+	argv := strings.Fields(Worktree)
+	if len(argv) == 0 {
+		argv = []string{"code"}
+	}
+	return remote(argv, host, dir, "", 0)
+}
+
+func remote(argv []string, host, dir, path string, line int) (Command, bool) {
+	if !plainHost(host) || !plainPath(dir) || path != "" && !plainPath(path) {
+		return Command{}, false
+	}
+	s, window := styleOf(argv)
+	if !window {
+		return Command{}, false
+	}
+	at := func(p string) string {
+		if line > 0 {
+			return fmt.Sprintf("%s:%d", p, line)
+		}
+		return p
+	}
+	switch {
+	case s == vscode:
+		argv = append(argv, "--remote", "ssh-remote+"+host, dir)
+		if path != "" {
+			argv = append(argv, "--goto", at(path))
+		}
+	case s == colon && slices.Contains([]string{"zed", "zeditor"}, filepath.Base(argv[0])):
+		target := dir
+		if path != "" {
+			target = at(path)
+		}
+		argv = append(argv, "ssh://"+host+target)
+	default:
+		return Command{}, false
+	}
+	return Command{Argv: argv, Window: true}, true
+}
+
+// plainPath reports whether p is an absolute path with no control
+// characters.
+func plainPath(p string) bool {
+	return strings.HasPrefix(p, "/") && !strings.ContainsFunc(p, func(r rune) bool { return r < ' ' || r == 0x7f })
+}
+
+// plainHost reports whether h can name a host for ssh, and nothing else.
+func plainHost(h string) bool {
+	if h == "" || strings.HasPrefix(h, "-") {
+		return false
+	}
+	for _, r := range h {
+		if !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-@:[]", r)) {
+			return false
+		}
+	}
+	return true
 }
