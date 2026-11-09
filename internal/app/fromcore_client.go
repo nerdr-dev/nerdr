@@ -45,6 +45,10 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(m.resize())
 	case core.SetupAnsweredMsg:
 		return toCore(m.setupAnswered(ev.Token))
+	case core.PluginFactsMsg:
+		return toCore(m.onPluginJob(ev.Job, ev))
+	case core.PluginAllowedMsg:
+		return toCore(m.onPluginJob(ev.Job, ev))
 	case core.ContextMsg:
 		m.onContext(ev)
 	case core.ContextFileMsg:

@@ -9,6 +9,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
 // TestRemoteReviewReadsThroughCore: a TUI in a process of its own has its
@@ -82,24 +83,7 @@ func TestRemoteF4ReadsThroughCore(t *testing.T) {
 	if err := os.WriteFile(file, []byte("be brief\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	until := func(what string, ok func() bool) {
-		t.Helper()
-		deadline := time.After(5 * time.Second)
-		for {
-			m.Mu.Lock()
-			done := ok()
-			m.Mu.Unlock()
-			if done {
-				return
-			}
-			select {
-			case msg := <-told:
-				m.Update(msg)
-			case <-deadline:
-				t.Fatal("core did not answer: " + what)
-			}
-		}
-	}
+	until := func(what string, ok func() bool) { t.Helper(); untilTold(t, m, told, what, ok) }
 
 	m.Mu.Lock()
 	tb := m.Cur()
@@ -119,4 +103,62 @@ func TestRemoteF4ReadsThroughCore(t *testing.T) {
 	if c := m.skills.context; !c.Exists || c.Text != "be brief\n" {
 		t.Fatalf("read %q, %v", c.Text, c.Exists)
 	}
+}
+
+// untilTold has m take in what core tells it, as the program does, until
+// ok, which is called with m.Mu held.
+func untilTold(t *testing.T, m *Model, told chan any, what string, ok func() bool) {
+	t.Helper()
+	deadline := time.After(5 * time.Second)
+	for {
+		m.Mu.Lock()
+		done := ok()
+		m.Mu.Unlock()
+		if done {
+			return
+		}
+		select {
+		case msg := <-told:
+			m.Update(msg)
+		case <-deadline:
+			t.Fatal("core did not answer: " + what)
+		}
+	}
+}
+
+// TestRemoteF5ReadsAndAllowsThroughCore: a TUI in a process of its own
+// reads none of the plugins' folders, nor writes what the user allowed:
+// core lists the plugins, reads the one to allow for the question, and
+// keeps the answer, or takes it away.
+func TestRemoteF5ReadsAndAllowsThroughCore(t *testing.T) {
+	m, _, _, told := remoteTUI(t, "sh", "-c", "sleep 30")
+	writePlugin(t, filepath.Join(os.Getenv("XDG_CONFIG_HOME"), "nerdr", "plugins"), "mine", "cat\n")
+	until := func(what string, ok func() bool) { t.Helper(); untilTold(t, m, told, what, ok) }
+	m.Mu.Lock()
+	tb := m.Cur()
+	m.Mu.Unlock()
+	until("the list", func() bool { return len(m.pluginList(tb)) == 1 })
+	m.Mu.Lock()
+	p := m.pluginList(tb)[0]
+	m.allowPlugin(p)
+	m.Mu.Unlock()
+
+	yes := func(what string) {
+		t.Helper()
+		until(what, func() bool { _, ok := m.dialog.(*confirm); return ok })
+		m.Mu.Lock()
+		d := m.dialog.(*confirm)
+		m.dialog = nil
+		d.yes(m)
+		m.Mu.Unlock()
+	}
+	yes("the plugin as it is, to allow")
+	until("the allowance", func() bool { return plugin.Allowed(core.PluginsAllowedFile(), p) })
+	until("the list's mark", func() bool { m.pluginList(tb); return m.plugins.allowed[p.Dir] })
+
+	m.Mu.Lock()
+	m.disallowPlugin(p)
+	m.Mu.Unlock()
+	yes("the plugin as it is, to disallow")
+	until("the allowance taken away", func() bool { return !plugin.Allowed(core.PluginsAllowedFile(), p) })
 }

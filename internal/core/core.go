@@ -97,6 +97,9 @@ type Core struct {
 	Agents     []agents.Kind
 	AgentsAt   time.Time
 	agentsSoon bool
+	// Plugins are the user's plugins as last looked for, for a client's
+	// copy; see LookForPlugins.
+	Plugins PluginsLook
 	// ReviewWatch is the watch on the worktree the review panel shows;
 	// see reviewwatch.go.
 	ReviewWatch reviewWatch `json:"-"`

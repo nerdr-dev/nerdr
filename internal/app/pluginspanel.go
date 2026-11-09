@@ -1,14 +1,10 @@
 package app
 
 import (
-	"bytes"
 	"fmt"
-	"io/fs"
-	"os"
-	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
 	"github.com/nerdr-dev/nerdr/internal/config"
@@ -51,6 +47,14 @@ type pluginsView struct {
 	// asking is the question whether an agent may run a plugin, while it
 	// is asked.
 	asking *runQuestion
+
+	// askedAt is when core was last asked to look for the plugins, for a
+	// copy of its state; jobs are what waits for core's answers, by job
+	// (see pluginJob).
+	askedAt time.Time
+	stale   bool // an allowance changed: core is asked at once
+	jobs    map[string]func(m *Model, ev any) tea.Cmd
+	lastJob int
 }
 
 // panelPlugins reports whether the review panel shows the plugins.
@@ -64,15 +68,25 @@ func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 	if t != nil {
 		key = t.ID
 	}
+	if m.Copy {
+		// The plugins are core's to read: the list is the one core read
+		// last, and core is asked to look again when it is old.
+		now := time.Now()
+		if v.stale || now.Sub(m.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
+			v.stale, v.askedAt = false, now
+			m.tellCore(core.LookForPlugins{})
+		}
+		if !m.Plugins.At.Equal(v.at) {
+			v.at, v.list, v.allowed = m.Plugins.At, m.Plugins.List, m.Plugins.Allowed
+			v.repick()
+		}
+		return v.list
+	}
 	if key == v.key && time.Since(v.at) < core.PluginsCheckEvery {
 		return v.list
 	}
-	v.key, v.at = key, time.Now()
-	v.list = plugin.Find(plugin.UserDir(config.Path()))
-	v.allowed = map[string]bool{}
-	for _, p := range v.list {
-		v.allowed[p.Dir] = plugin.Allowed(core.PluginsAllowedFile(), p)
-	}
+	look := core.ReadPlugins()
+	v.key, v.at, v.list, v.allowed = key, look.At, look.List, look.Allowed
 	v.repick()
 	return v.list
 }
@@ -210,91 +224,106 @@ func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 	}
 	// What is started, and what the user is asked about, is the plugin as
 	// it is now, not as the list read it.
-	p, key, err := plugin.Fresh(p)
-	switch {
-	case err != nil:
-		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
-		return nil
-	case p.Err != "" || len(p.UI) == 0:
-		m.toast(clean.Line(p.Name) + " changed and has no screen to start now")
-		return nil
-	}
-	if u := m.PluginUIOf(t, p); u.Running() && u.Key == key {
-		m.plugins.uiFocus = core.PluginUIKey(t, p)
-		m.setFocus(core.FocusReview)
-		return nil
-	}
-	if plugin.AllowedKey(core.PluginsAllowedFile(), key) {
-		return m.startPluginUI(t, p, true, key)
-	}
-	return m.askAllowPlugin(p, key, func(m *Model) tea.Cmd { return m.openPluginUI(t, p) },
-		func(m *Model) tea.Cmd { return m.startPluginUI(t, p, true, key) })
+	return m.withPluginFacts(p, func(m *Model, f core.PluginFacts) tea.Cmd {
+		q, key := f.P, f.Key
+		switch {
+		case f.Err != "":
+			m.toast(clean.Line(q.Name) + ": " + clean.Line(f.Err))
+			return nil
+		case q.Err != "" || len(q.UI) == 0:
+			m.toast(clean.Line(q.Name) + " changed and has no screen to start now")
+			return nil
+		}
+		if u := m.PluginUIOf(t, q); u.Running() && u.Key == key {
+			m.plugins.uiFocus = core.PluginUIKey(t, q)
+			m.setFocus(core.FocusReview)
+			return nil
+		}
+		if f.AllowedKey {
+			return m.startPluginUI(t, q, true, key)
+		}
+		return m.askAllowPlugin(f, func(m *Model) tea.Cmd { return m.openPluginUI(t, p) },
+			func(m *Model) tea.Cmd { return m.startPluginUI(t, q, true, key) })
+	})
 }
 
 // allowPlugin asks the user to allow p as it is now, for agents to run
 // and its screen to start (a in F5).
 func (m *Model) allowPlugin(p plugin.Plugin) tea.Cmd {
-	p, key, err := plugin.Fresh(p)
-	switch {
-	case err != nil:
-		m.toast(clean.Line(p.Name) + ": " + clean.Line(err.Error()))
-		return nil
-	case p.Err != "":
-		m.toast(clean.Line(p.Name) + " is broken: " + clean.Line(p.Err))
-		return nil
-	case plugin.AllowedKey(core.PluginsAllowedFile(), key):
-		m.toast(clean.Line(p.Name) + " is allowed as it is")
-		return nil
-	}
-	return m.askAllowPlugin(p, key, func(m *Model) tea.Cmd { return m.allowPlugin(p) },
-		func(m *Model) tea.Cmd {
-			m.toast(clean.Line(p.Name) + " is allowed until something in its folder changes")
+	return m.withPluginFacts(p, func(m *Model, f core.PluginFacts) tea.Cmd {
+		q := f.P
+		switch {
+		case f.Err != "":
+			m.toast(clean.Line(q.Name) + ": " + clean.Line(f.Err))
 			return nil
-		})
+		case q.Err != "":
+			m.toast(clean.Line(q.Name) + " is broken: " + clean.Line(q.Err))
+			return nil
+		case f.AllowedKey:
+			m.toast(clean.Line(q.Name) + " is allowed as it is")
+			return nil
+		}
+		return m.askAllowPlugin(f, func(m *Model) tea.Cmd { return m.allowPlugin(p) },
+			func(m *Model) tea.Cmd {
+				m.toast(clean.Line(q.Name) + " is allowed until something in its folder changes")
+				return nil
+			})
+	})
 }
 
 // disallowPlugin takes the user's allowance of p as it is now away.
 func (m *Model) disallowPlugin(p plugin.Plugin) tea.Cmd {
-	file := core.PluginsAllowedFile()
-	key := ""
-	if _, k, err := plugin.Fresh(p); err == nil {
-		key = k
-	}
-	if !plugin.AllowedDir(file, p.Dir) && (key == "" || !plugin.AllowedKey(file, key)) {
-		m.toast(clean.Line(p.Name) + " is not allowed")
+	return m.withPluginFacts(p, func(m *Model, f core.PluginFacts) tea.Cmd {
+		key := f.Key
+		if f.Err != "" {
+			key = ""
+		}
+		if !f.AllowedDir && (key == "" || !f.AllowedKey) {
+			m.toast(clean.Line(p.Name) + " is not allowed")
+			return nil
+		}
+		m.dialog = &confirm{
+			title: "Stop allowing " + clean.Line(p.Name) + "?",
+			lines: []string{
+				"Agents will not run it, nor will its screen start, until you allow it again.",
+				"This is every version of it in this folder. A screen or a watch already running goes on; stop it in F5.",
+				"", keyHint("y") + dim(" stops allowing it · ") + keyHint("n") + dim(" keeps it allowed"),
+			},
+			yes: func(m *Model) tea.Cmd {
+				return m.disallowNow(p, key)
+			},
+		}
+		return nil
+	})
+}
+
+// disallowNow takes every allowance of p, and of key, away.
+func (m *Model) disallowNow(p plugin.Plugin, key string) tea.Cmd {
+	done := func(m *Model, err string) tea.Cmd {
+		if err != "" {
+			m.toast("could not take the allowance away: " + clean.Line(err))
+			return nil
+		}
+		m.pluginsChanged()
+		m.toast(clean.Line(p.Name) + " is no longer allowed")
 		return nil
 	}
-	m.dialog = &confirm{
-		title: "Stop allowing " + clean.Line(p.Name) + "?",
-		lines: []string{
-			"Agents will not run it, nor will its screen start, until you allow it again.",
-			"This is every version of it in this folder. A screen or a watch already running goes on; stop it in F5.",
-			"", keyHint("y") + dim(" stops allowing it · ") + keyHint("n") + dim(" keeps it allowed"),
-		},
-		yes: func(m *Model) tea.Cmd {
-			if _, err := plugin.DisallowDir(file, p.Dir); err != nil {
-				m.toast("could not take the allowance away: " + clean.Line(err.Error()))
-				return nil
-			}
-			if key != "" {
-				if err := plugin.Disallow(file, key); err != nil {
-					m.toast("could not take the allowance away: " + clean.Line(err.Error()))
-					return nil
-				}
-			}
-			m.plugins.at = time.Time{}
-			m.toast(clean.Line(p.Name) + " is no longer allowed")
-			return nil
-		},
+	if !m.Copy {
+		err := core.DisallowPluginNow(p.Dir, key)
+		return done(m, errString(err))
 	}
+	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
+		return done(m, ev.(core.PluginAllowedMsg).Err)
+	})
+	m.tellCore(core.DisallowPlugin{Job: job, Dir: p.Dir, Key: key})
 	return nil
 }
 
-// askAllowPlugin shows the user what is in p's folder, key a Key of it,
-// and keeps that they allow it, before then. A change to the folder while
-// they read it is not allowed by their yes: again asks anew.
-func (m *Model) askAllowPlugin(p plugin.Plugin, key string, again, then func(m *Model) tea.Cmd) tea.Cmd {
-	file := core.PluginsAllowedFile()
+// askAllowPlugin shows the user what is in the plugin's folder, f as it
+// is now, and keeps that they allow it, before then. A change to the
+// folder while they read it is not allowed by their yes: again asks anew.
+func (m *Model) askAllowPlugin(f core.PluginFacts, again, then func(m *Model) tea.Cmd) tea.Cmd {
+	p, key := f.P, f.Key
 	lines := []string{
 		"A plugin runs as you, outside every agent's sandbox: its screen when",
 		"you start it, its run whenever an agent asks, with the parameters the",
@@ -322,75 +351,131 @@ func (m *Model) askAllowPlugin(p plugin.Plugin, key string, again, then func(m *
 	m.dialog = &confirm{
 		title:  "Allow " + clean.Line(p.Name) + "?",
 		lines:  lines,
-		scroll: pluginPreview(p.Dir, core.MaxPreviewLines, max(boxInner(m.width)-2, 20)),
+		scroll: renderPreview(f.Preview, p.Dir, core.MaxPreviewLines, max(boxInner(m.width)-2, 20)),
 		after:  []string{"", keyHint("y") + dim(" allows it until something in its folder changes · ") + keyHint("n") + dim(" does not")},
 		yes: func(m *Model) tea.Cmd {
-			if now, err := p.Key(); err != nil || now != key {
-				m.toast(clean.Line(p.Name) + " changed while you read it: look again")
-				return again(m)
-			}
-			if err := plugin.Allow(file, p, key); err != nil {
-				m.toast("could not keep that it is allowed: " + clean.Line(err.Error()))
-				return nil
-			}
-			m.plugins.at = time.Time{} // its mark in the list
-			return then(m)
+			return m.allowNow(p, key, again, then)
 		},
 	}
 	return nil
 }
 
+// allowNow keeps that the user allowed p as key, then does then; once p
+// has changed since they were asked, it asks again.
+func (m *Model) allowNow(p plugin.Plugin, key string, again, then func(m *Model) tea.Cmd) tea.Cmd {
+	done := func(m *Model, changed bool, err string) tea.Cmd {
+		switch {
+		case changed:
+			m.toast(clean.Line(p.Name) + " changed while you read it: look again")
+			return again(m)
+		case err != "":
+			m.toast("could not keep that it is allowed: " + clean.Line(err))
+			return nil
+		}
+		m.pluginsChanged() // its mark in the list
+		return then(m)
+	}
+	if !m.Copy {
+		changed, err := core.AllowPlugin(p, key)
+		return done(m, changed, errString(err))
+	}
+	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
+		a := ev.(core.PluginAllowedMsg)
+		return done(m, a.Changed, a.Err)
+	})
+	m.tellCore(core.AllowPluginKey{Job: job, P: p, Key: key})
+	return nil
+}
+
+// withPluginFacts does then with p as it is now: read here in core's
+// process, asked of core by a copy of its state.
+func (m *Model) withPluginFacts(p plugin.Plugin, then func(m *Model, f core.PluginFacts) tea.Cmd) tea.Cmd {
+	if !m.Copy {
+		return then(m, core.ReadPluginFacts(p))
+	}
+	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
+		return then(m, ev.(core.PluginFactsMsg).Facts)
+	})
+	m.tellCore(core.AskPluginFacts{Job: job, P: p})
+	return nil
+}
+
+// pluginJob keeps then for the answer of a job of F5's asked of core,
+// and names the job.
+func (m *Model) pluginJob(then func(m *Model, ev any) tea.Cmd) string {
+	if m.plugins.jobs == nil {
+		m.plugins.jobs = map[string]func(m *Model, ev any) tea.Cmd{}
+	}
+	m.plugins.lastJob++
+	job := "plugin-" + strconv.Itoa(m.plugins.lastJob)
+	m.plugins.jobs[job] = then
+	return job
+}
+
+// onPluginJob hands core's answer to the job of F5's it is for.
+func (m *Model) onPluginJob(job string, ev any) tea.Cmd {
+	then := m.plugins.jobs[job]
+	delete(m.plugins.jobs, job)
+	if then == nil {
+		return nil
+	}
+	return then(m, ev)
+}
+
+// pluginsChanged has the list looked for again, as an allowance changed.
+func (m *Model) pluginsChanged() {
+	m.plugins.at, m.plugins.stale = time.Time{}, true
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
 // pluginPreview is what is in the plugin folder dir, for the user to read
-// before allowing it: each file's name and, for text, its lines, at most
-// n lines in all, each at most w columns.
+// before allowing it; see renderPreview.
 func pluginPreview(dir string, n, w int) []string {
+	return renderPreview(core.ReadPreview(dir), dir, n, w)
+}
+
+// renderPreview draws files, of the plugin folder dir: each file's name
+// and, for text, its lines, at most n lines in all, each at most w
+// columns.
+func renderPreview(files []core.PreviewFile, dir string, n, w int) []string {
 	var out []string
 	more := 0
-	_ = filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		rel, _ := filepath.Rel(dir, path)
-		rel = clean.Line(rel)
-		if d.Type()&fs.ModeSymlink != 0 {
-			to, _ := os.Readlink(path)
-			out = append(out, lipgloss.NewStyle().Bold(true).Render(rel)+dim(" → "+clean.Line(to)))
-			return nil
-		}
-		head := lipgloss.NewStyle().Bold(true).Render(rel)
-		info, err := d.Info()
-		if err != nil {
-			return nil
-		}
-		if !info.Mode().IsRegular() {
+	bold := lipgloss.NewStyle().Bold(true)
+	for _, f := range files {
+		head := bold.Render(f.Rel)
+		switch {
+		case f.Link != "":
+			out = append(out, head+dim(" → "+f.Link))
+			continue
+		case f.Why == "special":
 			out = append(out, head+dim("  not a regular file"))
-			return nil
-		}
-		if info.Size() > core.MaxPreviewFile {
+			continue
+		case f.Why == "large":
 			out = append(out, head+dim(fmt.Sprintf("  %d bytes, too large to show: read it in %s",
-				info.Size(), clean.Line(core.TildePath(dir, core.HomeDir())))))
-			return nil
-		}
-		b, err := os.ReadFile(path)
-		if err != nil {
+				f.Size, clean.Line(core.TildePath(dir, core.HomeDir())))))
+			continue
+		case f.Why == "unreadable":
 			out = append(out, head+dim("  could not be read"))
-			return nil
+			continue
+		case f.Why == "binary":
+			out = append(out, head+dim(fmt.Sprintf("  %d bytes, not text", f.Size)))
+			continue
 		}
-		if bytes.IndexByte(b, 0) >= 0 || !utf8.Valid(b) {
-			out = append(out, head+dim(fmt.Sprintf("  %d bytes, not text", len(b))))
-			return nil
-		}
-		text := strings.Split(strings.TrimRight(clean.Text(string(b)), "\n"), "\n")
 		out = append(out, head)
-		for _, l := range text {
+		for _, l := range f.Text {
 			if len(out) >= n {
 				more++
 				continue
 			}
 			out = append(out, "  "+ansi.Truncate(strings.ReplaceAll(l, "\t", "    "), w-2, "…"))
 		}
-		return nil
-	})
+	}
 	if more > 0 {
 		out = append(out, warn(fmt.Sprintf("… and %d more lines: read them in %s before you allow it", more, core.TildePath(dir, core.HomeDir()))))
 	}
