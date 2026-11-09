@@ -242,7 +242,6 @@ func TestFilesHintButtons(t *testing.T) {
 		t.Fatal("a key cut off by the pane's edge isn't a button")
 	}
 
-	m.embedded = true
 	if h := m.filesHint(); !strings.Contains(h, "E agent, explain") {
 		t.Fatalf("expected E beside an agent: %q", h)
 	}
@@ -262,15 +261,12 @@ func TestWalkthroughButton(t *testing.T) {
 	m.rebuildTree("")
 	m.worktrees = []git.Worktree{{Path: t.TempDir(), Branch: "work"}}
 	m.curWT = m.worktrees[0].Path
-	if h := m.filesHint(); strings.Contains(h, "g ") {
-		t.Fatalf("no walkthrough and no agent to ask: %q", h)
-	}
 	m.walk = true
 	if h := m.filesHint(); !strings.Contains(h, "g guide") {
 		t.Fatalf("expected g with a walkthrough: %q", h)
 	}
 
-	m.walk, m.embedded = false, true
+	m.walk = false
 	h := m.filesHint()
 	i := strings.Index(h, "g make guide")
 	if i < 0 {
@@ -343,7 +339,7 @@ func TestNewWalkthrough(t *testing.T) {
 	m.rebuildTree("")
 	root := t.TempDir()
 	m.worktrees = []git.Worktree{{Path: root, Branch: "work"}}
-	m.curWT, m.embedded = root, true
+	m.curWT = root
 	if err := os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

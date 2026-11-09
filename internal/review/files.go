@@ -4,7 +4,6 @@ package review
 // filtering them, and marking the files just touched.
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/git"
@@ -26,9 +25,7 @@ func (m *Model) loadWorktrees() tea.Cmd {
 		m.err = err
 		return nil
 	}
-	if m.embedded {
-		wts = m.filterPinned(wts)
-	}
+	wts = m.filterPinned(wts)
 	if repoPath != m.curRepo {
 		// A genuinely different repo: default to its primary worktree
 		// rather than reusing whatever index happened to be selected in
@@ -60,11 +57,6 @@ func (m *Model) loadFiles() tea.Cmd {
 }
 
 func (m *Model) refreshFiles() tea.Cmd {
-	if m.focus == focusRepos {
-		// No worktree picked yet, so there are no files to refresh. The
-		// repo list has its own, slower cadence — see autoRefresh.
-		return nil
-	}
 	if m.ensureWorktreeContext() {
 		// Another worktree: loaded at once, as moving to it asked.
 		m.filesToken++
@@ -403,18 +395,4 @@ func (m *Model) untracked(path string) bool {
 		}
 	}
 	return false
-}
-
-// cycleWorktree switches to the previous/next worktree in the current repo.
-func (m *Model) cycleWorktree(delta int) {
-	if len(m.worktrees) == 0 {
-		return
-	}
-	m.peek = nil
-	m.jumpHistory = nil
-	m.wtIdx = (m.wtIdx + delta + len(m.worktrees)) % len(m.worktrees)
-	m.loadFiles()
-	m.loadDiff()
-	wt := m.worktrees[m.wtIdx]
-	m.setToast(fmt.Sprintf("%s — %d files", wt.Branch, len(m.files)))
 }

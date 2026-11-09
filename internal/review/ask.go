@@ -34,9 +34,8 @@ func (m *Model) askAgent(text string) tea.Cmd {
 
 // The questions "a" asks, by what it is asked on.
 const (
-	lineQuestion   = "Briefly explain what this line does and why it is written this way."
-	fileQuestion   = "What does this change to the file do, and what should a reviewer look at closely?"
-	changeQuestion = "What does this change do as a whole, and in what order should a reviewer read it?"
+	lineQuestion = "Briefly explain what this line does and why it is written this way."
+	fileQuestion = "What does this change to the file do, and what should a reviewer look at closely?"
 )
 
 // askSelected is "a" (question set) and "s" (question empty, for the user
@@ -56,8 +55,6 @@ func (m *Model) askSelected(ask bool) tea.Cmd {
 			return nil
 		}
 		subject, question = "About the change to "+file+m.againstBase(), fileQuestion
-	case focusWorktrees, focusRepos:
-		subject, question = "About the whole change in this worktree"+m.againstBase(), changeQuestion
 	default:
 		line, ok := m.lineUnderCursor()
 		if !ok {

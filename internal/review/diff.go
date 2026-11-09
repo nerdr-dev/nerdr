@@ -25,9 +25,8 @@ type diffLine struct {
 	refFile string
 	refLine int
 
-	// whyDetail is the full rationale behind a 'w' line, shown in the
-	// relations panel when the line is selected; whyMore marks a line of
-	// it opened in the diff instead (see toggleWhyInline).
+	// whyDetail is the full rationale behind a 'w' line; whyMore marks a
+	// line of it opened in the diff (see toggleWhyInline).
 	whyDetail string
 	whyMore   bool
 }
@@ -170,7 +169,7 @@ func annotateWhyLines(lines []diffLine, file string, ix why.Index) []diffLine {
 	return out
 }
 
-// formatWhyDetail lays out a note for the relations panel, falling back to
+// formatWhyDetail lays out a note to open in the diff, falling back to
 // the short line when the agent didn't write a longer explanation.
 func formatWhyDetail(n why.Note) string {
 	var b strings.Builder

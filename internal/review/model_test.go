@@ -15,9 +15,8 @@ import (
 )
 
 func TestFolderArrowNavigation(t *testing.T) {
-	for _, embedded := range []bool{false, true} {
+	{
 		m := NewEmbedded(Local{})
-		m.embedded = embedded
 		m.tree = buildFolderTree([]git.FileStatus{{Path: "src/main.go", Code: " M"}})
 		folder := m.tree[0]
 		for _, step := range []struct {
@@ -36,7 +35,7 @@ func TestFolderArrowNavigation(t *testing.T) {
 			next, _ := m.Update(step.key)
 			m = next.(Model)
 			if m.isExpanded(folder) != step.expanded || m.focus != focusFiles || m.cursor != 0 {
-				t.Fatalf("embedded=%v key=%s: expanded=%v focus=%v cursor=%d", embedded, step.key, m.isExpanded(folder), m.focus, m.cursor)
+				t.Fatalf("key=%s: expanded=%v focus=%v cursor=%d", step.key, m.isExpanded(folder), m.focus, m.cursor)
 			}
 		}
 	}
@@ -58,135 +57,6 @@ func TestSinceVisitMarkerSurvivesLiveMarkerDecayAndIsWorktreeScoped(t *testing.T
 	view = ansi.Strip(strings.Join(m.treeItems(80), "\n"))
 	if strings.Contains(view, "◆") {
 		t.Fatal("marker leaked to another worktree")
-	}
-}
-
-// TestModelNavigation drives the model through repo -> worktree -> file ->
-// diff using a real temporary repository with a linked worktree.
-func TestModelNavigation(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
-
-	parent := t.TempDir()
-	repo := filepath.Join(parent, "myrepo")
-	runGit(t, "", "init", "-q", repo)
-	writeFile(t, filepath.Join(repo, "a.txt"), "hello\n")
-	runGit(t, repo, "add", ".")
-	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
-
-	wt := filepath.Join(parent, "myrepo-wt")
-	runGit(t, repo, "worktree", "add", "-q", "-b", "feature/x", wt)
-	writeFile(t, filepath.Join(wt, "a.txt"), "hello\nworld\n")
-
-	m := New(parent, Local{})
-	if len(m.repos) != 1 || m.repos[0].Name != "myrepo" {
-		t.Fatalf("expected one repo, got %#v", m.repos)
-	}
-
-	send := func(msg tea.Msg) {
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
-	}
-
-	// repos -> worktrees
-	send(tea.KeyMsg{Type: tea.KeyRight})
-	if len(m.worktrees) != 2 {
-		t.Fatalf("expected 2 worktrees, got %d", len(m.worktrees))
-	}
-
-	// select the feature worktree (second in list order, sorted by path)
-	m.wtIdx = 1
-	send(tea.KeyMsg{Type: tea.KeyRight})
-	if len(m.files) != 1 || m.files[0].Path != "a.txt" || m.files[0].Code != " M" {
-		t.Fatalf("expected one modified file a.txt, got %#v", m.files)
-	}
-
-	// files -> diff: move the cursor onto the file row, then descend
-	send(tea.KeyMsg{Type: tea.KeyDown})
-	send(tea.KeyMsg{Type: tea.KeyEnter})
-	if m.diff == "" {
-		t.Fatalf("expected non-empty diff")
-	}
-}
-
-// TestSwitchingRepoResetsWorktreeIndex covers the exact bug reported: with
-// a non-zero worktree selected in one repo, moving to a different repo that
-// also has multiple worktrees must default to that repo's primary worktree
-// (index 0), not reuse the previous repo's numeric index — which happened
-// to point at an unrelated worktree there. A single-worktree repo always
-// clamped back to 0 regardless, which is why this only showed up with more
-// than one worktree per repo.
-func TestSwitchingRepoResetsWorktreeIndex(t *testing.T) {
-	if _, err := exec.LookPath("git"); err != nil {
-		t.Skip("git not available")
-	}
-
-	parent := t.TempDir()
-	makeRepoWithTwoWorktrees := func(name string) {
-		repo := filepath.Join(parent, name)
-		runGit(t, "", "init", "-q", repo)
-		writeFile(t, filepath.Join(repo, "a.txt"), "hello\n")
-		runGit(t, repo, "add", ".")
-		runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
-		wt := filepath.Join(parent, name+"-wt")
-		runGit(t, repo, "worktree", "add", "-q", "-b", "feature/"+name, wt)
-		writeFile(t, filepath.Join(wt, "a.txt"), "hello\n"+name+"\n")
-	}
-	// Names sorted so "repo-a" < "repo-b" both as repo list order and as
-	// worktree list order (main checkout before the linked "-wt" one).
-	makeRepoWithTwoWorktrees("repo-a")
-	makeRepoWithTwoWorktrees("repo-b")
-
-	m := New(parent, Local{})
-	if len(m.repos) != 2 {
-		t.Fatalf("expected 2 repos, got %#v", m.repos)
-	}
-
-	send := func(msg tea.Msg) {
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
-	}
-
-	// Enter repo-a's worktrees and select its second (non-primary) one.
-	send(tea.KeyMsg{Type: tea.KeyRight})
-	if len(m.worktrees) != 2 {
-		t.Fatalf("expected 2 worktrees in repo-a, got %d", len(m.worktrees))
-	}
-	m.wtIdx = 1
-	m.focus = focusWorktrees
-	send(tea.KeyMsg{Type: tea.KeyRight}) // load repo-a's files, so there is something to clear
-	selectedBranch := m.worktrees[1].Branch
-	if len(m.files) == 0 {
-		t.Fatal("expected repo-a's worktree to have changed files for this test to mean anything")
-	}
-
-	// Back out to the repos pane and move to repo-b.
-	m.focus = focusRepos
-	send(tea.KeyMsg{Type: tea.KeyDown})
-
-	if m.wtIdx != 0 {
-		t.Fatalf("expected wtIdx reset to 0 for the new repo, got %d (worktree %v)", m.wtIdx, m.worktrees)
-	}
-	if len(m.worktrees) != 2 {
-		t.Fatalf("expected 2 worktrees in repo-b, got %d", len(m.worktrees))
-	}
-	if m.worktrees[m.wtIdx].Branch == selectedBranch {
-		t.Fatalf("landed on repo-b's worktree that coincidentally shares repo-a's selected branch name %q — test setup ambiguous", selectedBranch)
-	}
-	// Changing repo must not leave the previous repo's files on screen; it
-	// also must not load any, since which files changed depends on which
-	// worktree is picked next.
-	if len(m.files) != 0 || len(m.tree) != 0 || m.diff != "" {
-		t.Fatalf("expected the files pane cleared on repo change, got %d files / %d tree roots / diff %q",
-			len(m.files), len(m.tree), m.diff)
-	}
-
-	// Entering the worktree pane is what loads them, for the worktree the
-	// cursor is on.
-	send(tea.KeyMsg{Type: tea.KeyRight})
-	if m.curWT != m.worktrees[0].Path {
-		t.Fatalf("expected repo-b's primary worktree to be loaded, got %q", m.curWT)
 	}
 }
 
@@ -287,9 +157,7 @@ func TestEditingAChangedFileReloadsItsDiff(t *testing.T) {
 	repo := filepath.Join(parent, "repo")
 	writeFile(t, filepath.Join(repo, "a.go"), "package a\n\nvar first = 1\n")
 
-	m := New(parent, Local{})
-	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
-	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
+	m := pinned(t, repo)
 	if path, ok := m.currentFile(); !ok || path != "a.go" {
 		t.Fatalf("setup: on %q", path)
 	}
@@ -311,7 +179,7 @@ func TestEditingAChangedFileReloadsItsDiff(t *testing.T) {
 // and its counts arriving afterwards, for the overview they were made for.
 func TestOverviewCountsInTheBackground(t *testing.T) {
 	parent := setupJumpRepo(t, map[string]string{"a.go": "package a\n"}, map[string]string{"b.go": "package b\n"})
-	m := New(parent, Local{})
+	m := pinned(t, filepath.Join(parent, "repo"))
 	cmd := m.toggleOverview()
 	if !m.overview || len(m.ovItems) != 1 || m.ovItems[0].counted {
 		t.Fatalf("expected one uncounted item at once, got %+v", m.ovItems)
@@ -396,12 +264,6 @@ func TestAskTurnsWhereYouStandIntoAMessage(t *testing.T) {
 	m.diffCursor = 0
 	if cmd := m.askSelected(false); cmd != nil {
 		t.Error("a hunk header is not a line to ask about")
-	}
-
-	m.focus = focusWorktrees
-	if msg := agentText(t, m.askSelected(false)); !strings.Contains(msg.Text, "whole change") ||
-		!strings.Contains(msg.Text, changeQuestion) {
-		t.Errorf("? on the worktree: %q", msg.Text)
 	}
 }
 

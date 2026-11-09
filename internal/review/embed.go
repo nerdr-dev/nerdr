@@ -18,8 +18,7 @@ import (
 )
 
 // This file runs the review screen as nerdr's panel: beside an agent,
-// pinned to that tab's worktrees, rather than as a screen of its own that
-// browses every repository under a folder.
+// pinned to that tab's worktrees.
 
 // Pin is one worktree the panel shows.
 type Pin struct {
@@ -57,7 +56,6 @@ type EditMsg struct {
 func NewEmbedded(src Source) Model {
 	m := Model{
 		src:       src,
-		embedded:  true,
 		focus:     focusFiles,
 		expanded:  map[string]bool{},
 		showOrder: true,
@@ -67,7 +65,6 @@ func NewEmbedded(src Source) Model {
 	m.filterInput = textinput.New()
 	m.filterInput.Prompt = "/"
 	m.filterInput.Placeholder = "filter files…"
-	m.buildRelRows()
 	return m
 }
 
@@ -283,10 +280,7 @@ func (m *Model) ShowPin(i int) tea.Cmd {
 
 // quit is what the quit keys do: in nerdr, hand focus back.
 func (m Model) quit() tea.Cmd {
-	if m.embedded {
-		return func() tea.Msg { return LeaveMsg{} }
-	}
-	return tea.Quit
+	return func() tea.Msg { return LeaveMsg{} }
 }
 
 // SetScreenKeys gives the panel the keys to name its six screens by in
@@ -332,7 +326,7 @@ func (m Model) TopFocused() bool {
 // agent its title is in the border (see renderTitledPane), and its heading
 // row is the repositories' bar or none.
 func (m Model) filesHeader() int {
-	if m.embedded && !m.hasRepoBar() {
+	if !m.hasRepoBar() {
 		return titledHeader
 	}
 	return 0
@@ -341,10 +335,7 @@ func (m Model) filesHeader() int {
 // diffHeader is filesHeader for the diff, whose title is in the border
 // beside an agent too (renderTitledDiff).
 func (m Model) diffHeader() int {
-	if m.embedded {
-		return titledHeader
-	}
-	return 0
+	return titledHeader
 }
 
 // The file list beside an agent is above the diff, as the panel is a
@@ -405,8 +396,8 @@ func (m *Model) toggleSide() tea.Cmd {
 func (m Model) embeddedLayout(W, H int) paneLayout {
 	var l paneLayout
 	l.menu = m.menuRect(W)
-	// No relations pane and no status bar beside an agent: the PR is on
-	// F2, a why note opens in the diff, and nerdr shows the toasts.
+	// No status bar beside an agent: the PR is on F2, a why note opens in
+	// the diff, and nerdr shows the toasts.
 	rest := max(H-m.statusRows()-m.menuRows(), 6)
 	if m.sideBySide(W) {
 		filesW := min(max(W*3/10, 32), 56)
@@ -448,7 +439,7 @@ func (m Model) sharedWith(path string) []string {
 // statusRows is the rows the status bar takes: none beside an agent,
 // but for the filter while one is typed.
 func (m Model) statusRows() int {
-	if m.embedded && !m.filtering {
+	if !m.filtering {
 		return 0
 	}
 	return 1
@@ -458,9 +449,7 @@ func (m Model) statusRows() int {
 // status bar of its own beside an agent.
 func (m *Model) PopToast() string {
 	s := m.toast
-	if m.embedded {
-		m.toast, m.toastTicks = "", 0
-	}
+	m.toast, m.toastTicks = "", 0
 	return s
 }
 
@@ -480,7 +469,7 @@ func (m Model) SetPinCounts(counts []int) Model {
 
 // hasRepoBar reports whether the file list starts with the bar.
 func (m Model) hasRepoBar() bool {
-	return m.embedded && len(m.pins) > 1 && len(m.repos) == len(m.pins)
+	return len(m.pins) > 1 && len(m.repos) == len(m.pins)
 }
 
 // repoBarItem is one repository on the bar: the pin it shows, and where

@@ -15,8 +15,6 @@ import (
 // TestReviewReadsThroughSource holds it to. Its methods may be called from
 // any goroutine.
 type Source interface {
-	// DiscoverRepos lists the repositories under dir.
-	DiscoverRepos(dir string) ([]git.Repo, error)
 	// ListWorktrees lists repo's worktrees.
 	ListWorktrees(repo string) ([]git.Worktree, error)
 	// DetectBase is the branch worktree wt's branch left, or "".
@@ -55,8 +53,6 @@ type Source interface {
 
 // Local is the Source that reads the repositories on this machine.
 type Local struct{}
-
-func (Local) DiscoverRepos(dir string) ([]git.Repo, error) { return git.DiscoverRepos(dir) }
 
 func (Local) ListWorktrees(repo string) ([]git.Worktree, error) { return git.ListWorktrees(repo) }
 

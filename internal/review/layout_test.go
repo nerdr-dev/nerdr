@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -38,13 +37,7 @@ func TestLayoutDoesNotOverflow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m := New(parent, Local{})
-	send := func(msg tea.Msg) {
-		nm, _ := m.Update(msg)
-		m = nm.(Model)
-	}
-	send(tea.KeyMsg{Type: tea.KeyRight}) // -> worktrees
-	send(tea.KeyMsg{Type: tea.KeyRight}) // -> files
+	m := pinned(t, repo)
 
 	// Expand the whole tree and select the file so the diff is rendered.
 	for _, r := range m.flatRows() {
@@ -98,7 +91,7 @@ func TestStatusBarKeepsToastVisible(t *testing.T) {
 	// With no toast the path is unchanged: cwd on the left, hints right.
 	m.toast = ""
 	got = m.statusBar(120)
-	if !strings.Contains(ansiRe.ReplaceAllString(got, ""), "q quit") {
+	if !strings.Contains(ansiRe.ReplaceAllString(got, ""), "esc agent") {
 		t.Fatalf("the hint line must fit a 120-column terminal without losing its tail:\n%q", got)
 	}
 	if w := lipgloss.Width(got); w > 120 {
@@ -160,7 +153,7 @@ func TestHintRowIsPaneSizedAndFocusOnly(t *testing.T) {
 		hint  string
 		width int
 	}{
-		{hintRepos, 20}, {hintWorktrees, 20}, {hintFiles, 34}, {hintDiff, 58}, {hintDiffJumped, 58},
+		{hintFiles, 34}, {hintDiff, 58}, {hintDiffJumped, 58},
 	} {
 		if lipgloss.Width(c.hint) > c.width {
 			t.Fatalf("hint %q is %d wide and will be cut in a %d-wide pane",

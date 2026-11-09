@@ -1,7 +1,6 @@
 package review
 
 import (
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -47,7 +46,7 @@ func rowTexts(rows []relLine) string {
 func TestConversationShowsFailingChecksReviewsAndComments(t *testing.T) {
 	pr := samplePR()
 	pr.Reviews[0].Body = "The denied path is untested."
-	got := stripANSI(rowTexts(prConversationLines(pr, 80, true)))
+	got := stripANSI(rowTexts(convLines(pr, 80, true)))
 
 	for _, want := range []string{
 		"✗ CI / lint",
@@ -74,7 +73,7 @@ func TestConversationShowsFailingChecksReviewsAndComments(t *testing.T) {
 func TestPassingChecksHaveNoSection(t *testing.T) {
 	pr := samplePR()
 	pr.Checks = []github.Check{{Name: "CI / test", Status: "SUCCESS"}}
-	if got := stripANSI(rowTexts(prConversationLines(pr, 80, true))); strings.Contains(got, "checks not passed") {
+	if got := stripANSI(rowTexts(convLines(pr, 80, true))); strings.Contains(got, "checks not passed") {
 		t.Fatalf("a heading over nothing:\n%s", got)
 	}
 }
@@ -88,7 +87,7 @@ func TestRunningChecksAreNotShownAsFailed(t *testing.T) {
 		{Name: "CI / test", Status: "IN_PROGRESS"},
 		{Name: "CI / lint", Status: "FAILURE"},
 	}
-	got := stripANSI(rowTexts(prConversationLines(pr, 80, true)))
+	got := stripANSI(rowTexts(convLines(pr, 80, true)))
 	for _, want := range []string{"◍ CI / build  queued", "◍ CI / test  in_progress", "✗ CI / lint  failure"} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %q in:\n%s", want, got)
@@ -100,7 +99,7 @@ func TestRunningChecksAreNotShownAsFailed(t *testing.T) {
 // list already shows the verdict, so an empty block under it is noise.
 func TestBareApprovalIsNotAConversationEntry(t *testing.T) {
 	pr := github.PR{Reviews: []github.Review{{Author: "alice", State: "APPROVED"}}}
-	got := stripANSI(rowTexts(prConversationLines(pr, 80, true)))
+	got := stripANSI(rowTexts(convLines(pr, 80, true)))
 	if strings.Contains(got, "alice") {
 		t.Errorf("a wordless approval should not take a block in the conversation:\n%s", got)
 	}
@@ -115,7 +114,7 @@ func TestBareApprovalIsNotAConversationEntry(t *testing.T) {
 func TestConversationDoesNotClaimSilenceBeforeFetching(t *testing.T) {
 	pr := github.PR{} // exactly what the list returns: no comment bodies
 
-	got := rowTexts(prConversationLines(pr, 80, false))
+	got := rowTexts(convLines(pr, 80, false))
 	if strings.Contains(got, "no comments") {
 		t.Fatalf("unfetched comments rendered as an absence of them:\n%s", got)
 	}
@@ -124,7 +123,7 @@ func TestConversationDoesNotClaimSilenceBeforeFetching(t *testing.T) {
 	}
 
 	// Once fetched, an actual absence is stated plainly.
-	if got := rowTexts(prConversationLines(pr, 80, true)); !strings.Contains(got, "(no comments)") {
+	if got := rowTexts(convLines(pr, 80, true)); !strings.Contains(got, "(no comments)") {
 		t.Fatalf("a fetched PR with no comments should say so:\n%s", got)
 	}
 }
@@ -224,47 +223,6 @@ func TestScrollToMovesTheViewAsLittleAsPossible(t *testing.T) {
 		if got := scrollTo(c.cursor, c.viewTop, innerH); got != c.want {
 			t.Errorf("scrollTo(cursor=%d, top=%d) = %d, want %d", c.cursor, c.viewTop, got, c.want)
 		}
-	}
-}
-
-// TestPREntriesGroupByRepoThenRecency covers the list's order: a
-// repository's PRs stay together, and within one the newest is on top.
-// TestListColumnsLineUpWithTheirHeader covers the one thing a bare pair of
-// ticks cannot say: which glyph is the review verdict and which is CI. The
-// header names them, so each glyph has to sit under its own name.
-// TestBackgroundRefreshKeepsYouOnTheSamePR covers a two-minute refresh
-// landing while you read: it must not move the cursor to a different pull
-// request because one above it disappeared.
-// TestRepoRescanKeepsTheSelectedRepo covers the same for the repo list: a
-// repository cloned in earlier in the alphabet must not shift the selection
-// onto a different one.
-func TestRepoRescanKeepsTheSelectedRepo(t *testing.T) {
-	parent := t.TempDir()
-	mk := func(name string) {
-		repo := filepath.Join(parent, name)
-		runGit(t, "", "init", "-q", repo)
-		writeFile(t, filepath.Join(repo, "a.txt"), "x\n")
-		runGit(t, repo, "add", ".")
-		runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
-	}
-	mk("beta")
-	mk("gamma")
-
-	m := New(parent, Local{})
-	if len(m.repos) != 2 {
-		t.Fatalf("expected 2 repos, got %#v", m.repos)
-	}
-	m.repoIdx = 1
-	selected := m.repos[1].Path
-
-	mk("alpha") // sorts first, shifting every index
-	m.rescanRepos()
-
-	if len(m.repos) != 3 {
-		t.Fatalf("the new repo was not picked up: %#v", m.repos)
-	}
-	if m.repos[m.repoIdx].Path != selected {
-		t.Fatalf("selection moved to %q, want %q", m.repos[m.repoIdx].Path, selected)
 	}
 }
 
@@ -521,4 +479,10 @@ func TestReviewGlyphWithoutDecision(t *testing.T) {
 	if g := ansi.Strip(reviewGlyph(pr)); g != "✗" {
 		t.Fatalf("changes requested by bob: %q", g)
 	}
+}
+
+// convLines is prConversation's rows alone.
+func convLines(pr github.PR, width int, fetched bool) []relLine {
+	rows, _ := prConversation(pr, width, fetched)
+	return rows
 }

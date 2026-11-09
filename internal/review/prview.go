@@ -21,42 +21,37 @@ const (
 	// modePRs is the pull request of the worktree being looked at: its
 	// state, checks and conversation.
 	modePRs
-	// modeMessages is the tab's messages for its agent, only inside nerdr,
-	// which draws them in the panel's place.
+	// modeMessages is the tab's messages for its agent, which nerdr
+	// draws in the panel's place.
 	modeMessages
-	// modeSkills is the skills nerdr gives the agents, only inside nerdr,
-	// which draws them as it does the messages.
+	// modeSkills is the skills nerdr gives the agents, which nerdr draws
+	// as it does the messages.
 	modeSkills
-	// modePlugins is the user.s plugins, only inside nerdr,
-	// which draws them, and a plugin's own screen.
+	// modePlugins is the user's plugins, which nerdr draws, and a
+	// plugin's own screen.
 	modePlugins
 )
 
 // screens are the menu's screens in order, each with the function key it
-// is on. The keys are the same in nerdr and on the tool's own, which lacks
-// the screens only nerdr has: there F3 to F5 do nothing. short is the
-// name nerdr's column of F-keys gives it.
+// is on. short is the name nerdr's column of F-keys gives it.
 var screens = [...]struct {
 	key   string
 	mode  uiMode
 	label string
 	short string
-	nerdr bool // only inside nerdr
 }{
-	{"f1", modeReview, "code changes", "changes", false},
-	{"f2", modePRs, "github", "github", false},
-	{"f3", modeMessages, "tasks", "tasks", true},
-	{"f4", modeSkills, "skills", "skills", true},
-	{"f5", modePlugins, "plugins", "plugins", true},
+	{"f1", modeReview, "code changes", "changes"},
+	{"f2", modePRs, "github", "github"},
+	{"f3", modeMessages, "tasks", "tasks"},
+	{"f4", modeSkills, "skills", "skills"},
+	{"f5", modePlugins, "plugins", "plugins"},
 }
 
 // menuModes are the screens the menu has, in its order.
 func (m Model) menuModes() []uiMode {
 	var out []uiMode
 	for _, s := range screens {
-		if m.embedded || !s.nerdr {
-			out = append(out, s.mode)
-		}
+		out = append(out, s.mode)
 	}
 	return out
 }
@@ -64,7 +59,7 @@ func (m Model) menuModes() []uiMode {
 // keyMode is the screen function key k goes to, if the menu has it.
 func (m Model) keyMode(k string) (uiMode, bool) {
 	for _, s := range screens {
-		if s.key == k && (m.embedded || !s.nerdr) {
+		if s.key == k {
 			return s.mode, true
 		}
 	}
@@ -84,11 +79,8 @@ func (m Model) screenKey(i int) string {
 func (m Model) menu() []string {
 	var labels []string
 	for i, s := range screens {
-		if !m.embedded && s.nerdr {
-			continue
-		}
 		l := m.screenKey(i) + " " + s.label
-		if s.mode == modePRs && m.embedded && (m.prNews || m.issueNews) {
+		if s.mode == modePRs && (m.prNews || m.issueNews) {
 			l += " ◆"
 		}
 		labels = append(labels, l)
@@ -108,8 +100,7 @@ func (m Model) Skills() bool { return m.mode == modeSkills }
 // nerdr draws as it does the messages.
 func (m Model) Plugins() bool { return m.mode == modePlugins }
 
-// PRView is which of F2's views the panel shows inside nerdr; on its own
-// the screen has only the first.
+// PRView is which of F2's views the panel shows.
 type PRView int
 
 const (
@@ -126,19 +117,19 @@ const (
 // AllPRs reports whether the panel is showing all your pull requests,
 // the second of F2's views, which nerdr draws below the menu as it does
 // the messages.
-func (m Model) AllPRs() bool { return m.embedded && m.mode == modePRs && m.prShown == ViewMyPRs }
+func (m Model) AllPRs() bool { return m.mode == modePRs && m.prShown == ViewMyPRs }
 
 // Issues reports whether the panel is showing the issues, the third of
 // F2's views, which nerdr draws below the menu as it does the messages.
-func (m Model) Issues() bool { return m.embedded && m.mode == modePRs && m.prShown == ViewIssues }
+func (m Model) Issues() bool { return m.mode == modePRs && m.prShown == ViewIssues }
 
 // BranchPR reports whether the panel is showing the worktree's pull
 // request inside nerdr, the first of F2's views.
-func (m Model) BranchPR() bool { return m.embedded && m.mode == modePRs && m.prShown == ViewBranch }
+func (m Model) BranchPR() bool { return m.mode == modePRs && m.prShown == ViewBranch }
 
 // SetPRView switches F2 to view v.
 func (m *Model) SetPRView(v PRView) tea.Cmd {
-	if !m.embedded || m.prShown == v {
+	if m.prShown == v {
 		return nil
 	}
 	m.prShown = v
@@ -190,9 +181,6 @@ func (m Model) Worktree() string { return m.curWT }
 
 // ShowPRView goes to F2's view v.
 func (m *Model) ShowPRView(v PRView) tea.Cmd {
-	if !m.embedded {
-		return nil
-	}
 	if m.mode == modePRs {
 		return m.SetPRView(v)
 	}
@@ -250,9 +238,6 @@ func (m *Model) SetScreen(s Screen) tea.Cmd {
 		m.leaveJumps()
 	}
 	m.mode, m.prShown = s.mode, s.view
-	if !m.embedded {
-		m.prShown = ViewBranch
-	}
 	switch {
 	case m.mode == modePRs && m.prShown == ViewBranch && time.Since(m.lastPRLoad) >= m.prRefresh():
 		return m.reloadPR()
@@ -343,7 +328,7 @@ type prFixMsg struct {
 // Inside nerdr F2 again goes on to its next view; going to it with news
 // not seen yet shows where the news is: all your PRs, or the issues.
 func (m *Model) setMode(mode uiMode) tea.Cmd {
-	if mode == modePRs && m.embedded {
+	if mode == modePRs {
 		if m.mode == modePRs {
 			return m.NextPRView(1)
 		}
@@ -391,9 +376,6 @@ func (m *Model) reloadPR() tea.Cmd {
 // it, in the pane's heading (see prView), and a blank line sets it apart.
 func (m Model) prContent() ([]relLine, []convEntry) {
 	rows, entries := m.prOwnContent()
-	if !m.embedded {
-		return rows, entries
-	}
 	top := []relLine{{text: ""}}
 	if len(m.branch) > 0 {
 		width := m.width
@@ -426,12 +408,8 @@ func (m Model) prOwnContent() ([]relLine, []convEntry) {
 		if msg == "" {
 			msg = "no pull request for this branch"
 		}
-		if m.embedded {
-			// nerdr's keys above, with the branches, push and open one.
-			return []relLine{{text: "(" + printableLine(msg) + ")"}}, nil
-		}
-		return []relLine{{text: "(" + printableLine(msg) + ")"}, {text: ""},
-			{text: dimStyle.Render("push and open one from nerdr's tab panel (prefix, then i)")}}, nil
+		// nerdr's keys above, with the branches, push and open one.
+		return []relLine{{text: "(" + printableLine(msg) + ")"}}, nil
 	}
 	width := m.width
 	if width == 0 {
@@ -555,9 +533,6 @@ func (m *Model) handlePRKey(key string) (tea.Cmd, bool) {
 		return m.startPRFix(), true
 	case "[", "]":
 		// Inside nerdr, a tab on several repositories has a PR for each.
-		if !m.embedded {
-			return nil, false
-		}
 		if key == "[" {
 			return m.cyclePin(-1), true
 		}
@@ -570,7 +545,7 @@ func (m *Model) handlePRKey(key string) (tea.Cmd, bool) {
 
 // manyRepos reports whether F2 has the tab's repositories listed above
 // the PR, to pick one from.
-func (m Model) manyRepos() bool { return m.embedded && len(m.pins) > 1 }
+func (m Model) manyRepos() bool { return len(m.pins) > 1 }
 
 // OnRepoList reports whether the cursor is on the list of repositories
 // above the PR in F2, which nerdr draws.
@@ -1036,21 +1011,10 @@ func prConversation(pr github.PR, width int, fetched bool) ([]relLine, []convEnt
 	return rows, entries
 }
 
-// prConversationLines is prConversation for callers that only render it.
-func prConversationLines(pr github.PR, width int, fetched bool) []relLine {
-	rows, _ := prConversation(pr, width, fetched)
-	return rows
-}
-
-// Both lists behind this screen go stale on their own: a repository can be
-// cloned into the tree, and a PR's review or CI status changes on GitHub
-// with nothing local to notice it. So both are re-read on a slow cadence,
-// well apart from the 1.5 s file poll — these cost a directory scan and a
-// round of `gh` calls respectively.
-const (
-	repoScanInterval  = 2 * time.Minute
-	prRefreshInterval = 2 * time.Minute
-)
+// A PR's review or CI status changes on GitHub with nothing local to
+// notice it, so it is read again on a slow cadence, well apart from the
+// 1.5 s file poll: it costs a round of `gh` calls.
+const prRefreshInterval = 2 * time.Minute
 
 // SetPRRefresh has the shown pull request read again every d.
 func (m Model) SetPRRefresh(d time.Duration) Model {
@@ -1070,10 +1034,6 @@ func (m Model) prRefresh() time.Duration {
 // tick. It returns a command when something has to be fetched.
 func (m *Model) autoRefresh() tea.Cmd {
 	now := time.Now()
-	if now.Sub(m.lastRepoScan) >= repoScanInterval {
-		m.lastRepoScan = now
-		m.rescanRepos()
-	}
 	// Only while the PR screen is the one being looked at: a round of gh
 	// calls every two minutes behind a code review nobody is reading them
 	// during is waste. Opening the screen refreshes a stale list anyway.
@@ -1081,29 +1041,4 @@ func (m *Model) autoRefresh() tea.Cmd {
 		return m.reloadPR()
 	}
 	return nil
-}
-
-// rescanRepos re-reads the repositories under cwd, keeping the selection on
-// the same repository rather than on the same index: a repo appearing or
-// disappearing earlier in the list would otherwise silently move it.
-func (m *Model) rescanRepos() {
-	if m.embedded {
-		return // pinned to the tab's worktrees
-	}
-	repos, err := m.src.DiscoverRepos(m.cwd)
-	if err != nil || len(repos) == 0 {
-		return
-	}
-	var selected string
-	if m.repoIdx >= 0 && m.repoIdx < len(m.repos) {
-		selected = m.repos[m.repoIdx].Path
-	}
-	m.repos = repos
-	for i, r := range repos {
-		if r.Path == selected {
-			m.repoIdx = i
-			return
-		}
-	}
-	m.repoIdx = clamp(m.repoIdx, 0, len(repos)-1)
 }
