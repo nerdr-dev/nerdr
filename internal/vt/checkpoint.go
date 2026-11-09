@@ -378,7 +378,9 @@ func (w *ckWriter) screen(s *Screen) {
 	if s.scrollback != nil {
 		w.uvarint(uint64(s.scrollback.maxLines))
 		w.uvarint(uint64(len(s.scrollback.lines)))
-		for _, l := range s.scrollback.lines {
+		var l uv.Line
+		for i := range s.scrollback.lines {
+			l = s.scrollback.lines[i].unpack(l)
 			w.line(l)
 		}
 	}
@@ -610,12 +612,12 @@ func (r *ckReader) screen(w, h int) Screen {
 		if n > len(r.b) {
 			r.fail("short scrollback")
 		}
-		s.scrollback.lines = make([]uv.Line, 0, min(n, 1000))
+		s.scrollback.lines = make([]packedLine, 0, min(n, 1000))
 		for range n {
 			if r.err != nil {
 				break
 			}
-			s.scrollback.lines = append(s.scrollback.lines, r.line(false))
+			s.scrollback.add(r.line(false))
 		}
 	}
 	return s
