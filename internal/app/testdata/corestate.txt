@@ -4,4 +4,4 @@ app.go: call *Core.Restore 1
 app.go: call *Core.SaveSession 1
 app.go: call *Loop.Start 1
 app.go: call *Loop.Stop 1
-app.go: write m.Core.Quitting 1
+app.go: write mc.Core.Quitting 1

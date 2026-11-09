@@ -102,7 +102,7 @@ func TestSplit(t *testing.T) {
 
 func TestSplitNeedsTwoTabs(t *testing.T) {
 	m := testModel(t)
-	m.Core.Tabs = m.Core.Tabs[:1]
+	m.home().Core.Tabs = m.home().Core.Tabs[:1]
 	m.runCommand("z v")
 	if m.splitShown() {
 		t.Fatal("split with one tab")
@@ -114,11 +114,11 @@ func TestSplitCloseAndRestore(t *testing.T) {
 	m.runCommand("z v") // login on the right, logout on the left
 	wantSides(t, m, "logout", "login", "logout")
 
-	s, err := state.Load(m.Core.Root)
+	s, err := state.Load(m.home().Core.Root)
 	if err != nil || s.Split != "1" || s.SplitLeft {
 		t.Fatalf("saved split %q left %v (%v)", s.Split, s.SplitLeft, err)
 	}
-	r := New(m.Core.Cfg, m.Core.Root, nil, s)
+	r := New(m.home().Core.Cfg, m.home().Core.Root, nil, s)
 	r.Update(tea.WindowSizeMsg{Width: 120, Height: 30})
 	wantSides(t, r, "logout", "login", "logout")
 
@@ -136,7 +136,7 @@ func TestSplitCloseAndRestore(t *testing.T) {
 func TestClosingAnotherTabKeepsYouWhereYouAre(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
 	m.selectTab(2)
-	m.closeTab(m.Core.Tabs[0], false, false, nil)
+	m.closeTab(m.home().Core.Tabs[0], false, false, nil)
 	if c := m.Cur(); c == nil || c.Name != "parse" || m.entered != c {
 		t.Fatalf("on %v after closing login from elsewhere", c)
 	}

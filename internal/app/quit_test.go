@@ -18,7 +18,7 @@ func TestQuitLeavesConversationsAlone(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.Core.NewAgent(tb, agents.Codex)
+	m.home().Core.NewAgent(tb, agents.Codex)
 	a := tb.ExtraAgents()[0]
 	a.SessionID, a.Resumed = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", true
 	old := a.Pane
@@ -39,7 +39,7 @@ func TestQuitLeavesConversationsAlone(t *testing.T) {
 	if ans, _ := askNerdr(m, a, hooks.Report{Method: hooks.Query, What: hooks.QueryAgents}); !strings.Contains(ans.Err, "quitting") {
 		t.Fatalf("a report while quitting: %+v", ans)
 	}
-	s, err := state.Load(m.Core.Root)
+	s, err := state.Load(m.home().Core.Root)
 	if err != nil || len(s.Tabs) == 0 || len(s.Tabs[0].Agents) != 1 || s.Tabs[0].Agents[0].SessionID != a.SessionID {
 		t.Fatalf("the conversation to resume was not kept: %v %+v", err, s.Tabs)
 	}

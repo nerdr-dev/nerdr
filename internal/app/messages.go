@@ -82,24 +82,24 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 		// Within the agent's own list: which agent it is for is e's.
 		if has && i > 0 && refs[i-1].A == r.A {
 			m.msgCursor--
-			return m.do(core.MoveMessage{M: m.Core.MsgRefOf(o, r), By: -1})
+			return m.do(core.MoveMessage{M: m.machineOf(o).Core.MsgRefOf(o, r), By: -1})
 		}
 	case "J", "shift+down":
 		if has && i+1 < len(refs) && refs[i+1].A == r.A {
 			m.msgCursor++
-			return m.do(core.MoveMessage{M: m.Core.MsgRefOf(o, r), By: 1})
+			return m.do(core.MoveMessage{M: m.machineOf(o).Core.MsgRefOf(o, r), By: 1})
 		}
 	case " ", "x":
 		switch {
 		case has && r.A == nil:
-			m.Core.InactiveToast(o.Inactive[r.I])
+			m.home().Core.InactiveToast(o.Inactive[r.I])
 		case has:
-			return m.do(core.ToggleAuto{M: m.Core.MsgRefOf(o, r)})
+			return m.do(core.ToggleAuto{M: m.machineOf(o).Core.MsgRefOf(o, r)})
 		}
 	case "enter":
 		switch {
 		case has && r.A == nil:
-			m.Core.InactiveToast(o.Inactive[r.I])
+			m.home().Core.InactiveToast(o.Inactive[r.I])
 		case has:
 			return m.putIn(r.A, r.I)
 		case len(refs) > 0:
@@ -116,7 +116,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 	case "d", "delete", "backspace":
 		if has {
 			m.msgCursor = min(i, len(refs)-2)
-			return m.do(core.DropMessage{M: m.Core.MsgRefOf(o, r)})
+			return m.do(core.DropMessage{M: m.machineOf(o).Core.MsgRefOf(o, r)})
 		}
 	}
 	return nil
@@ -125,7 +125,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 // putIn types message i into t's agent, as a paste and without enter, and
 // gives the agent the keyboard: to change it, or send it as it is.
 func (m *Model) putIn(t *core.Tab, i int) tea.Cmd {
-	return m.do(core.PutIn{M: core.MsgRef{A: m.Core.Ref(t), Msg: t.Messages[i], I: i}})
+	return m.do(core.PutIn{M: core.MsgRef{A: m.fleet.Ref(t), Msg: t.Messages[i], I: i}})
 }
 
 // editMessage opens task r of tab o to be changed, and given to another
@@ -192,7 +192,7 @@ func (m *Model) messagesBody(o *core.Tab, w, h int) []string {
 			if r.A == nil {
 				lines = append(lines, " "+warn("inactive")+dim(" · their agent's pane was closed · e gives one to another"))
 			} else {
-				lines = append(lines, " "+light(r.A.Light)+" "+lipgloss.NewStyle().Bold(true).Render(m.Core.AgentLabel(o, r.A)))
+				lines = append(lines, " "+light(r.A.Light)+" "+lipgloss.NewStyle().Bold(true).Render(m.machineOf(o).Core.AgentLabel(o, r.A)))
 			}
 		}
 		rows := wrapRows(msg.Text, textW, core.MessageRows)

@@ -55,12 +55,12 @@ func (m *Model) wideW() int {
 		return min(max(m.sideWidth, sideMin), m.width/2) + 1
 	}
 	w := 0
-	for _, g := range m.Core.Groups() {
+	for _, g := range m.fleet.Groups() {
 		// light, name, (n)
-		w = max(w, lipgloss.Width(g)+len(strconv.Itoa(len(m.Core.GroupTabs(g))))+6)
-		for n, i := range m.Core.GroupTabs(g) {
+		w = max(w, lipgloss.Width(g)+len(strconv.Itoa(len(m.fleet.GroupTabs(g))))+6)
+		for n, i := range m.fleet.GroupTabs(g) {
 			// light, n:name, a mark or two, and its details
-			w = max(w, lipgloss.Width(m.Core.Tabs[i].Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(m.Core.Tabs[i], i == m.Active)))
+			w = max(w, lipgloss.Width(m.fleet.Tabs()[i].Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(m.fleet.Tabs()[i], i == m.Active)))
 		}
 	}
 	return min(max(w+2, sideMin), max(sideMax, m.width/5), m.width/3) + 1
@@ -76,7 +76,7 @@ func (m *Model) sideRepoH(h int, small bool) int {
 	if h < 10 {
 		return 0
 	}
-	rows := len(m.Core.Groups())
+	rows := len(m.fleet.Groups())
 	if m.mouseOn() {
 		rows++ // + new repo
 	}
@@ -173,27 +173,27 @@ func (m *Model) repoList(w, h int, small bool) []string {
 		lines = append(lines, "  "+m.sideToggle(true))
 	}
 	at := 0
-	for _, g := range m.Core.Groups() {
-		n := len(m.Core.GroupTabs(g))
+	for _, g := range m.fleet.Groups() {
+		n := len(m.fleet.GroupTabs(g))
 		if g == cur {
 			at = len(lines)
 		}
 		tip := core.Plural(n, "tab")
 		var s string
 		if small {
-			s = m.railEntry(g == cur, walking, m.Core.GroupStatus(g), "the tab here that most wants a look · "+g, nil)
+			s = m.railEntry(g == cur, walking, m.fleet.GroupStatus(g), "the tab here that most wants a look · "+g, nil)
 		} else {
 			// (7 2 3): the tabs, and how many of them ask and work, each count
 			// in the colour of their light
 			moreSt := lipgloss.NewStyle().Background(entryBg(g == cur, walking)).Foreground(lipgloss.Color("244"))
 			count := moreSt.Render(" (" + strconv.Itoa(n))
 			for _, st := range []core.Status{core.StBlocked, core.StWorking} {
-				if k := m.Core.GroupCount(g, st); k > 0 {
+				if k := m.fleet.GroupCount(g, st); k > 0 {
 					count += moreSt.Render(" ") + moreSt.Foreground(lightColours[st]).Render(strconv.Itoa(k))
 					tip += ", " + strconv.Itoa(k) + " " + st.Label()
 				}
 			}
-			s = m.sideEntry(w-2, g == cur, walking, m.Core.GroupStatus(g), "the tab here that most wants a look",
+			s = m.sideEntry(w-2, g == cur, walking, m.fleet.GroupStatus(g), "the tab here that most wants a look",
 				g, "", count+moreSt.Render(")"))
 		}
 		s = m.tip(s, g+": "+tip+" · click: go there · right-click: more")
@@ -232,8 +232,8 @@ func (m *Model) tabList(w, h int, small bool) []string {
 	now := time.Now()
 	var lines []string
 	at := 0
-	for n, i := range m.Core.GroupTabs(g) {
-		t := m.Core.Tabs[i]
+	for n, i := range m.fleet.GroupTabs(g) {
+		t := m.fleet.Tabs()[i]
 		active := i == m.Active
 		if active {
 			at = len(lines)
@@ -242,7 +242,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 		if active {
 			more = " " + string(t.Agent)
 		}
-		if m.Core.Cold(t, now) {
+		if m.machineOf(t).Core.Cold(t, now) {
 			more += " ❄"
 		}
 		if t == m.splitTab() {

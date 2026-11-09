@@ -19,7 +19,7 @@ func (m *Model) splitTab() *core.Tab {
 	if m.split == nil || m.split == m.Cur() || m.split.GroupName() != m.curGroup() {
 		return nil
 	}
-	if m.Core.TabIndex(m.split) < 0 {
+	if m.fleet.TabIndex(m.split) < 0 {
 		return nil
 	}
 	return m.split
@@ -92,9 +92,9 @@ func (m *Model) splitWith(left, right *core.Tab) tea.Cmd {
 	m.split, m.splitLeft = right, false
 	m.reviewOpen, m.reviewZoom = false, false
 	m.setFocus(core.FocusAgent)
-	cmd := m.selectTab(m.Core.TabIndex(left))
+	cmd := m.selectTab(m.fleet.TabIndex(left))
 	m.saveLayout()
-	return tea.Batch(cmd, m.do(core.WakeTab{T: m.Core.Ref(right)}), m.resize())
+	return tea.Batch(cmd, m.do(core.WakeTab{T: m.fleet.Ref(right)}), m.resize())
 }
 
 // swapSides moves the two tabs of the split to each other's side.
@@ -113,16 +113,16 @@ func (m *Model) neighbour(t *core.Tab) *core.Tab {
 	if t == nil {
 		return nil
 	}
-	idx := m.Core.GroupTabs(t.GroupName())
+	idx := m.fleet.GroupTabs(t.GroupName())
 	for pos, i := range idx {
-		if m.Core.Tabs[i] != t {
+		if m.fleet.Tabs()[i] != t {
 			continue
 		}
 		if pos > 0 {
-			return m.Core.Tabs[idx[pos-1]]
+			return m.fleet.Tabs()[idx[pos-1]]
 		}
 		if pos+1 < len(idx) {
-			return m.Core.Tabs[idx[pos+1]]
+			return m.fleet.Tabs()[idx[pos+1]]
 		}
 	}
 	return nil

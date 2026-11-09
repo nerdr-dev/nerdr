@@ -45,7 +45,7 @@ func (rd *reviewDoneDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "1", "s", "enter":
 		m.dialog = nil
 		if rd.asks() {
-			return m.do(core.SendFindings{A: m.Core.Ref(rd.t), Msg: rd.d.Msg})
+			return m.do(core.SendFindings{A: m.fleet.Ref(rd.t), Msg: rd.d.Msg})
 		}
 	case "2", "esc", "q", "ctrl+c":
 		m.dialog = nil

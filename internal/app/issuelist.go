@@ -47,10 +47,10 @@ func (d *issueList) setScope(m *Model) {
 		return
 	}
 	d.here = false
-	if m.Core.Scan.Err != "" {
-		d.errs = []string{m.Core.Scan.Err}
+	if m.home().Core.Scan.Err != "" {
+		d.errs = []string{m.home().Core.Scan.Err}
 	}
-	d.scope = m.Core.Scan.Repos
+	d.scope = m.home().Core.Scan.Repos
 }
 
 // fill shows what is known of the issues in scope, keeping the cursor on
@@ -61,7 +61,7 @@ func (d *issueList) fill(m *Model) {
 		e := d.entries[d.cursor]
 		cur = core.IssueKey(e.Repo.Path, e.Issue.Number)
 	}
-	w := m.Core.IssueWatch
+	w := m.home().Core.IssueWatch
 	in := map[string]bool{}
 	for _, r := range d.scope {
 		in[filepath.Clean(r.Path)] = true
@@ -138,7 +138,7 @@ func (m *Model) goToIssue(e core.IssueEntry) tea.Cmd {
 	if t := m.tabOnIssue(e.Repo.Path, e.Issue.Number); t != nil {
 		m.dialog = nil
 		m.setFocus(core.FocusAgent)
-		return tea.Batch(m.selectTab(m.Core.TabIndex(t)), m.resize())
+		return tea.Batch(m.selectTab(m.fleet.TabIndex(t)), m.resize())
 	}
 	cmd := m.openWizardFor(e.Repo.Path)
 	w, ok := m.dialog.(*wizard)
@@ -160,7 +160,7 @@ func (m *Model) goToIssue(e core.IssueEntry) tea.Cmd {
 // number, as BranchName names them ("123-…"), or nil.
 func (m *Model) tabOnIssue(repo string, number int) *core.Tab {
 	n := strconv.Itoa(number)
-	for _, t := range m.Core.Tabs {
+	for _, t := range m.fleet.Tabs() {
 		for _, w := range t.Worktrees {
 			if filepath.Clean(w.Repo) == filepath.Clean(repo) && (w.Branch == n || strings.HasPrefix(w.Branch, n+"-")) {
 				return t

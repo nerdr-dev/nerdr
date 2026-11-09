@@ -44,7 +44,7 @@ type repoDialog struct {
 // openRepos opens the dialog for the active tab's repositories.
 func (m *Model) openRepos() tea.Cmd {
 	t := m.Cur()
-	if why := m.Core.ReposOff(t); why != "" {
+	if why := m.machineOf(t).Core.ReposOff(t); why != "" {
 		m.toast(why)
 		return nil
 	}
@@ -60,9 +60,9 @@ func (m *Model) openRepos() tea.Cmd {
 // scan has the repositories to pick from as core last found them (see
 // core.RepoScan), and the tab's own.
 func (d *repoDialog) scan(m *Model) {
-	repos := slices.Clone(m.Core.Scan.Repos)
-	if m.Core.Scan.Err != "" && d.err == "" {
-		d.err = m.Core.Scan.Err
+	repos := slices.Clone(m.home().Core.Scan.Repos)
+	if m.home().Core.Scan.Err != "" && d.err == "" {
+		d.err = m.home().Core.Scan.Err
 	}
 	have := map[string]bool{}
 	for _, r := range repos {
@@ -148,11 +148,11 @@ func (d *repoDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // added and what the ones let go of hold that is not saved.
 func (d *repoDialog) check(m *Model) tea.Cmd {
 	t := d.t
-	if m.Core.TabIndex(t) < 0 {
+	if m.fleet.TabIndex(t) < 0 {
 		m.dialog = nil
 		return nil
 	}
-	if why := m.Core.ReposOff(t); why != "" {
+	if why := m.machineOf(t).Core.ReposOff(t); why != "" {
 		d.err = why
 		return nil
 	}
@@ -177,7 +177,7 @@ func (d *repoDialog) check(m *Model) tea.Cmd {
 		return nil
 	}
 	d.busy, d.err, d.job = "checking…", "", core.NewJobID()
-	return m.do(core.CheckRepoChange{Job: d.job, T: m.Core.Ref(t), Add: add, Remove: remove})
+	return m.do(core.CheckRepoChange{Job: d.job, T: m.fleet.Ref(t), Add: add, Remove: remove})
 }
 
 // onRepoChecked takes what git said, and asks whether to go ahead.
@@ -198,10 +198,10 @@ func (m *Model) onRepoChecked(msg core.RepoCheckedMsg) {
 // repositories' setup. The dialog closes: the tab says how it went.
 func (d *repoDialog) apply(m *Model) tea.Cmd {
 	m.dialog = nil
-	if m.Core.TabIndex(d.t) < 0 {
+	if m.fleet.TabIndex(d.t) < 0 {
 		return nil
 	}
-	return m.do(core.ChangeRepos{T: m.Core.Ref(d.t), C: *d.change})
+	return m.do(core.ChangeRepos{T: m.fleet.Ref(d.t), C: *d.change})
 }
 
 // reposDone is t's repositories changed by core: what shows them is

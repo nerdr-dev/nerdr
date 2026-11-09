@@ -7,14 +7,15 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 func notifyModel(notify string, tabs ...*core.Tab) *Model {
-	m := &Model{Core: core.Core{Tabs: tabs}}
-	m.Core.Client = m
-	m.Core.Cfg.Notify = notify
-	m.Core.Cfg.Prefix = "ctrl+q"
+	m := &Model{fleet: fleet.New(&fleet.Machine{Core: core.Core{Tabs: tabs}})}
+	m.home().Core.Client = m
+	m.home().Core.Cfg.Notify = notify
+	m.home().Core.Cfg.Prefix = "ctrl+q"
 	return m
 }
 

@@ -49,12 +49,12 @@ func (m *Model) askReviewDone() {
 	var drop []core.TabRef
 	for _, a := range append([]*core.Tab{cur}, cur.ExtraAgents()...) {
 		if a.ReviewDone != nil && a.ReviewDoneStale() {
-			drop = append(drop, m.Core.Ref(a))
+			drop = append(drop, m.fleet.Ref(a))
 		}
 	}
 	t, d := cur.ReviewToTell()
 	if t != nil {
-		drop = append(drop, m.Core.Ref(t))
+		drop = append(drop, m.fleet.Ref(t))
 		m.dialog = &reviewDoneDialog{t: t, d: d}
 	}
 	if len(drop) > 0 {
@@ -65,7 +65,7 @@ func (m *Model) askReviewDone() {
 // notifyReview tells of a review's conclusion as a finished turn is told
 // of.
 func (m *Model) notifyReview(t *core.Tab, brief string) {
-	if !m.Core.Cfg.NotifyOn("done") || (!m.blurred && t == m.Cur()) {
+	if !m.cfg().NotifyOn("done") || (!m.blurred && t == m.Cur()) {
 		return
 	}
 	if !m.blurred {

@@ -19,8 +19,8 @@ import (
 func TestSkillsAlternativesWithoutInstallation(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	m := testModel(t)
-	m.Core.Cfg.Install = config.InstallOff
-	m.Core.Cfg.EnabledSkills = []string{}
+	m.home().Core.Cfg.Install = config.InstallOff
+	m.home().Core.Cfg.EnabledSkills = []string{}
 	for i, sk := range skills.All() {
 		t.Run(sk.Name, func(t *testing.T) {
 			m.skills.cursor, m.skills.scroll = i, 0
@@ -105,9 +105,9 @@ func TestSkillsOtherListAndScope(t *testing.T) {
 	if !strings.Contains(body, "~/.claude/skills/Zebra/SKILL.md") || !strings.Contains(body, "Stripes and more") || !strings.Contains(body, "The body.") {
 		t.Fatalf("the skill picked:\n%s", body)
 	}
-	before := m.Core.Cfg.EnabledSkills
+	before := m.home().Core.Cfg.EnabledSkills
 	m.skillsKey(keyMsg(" "))
-	if len(m.Core.Cfg.EnabledSkills) != len(before) {
+	if len(m.home().Core.Cfg.EnabledSkills) != len(before) {
 		t.Fatal("space changed nerdr's skills from the other list")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "SKILL.md")); err != nil {
@@ -149,9 +149,9 @@ func TestSkillsContextList(t *testing.T) {
 	if strings.Contains(body, "hunter2") {
 		t.Fatalf("an MCP server's settings shown:\n%s", body)
 	}
-	before := len(m.Core.Cfg.EnabledSkills)
+	before := len(m.home().Core.Cfg.EnabledSkills)
 	m.skillsKey(keyMsg(" "))
-	if len(m.Core.Cfg.EnabledSkills) != before {
+	if len(m.home().Core.Cfg.EnabledSkills) != before {
 		t.Fatal("space changed skills from the context list")
 	}
 }

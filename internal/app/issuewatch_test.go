@@ -33,20 +33,20 @@ func issueLook(others []string, entries ...core.IssueEntry) core.IssueWatchMsg {
 func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.Core.Cfg.IssueNotify = &yes
+	m.home().Core.Cfg.IssueNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	old := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "Old", Repo: "me/app"}}
 	fresh := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "Login fails", Repo: "me/app"}}
 
-	m.Core.OnIssueWatch(issueLook([]string{"me/far#1"}, old))
-	if len(m.Core.IssueWatch.News) != 0 || m.issueBadge() != "" {
-		t.Fatalf("the first look should only learn: %+v", m.Core.IssueWatch.News)
+	m.home().Core.OnIssueWatch(issueLook([]string{"me/far#1"}, old))
+	if len(m.home().Core.IssueWatch.News) != 0 || m.issueBadge() != "" {
+		t.Fatalf("the first look should only learn: %+v", m.home().Core.IssueWatch.News)
 	}
 
-	m.Core.OnIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
-	m.Core.OnIssueWatch(issueLook([]string{"me/far#1", "me/far#2"}, old, fresh))
-	if len(m.Core.IssueWatch.News) != 1 || m.Core.IssueWatch.News[0].Number != 9 {
-		t.Fatalf("news = %+v", m.Core.IssueWatch.News)
+	m.home().Core.OnIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
+	m.home().Core.OnIssueWatch(issueLook([]string{"me/far#1", "me/far#2"}, old, fresh))
+	if len(m.home().Core.IssueWatch.News) != 1 || m.home().Core.IssueWatch.News[0].Number != 9 {
+		t.Fatalf("news = %+v", m.home().Core.IssueWatch.News)
 	}
 	if !strings.Contains(m.toastText, "app #9 assigned to you: Login fails") {
 		t.Fatalf("toast = %q", m.toastText)
@@ -56,8 +56,8 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	}
 
 	m2 := tabsModel(t)
-	m2.Core.LoadIssueWatch(m.Core.SavedIssueWatch())
-	if m2.issueBadge() == "" || !m2.Core.IssueWatch.Known["me/far#2"] {
+	m2.home().Core.LoadIssueWatch(m.home().Core.SavedIssueWatch())
+	if m2.issueBadge() == "" || !m2.home().Core.IssueWatch.Known["me/far#2"] {
 		t.Fatal("the session should keep the news and what is known")
 	}
 
@@ -74,22 +74,22 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 func TestIssueWatchDropsStaleNews(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.Core.Cfg.IssueNotify = &yes
+	m.home().Core.Cfg.IssueNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	a := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "A", Repo: "me/app"}}
 	b := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "B", Repo: "me/app"}}
 
-	m.Core.OnIssueWatch(issueLook(nil))
-	m.Core.OnIssueWatch(issueLook(nil, a, b))
-	m.Core.OnIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
-	if len(m.Core.IssueWatch.News) != 2 {
-		t.Fatalf("news = %+v", m.Core.IssueWatch.News)
+	m.home().Core.OnIssueWatch(issueLook(nil))
+	m.home().Core.OnIssueWatch(issueLook(nil, a, b))
+	m.home().Core.OnIssueWatch(core.IssueWatchMsg{Err: "could not connect"})
+	if len(m.home().Core.IssueWatch.News) != 2 {
+		t.Fatalf("news = %+v", m.home().Core.IssueWatch.News)
 	}
-	m.Core.OnIssueWatch(issueLook(nil, b))
-	if len(m.Core.IssueWatch.News) != 1 || m.Core.IssueWatch.News[0].Number != 9 {
-		t.Fatalf("an issue no longer assigned should take its news away: %+v", m.Core.IssueWatch.News)
+	m.home().Core.OnIssueWatch(issueLook(nil, b))
+	if len(m.home().Core.IssueWatch.News) != 1 || m.home().Core.IssueWatch.News[0].Number != 9 {
+		t.Fatalf("an issue no longer assigned should take its news away: %+v", m.home().Core.IssueWatch.News)
 	}
-	m.Core.OnIssueWatch(issueLook(nil))
+	m.home().Core.OnIssueWatch(issueLook(nil))
 	if m.issueBadge() != "" {
 		t.Fatalf("badge = %q", m.issueBadge())
 	}
@@ -100,8 +100,8 @@ func TestIssueWatchDropsStaleNews(t *testing.T) {
 func TestIssueWatchOff(t *testing.T) {
 	m := tabsModel(t)
 	no := false
-	m.Core.Cfg.IssueNotify = &no
-	if m.Core.TickIssues(time.Now()) != nil {
+	m.home().Core.Cfg.IssueNotify = &no
+	if m.home().Core.TickIssues(time.Now()) != nil {
 		t.Fatal("issues should not be asked for when not watched or shown")
 	}
 }
@@ -113,8 +113,8 @@ func TestIssueListFilters(t *testing.T) {
 		Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/a", Branch: "x"}}})
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
-	m.Core.IssueWatch.Mine = []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: lib, Issue: github.Issue{Number: 2}}}
-	m.Core.IssueWatch.All = map[string]core.RepoIssues{
+	m.home().Core.IssueWatch.Mine = []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: lib, Issue: github.Issue{Number: 2}}}
+	m.home().Core.IssueWatch.All = map[string]core.RepoIssues{
 		"/r/app": {Entries: []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: app, Issue: github.Issue{Number: 5}}}, At: time.Now()},
 	}
 	d := &issueList{scope: []workspace.Repo{app, lib}}
@@ -149,7 +149,7 @@ func TestPickingAnIssue(t *testing.T) {
 		t.Fatal("issue 1 is not issue 12")
 	}
 
-	here := filepath.Join(m.Core.Root, "app")
+	here := filepath.Join(m.home().Core.Root, "app")
 	if out, err := exec.Command("git", "init", "-q", here).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}

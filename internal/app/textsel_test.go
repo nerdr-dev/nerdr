@@ -55,7 +55,7 @@ func TestSelectTextInTheSentDialog(t *testing.T) {
 	toClipboard = func(s string) bool { copied = s; return true }
 	defer func() { toClipboard = was }()
 	tb := m.Cur()
-	m.Core.SetLast(tb, "codex failed to start:\nerror: unknown flag --sandbox-mode")
+	m.home().Core.SetLast(tb, "codex failed to start:\nerror: unknown flag --sandbox-mode")
 	m.openSentOf(tb)
 
 	x, y := screenAt(t, m, "error: unknown")
@@ -87,7 +87,7 @@ func TestSelectTextInTheSentDialog(t *testing.T) {
 
 	// A tab is drawn as spaces; what is under the pointer is copied.
 	m.dialog = nil
-	m.Core.SetLast(tb, "prefix\talpha beta")
+	m.home().Core.SetLast(tb, "prefix\talpha beta")
 	m.openSentOf(tb)
 	x, y = screenAt(t, m, "alpha beta")
 	m.Update(tea.MouseMsg{X: x, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})

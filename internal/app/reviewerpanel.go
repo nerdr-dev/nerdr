@@ -40,7 +40,7 @@ func (m *Model) newReviewPane() tea.Cmd {
 	}
 	of := m.focused(t).Agent()
 	m.reviewerCursor = 0
-	cmds := []tea.Cmd{m.do(core.OpenReviewPane{T: m.Core.Ref(t), Of: m.Core.Ref(of)})}
+	cmds := []tea.Cmd{m.do(core.OpenReviewPane{T: m.fleet.Ref(t), Of: m.fleet.Ref(of)})}
 	for _, k := range m.reviewKinds(of) {
 		cmds = append(cmds, m.do(core.AskModels{Kind: k}))
 	}
@@ -50,7 +50,7 @@ func (m *Model) newReviewPane() tea.Cmd {
 // startReviewWith starts by reviewing of's work, or adds it to the
 // review going on.
 func (m *Model) startReviewWith(of *core.Tab, by core.Reviewer) tea.Cmd {
-	return m.do(core.StartReview{Of: m.Core.Ref(of), By: by})
+	return m.do(core.StartReview{Of: m.fleet.Ref(of), By: by})
 }
 
 // reviewPickKey handles a key in review pane p while it lists the agents
@@ -63,7 +63,7 @@ func (m *Model) reviewPickKey(t *core.Tab, p *core.PaneTab, msg tea.KeyMsg) tea.
 	}
 	switch k {
 	case "esc", "q":
-		return tea.Batch(m.do(core.DropPane{P: m.Core.PaneRef(p)}), m.resize())
+		return tea.Batch(m.do(core.DropPane{P: m.fleet.PaneRef(p)}), m.resize())
 	case "-", "left":
 		return m.setRounds(of, -1)
 	case "+", "=", "right":
@@ -112,13 +112,13 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 	switch {
 	case of.Review != nil:
 		lines = append(lines, " "+ansi.Truncate(m.reviewLine(of), w-2, "…"), "",
-			" Review "+m.Core.AgentLabel(t, of)+"'s work beside "+m.Core.ReviewerNames(of)+" with:", "")
+			" Review "+m.machineOf(t).Core.AgentLabel(t, of)+"'s work beside "+m.machineOf(of).Core.ReviewerNames(of)+" with:", "")
 	default:
-		lines = append(lines, " Review "+m.Core.AgentLabel(t, of)+"'s work in this worktree with:", "")
+		lines = append(lines, " Review "+m.machineOf(t).Core.AgentLabel(t, of)+"'s work in this worktree with:", "")
 	}
 	kinds := m.reviewKinds(of)
 	if len(kinds) == 0 {
-		if of.InSandbox || m.Core.SandboxedKind(of.Agent) {
+		if of.InSandbox || m.machineOf(of).Core.SandboxedKind(of.Agent) {
 			lines = append(lines, dim("   (no sandboxed reviewer is available to add)"))
 		} else {
 			lines = append(lines, dim("   (every agent installed is reviewing already)"))
@@ -129,7 +129,7 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	for i, k := range kinds {
 		var notes []string
-		if i == 0 && k == m.Core.ReviewKind(of) {
+		if i == 0 && k == m.machineOf(of).Core.ReviewKind(of) {
 			notes = append(notes, "the config's choice")
 		}
 		if k == of.Agent {
@@ -150,14 +150,14 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 			return tea.Batch(m.goToPane(t, p), m.startReviewWith(of, core.Reviewer{Kind: k}))
 		})
 		if agents.TakesModel(k) {
-			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.Core.ReviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
+			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.home().Core.ReviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
 				m.reviewerCursor = i
 				return tea.Batch(m.goToPane(t, p), m.openModelPick(k))
 			})
 		}
 		lines = append(lines, row)
 	}
-	rounds := max(m.Core.Cfg.Review.Rounds, 1)
+	rounds := max(m.home().Core.Cfg.Review.Rounds, 1)
 	if of.Review != nil {
 		rounds = of.Review.Rounds
 	}
@@ -167,9 +167,9 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 			m.onClick(buttonStyle.Render(" + "), func(m *Model) tea.Cmd { return m.setRounds(of, 1) })+
 			dim("  how many times the reviewer looks, with fixes between, before you decide"))
 	switch {
-	case m.Core.Cfg.Review.Auto && m.Core.WaitsForReady(of):
+	case m.home().Core.Cfg.Review.Auto && m.machineOf(of).Core.WaitsForReady(of):
 		lines = append(lines, dim(" Auto: on · a review starts by itself when the agent says its work is ready for one"))
-	case m.Core.Cfg.Review.Auto:
+	case m.home().Core.Cfg.Review.Auto:
 		lines = append(lines, dim(" Auto: on · a review starts by itself when the agent ends a turn that changed files"))
 	default:
 		lines = append(lines, dim(" Auto: off · a review starts only when you start one here (auto in [review] in the config)"))
@@ -190,7 +190,7 @@ func (m *Model) reviewerButtons(t *core.Tab, p *core.PaneTab) string {
 	if len(run.Seats) == 1 {
 		label = " stop the review "
 	}
-	s := m.onClick(buttonStyle.Render(label), func(m *Model) tea.Cmd { return m.do(core.ClosePane{P: m.Core.PaneRef(p)}) })
+	s := m.onClick(buttonStyle.Render(label), func(m *Model) tea.Cmd { return m.do(core.ClosePane{P: m.fleet.PaneRef(p)}) })
 	if run.Phase == core.Reviewing {
 		s += " " + m.onClick(buttonStyle.Render(" + reviewer "), func(m *Model) tea.Cmd {
 			cmd := m.goToPane(t, p)
@@ -220,7 +220,7 @@ func (m *Model) stopReview() tea.Cmd {
 	if a == nil || a.Review == nil {
 		return nil
 	}
-	return m.do(core.StopReview{A: m.Core.Ref(a)})
+	return m.do(core.StopReview{A: m.fleet.Ref(a)})
 }
 
 // reviewKinds are the agents t's work can be reviewed by: the one the
@@ -228,8 +228,8 @@ func (m *Model) stopReview() tea.Cmd {
 // those reviewing are left out.
 func (m *Model) reviewKinds(t *core.Tab) []agents.Kind {
 	var kinds []agents.Kind
-	for _, k := range append([]agents.Kind{m.Core.ReviewKind(t)}, m.Core.Available()...) {
-		if (t.InSandbox || m.Core.SandboxedKind(t.Agent)) && !m.Core.SandboxedKind(k) {
+	for _, k := range append([]agents.Kind{m.machineOf(t).Core.ReviewKind(t)}, m.machineOf(t).Core.Available()...) {
+		if (t.InSandbox || m.machineOf(t).Core.SandboxedKind(t.Agent)) && !m.machineOf(t).Core.SandboxedKind(k) {
 			continue
 		}
 		if !slices.Contains(kinds, k) && !t.ReviewedBy(k) {
@@ -247,16 +247,16 @@ const maxRounds = 9
 // it holds for the reviews to come, and for t's review when one goes on:
 // never below the round it is in.
 func (m *Model) setRounds(t *core.Tab, d int) tea.Cmd {
-	n := min(max(max(m.Core.Cfg.Review.Rounds, 1)+d, 1), maxRounds)
+	n := min(max(max(m.home().Core.Cfg.Review.Rounds, 1)+d, 1), maxRounds)
 	var cmd tea.Cmd
 	if t != nil && t.Review != nil {
 		n = min(max(t.Review.Rounds+d, t.Review.Round, 1), maxRounds)
-		cmd = m.do(core.SetRounds{A: m.Core.Ref(t), N: n})
+		cmd = m.do(core.SetRounds{A: m.fleet.Ref(t), N: n})
 	}
-	if n == m.Core.Cfg.Review.Rounds {
+	if n == m.home().Core.Cfg.Review.Rounds {
 		return cmd
 	}
-	m.Core.Cfg.Review.Rounds = n
+	m.home().Core.Cfg.Review.Rounds = n
 	return tea.Batch(cmd, m.editCoreConfig("rounds", core.EditConfig{
 		Keys: []config.Edit{{Table: "review", Key: "rounds", Value: strconv.Itoa(n)}}}))
 }

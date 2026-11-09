@@ -39,7 +39,9 @@ func (m *Model) panelRailW() int {
 
 // panelLabels reports whether the menu's column names its screens beside
 // their F-keys.
-func (m *Model) panelLabels() bool { return m.Core.Cfg.PanelLabels == nil || *m.Core.Cfg.PanelLabels }
+func (m *Model) panelLabels() bool {
+	return m.cfg().PanelLabels == nil || *m.cfg().PanelLabels
+}
 
 // railShown reports whether the menu's column is on screen: whenever the
 // window has room for it beside the agent, and the panel has no menu row
@@ -184,7 +186,7 @@ func (m *Model) fitPanel() {
 	}
 	rw, _ := m.reviewArea()
 	w := max(m.mainW()-rw-1, 12)
-	fits := n <= max((w+1)/(m.Core.PaneMinW()+1), 1)
+	fits := n <= max((w+1)/(m.home().Core.PaneMinW()+1), 1)
 	switch {
 	case fits:
 		m.panelKept = false

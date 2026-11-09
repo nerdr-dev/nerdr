@@ -23,5 +23,5 @@ import (
 // startSpacing apart, the tab shown first; those of tabs gone cold sleep
 // until visited.
 func (m *Model) restoreStarts() []tea.Cmd {
-	return []tea.Cmd{m.do(core.StartRestored{Front: m.Core.Ref(m.Cur()), Beside: m.Core.Ref(m.splitTab())})}
+	return []tea.Cmd{m.do(core.StartRestored{Front: m.fleet.Ref(m.Cur()), Beside: m.fleet.Ref(m.splitTab())})}
 }

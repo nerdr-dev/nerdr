@@ -4,16 +4,21 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 )
 
 // do has core do r: what the user did that changes core's state rather
-// than only what the TUI shows. With core in this process it is done there
-// and then, Mu held as in Update; see core.Request.
-func (m *Model) do(r core.Request) tea.Cmd {
-	if m.remote != nil {
-		return m.doRemote(r)
+// than only what the TUI shows. It goes to the machine of the tab r names
+// (fleet.For). With core in this process it is done there and then, Mu
+// held as in Update; see core.Request.
+func (m *Model) do(r core.Request) tea.Cmd { return m.doOn(m.fleet.For(r), r) }
+
+// doOn has the core of mc do r, as do.
+func (m *Model) doOn(mc *fleet.Machine, r core.Request) tea.Cmd {
+	if mc.Conn != nil {
+		return m.doRemote(mc, r)
 	}
-	return fromCore(r.Do(&m.Core))
+	return fromCore(r.Do(&mc.Core))
 }
 
 // saveLayout has core save the session, with how the TUI lays out the

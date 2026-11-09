@@ -368,13 +368,15 @@ func run() error {
 
 	router := input.New(os.Stdin, prefix)
 	model := app.New(cfg, root, router, sess)
+	// Core runs in this process, the fleet's one machine.
+	local := model.Fleet().Home()
 	if hookSrv != nil {
-		model.Core.SetHookSocket(hookSrv.Path())
+		local.Core.SetHookSocket(hookSrv.Path())
 	} else {
-		model.Core.SetHookSocketError(sockErr)
+		local.Core.SetHookSocketError(sockErr)
 	}
 	if taken != nil && hookSrv != nil {
-		model.Core.SetSocketShared(taken)
+		local.Core.SetSocketShared(taken)
 	}
 	if loadErr != nil {
 		model.Notice("could not read the saved session, started fresh: " + loadErr.Error() +
@@ -391,8 +393,9 @@ func run() error {
 	}
 	p := tea.NewProgram(model, opts...)
 	router.SetSend(func(m any) { p.Send(m) })
-	model.Loop = core.NewLoop(&model.Core, func(ev core.Event) { p.Send(ev) })
-	model.Core.FindAgents()
+	tell := local.Tell(func(m any) { p.Send(m) })
+	model.Loop = core.NewLoop(&local.Core, func(ev core.Event) { tell(ev) })
+	local.Core.FindAgents()
 	sendMu.Lock()
 	send = func(m any) { model.Loop.Post(m) }
 	sendMu.Unlock()

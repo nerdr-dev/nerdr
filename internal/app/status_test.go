@@ -11,7 +11,7 @@ import (
 // statusFrom sends `nerdr status` from agent a, and returns nerdr's answer.
 func statusFrom(m *Model, a *core.Tab, text string, clear bool) hooks.Answer {
 	reply := make(chan hooks.Answer, 1)
-	m.Core.OnStatus(hooks.Report{Method: hooks.Status, Pane: a.HookKey(), Text: text, Clear: clear, Reply: reply})
+	m.home().Core.OnStatus(hooks.Report{Method: hooks.Status, Pane: a.HookKey(), Text: text, Clear: clear, Reply: reply})
 	return <-reply
 }
 
@@ -34,7 +34,7 @@ func TestAgentSetsTheTabsStatus(t *testing.T) {
 	if !shown {
 		t.Error("not shown above the agent")
 	}
-	if j := m.Core.TabsJSON(tb); j[0].Status != tb.Status {
+	if j := m.home().Core.TabsJSON(tb); j[0].Status != tb.Status {
 		t.Errorf("nerdr tabs has %q", j[0].Status)
 	}
 	statusFrom(m, tb, "", true)

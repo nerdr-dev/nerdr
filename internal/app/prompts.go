@@ -89,7 +89,7 @@ func (m *Model) usePrompt(a *core.Tab, p prompts.Prompt) tea.Cmd {
 	if a == nil {
 		return nil
 	}
-	return m.do(core.TypeIn{A: m.Core.Ref(a), Text: p.Text, Enter: p.Enter})
+	return m.do(core.TypeIn{A: m.fleet.Ref(a), Text: p.Text, Enter: p.Enter})
 }
 
 // typedIn gives the keyboard to agent a, just typed in to at the TUI's
@@ -109,8 +109,8 @@ func (m *Model) typedIn(a *core.Tab, enter bool) tea.Cmd {
 // typed into still runs in t: restarted or switched, the program there
 // now never had it.
 func (m *Model) promptEnter(t *core.Tab) {
-	if m.Core.Live(t) {
-		m.do(core.PromptEnter{A: m.Core.Ref(t)})
+	if m.machineOf(t).Core.Live(t) {
+		m.do(core.PromptEnter{A: m.fleet.Ref(t)})
 	}
 }
 
@@ -198,7 +198,7 @@ func (d *promptPicker) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // use types saved prompt i into the picker's agent.
 func (d *promptPicker) use(m *Model, i int) tea.Cmd {
 	m.dialog = nil
-	if d.agent == nil || !m.Core.Live(d.agent) {
+	if d.agent == nil || !m.machineOf(d.agent).Core.Live(d.agent) {
 		m.toast("no agent to type it into")
 		return nil
 	}
@@ -216,7 +216,7 @@ func (d *promptPicker) view(m *Model, w, h int) string {
 	sel := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 	lines := []string{d.input.View(), ""}
 	if t := d.agent; t != nil {
-		lines = []string{"For " + t.Owner().Name + " (" + m.Core.AgentLabel(t.Owner(), t) + ").", "", d.input.View(), ""}
+		lines = []string{"For " + t.Owner().Name + " (" + m.machineOf(t.Owner()).Core.AgentLabel(t.Owner(), t) + ").", "", d.input.View(), ""}
 	}
 	hits := d.matches(m)
 	switch {

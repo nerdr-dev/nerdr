@@ -93,8 +93,8 @@ func TestTabRowScrollsToTheActiveTab(t *testing.T) {
 
 func TestHiddenMarkerShowsTheKeenestLight(t *testing.T) {
 	m := manyTabs(t, 120)
-	m.Core.Tabs[8].Light = core.StBlocked
-	m.Core.Tabs[6].Light = core.StWorking
+	m.home().Core.Tabs[8].Light = core.StBlocked
+	m.home().Core.Tabs[6].Light = core.StWorking
 	m.View()
 	row := m.tabRows[m.curGroup()]
 	if row.hidden == 0 {
@@ -124,8 +124,8 @@ func TestFullBarOffersToCloseMergedTabs(t *testing.T) {
 	}
 
 	m.dialog = nil
-	m.Core.Tabs[3].Info = core.TabInfo{Wts: []core.WtInfo{{HasPR: true}}}
-	m.Core.Tabs[3].Info.Wts[0].Pr.State = "MERGED"
+	m.home().Core.Tabs[3].Info = core.TabInfo{Wts: []core.WtInfo{{HasPR: true}}}
+	m.home().Core.Tabs[3].Info.Wts[0].Pr.State = "MERGED"
 	m.openWizard()
 	mu, ok := m.dialog.(*menu)
 	if !ok {
@@ -146,8 +146,8 @@ func TestFullBarOffersToCloseMergedTabs(t *testing.T) {
 
 func TestRoomyBarDoesNotAsk(t *testing.T) {
 	m := testModel(t)
-	m.Core.Tabs[0].Info = core.TabInfo{Wts: []core.WtInfo{{HasPR: true}}}
-	m.Core.Tabs[0].Info.Wts[0].Pr.State = "MERGED"
+	m.home().Core.Tabs[0].Info = core.TabInfo{Wts: []core.WtInfo{{HasPR: true}}}
+	m.home().Core.Tabs[0].Info.Wts[0].Pr.State = "MERGED"
 	m.View()
 	if m.barsFull() {
 		t.Fatal("three short tabs at 120 columns fill the bar")

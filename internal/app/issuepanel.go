@@ -21,7 +21,7 @@ func (m *Model) panelIssues() bool { return m.reviewOpen && m.review.Issues() }
 // what is known, asking GitHub when that is old; issues newly assigned
 // are seen there.
 func (m *Model) syncIssuePanel() tea.Cmd {
-	m.review.SetIssueNews(len(m.Core.IssueWatch.News) > 0)
+	m.review.SetIssueNews(len(m.home().Core.IssueWatch.News) > 0)
 	shown := m.panelIssues()
 	entered := shown && !m.issuePanelShown
 	m.issuePanelShown = shown
@@ -35,11 +35,11 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	if entered {
 		d.news = nil
 	}
-	if len(m.Core.IssueWatch.News) > 0 {
+	if len(m.home().Core.IssueWatch.News) > 0 {
 		if d.news == nil {
 			d.news = map[string]bool{}
 		}
-		for k := range m.Core.IssueNewsByKey() {
+		for k := range m.home().Core.IssueNewsByKey() {
 			d.news[k] = true
 		}
 		m.do(core.ClearIssueNews{})
@@ -51,7 +51,7 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 	d.setScope(m)
 	d.fill(m)
 	scan := m.do(core.ScanRepos{}) // the list fills again once core has looked
-	if time.Since(m.Core.IssueWatch.At) < m.Core.GithubEvery(core.IssueAllEvery) {
+	if time.Since(m.home().Core.IssueWatch.At) < m.home().Core.GithubEvery(core.IssueAllEvery) {
 		return tea.Batch(scan, m.refreshAllIssues(false))
 	}
 	return tea.Batch(scan, m.do(core.RefreshIssues{}), m.refreshAllIssues(false))

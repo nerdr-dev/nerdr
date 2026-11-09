@@ -100,11 +100,11 @@ func (m *Model) openMessage(broadcast bool) tea.Cmd {
 	if broadcast {
 		// The active group to start with: a message for all of them is
 		// the usual case ("rebase on main").
-		for _, i := range m.Core.GroupTabs(m.curGroup()) {
-			d.picked[m.Core.Ref(m.Core.Tabs[i])] = true
+		for _, i := range m.fleet.GroupTabs(m.curGroup()) {
+			d.picked[m.fleet.Ref(m.fleet.Tabs()[i])] = true
 		}
 	} else {
-		d.picked[m.Core.Ref(t)] = true
+		d.picked[m.fleet.Ref(t)] = true
 	}
 	m.dialog = d
 	return nil
@@ -150,21 +150,21 @@ func (d *messageDialog) targets(m *Model) []*core.Tab {
 	if !d.broadcast && d.all {
 		var out []*core.Tab
 		for _, a := range d.choices() {
-			if m.Core.Live(a) {
+			if m.machineOf(a).Core.Live(a) {
 				out = append(out, a)
 			}
 		}
 		return out
 	}
 	if !d.broadcast && d.agent != nil {
-		if !m.Core.Live(d.agent) {
+		if !m.machineOf(d.agent).Core.Live(d.agent) {
 			return nil
 		}
 		return []*core.Tab{d.agent}
 	}
 	var out []*core.Tab
-	for _, t := range m.Core.Tabs {
-		if d.picked[m.Core.Ref(t)] {
+	for _, t := range m.fleet.Tabs() {
+		if d.picked[m.fleet.Ref(t)] {
 			out = append(out, t)
 		}
 	}
@@ -220,12 +220,12 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		m.dialog = nil
 		var to []core.TabRef
 		for _, t := range ts {
-			to = append(to, m.Core.Ref(t))
+			to = append(to, m.fleet.Ref(t))
 		}
 		if d.broadcast {
 			cmd := m.do(core.AddMessages{To: to, Text: d.input.Value(), Auto: true})
 			m.toast("queued for " + core.Plural(len(ts), "tab") + ": sent to each when it is idle")
-			if d.picked[m.Core.Ref(m.Cur())] {
+			if d.picked[m.fleet.Ref(m.Cur())] {
 				return tea.Batch(cmd, m.openMessages())
 			}
 			return cmd
@@ -233,9 +233,9 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		m.autoMessage = d.auto
 		var cmd tea.Cmd
 		if d.editing != nil {
-			ref := core.MsgRef{A: m.Core.Ref(d.tab), Inactive: true, Msg: *d.editing, I: d.editAt}
+			ref := core.MsgRef{A: m.fleet.Ref(d.tab), Inactive: true, Msg: *d.editing, I: d.editAt}
 			if d.from != nil {
-				ref = core.MsgRef{A: m.Core.Ref(d.from), Msg: *d.editing, I: d.editAt}
+				ref = core.MsgRef{A: m.fleet.Ref(d.from), Msg: *d.editing, I: d.editAt}
 			}
 			from := d.tab.Inactive
 			if d.from != nil {
@@ -251,7 +251,7 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		} else {
 			cmd = m.do(core.AddMessages{To: to, Text: d.input.Value(), Auto: d.auto})
 		}
-		who := m.Core.AgentName(ts[0])
+		who := m.machineOf(ts[0]).Core.AgentName(ts[0])
 		if d.all && len(ts) > 1 {
 			who = "all " + strconv.Itoa(len(ts)) + " agents of " + d.tab.Name
 		}
@@ -268,16 +268,16 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		case "up", "k":
 			d.cursor = max(d.cursor-1, 0)
 		case "down", "j":
-			d.cursor = min(d.cursor+1, max(len(m.Core.Tabs)-1, 0))
+			d.cursor = min(d.cursor+1, max(len(m.fleet.Tabs())-1, 0))
 		case " ", "x", "enter":
-			if d.cursor < len(m.Core.Tabs) {
-				id := m.Core.Ref(m.Core.Tabs[d.cursor])
+			if d.cursor < len(m.fleet.Tabs()) {
+				id := m.fleet.Ref(m.fleet.Tabs()[d.cursor])
 				d.picked[id] = !d.picked[id]
 			}
 		case "a":
-			all := len(d.targets(m)) < len(m.Core.Tabs)
-			for _, t := range m.Core.Tabs {
-				d.picked[m.Core.Ref(t)] = all
+			all := len(d.targets(m)) < len(m.fleet.Tabs())
+			for _, t := range m.fleet.Tabs() {
+				d.picked[m.fleet.Ref(t)] = all
 			}
 		}
 		return nil
@@ -312,7 +312,7 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 		if cs := d.choices(); len(cs) > 1 {
 			lines = append(lines, "For "+t.Owner().Name+", to: "+d.pickRow(m, cs))
 		} else {
-			lines = append(lines, "For "+t.Owner().Name+" ("+m.Core.AgentLabel(t.Owner(), t)+").")
+			lines = append(lines, "For "+t.Owner().Name+" ("+m.machineOf(t.Owner()).Core.AgentLabel(t.Owner(), t)+").")
 		}
 		if d.editing != nil && d.from == nil {
 			lines = append(lines, dim("It was for agent "+strconv.Itoa(d.editing.Gone)+", whose pane was closed."))
@@ -332,9 +332,9 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 	if d.broadcast {
 		lines = append(lines, "", "To:")
 		sel := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
-		for i, t := range m.Core.Tabs {
-			line := core.Checkbox(d.picked[m.Core.Ref(t)]) + " " + light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName())
-			id := m.Core.Ref(t)
+		for i, t := range m.fleet.Tabs() {
+			line := core.Checkbox(d.picked[m.fleet.Ref(t)]) + " " + light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName())
+			id := m.fleet.Ref(t)
 			lines = append(lines, m.onClick(cursorLine(d.inList && i == d.cursor, line, sel), func(*Model) tea.Cmd {
 				d.cursor = i
 				d.picked[id] = !d.picked[id]
@@ -383,7 +383,7 @@ func (d *messageDialog) pickRow(m *Model, cs []*core.Tab) string {
 	}
 	var parts []string
 	for _, a := range cs {
-		parts = append(parts, item(m.Core.AgentLabel(d.tab, a), !d.all && a == d.agent, func() { d.all, d.agent = false, a }))
+		parts = append(parts, item(m.machineOf(d.tab).Core.AgentLabel(d.tab, a), !d.all && a == d.agent, func() { d.all, d.agent = false, a }))
 	}
 	parts = append(parts, item("all", d.all, func() { d.all = true }))
 	return strings.Join(parts, " ")

@@ -30,7 +30,7 @@ func TestAgentsAndTabsAsJSON(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.Core.NewAgent(tb, agents.Codex)
+	m.home().Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	two.Light = core.StWorking
 	a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Query, What: hooks.QueryAgents})
@@ -43,7 +43,7 @@ func TestAgentsAndTabsAsJSON(t *testing.T) {
 	}
 	a, _ = askNerdr(m, two, hooks.Report{Method: hooks.Query, What: hooks.QueryTabs})
 	var tabs []core.TabJSON
-	if err := json.Unmarshal([]byte(a.Text), &tabs); err != nil || len(tabs) != len(m.Core.Tabs) {
+	if err := json.Unmarshal([]byte(a.Text), &tabs); err != nil || len(tabs) != len(m.home().Core.Tabs) {
 		t.Fatalf("tabs %q %v", a.Text, err)
 	}
 	if !tabs[0].Yours || tabs[1].Yours || len(tabs[0].Agents) != 2 || tabs[0].Branches[0].Branch != "login" {
@@ -56,7 +56,7 @@ func TestAgentsAndTabsAsJSON(t *testing.T) {
 // shows.
 func TestReadAndTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.Core.Cfg.Shell = "sh"
+	m.home().Core.Cfg.Shell = "sh"
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Terminal, Text: "echo hello-from-nerdr"})
@@ -93,7 +93,7 @@ func TestAgentMakesATab(t *testing.T) {
 	m := tabsModel(t, state.Tab{ID: "a", Name: "main", Agent: "codex", Dir: repo,
 		Worktrees: []workspace.Worktree{{Path: repo, Repo: repo, Branch: "main"}}})
 	fakeAgent(m, agents.Codex)
-	m.Core.WtRoot = t.TempDir()
+	m.home().Core.WtRoot = t.TempDir()
 	tb := m.Cur()
 	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.NewTab, Branch: "bad..name", Text: "x"}); a.Err == "" {
 		t.Fatal("a bad branch name is refused")
@@ -125,7 +125,7 @@ func TestAgentMakesATab(t *testing.T) {
 		t.Skipf("making the worktree here: %v", made.Err) // no origin to fetch from, say
 	}
 	m.Update(*made)
-	nt := m.Core.Tabs[len(m.Core.Tabs)-1]
+	nt := m.home().Core.Tabs[len(m.home().Core.Tabs)-1]
 	if nt.Name != "docs-fix" || nt.Model != "gpt-5.5-mini" || nt.Agent != agents.Codex {
 		t.Fatalf("new tab %+v", nt.Tab)
 	}
@@ -139,10 +139,10 @@ func TestAgentMakesATab(t *testing.T) {
 // neither, it says so.
 func TestRestartTerminal(t *testing.T) {
 	m := paneModel(t)
-	m.Core.Cfg.Shell = "sh"
+	m.home().Core.Cfg.Shell = "sh"
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	m.Core.NewShellIn(tb, true) // the user's, with no command from an agent
+	m.home().Core.NewShellIn(tb, true) // the user's, with no command from an agent
 	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Terminal, Restart: true, Name: "terminal"}); !strings.Contains(a.Err, "no command") {
 		t.Fatalf("nothing to run again: %+v", a)
 	}
@@ -178,11 +178,11 @@ func TestRestartTerminal(t *testing.T) {
 // pane; not the asking agent's own, nor the tab's first agent's.
 func TestAgentClosesPanes(t *testing.T) {
 	m := paneModel(t)
-	m.Core.Cfg.Shell = "sh"
+	m.home().Core.Cfg.Shell = "sh"
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	askNerdr(m, tb, hooks.Report{Method: hooks.Terminal, Text: "true"})
-	m.Core.NewAgent(tb, agents.Codex)
+	m.home().Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	if a, _ := askNerdr(m, two, hooks.Report{Method: hooks.Close, To: 1}); !strings.Contains(a.Err, "first agent") {
 		t.Fatalf("the tab's first agent: %+v", a)
@@ -211,7 +211,7 @@ func TestSendWaitTakesTheReply(t *testing.T) {
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
 	tb.Light = core.StWorking // running nerdr send --wait
-	m.Core.NewAgent(tb, agents.Codex)
+	m.home().Core.NewAgent(tb, agents.Codex)
 	two := tb.ExtraAgents()[0]
 	ask := func() hooks.Answer {
 		a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Query, What: hooks.QueryReply, To: 2})
@@ -220,7 +220,7 @@ func TestSendWaitTakesTheReply(t *testing.T) {
 	if a := ask(); a.Err != "" || a.Text != "" {
 		t.Fatalf("no answer yet: %+v", a)
 	}
-	m.Core.AddMessage(tb, "from the user", true)
+	m.home().Core.AddMessage(tb, "from the user", true)
 	askNerdr(m, two, hooks.Report{Method: hooks.Message, To: 1, Text: "My move is c5"})
 	if a := ask(); !strings.Contains(a.Text, "Message from agent 2") || !strings.Contains(a.Text, "My move is c5") {
 		t.Fatalf("the answer: %+v", a)

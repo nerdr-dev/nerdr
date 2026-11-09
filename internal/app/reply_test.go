@@ -34,7 +34,7 @@ func answer[T any](m *Model, cmd tea.Cmd) (T, bool) {
 // scanned has core look for the repositories, as it does in the
 // background, and m take what it found.
 func scanned(m *Model) {
-	if cmd := fromCore(m.Core.ScanRepos()); cmd != nil {
+	if cmd := fromCore(m.home().Core.ScanRepos()); cmd != nil {
 		m.Update(cmd())
 	}
 }
