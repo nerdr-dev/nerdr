@@ -1,7 +1,6 @@
 package app
 
 import (
-	"os"
 	"strconv"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
@@ -18,20 +17,23 @@ import (
 // in, where worktrees go and each tab's — found by typing words. enter
 // goes to the agent carrying on a conversation found, or carries it on in
 // a new pane of the tab working in its worktree. The conversations are
-// read from claude's and codex's logs in the background (agents.Index),
-// once, and again only from a log that has changed.
+// read from claude's and codex's logs by core, where the agents run
+// (core.ReadConversations), once, and again only from a log that has
+// changed; and searched there (core.SearchConversations).
 
 type searchDialog struct {
 	input   textinput.Model
 	cursor  int
 	top     int
 	reading bool
+	n       int // the conversations read
 	hits    []agents.Hit
+	gone    []bool // whether each hit's folder is gone
 	words   []string
+	// job is the read or search asked of core last: an answer to an
+	// earlier one is overtaken.
+	job string
 }
-
-// searchReadMsg says the index is read.
-type searchReadMsg struct{ d *searchDialog }
 
 func (m *Model) openSearch() tea.Cmd {
 	in := textinput.New()
@@ -40,26 +42,49 @@ func (m *Model) openSearch() tea.Cmd {
 	in.Focus()
 	d := &searchDialog{input: in, reading: true}
 	m.dialog = d
-	if m.convIndex == nil {
-		m.convIndex = &agents.Index{}
-	}
-	idx, roots := m.convIndex, m.SearchRoots()
-	return func() tea.Msg {
-		idx.Update(roots)
-		return searchReadMsg{d}
-	}
+	return m.do(core.ReadConversations{Job: d.nextJob(m)})
 }
 
-func (m *Model) onSearchRead(msg searchReadMsg) {
-	msg.d.reading = false
-	msg.d.find(m)
+// nextJob names the next read or search of d's.
+func (d *searchDialog) nextJob(m *Model) string {
+	m.searchJobs++
+	d.job = "search-" + strconv.Itoa(m.searchJobs)
+	return d.job
+}
+
+// onSearchAnswer takes core's answer to the search dialog's read or
+// search, if it is the one asked last.
+func (m *Model) onSearchAnswer(ev core.Event) tea.Cmd {
+	d, ok := m.dialog.(*searchDialog)
+	if !ok {
+		return nil
+	}
+	switch ev := ev.(type) {
+	case core.ConversationsReadMsg:
+		if ev.Job != d.job {
+			return nil
+		}
+		d.reading, d.n = false, ev.N
+		return d.find(m)
+	case core.SearchHitsMsg:
+		if ev.Job != d.job {
+			return nil
+		}
+		d.hits, d.gone = ev.Hits, ev.Gone
+		d.cursor, d.top = 0, 0
+	}
+	return nil
 }
 
 // find searches again for what is typed.
-func (d *searchDialog) find(m *Model) {
+func (d *searchDialog) find(m *Model) tea.Cmd {
 	d.words = agents.Words(d.input.Value())
-	d.hits = m.convIndex.Search(d.words, core.SearchLimit)
-	d.cursor, d.top = 0, 0
+	if len(d.words) == 0 {
+		d.nextJob(m) // what was asked before is not wanted
+		d.hits, d.gone, d.cursor, d.top = nil, nil, 0, 0
+		return nil
+	}
+	return m.do(core.SearchConversations{Job: d.nextJob(m), Words: d.words})
 }
 
 func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
@@ -82,7 +107,7 @@ func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		if d.cursor < len(d.hits) {
 			m.dialog = nil
-			return m.openConversation(d.hits[d.cursor].Conv)
+			return m.openConversation(d.hits[d.cursor].Conv, d.cursor < len(d.gone) && d.gone[d.cursor])
 		}
 		return nil
 	}
@@ -90,14 +115,14 @@ func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	before := d.input.Value()
 	d.input, cmd = d.input.Update(msg)
 	if d.input.Value() != before && !d.reading {
-		d.find(m)
+		cmd = tea.Batch(cmd, d.find(m))
 	}
 	return cmd
 }
 
 // openConversation goes to the agent carrying on c, or carries it on in
-// a new pane of the tab working in its folder.
-func (m *Model) openConversation(c *agents.Conversation) tea.Cmd {
+// a new pane of the tab working in its folder, unless that is gone.
+func (m *Model) openConversation(c *agents.Conversation, gone bool) tea.Cmd {
 	for _, a := range m.AllAgents() {
 		if a.SessionID == c.ID && a.ReviewOf == nil {
 			m.setFocus(core.FocusAgent)
@@ -113,7 +138,7 @@ func (m *Model) openConversation(c *agents.Conversation) tea.Cmd {
 		m.toast(string(c.Kind) + " is not on PATH")
 		return nil
 	}
-	if st, err := os.Stat(c.Dir); err != nil || !st.IsDir() {
+	if gone {
 		m.toast(m.ShortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
 		return nil
 	}
@@ -147,10 +172,7 @@ func agentAvailable(m *Model, k agents.Kind) bool {
 func (d *searchDialog) view(m *Model, w, h int) string {
 	sel := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 	lines := []string{d.input.View(), ""}
-	n := 0
-	if m.convIndex != nil {
-		n = m.convIndex.Len()
-	}
+	n := d.n
 	switch {
 	case d.reading && n == 0:
 		lines = append(lines, dim("  reading the agents' conversations…"))

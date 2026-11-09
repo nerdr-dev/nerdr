@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -161,4 +162,40 @@ func TestRemoteF5ReadsAndAllowsThroughCore(t *testing.T) {
 	m.Mu.Unlock()
 	yes("the plugin as it is, to disallow")
 	until("the allowance taken away", func() bool { return !plugin.Allowed(core.PluginsAllowedFile(), p) })
+}
+
+// TestRemoteSearchThroughCore: a TUI in a process of its own reads none
+// of the agents' logs for the search: core reads and searches them.
+func TestRemoteSearchThroughCore(t *testing.T) {
+	codex := t.TempDir()
+	t.Setenv("CODEX_HOME", codex)
+	t.Setenv("CLAUDE_CONFIG_DIR", t.TempDir())
+	m, c, _, told := remoteTUI(t, "sh", "-c", "sleep 30")
+	path := filepath.Join(codex, "sessions", "2026", "11", "09", "rollout-2026-11-09T10-00-00-11111111-1111-1111-1111-111111111111.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	body := `{"type":"session_meta","payload":{"cwd":"` + c.Root + `"}}` + "\n" +
+		`{"type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"fix the flaky parser"}]}}` + "\n"
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	until := func(what string, ok func() bool) { t.Helper(); untilTold(t, m, told, what, ok) }
+
+	m.Mu.Lock()
+	m.openSearch()
+	d := m.dialog.(*searchDialog)
+	m.Mu.Unlock()
+	until("the logs read", func() bool { return !d.reading })
+	if d.n != 1 {
+		t.Fatalf("read %d conversations, want 1", d.n)
+	}
+	m.Mu.Lock()
+	d.input.SetValue("flaky")
+	d.find(m)
+	m.Mu.Unlock()
+	until("the search", func() bool { return len(d.hits) == 1 })
+	if s := d.hits[0].Snippet(d.words, 40); !strings.Contains(s, "flaky") {
+		t.Fatalf("snippet %q", s)
+	}
 }

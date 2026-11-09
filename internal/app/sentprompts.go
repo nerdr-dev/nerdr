@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,19 +26,15 @@ type sentDialog struct {
 	t    *core.Tab
 	list []state.Prompt // the oldest first, as the tab keeps them
 	pick int            // counted from the latest
-	// reading is set while Claude's log is read for the list.
+	// reading is set while Claude's log is read for the list, by core as
+	// job.
 	reading bool
+	job     string
 	// full is set while the prompt picked is shown alone, from row off.
 	full bool
 	off  int
 	// sel is the text of the prompt picked, as drawn.
 	sel textSel
-}
-
-// sentMsg is the list of t's prompts read from its agent's log.
-type sentMsg struct {
-	t    *core.Tab
-	list []agents.Prompt
 }
 
 // sentShownFull is the most rows the prompt picked takes.
@@ -60,23 +57,25 @@ func (m *Model) openSentOf(t *core.Tab) tea.Cmd {
 		return nil
 	}
 	d.reading = true
-	kind, id := t.Agent, t.SessionID
-	return func() tea.Msg { return sentMsg{t: t, list: agents.PromptsOf(kind, id, core.PromptsKept)} }
+	m.sentJobs++
+	d.job = "sent-" + strconv.Itoa(m.sentJobs)
+	return m.do(core.ReadPrompts{Job: d.job, Kind: t.Agent, Session: t.SessionID})
 }
 
-// onSent takes the list read from the log into the dialog, if it is
-// still open on that tab. The log has every prompt, typed in nerdr or not.
-func (m *Model) onSent(msg sentMsg) {
+// onSent takes the list core read from the agent's log into the dialog,
+// if it is still open for that read. The log has every prompt, typed in
+// nerdr or not.
+func (m *Model) onSent(ev core.PromptsMsg) {
 	d, ok := m.dialog.(*sentDialog)
-	if !ok || d.t != msg.t {
+	if !ok || d.job != ev.Job {
 		return
 	}
 	d.reading = false
-	if len(msg.list) == 0 {
+	if len(ev.List) == 0 {
 		return
 	}
 	d.list = nil
-	for _, p := range msg.list {
+	for _, p := range ev.List {
 		// The agent can write its log: see package clean.
 		if text := strings.TrimSpace(clean.Text(p.Text)); text != "" {
 			d.list = append(d.list, state.Prompt{Text: text, At: p.At})

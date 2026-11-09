@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -83,9 +82,9 @@ type Model struct {
 	// typed to the pane walked to, as after walking along the tabs.
 	groupWalk bool
 
-	// convIndex is the agents' conversations read for the search; see
-	// search.go.
-	convIndex *agents.Index
+	// searchJobs, usageJobs and sentJobs count the jobs the search,
+	// usage and sent prompts dialogs asked of core, to name the next.
+	searchJobs, usageJobs, sentJobs int
 
 	// cfgMod is the config file's time when last taken in; restartNoted
 	// the settings read only at start that the file has changed, and to
@@ -529,26 +528,14 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 	case core.DetectMsg:
 		return m.detect()
 
-	case usageReadMsg:
-		m.onUsageRead(msg)
-		return nil
-
 	case core.ToastMsg:
 		m.toast(string(msg))
-		return nil
-
-	case searchReadMsg:
-		m.onSearchRead(msg)
 		return nil
 
 	case core.InfoTickMsg:
 		m.toastDenied()
 		// Core has looked at what goes on in the background; see core.InfoTick.
 		return tea.Batch(m.configCheck(), m.syncPRPanel())
-
-	case sentMsg:
-		m.onSent(msg)
-		return nil
 
 	case input.PrefixMsg:
 		m.startPrefix()

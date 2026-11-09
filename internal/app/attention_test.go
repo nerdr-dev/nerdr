@@ -483,7 +483,8 @@ func TestSentDialogListsTheLatestFirst(t *testing.T) {
 	if d.full || m.dialog == nil {
 		t.Fatal("esc goes back to the list, not out")
 	}
-	m.onSent(sentMsg{t: tb, list: []agents.Prompt{{Text: "typed in claude itself"}}})
+	d.job = "sent-test" // as core is asked to read the log
+	m.onSent(core.PromptsMsg{Job: d.job, List: []agents.Prompt{{Text: "typed in claude itself"}}})
 	if len(d.list) != 1 || d.pick != 0 {
 		t.Fatalf("the log's list takes the place of nerdr's: %+v at %d", d.list, d.pick)
 	}
