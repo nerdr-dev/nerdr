@@ -1,9 +1,11 @@
 package order
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -238,5 +240,34 @@ not json
 	}
 	if Load(dir, "work").Summary() != "after" {
 		t.Fatal("an append after the prune was lost")
+	}
+}
+
+// TestIndexGoesAsJSON: an index goes from core to a client as JSON, and
+// is the same there.
+func TestIndexGoesAsJSON(t *testing.T) {
+	dir := gitRepo(t)
+	path := File(dir)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lines := `{"short":"the change"}
+{"file":"pkg/a.go","role":"core","short":"a"}
+{"file":"pkg/b.go","role":"core","short":"b"}
+`
+	if err := os.WriteFile(path, []byte(lines), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ix := Load(dir, "")
+	b, err := json.Marshal(ix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Index
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, ix) || got.Len() != 2 || got.Summary() != "the change" {
+		t.Fatalf("came as %+v, was %+v", got, ix)
 	}
 }

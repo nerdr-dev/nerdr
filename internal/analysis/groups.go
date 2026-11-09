@@ -1,6 +1,9 @@
 package analysis
 
-import "sort"
+import (
+	"slices"
+	"sort"
+)
 
 // Group is a cluster of changed files connected through local imports,
 // ordered bottom-up: files nothing else in the group depends on come first,
@@ -15,6 +18,32 @@ type Group struct {
 // files in paths. Files with no import relationship to any other file in
 // paths are omitted; callers should treat them as ungrouped.
 func (p *Project) GroupChanged(paths []string) []Group {
+	return GroupEdges(paths, p.Imports(paths))
+}
+
+// Imports is the local import graph among paths: for each that imports
+// others of them, those it imports, by normalized path. It reads the
+// files.
+func (p *Project) Imports(paths []string) map[string][]string {
+	changed := make(map[string]bool, len(paths))
+	for _, f := range paths {
+		changed[normalize(f)] = true
+	}
+	out := map[string][]string{}
+	for f := range changed {
+		for _, dep := range p.ImportsOf(f) {
+			if changed[dep] && dep != f {
+				out[f] = append(out[f], dep)
+			}
+		}
+	}
+	return out
+}
+
+// GroupEdges is GroupChanged with the import graph among paths given, as
+// Imports reads it, and reads nothing: a graph read for more paths serves
+// any of them, the edges to the others left out.
+func GroupEdges(paths []string, imports map[string][]string) []Group {
 	changed := make(map[string]bool, len(paths))
 	norm := make([]string, len(paths))
 	for i, f := range paths {
@@ -29,8 +58,8 @@ func (p *Project) GroupChanged(paths []string) []Group {
 		adjSet[f] = map[string]bool{}
 	}
 	for _, f := range norm {
-		for _, dep := range p.ImportsOf(f) {
-			if !changed[dep] || dep == f {
+		for _, dep := range imports[f] {
+			if !changed[dep] || dep == f || slices.Contains(edges[f], dep) {
 				continue
 			}
 			edges[f] = append(edges[f], dep)

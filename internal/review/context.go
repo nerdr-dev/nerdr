@@ -29,7 +29,7 @@ func (m *Model) switchWorktree() bool {
 	m.curWT = wt
 	m.walkWanted = "" // a walkthrough asked for elsewhere does not open here
 	m.watching = false
-	m.project = nil
+	m.projectVer, m.imports = 0, nil
 	m.projectLoad = false
 	m.ctxLoad = ""
 	m.err = nil
@@ -43,63 +43,81 @@ func (m *Model) switchWorktree() bool {
 	m.peek = nil
 	m.jumpHistory = nil
 	if wt == "" {
-		m.project = nil
+		m.projectVer, m.imports = 0, nil
 		m.baseRef = ""
 		m.pr, m.prOK, m.prMsg = github.PR{}, false, ""
 		m.whyIndex = why.Index{}
 		m.orderIndex = order.Index{}
-		m.setWalk(walkthrough.Walkthrough{}, false)
+		m.setWalk(walkthrough.Walkthrough{}, false, false)
 		return true
 	}
 	// The project walk and the PR lookup (a network round trip) run in
 	// the background — see loadContextCmd — so moving between worktrees
 	// doesn't freeze the screen while they finish.
-	m.project = nil
+	m.projectVer, m.imports = 0, nil
 	m.pr, m.prOK, m.prMsg = github.PR{}, false, "looking up the PR…"
 	m.ctxLoad = wt
 	m.baseRef = ""
 	m.whyIndex = why.Index{}
 	m.orderIndex = order.Index{}
-	m.setWalk(walkthrough.Walkthrough{}, false)
+	m.setWalk(walkthrough.Walkthrough{}, false, false)
 	return true
 }
 
 // worktreeContextMsg carries what loadContextCmd found for worktree wt.
 type worktreeContextMsg struct {
-	wt      string
-	project *analysis.Project
-	pr      github.PR
-	prOK    bool
-	prMsg   string
-	noGh    bool // gh is not installed
+	wt         string
+	projectVer int
+	pr         github.PR
+	prOK       bool
+	prMsg      string
+	noGh       bool // gh is not installed
 }
 
 // loadContextCmd walks the worktree's code and asks GitHub for its PR: the
 // parts of a worktree's context too slow to do while the key is held.
 func loadContextCmd(src Source, wt string) tea.Cmd {
 	return func() tea.Msg {
-		msg := worktreeContextMsg{wt: wt, project: analysis.LoadProject(wt)}
-		msg.project.Index()
+		msg := worktreeContextMsg{wt: wt, projectVer: src.LoadProject(wt)}
 		msg.pr, msg.prOK, msg.prMsg = src.CurrentPR(wt)
 		msg.noGh = !src.GhAvailable()
 		return msg
 	}
 }
 
-// projectMsg carries worktree wt's project, read again by loadProjectCmd.
+// projectMsg is worktree wt's code read again by loadProjectCmd, as of
+// version.
 type projectMsg struct {
 	wt      string
-	project *analysis.Project
+	version int
 }
 
-// loadProjectCmd reads worktree wt's code again: a walk of the whole tree
-// and every source file, too slow for a large one to do while keys and
-// redraws wait.
-func loadProjectCmd(wt string) tea.Cmd {
+// loadProjectCmd has worktree wt's code read again: a walk of the whole
+// tree and every source file, too slow for a large one to do while keys
+// and redraws wait.
+func loadProjectCmd(src Source, wt string) tea.Cmd {
 	return func() tea.Msg {
-		p := analysis.LoadProject(wt)
-		p.Index()
-		return projectMsg{wt: wt, project: p}
+		return projectMsg{wt: wt, version: src.LoadProject(wt)}
+	}
+}
+
+// importsMsg is the import graph among worktree wt's changed files, read
+// from its code as of version.
+type importsMsg struct {
+	wt      string
+	version int
+	imports map[string][]string
+}
+
+// readImports reads the import graph among the changed files, which the
+// tree groups them by.
+func (m *Model) readImports() tea.Cmd {
+	if m.projectVer == 0 || len(m.files) == 0 {
+		return nil
+	}
+	src, wt, version, paths := m.src, m.curWT, m.projectVer, filePaths(m.files)
+	return func() tea.Msg {
+		return importsMsg{wt: wt, version: version, imports: src.Imports(wt, paths)}
 	}
 }
 
@@ -130,46 +148,12 @@ func (m Model) Changed(wt string) (Model, tea.Cmd) {
 	return m, tea.Batch(m.refreshIfShown(), m.lookForWalk())
 }
 
-// changedGroups clusters the changed files by
-// dependency relationship via the loaded project's import graph, so the
-// file tree can review connected changes together instead of alphabetically.
+// changedGroups clusters the changed files by their imports of each
+// other, so the file tree can review connected changes together instead
+// of alphabetically.
 func (m *Model) changedGroups(files []git.FileStatus) []analysis.Group {
-	if m.project == nil {
+	if m.imports == nil || len(files) == 0 {
 		return nil
 	}
-	paths := make([]string, 0, len(files))
-	for _, f := range files {
-		paths = append(paths, f.Path)
-	}
-	if len(paths) == 0 {
-		return nil
-	}
-	return m.project.GroupChanged(paths)
-}
-
-// reloadRelations recomputes the symbols of the currently selected file,
-// or of m.peek's file when peeking at a file outside the tree, along with
-// where each is referenced — what the diff pane annotates changed lines
-// with, and what those annotations jump to.
-func (m *Model) reloadRelations() {
-	m.symbols = nil
-	m.symbolRefs = nil
-	if m.project == nil {
-		return
-	}
-	var rel string
-	var ok bool
-	if m.peek != nil {
-		rel, ok = m.peek.file, true
-	} else {
-		rel, ok = m.currentFile()
-	}
-	if !ok {
-		return
-	}
-	m.symbols = m.project.Symbols(rel)
-	m.symbolRefs = make([][]analysis.Ref, len(m.symbols))
-	for i, s := range m.symbols {
-		m.symbolRefs[i] = m.project.References(s.Name, rel)
-	}
+	return analysis.GroupEdges(filePaths(files), m.imports)
 }

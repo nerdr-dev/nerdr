@@ -1,15 +1,1 @@
-context.go: analysis.*Project.GroupChanged 1
-context.go: analysis.*Project.Index 2
-context.go: analysis.*Project.References 1
-context.go: analysis.*Project.Symbols 1
-context.go: analysis.LoadProject 2
-embed.go: order.Load 1
-embed.go: walkthrough.Load 1
-explain.go: walkthrough.Load 2
-explain.go: walkthrough.Older 1
-explain.go: walkthrough.Write 1
-files.go: order.Load 1
-files.go: walkthrough.Load 1
-notes.go: codereview.Latest 1
-notes.go: codereview.Notes 1
-notes.go: why.Load 1
+

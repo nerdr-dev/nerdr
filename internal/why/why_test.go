@@ -1,9 +1,11 @@
 package why
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -317,5 +319,25 @@ func TestReadNotesDropsControlCharacters(t *testing.T) {
 	}
 	if n := notes[0]; strings.ContainsAny(n.Short+n.Detail, "\x1b\x07") || n.Detail != "more[2J\nlines" {
 		t.Fatalf("note = %+v", n)
+	}
+}
+
+// TestIndexGoesAsJSON: an index goes from core to a client as JSON, and
+// is the same there.
+func TestIndexGoesAsJSON(t *testing.T) {
+	ix := Load(writeNotes(t,
+		`{"file":"a.ts","anchor":"x","short":"one","detail":"more"}`,
+		`{"file":"a.ts","anchor":"y","short":"two","replaces":"x"}`,
+	))
+	b, err := json.Marshal(ix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Index
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, ix) || got.Read() != 2 {
+		t.Fatalf("came as %+v, was %+v", got, ix)
 	}
 }

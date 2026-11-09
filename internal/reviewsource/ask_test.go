@@ -4,13 +4,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/walkthrough"
+	"github.com/nerdr-dev/nerdr/internal/why"
 )
 
 // echo is a Source whose answers say what it was asked.
@@ -47,6 +52,26 @@ func (echo) CurrentPR(wt string) (github.PR, bool, string) {
 }
 func (echo) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
 	return fmt.Sprint(wt, checks[0].Name, limit), nil
+}
+
+func (echo) Notes(wt string) why.Index {
+	return why.Index{}.With([]why.Note{{File: wt, Anchor: "a", Short: "s"}}, 3)
+}
+func (echo) Order(wt, branch string) order.Index {
+	return order.LoadFile(filepath.Join(wt, "order.jsonl"), branch)
+}
+func (echo) Walkthrough(wt, branch string, files []string) (walkthrough.Walkthrough, bool, bool) {
+	return walkthrough.Walkthrough{Title: wt, Branch: branch, Summary: files[0]}, true, true
+}
+func (echo) WriteWalkthrough(wt, branch string) (string, bool, error) {
+	return wt + "/" + branch + ".html", true, nil
+}
+func (echo) LoadProject(wt string) int { return 5 }
+func (echo) Imports(wt string, paths []string) map[string][]string {
+	return map[string][]string{paths[0]: {wt}}
+}
+func (echo) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
+	return []analysis.Symbol{{Name: file, Kind: "function"}}, [][]analysis.Ref{{{File: wt, Line: 2}}}
 }
 
 // loopback is an Asker whose queries and answers go as JSON, as they do
@@ -113,6 +138,19 @@ func TestAskerAsks(t *testing.T) {
 	same("CurrentPR", []any{pr, ok, msg}, []any{pr2, ok2, msg2})
 	checks := []github.Check{{Name: "ci"}}
 	same("FailedRunLogs", both(k.FailedRunLogs("/wt", checks, 9)), both(e.FailedRunLogs("/wt", checks, 9)))
+	same("Notes", k.Notes("/wt").All(), e.Notes("/wt").All())
+	same("Notes read", k.Notes("/wt").Read(), 3)
+	w1, ok1, old1 := k.Walkthrough("/wt", "b", []string{"f"})
+	w2, ok2, old2 := e.Walkthrough("/wt", "b", []string{"f"})
+	same("Walkthrough", []any{w1, ok1, old1}, []any{w2, ok2, old2})
+	p1, ok1, err1 := k.WriteWalkthrough("/wt", "b")
+	p2, ok2, err2 := e.WriteWalkthrough("/wt", "b")
+	same("WriteWalkthrough", []any{p1, ok1, err1}, []any{p2, ok2, err2})
+	same("LoadProject", k.LoadProject("/wt"), 5)
+	same("Imports", k.Imports("/wt", []string{"a"}), e.Imports("/wt", []string{"a"}))
+	sy1, r1 := k.Relations("/wt", "a")
+	sy2, r2 := e.Relations("/wt", "a")
+	same("Relations", []any{sy1, r1}, []any{sy2, r2})
 	if len(k.jobs) != 0 {
 		t.Errorf("jobs left waiting: %v", k.jobs)
 	}

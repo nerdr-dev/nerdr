@@ -140,17 +140,18 @@ func (m *Model) loadPinned() tea.Cmd {
 			}
 		}
 		msg.base = src.DetectBase(path)
-		msg.notes = loadNotes(path)
-		msg.order = order.Load(path, msg.listed.Branch)
-		msg.walk, msg.hasWalk = walkthrough.Load(path, msg.listed.Branch)
+		msg.notes = src.Notes(path)
+		msg.order = src.Order(path, msg.listed.Branch)
 		c := git.Comparison{Worktree: path}
 		if showBase && msg.base != "" {
 			c.Base = msg.base
 		}
 		msg.files, msg.stats, msg.err = src.Files(c)
+		paths := filePaths(msg.files)
 		if msg.err == nil {
-			msg.stamps = src.Stamps(path, filePaths(msg.files))
+			msg.stamps = src.Stamps(path, paths)
 		}
+		msg.walk, msg.hasWalk, msg.walkOld = src.Walkthrough(path, msg.listed.Branch, paths)
 		return msg
 	})
 	return tea.Batch(cmds...)
@@ -166,6 +167,7 @@ type pinnedMsg struct {
 	order    order.Index
 	walk     walkthrough.Walkthrough
 	hasWalk  bool
+	walkOld  bool // older than the change; see Source.Walkthrough
 	files    []git.FileStatus
 	stats    map[string]git.LineCount
 	stamps   map[string]string
@@ -187,14 +189,14 @@ func (m *Model) onPinned(msg pinnedMsg) tea.Cmd {
 	m.worktrees[0].Branch, m.worktrees[0].Head = msg.listed.Branch, msg.listed.Head
 	m.baseRef, m.whyIndex, m.orderIndex = msg.base, msg.notes, msg.order
 	if msg.err != nil {
-		m.setWalk(msg.walk, msg.hasWalk)
+		m.setWalk(msg.walk, msg.hasWalk, msg.walkOld)
 		m.err = msg.err
 		return nil
 	}
 	m.err = nil
 	m.fileStats = msg.stats
 	m.setFiles(msg.files, msg.stamps, true)
-	m.setWalk(msg.walk, msg.hasWalk) // after the files, which it is older than or not
+	m.setWalk(msg.walk, msg.hasWalk, msg.walkOld)
 	return tea.Batch(m.loadDiff(), m.walkArrived())
 }
 

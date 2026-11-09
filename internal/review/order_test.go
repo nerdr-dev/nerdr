@@ -345,7 +345,8 @@ func TestNewWalkthrough(t *testing.T) {
 	m.files = []git.FileStatus{{Path: "a.go", Code: "??"}}
 
 	old := walkthrough.Walkthrough{Title: "old", Time: time.Now().Add(-time.Hour).Format("2006-01-02 15:04")}
-	m.setWalk(old, true)
+	files := []string{"a.go"}
+	m.setWalk(old, true, walkthrough.Older(root, old, files))
 	if !m.walkOld {
 		t.Fatal("a walkthrough written before the file changed is not old")
 	}
@@ -364,11 +365,12 @@ func TestNewWalkthrough(t *testing.T) {
 	if h := m.filesHint(); !strings.Contains(h, "g guide…") {
 		t.Fatalf("expected g to show the agent is writing it: %q", h)
 	}
-	m.setWalk(old, true)
+	m.setWalk(old, true, walkthrough.Older(root, old, files))
 	if m.walkArrived() != nil {
 		t.Fatal("the old walkthrough opens as the new one")
 	}
-	m.setWalk(walkthrough.Walkthrough{Title: "new", Time: time.Now().Add(time.Hour).Format("2006-01-02 15:04")}, true)
+	newer := walkthrough.Walkthrough{Title: "new", Time: time.Now().Add(time.Hour).Format("2006-01-02 15:04")}
+	m.setWalk(newer, true, walkthrough.Older(root, newer, files))
 	if m.walkOld {
 		t.Fatal("a walkthrough written after the change is old")
 	}
