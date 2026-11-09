@@ -434,6 +434,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return cmd, true
 	case SpawnReady:
 		return m.OnSpawnReady(ev), true
+	case SpawnLooked:
+		return m.OnSpawnLooked(ev), true
 	case SkillsAppliedMsg:
 		m.OnSkillsApplied(ev)
 		return nil, true

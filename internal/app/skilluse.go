@@ -37,13 +37,12 @@ func (m *Model) skillTotals(t *core.Tab) map[string]*core.SkillTotal {
 // agents' own built-in and plugin skills are in no folder nerdr looks in.
 func (m *Model) otherSkills(t *core.Tab, tot map[string]*core.SkillTotal) []skills.Local {
 	m.lookAtSkills(t)
-	m.SkillStates(t)
 	seen := map[string]bool{}
 	for _, s := range skills.All() {
 		seen[s.Name] = true
 	}
 	var out []skills.Local
-	for _, l := range m.SkillLook.Others {
+	for _, l := range m.SkillLookOf(t).Others {
 		seen[l.Name] = true
 		out = append(out, l)
 	}
@@ -56,16 +55,15 @@ func (m *Model) otherSkills(t *core.Tab, tot map[string]*core.SkillTotal) []skil
 	return out
 }
 
-// lookAtSkills has core look again at where t's agent has the skills, when
-// the TUI's copy of core reads no folder and what it has is old or for
-// another tab: it comes in SkillLook. One ask at a time a tab, every
-// SkillsCheckEvery at most.
+// lookAtSkills has core look again at where t's agent has the skills,
+// when what it has is old or for another agent: it comes in SkillLooks.
+// One ask at a time a tab, every SkillsCheckEvery at most.
 func (m *Model) lookAtSkills(t *core.Tab) {
-	if !m.Copy || t == nil {
+	if t == nil {
 		return
 	}
 	key := core.SkillKey(t)
-	v := m.SkillLook
+	v := m.SkillLookOf(t)
 	fresh := v.Key == key && time.Since(v.At) < core.SkillsCheckEvery
 	if fresh || key == m.skillsAsked && time.Since(m.skillsAskedAt) < core.SkillsCheckEvery {
 		return

@@ -15,9 +15,8 @@ import (
 )
 
 // What F5 reads and writes of the user's plugins, where core is: the
-// plugins run here. A client in core's process calls these itself; one
-// with a copy of core's state (Copy) asks core, by a Job of its own, and
-// is told the answer by it.
+// plugins run here. A client asks core, by a Job of its own, and is told
+// the answer by it: core does it away from its loop, as it reads disk.
 
 func init() {
 	registerRequests(LookForPlugins{}, AskPluginFacts{}, AllowPluginKey{}, DisallowPlugin{})
@@ -42,7 +41,7 @@ func ReadPlugins() PluginsLook {
 }
 
 // LookForPlugins has core look for the user's plugins again, away from
-// its loop, for a client's copy: they come in Core.Plugins.
+// its loop, for a client: they come in Core.Plugins.
 type LookForPlugins struct{}
 
 // pluginsLooked is LookForPlugins' look.

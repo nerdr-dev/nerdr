@@ -56,9 +56,9 @@ type Core struct {
 	// skillUse is how much the agents have used each skill, for F4; see
 	// skilluse.go.
 	SkillUse SkillUse
-	// SkillLook is the last look at where an agent has the skills; see
-	// SkillStates.
-	SkillLook SkillLook
+	// SkillLooks are the last looks at where each agent has the skills,
+	// by its tab's id; see skillon.go.
+	SkillLooks map[string]SkillLook
 	// hookSockErr is why there is no hookSock, when there is not.
 	HookSockErr string
 
@@ -97,6 +97,11 @@ type Core struct {
 	Agents     []agents.Kind
 	AgentsAt   time.Time
 	agentsSoon bool
+	// skillsAt is when every agent's skills were last looked at, and
+	// skillsSoon has them looked at again at the next InfoTick; see
+	// lookAtSkills.
+	skillsAt   time.Time
+	skillsSoon bool
 	// convIndex is the agents' conversations read for the search; see
 	// convsearch.go.
 	convIndex *agents.Index

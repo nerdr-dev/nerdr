@@ -151,7 +151,7 @@ func TestPluginPickSurvivesTheListChanging(t *testing.T) {
 		t.Fatal("b's screen does not have the keyboard")
 	}
 	reread := func() {
-		m.plugins.at = time.Time{}
+		m.pluginsChanged()
 		m.View()
 	}
 
@@ -596,4 +596,10 @@ func TestPluginDisallowOldVersions(t *testing.T) {
 	if plugin.Allowed(core.PluginsAllowedFile(), old) || plugin.AllowedDir(core.PluginsAllowedFile(), old.Dir) {
 		t.Fatal("an old version is still allowed after d")
 	}
+}
+
+// pluginPreview is what is in the plugin folder dir, as the user is shown
+// it before allowing it.
+func pluginPreview(dir string, n, w int) []string {
+	return renderPreview(core.ReadPreview(dir), dir, n, w)
 }

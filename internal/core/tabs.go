@@ -429,9 +429,48 @@ func (m *Core) prepareAgent(t *Tab, l agents.Launch, env []string) func() SpawnP
 }
 
 // Spawn runs the command line in a new pane for the tab: at once, or,
-// when its CLI must be asked something first (see Prepare), once it has
-// answered, by SpawnReady. m.Mu is held.
+// when where its agent has the skills is to be looked at first (see
+// skillsBeforeStart), once it has been, by SpawnLooked, and when its CLI
+// must be asked something first (see Prepare), once it has answered, by
+// SpawnReady. m.Mu is held.
 func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
+	if read := m.skillsBeforeStart(t); read != nil {
+		kind := t.Agent
+		return func() Event { return SpawnLooked{T: t, Kind: kind, L: l, Resume: resume, Look: read()} }
+	}
+	return m.spawnLooked(t, l, resume)
+}
+
+// SpawnLooked is a tab's agent to start, with where it has the skills.
+type SpawnLooked struct {
+	T      *Tab
+	Kind   agents.Kind
+	L      agents.Launch
+	Resume bool
+	Look   SkillLook
+}
+
+// OnSpawnLooked keeps where ev's agent has the skills, and starts it,
+// unless its tab closed or switched agent meanwhile.
+func (m *Core) OnSpawnLooked(ev SpawnLooked) Cmd {
+	if !m.Live(ev.T) || ev.Kind != ev.T.Agent {
+		return nil
+	}
+	m.keepSkillLook(ev.T.ID, ev.Look)
+	cmd := m.spawnLooked(ev.T, ev.L, ev.Resume)
+	if ev.T.Pane == nil && ev.T.Light == StExited {
+		switch {
+		case ev.T.ReviewOf != nil:
+			m.ReviewerNotStarted(ev.T)
+		case ev.T.Err != "":
+			m.Toast(ev.T.Name + ": " + ev.T.Err)
+		}
+	}
+	return cmd
+}
+
+// spawnLooked is Spawn once where the agent has the skills is known.
+func (m *Core) spawnLooked(t *Tab, l agents.Launch, resume bool) Cmd {
 	if ask := m.Prepare(t, l); ask != nil {
 		kind := t.Agent
 		return func() Event { return SpawnReady{T: t, Kind: kind, L: l, Resume: resume, Prep: ask()} }
