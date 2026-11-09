@@ -18,155 +18,158 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
-// Config is the user's settings.
+// Config is the user's settings. Each is a client's or a core's (its scope
+// tag; see Merge): how nerdr looks and tells you things is the client's,
+// from the file on the machine you sit at; what runs, and where, is the
+// core's, from the file on the machine its agents run on.
 type Config struct {
 	// Prefix is the key that starts a nerdr command, as "ctrl+<letter>".
 	// Everything else typed goes to the agent in the active tab.
-	Prefix string `toml:"prefix"`
+	Prefix string `toml:"prefix" scope:"client"`
 	// RepoDirs are more folders to look for repositories in, besides the
 	// one nerdr was started in: each is a repository or has them right
 	// under it. "~/" is the home folder; a relative path is taken from the
 	// folder nerdr was started in.
-	RepoDirs []string `toml:"repo_dirs"`
+	RepoDirs []string `toml:"repo_dirs" scope:"core"`
 	// WorktreesDir is where new worktrees go: DefaultWorktreesDir when
 	// the file does not say. "~/" is the home folder; a relative path is
 	// taken from the folder nerdr was started in, beside it when that is
 	// a repository.
-	WorktreesDir string `toml:"worktrees_dir"`
+	WorktreesDir string `toml:"worktrees_dir" scope:"core"`
 	// PanelWidth is the F-menu's share of the window, in percent, beside
 	// the agent.
-	PanelWidth int `toml:"panel_width"`
+	PanelWidth int `toml:"panel_width" scope:"client"`
 	// Layout is the layout at start: "normal" (the agent and the F-menu
 	// beside it, PanelWidth wide), "wide" (the agent with 75%), "small"
 	// (the F-menu as a column of its F-keys, opened by one and folded
 	// again when the keyboard goes back to the agent), "agent" (the agent
 	// alone) or "panel" (the F-menu alone).
-	Layout string `toml:"layout"`
+	Layout string `toml:"layout" scope:"client"`
 	// Agents overrides how each agent kind is started.
-	Agents map[agents.Kind]agents.Spec `toml:"agents"`
+	Agents map[agents.Kind]agents.Spec `toml:"agents" scope:"core"`
 	// HerdrFocusJump, when running inside herdr, switches to the tab that
 	// needs attention when herdr gives nerdr's pane focus.
-	HerdrFocusJump *bool `toml:"herdr_focus_jump"`
+	HerdrFocusJump *bool `toml:"herdr_focus_jump" scope:"client"`
 	// Notify is when an agent's tab tells you it needs you: a desktop
 	// notification while nerdr's window does not have focus, a message in
 	// the bar while you are in another tab. "blocked" (an agent needs
 	// input), "done" (an agent finished), "all" (both) or "off".
-	Notify string `toml:"notify"`
+	Notify string `toml:"notify" scope:"client"`
 	// PRNotify watches your open pull requests (those P lists) and tells
 	// you when a check fails or someone reviews one: in the bar, with a
 	// mark that stays until you open the list, and on the desktop while
 	// nerdr's window does not have focus. Off, GitHub is not asked.
-	PRNotify *bool `toml:"pr_notify"`
+	PRNotify *bool `toml:"pr_notify" scope:"client"`
 	// IssueNotify watches the open issues assigned to you (those I lists
 	// first) and tells you when one is newly assigned, the way PRNotify
 	// tells of pull requests. Off, GitHub is not asked.
-	IssueNotify *bool `toml:"issue_notify"`
+	IssueNotify *bool `toml:"issue_notify" scope:"client"`
 	// ClaudeStatusLine starts claude with nerdr's status line, which tells
 	// nerdr the account's rate limits (claude gives them to its status
 	// line alone) and then shows the user's own status line, if set.
-	ClaudeStatusLine *bool `toml:"claude_status_line"`
+	ClaudeStatusLine *bool `toml:"claude_status_line" scope:"core"`
 	// TabDetails shows each tab's change, PR and CI state in the tab bar.
-	TabDetails *bool `toml:"tab_details"`
+	TabDetails *bool `toml:"tab_details" scope:"client"`
 	// TabBar is where the repositories and their tabs are shown: "top",
 	// two rows over the agent, or "left", two lists beside it, the
 	// repositories over the active one's tabs; "left-small" is those
 	// lists made small, to their lights.
-	TabBar string `toml:"tab_bar"`
+	TabBar string `toml:"tab_bar" scope:"client"`
 	// FunctionKeys is whether the review panel's menu and nerdr's hints
 	// name its screens by F1-F4. Off, they name the prefix keys that do
 	// the same (prefix e 1 to e 4), for a keyboard where the F-keys are
 	// hard to reach: a Mac laptop's are brightness and volume unless fn
 	// is held. F1-F4 work either way.
-	FunctionKeys *bool `toml:"function_keys"`
+	FunctionKeys *bool `toml:"function_keys" scope:"client"`
 	// PanelLabels is whether the review panel's column of screens names
 	// each beside its F-key; off, the column has the F-keys alone and is
 	// narrower.
-	PanelLabels *bool `toml:"panel_labels"`
+	PanelLabels *bool `toml:"panel_labels" scope:"client"`
 	// PaneMinWidth is the narrowest, in columns, a tab's panes are shown
 	// side by side: past it, the ones used longest ago are minimised to
 	// the row over them.
-	PaneMinWidth int `toml:"pane_min_width"`
+	PaneMinWidth int `toml:"pane_min_width" scope:"client"`
 	// DiffColors is the colour scheme F1 shows changes in: "nerdr", its
 	// own soft tints, or "github", GitHub's dark diff and syntax colours.
-	DiffColors string `toml:"diff_colors"`
+	DiffColors string `toml:"diff_colors" scope:"client"`
 	// Mouse is whether nerdr takes the mouse: clicks on tabs, menus and
 	// buttons, the wheel, selecting an agent's output. Off, the terminal
 	// keeps its own selection without shift.
-	Mouse *bool `toml:"mouse"`
+	Mouse *bool `toml:"mouse" scope:"client"`
 	// Shell is what a terminal pane (the prefix + t t) runs in a tab's
 	// worktree; $SHELL when empty.
-	Shell string `toml:"shell"`
+	Shell string `toml:"shell" scope:"core"`
 	// Browser is the command a URL is opened with, the URL added last
 	// ("firefox", "open -a Safari"); $BROWSER, then the system default,
 	// when empty.
-	Browser string `toml:"browser"`
+	Browser string `toml:"browser" scope:"client"`
 	// Editor is what o in the review panel opens a file in ("code",
 	// "nvim"); $VISUAL, then $EDITOR, then vim when empty. See
 	// internal/editor for how the line is passed.
-	Editor string `toml:"editor"`
+	Editor string `toml:"editor" scope:"client"`
 	// WorktreeEditor is what the prefix + o opens the tab's worktree in,
 	// the folder added last; VS Code ("code") when empty.
-	WorktreeEditor string `toml:"worktree_editor"`
+	WorktreeEditor string `toml:"worktree_editor" scope:"client"`
 	// Install is where nerdr may write what it gives the agents — its
 	// skills, and the plugins and hooks that tell it what an agent is
 	// doing: "home" (the agents' own folders in the home folder),
 	// "worktree" (the folder each tab's agent starts in, for agents in a
 	// sandbox) or "off". Empty until the first start asks. Older config
 	// files call it skills, still read where install is not set.
-	Install       string   `toml:"install"`
-	EnabledSkills []string `toml:"enabled_skills"`
+	Install       string   `toml:"install" scope:"core"`
+	EnabledSkills []string `toml:"enabled_skills" scope:"core"`
 	// DataDir is where nerdr keeps what agents record about a change —
 	// explanations, code reviews, handoffs: empty for
 	// the repository's git directory, a relative path for that folder
 	// inside each worktree, an absolute one for one folder for all
 	// repositories. See internal/store.
-	DataDir string `toml:"data_dir"`
+	DataDir string `toml:"data_dir" scope:"core"`
 
 	// MaxTabs is how many tabs may be open at once; a new one is refused
 	// beyond it. 0 for no limit.
-	MaxTabs *int `toml:"max_tabs"`
+	MaxTabs *int `toml:"max_tabs" scope:"core"`
 	// CloseMerged says in a tab's panel when its pull requests are merged,
 	// and how to close it.
-	CloseMerged *bool `toml:"close_merged"`
+	CloseMerged *bool `toml:"close_merged" scope:"core"`
 	// ColdDays marks a tab cold after this many days without the agent
 	// working or you looking at it. 0 for never.
-	ColdDays *int `toml:"cold_days"`
+	ColdDays *int `toml:"cold_days" scope:"core"`
 	// SleepAfter is how many minutes an agent that is done, and seen, is
 	// left running in a tab nobody looks at before nerdr stops it, to
 	// carry its conversation on when the tab is visited. 0 for never.
-	SleepAfter int `toml:"sleep_after"`
+	SleepAfter int `toml:"sleep_after" scope:"core"`
 	// StatusLights is how the status lights are drawn: "dots", coloured
 	// circles, or "symbols", a shape of its own for each state, for
 	// those who cannot tell the colours apart.
-	StatusLights string `toml:"status_lights"`
+	StatusLights string `toml:"status_lights" scope:"client"`
 	// FPS is the most times a second the screen is drawn, from 1 to 120.
 	// Fewer take less CPU, more show typing sooner. Read only at start.
-	FPS int `toml:"fps"`
+	FPS int `toml:"fps" scope:"client"`
 	// GitHubRefresh is how many seconds apart the pull request of the tab
 	// on screen is asked about; nerdr's other questions to GitHub are
 	// spaced the same share longer or shorter than at the default.
-	GitHubRefresh int `toml:"github_refresh"`
+	GitHubRefresh int `toml:"github_refresh" scope:"core"`
 
 	// KeepAwake keeps the machine from going to sleep: "busy" while an
 	// agent works (and a minute after), "always" while nerdr runs, "off"
 	// never. A locked screen stops no agent; a machine asleep stops all.
-	KeepAwake string `toml:"keep_awake"`
+	KeepAwake string `toml:"keep_awake" scope:"core"`
 	// KeepScreenOn keeps the screen from going dark and locking for being
 	// idle as well, when the machine is kept awake.
-	KeepScreenOn *bool `toml:"keep_screen_on"`
+	KeepScreenOn *bool `toml:"keep_screen_on" scope:"client"`
 	// KeepScreenMax is the most minutes the screen is kept on after the
 	// last key or click in nerdr; then the desktop's own timeout holds
 	// again, so a screen nobody looks at is not left lit (OLED burn-in).
-	KeepScreenMax int `toml:"keep_screen_max"`
+	KeepScreenMax int `toml:"keep_screen_max" scope:"client"`
 
 	// ConfirmPluginRuns has the user say yes to every run of a plugin an
 	// agent asks for, seeing what it gives it; off, only to those of a
 	// plugin whose plugin.toml says confirm.
-	ConfirmPluginRuns bool `toml:"confirm_plugin_runs"`
+	ConfirmPluginRuns bool `toml:"confirm_plugin_runs" scope:"core"`
 
 	// Review is the code review a second agent does of a tab's work; see
 	// internal/codereview.
-	Review Review `toml:"review"`
+	Review Review `toml:"review" scope:"core"`
 
 	// dataDirSet is whether the file sets data_dir, so the first-start
 	// setup does not write it a second time; worktreesDirSet the same for
