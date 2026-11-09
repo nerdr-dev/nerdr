@@ -196,3 +196,19 @@ func TestSetConfigTakesOnlyTheClientsSettings(t *testing.T) {
 		t.Errorf("core's own settings taken from the client: %+v", c.Cfg)
 	}
 }
+
+// TestEditsAtOnceAreTakenInOrder: two edits of core's settings at once
+// both hold, whichever read of the file comes back first: one that read
+// the file as it was before the other's edit is not taken after it.
+func TestEditsAtOnceAreTakenInOrder(t *testing.T) {
+	configHome(t, "")
+	c := &Core{Client: &eventsClient{}}
+	c.WatchConfigFile(config.Config{})
+	first := EditConfig{Job: "a", Keys: []config.Edit{{Key: "shell", Value: config.Quote("zsh")}}}.Do(c)()
+	second := EditConfig{Job: "b", Keys: []config.Edit{{Key: "sleep_after", Value: "7"}}}.Do(c)()
+	c.Handle(second)
+	c.Handle(first) // read before the second edit, it comes later
+	if c.Cfg.Shell != "zsh" || c.Cfg.SleepAfter != 7 {
+		t.Fatalf("shell %q, sleep_after %d", c.Cfg.Shell, c.Cfg.SleepAfter)
+	}
+}

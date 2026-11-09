@@ -76,6 +76,9 @@ type Core struct {
 	ConfigFile string
 	cfgMod     time.Time
 	cfgWatch   bool
+	// cfgRead is the number of the read of the file core goes by; see
+	// configRead.
+	cfgRead uint64
 	// cfgNoted are the settings read only at start that changed in the
 	// file, and to what, told once; see keepAtStart.
 	cfgNoted    map[string]string

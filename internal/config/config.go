@@ -473,15 +473,17 @@ type Edit struct {
 // SetKeys is SetKey of each of edits, in one write of the file: all of
 // them, or none when the file would not read.
 func SetKeys(edits ...Edit) error {
-	return editConfig(func(text string) string {
-		for _, e := range edits {
-			if old, ok := renamed[e.Key]; ok && e.Table == "" {
-				text = setKey(text, "", old, "")
-			}
-			text = setKey(text, e.Table, e.Key, e.Value)
+	return editConfig(func(text string) string { return setKeys(text, edits) })
+}
+
+func setKeys(text string, edits []Edit) string {
+	for _, e := range edits {
+		if old, ok := renamed[e.Key]; ok && e.Table == "" {
+			text = setKey(text, "", old, "")
 		}
-		return text
-	})
+		text = setKey(text, e.Table, e.Key, e.Value)
+	}
+	return text
 }
 
 // keyName is how key is written on the left of =: bare where it can be.
@@ -560,8 +562,13 @@ func saveSettings(settings map[string]string) error {
 }
 
 // editConfig rewrites the config file with edit, as long as what it gives
-// is still a config that reads.
+// is still a config that reads: read, edited and written with the file to
+// itself (see locked), so that two edits at once both hold.
 func editConfig(edit func(string) string) error {
+	return locked(func() error { return editUnlocked(edit) })
+}
+
+func editUnlocked(edit func(string) string) error {
 	old, err := os.ReadFile(Path())
 	if err != nil && !os.IsNotExist(err) {
 		return err

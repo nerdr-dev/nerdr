@@ -2,7 +2,9 @@ package config
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
+	"sync"
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
@@ -86,5 +88,32 @@ func TestConfigAsJSON(t *testing.T) {
 	}
 	if !reflect.DeepEqual(got, c) {
 		t.Fatalf("got %+v, want %+v (%s)", got, c, b)
+	}
+}
+
+// TestEditsAtOnceAllHold: edits of different keys made side by side, as
+// core's jobs and a client's run, each read the file as the one before
+// left it.
+func TestEditsAtOnceAllHold(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	var wg sync.WaitGroup
+	for i := range 20 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := SetKey("review.models", fmt.Sprintf("kind%d", i), Quote("m")); err != nil {
+				t.Error(err)
+			}
+		}()
+	}
+	wg.Wait()
+	c, err := Load()
+	if err != nil || len(c.Review.Models) != 20 {
+		t.Fatalf("%d of 20 edits hold: %v %v", len(c.Review.Models), c.Review.Models, err)
+	}
+	_, r1, _ := LoadNumbered()
+	_, r2, _ := EditAndLoad(Edit{Key: "shell", Value: Quote("zsh")})
+	if r2.N <= r1.N {
+		t.Fatalf("reads numbered %d, then %d", r1.N, r2.N)
 	}
 }

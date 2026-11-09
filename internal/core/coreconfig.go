@@ -48,11 +48,9 @@ type ConfigSavedMsg struct {
 func (q EditConfig) Do(m *Core) Cmd {
 	return func() Event {
 		ev := configRead{edit: &q}
-		if ev.err = config.SetKeys(q.Keys...); ev.err != nil {
-			return ev
-		}
-		ev.mod = configMod()
-		ev.cfg, ev.err = config.Load()
+		var r config.Read
+		ev.cfg, r, ev.err = config.EditAndLoad(q.Keys...)
+		ev.n, ev.mod = r.N, r.Mod
 		return ev
 	}
 }
@@ -81,10 +79,13 @@ func (q ReadConfig) Do(m *Core) Cmd {
 
 // configRead is core's config file as read: after an EditConfig of it,
 // or because it changed. mod is when it was last changed, the zero time
-// when there is none.
+// when there is none; n numbers the read, a greater one having read the
+// file later (config.LoadNumbered): reads run side by side, and one may
+// come after another that read the file as it was later.
 type configRead struct {
 	cfg  config.Config
 	mod  time.Time
+	n    uint64
 	err  error
 	edit *EditConfig
 }
@@ -130,8 +131,8 @@ func (m *Core) lookAtConfig() Cmd {
 		if mod.Equal(last) {
 			return nil
 		}
-		cfg, err := config.Load()
-		return configRead{cfg: cfg, mod: mod, err: err}
+		cfg, r, err := config.LoadNumbered()
+		return configRead{cfg: cfg, mod: r.Mod, n: r.N, err: err}
 	}
 }
 
@@ -139,10 +140,12 @@ func (m *Core) onConfigRead(ev configRead) Cmd {
 	if ev.edit == nil && ev.mod.Equal(m.cfgMod) {
 		return nil // taken in already
 	}
-	if ev.err == nil || !ev.mod.IsZero() {
+	stale := ev.n != 0 && ev.n < m.cfgRead
+	if (ev.err == nil || !ev.mod.IsZero()) && !stale {
 		m.cfgMod = ev.mod // an error in the file is told once
 	}
-	if ev.err == nil {
+	if ev.err == nil && !stale {
+		m.cfgRead = ev.n
 		c := config.Merge(ev.cfg, m.Cfg)
 		if ev.edit == nil || !ev.edit.Now {
 			c = m.keepAtStart(c)
