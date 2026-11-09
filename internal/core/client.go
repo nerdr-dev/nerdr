@@ -42,15 +42,12 @@ type Client interface {
 // agent the keyboard is with, or the tab's own while it is with a terminal
 // (Keyboard); the tab it keeps beside the one in front (Beside), shown or not;
 // whether it shows the issues, or a list of the pull requests (IssuesShown,
-// PRsShown); the worktree whose files it watches for changes (WatchWt), and how
-// many it has seen (WatchN).
+// PRsShown).
 type Sight struct {
 	Keyboard    TabRef
 	Beside      TabRef
 	IssuesShown bool
 	PRsShown    bool
-	WatchWt     string
-	WatchN      int
 }
 
 // HasClient reports whether a client is there to show what core tells it.

@@ -398,8 +398,8 @@ func RepoOf(dir string) string {
 // MaySkip reports whether a look at t can keep what the last one found
 // when its git files are as they were then: nothing asked for a fresh
 // look, the last full one is recent, and no file was edited since — as
-// far as can be told: the review panel's watch sees edits in the worktree
-// it shows; in another, only an agent that is not working is taken not to
+// far as can be told: core's watch sees edits in the worktree the review
+// panel shows (see reviewwatch.go); in another, only an agent that is not working is taken not to
 // edit. watchN is the watch's count of changes to keep with the look.
 func (m *Core) MaySkip(t *Tab, now time.Time) (skip bool, watchN int) {
 	prev := t.Info
@@ -407,12 +407,7 @@ func (m *Core) MaySkip(t *Tab, now time.Time) (skip bool, watchN int) {
 	if !prev.Known() || prev.Stale || now.Sub(prev.FullAt) >= FullInfoEvery {
 		return false, watchN
 	}
-	var wt string
-	n := 0
-	if m.Client != nil {
-		s := m.Client.Sight()
-		wt, n = s.WatchWt, s.WatchN
-	}
+	wt, n := m.reviewWatching()
 	for _, w := range t.Worktrees {
 		if wt != "" && filepath.Clean(w.Path) == filepath.Clean(wt) {
 			return n == prev.WatchN && (len(t.Worktrees) == 1 || t.Light != StWorking), n

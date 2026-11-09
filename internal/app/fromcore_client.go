@@ -1,6 +1,7 @@
 package app
 
 import (
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
@@ -44,6 +45,12 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(m.resize())
 	case core.SetupAnsweredMsg:
 		return toCore(m.setupAnswered(ev.Token))
+	case core.WatchingMsg:
+		m.review = m.review.Watching(ev.Wt, ev.OK)
+	case core.WorktreeChangedMsg:
+		var cmd tea.Cmd
+		m.review, cmd = m.review.Changed(ev.Wt)
+		return toCore(cmd)
 	case core.UnseenMsg:
 		if t := m.ByRef(ev.T); t != nil && t == m.Cur() {
 			m.review = m.review.SetUnseen(t.Unseen)
@@ -193,8 +200,7 @@ func (m *Model) AgentVisible(r core.TabRef) bool {
 func (m *Model) Layout() core.Layout { return m.layout() }
 
 func (m *Model) Sight() core.Sight {
-	wt, n := m.review.WatchChanges()
-	return core.Sight{Keyboard: m.Ref(m.CurAgent()), Beside: m.Ref(m.splitTab()), IssuesShown: m.issuesShown(), PRsShown: m.prsShown(), WatchWt: wt, WatchN: n}
+	return core.Sight{Keyboard: m.Ref(m.CurAgent()), Beside: m.Ref(m.splitTab()), IssuesShown: m.issuesShown(), PRsShown: m.prsShown()}
 }
 
 func (m *Model) ShellSize(tr core.TabRef, pr core.PaneRef) (int, int) {
