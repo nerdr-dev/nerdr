@@ -41,7 +41,9 @@ const logMax = 1 << 20
 // runClient is nerdr in the terminal as a client of the core of the
 // folder: one in a process of its own, which keeps the agents at work when
 // the client is closed. With start, a core is started when none runs.
-func runClient(start bool) error {
+// With remote, HOST:FOLDER, the core is that of FOLDER on HOST, reached
+// over ssh (see dialRemote), and started there when none runs.
+func runClient(start bool, remote string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		return err
@@ -52,23 +54,41 @@ func runClient(start bool) error {
 	if err != nil {
 		return err
 	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	root, _ := filepath.EvalSymlinks(cwd)
-	if root == "" {
-		root = cwd
-	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) {
 		return errors.New("needs a terminal")
 	}
-	conn, err := dialCore(root, start)
-	if err != nil {
-		return err
-	}
-	if coreVersion != version() {
-		fmt.Fprintf(os.Stderr, "nerdr: the core runs version %s, this is %s: quit and start nerdr again to use this one\n", coreVersion, version())
+	var root, host string
+	var redial func() (*attach.Conn, error)
+	var conn *attach.Conn
+	if remote != "" {
+		if err := remoteAllowed(); err != nil {
+			return err
+		}
+		var folder string
+		if host, folder, err = parseRemote(remote); err != nil {
+			return err
+		}
+		// Before the terminal is the TUI's: ssh may ask for a password.
+		if conn, err = dialRemote(host, folder, false); err != nil {
+			return err
+		}
+		root = folder
+		redial = func() (*attach.Conn, error) { return dialRemote(host, folder, true) }
+	} else {
+		cwd, err := os.Getwd()
+		if err != nil {
+			return err
+		}
+		if root, _ = filepath.EvalSymlinks(cwd); root == "" {
+			root = cwd
+		}
+		if conn, err = dialCore(root, start); err != nil {
+			return err
+		}
+		if coreVersion != version() {
+			fmt.Fprintf(os.Stderr, "nerdr: the core runs version %s, this is %s: quit and start nerdr again to use this one\n", coreVersion, version())
+		}
+		redial = func() (*attach.Conn, error) { return dialCore(root, false) }
 	}
 
 	old, err := term.MakeRaw(int(os.Stdin.Fd()))
@@ -95,7 +115,8 @@ func runClient(start bool) error {
 	if *cfg.Mouse {
 		opts = append(opts, tea.WithMouseCellMotion())
 	}
-	model.SetRedial(func() (*attach.Conn, error) { return dialCore(root, false) })
+	model.SetRedial(redial)
+	model.SetCoreHost(host)
 	p = tea.NewProgram(model, opts...)
 	close(ready)
 	router.SetSend(func(m any) { p.Send(m) })
