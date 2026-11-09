@@ -56,6 +56,10 @@ type Model struct {
 	remote  *core.CoreConn
 	said    core.ClientState
 	pending []core.Event
+	// skillsAsked is the tab whose skills core was last asked to look at,
+	// at skillsAskedAt; see lookAtSkills.
+	skillsAsked   string
+	skillsAskedAt time.Time
 	// reviewAsk is what the review panel reads the repositories through
 	// when core is in another process: it asks core (core.ReadForReview).
 	reviewAsk *reviewsource.Asker

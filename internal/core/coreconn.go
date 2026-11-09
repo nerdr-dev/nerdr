@@ -50,6 +50,7 @@ var RunWait = 10 * time.Second
 // InboxMsg and CoreGoneMsg, from a goroutine of the connection's: it must
 // not wait for the client to take them.
 func Connect(conn *attach.Conn, c *Core, tell func(any)) *CoreConn {
+	c.Copy = true // see Core.Copy
 	cc := &CoreConn{C: c, mirror: NewMirror(c), tell: tell, more: make(chan struct{}, 1)}
 	cc.Reconnect(conn)
 	return cc

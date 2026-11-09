@@ -341,6 +341,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.onWatchStarted(ev), true
 	case watchFired:
 		return m.onWatchFired(ev), true
+	case skillsLooked:
+		m.onSkillsLooked(ev)
+		return nil, true
 	case agentsFoundMsg:
 		m.onAgentsFound(ev)
 		return nil, true

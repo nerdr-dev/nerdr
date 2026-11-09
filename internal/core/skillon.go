@@ -24,22 +24,38 @@ type SkillLook struct {
 }
 
 // SkillStates is where the agent of t has each skill, and in what state,
-// looked up again when the last look is old or was for another tab.
+// looked up again when the last look is old or was for another tab. A
+// client's copy reads no folder: it has what core looked at last (see
+// LookAtSkills), and none for another tab.
 func (m *Core) SkillStates(t *Tab) ([]string, []skills.State) {
 	all := skills.All()
 	v := &m.SkillLook
-	key := ""
-	if t != nil {
-		key = t.ID + "/" + string(t.Agent) + "/" + t.Dir
-	}
-	if key == v.Key && time.Since(v.At) < SkillsCheckEvery && len(v.States) == len(all) {
+	key := SkillKey(t)
+	if key == v.Key && len(v.States) == len(all) && (m.Copy || time.Since(v.At) < SkillsCheckEvery) {
 		return v.Found, v.States
 	}
-	v.Key, v.At = key, time.Now()
-	v.Found, v.States = make([]string, len(all)), make([]skills.State, len(all))
-	v.Others = nil
+	if m.Copy {
+		return make([]string, len(all)), make([]skills.State, len(all))
+	}
+	*v = readSkills(key, t)
+	return v.Found, v.States
+}
+
+// SkillKey is what a look at t's skills is for: the tab, its agent and
+// its folder.
+func SkillKey(t *Tab) string {
 	if t == nil {
-		return v.Found, v.States
+		return ""
+	}
+	return t.ID + "/" + string(t.Agent) + "/" + t.Dir
+}
+
+// readSkills looks at where t's agent has the skills, for key.
+func readSkills(key string, t *Tab) SkillLook {
+	all := skills.All()
+	v := SkillLook{Key: key, At: time.Now(), Found: make([]string, len(all)), States: make([]skills.State, len(all))}
+	if t == nil {
+		return v
 	}
 	home, _ := os.UserHomeDir()
 	dirs := skills.Dirs(home, t.Dir, t.Agent)
@@ -48,7 +64,30 @@ func (m *Core) SkillStates(t *Tab) ([]string, []skills.State) {
 		file, st := s.Find(dirs)
 		v.Found[i], v.States[i] = TildePath(file, home), st
 	}
-	return v.Found, v.States
+	return v
+}
+
+// LookAtSkills has core look again at where tab T's agent has the skills,
+// away from the loop, for a client whose copy reads no folder: what it
+// finds comes in SkillLook.
+type LookAtSkills struct{ T TabRef }
+
+// skillsLooked is LookAtSkills' look.
+type skillsLooked struct{ look SkillLook }
+
+func (q LookAtSkills) Do(m *Core) Cmd {
+	t := m.ByRef(q.T)
+	if t == nil {
+		return nil
+	}
+	key, tab := SkillKey(t), &Tab{Tab: t.Tab}
+	return func() Event { return skillsLooked{readSkills(key, tab)} }
+}
+
+func (m *Core) onSkillsLooked(ev skillsLooked) {
+	if ev.look.At.After(m.SkillLook.At) || ev.look.Key != m.SkillLook.Key {
+		m.SkillLook = ev.look
+	}
 }
 
 // SkillOn is whether tab t's agent can use the skill called name: it is

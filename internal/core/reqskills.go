@@ -12,7 +12,7 @@ import (
 // The requests about the skills nerdr puts in place for the agents, and
 // what core reads from its files only when first asked.
 
-func init() { registerRequests(ApplySkills{}, ReadSkillUse{}, ReadClaudeLimits{}) }
+func init() { registerRequests(ApplySkills{}, ReadSkillUse{}, ReadClaudeLimits{}, LookAtSkills{}) }
 
 // ApplySkills puts the skills turned on in place, and takes the others
 // away, as the config says now; what it did is told after Say, or
