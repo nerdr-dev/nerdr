@@ -61,12 +61,12 @@ func TestUnchangedLogIsNotCountedAgain(t *testing.T) {
 	if err := os.WriteFile(log, []byte(use), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	msg, ok := m.Core.CountSkills(tb)().(core.SkillUseMsg)
+	msg, ok := m.home().Core.CountSkills(tb)().(core.SkillUseMsg)
 	if !ok || msg.Counts["nerdr-request-review"] != 1 {
 		t.Fatalf("the first count: %#v", msg)
 	}
-	m.Core.OnSkillUse(msg)
-	if again := m.Core.CountSkills(tb)(); again != nil {
+	m.home().Core.OnSkillUse(msg)
+	if again := m.home().Core.CountSkills(tb)(); again != nil {
 		t.Fatalf("an unchanged log was read again: %#v", again)
 	}
 	later := time.Now().Add(time.Second)
@@ -74,11 +74,11 @@ func TestUnchangedLogIsNotCountedAgain(t *testing.T) {
 		t.Fatal(err)
 	}
 	_ = os.Chtimes(log, later, later)
-	msg, ok = m.Core.CountSkills(tb)().(core.SkillUseMsg)
+	msg, ok = m.home().Core.CountSkills(tb)().(core.SkillUseMsg)
 	if !ok || msg.Counts["nerdr-request-review"] != 2 {
 		t.Fatalf("a changed log should be read again: %#v", msg)
 	}
-	m.Core.OnSkillUse(msg)
+	m.home().Core.OnSkillUse(msg)
 	if got := m.skillTotals(tb)["nerdr-request-review"]; got == nil || got.N != 2 {
 		t.Fatalf("total %+v", got)
 	}

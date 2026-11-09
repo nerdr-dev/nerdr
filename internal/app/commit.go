@@ -51,12 +51,12 @@ const commitFilesShown = 12
 // openCommit opens the dialog for committing t's changes, and looks them
 // up.
 func (m *Model) openCommit(t *core.Tab) tea.Cmd {
-	m.do(core.MarkSandboxed{T: m.Core.Ref(t)})
+	m.do(core.MarkSandboxed{T: m.fleet.Ref(t)})
 	in := newTextArea("what the change does", min(max(m.width-16, 30), 80))
 	in.SetHeight(4)
 	d := &commitDialog{t: t, job: core.NewJobID(), wts: append([]workspace.Worktree(nil), t.Worktrees...), input: in}
 	m.dialog = d
-	return m.do(core.LookChanges{Job: d.job, T: m.Core.Ref(t)})
+	return m.do(core.LookChanges{Job: d.job, T: m.fleet.Ref(t)})
 }
 
 // onCommitFiles shows the changes in the dialog that asked for them.
@@ -115,7 +115,7 @@ func (d *commitDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		// What follows the commit is worked out now, from what is known of
 		// the tab here; core does it once the commit has been made.
 		q, busy, then := p.work(commitThen[d.then].key)
-		q.T, q.Message, q.CommitIn = m.Core.Ref(t), message, in
+		q.T, q.Message, q.CommitIn = m.fleet.Ref(t), message, in
 		p.busy = "committing…"
 		if then {
 			p.busy = "committing, then " + busy

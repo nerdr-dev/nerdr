@@ -179,7 +179,7 @@ func (m *Model) focusPane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 	m.pl(p).used = time.Now()
 	var seen tea.Cmd
 	if a := p.A; a != nil && p.Kind != core.PaneShell {
-		seen = m.do(core.SeeAgent{A: m.Core.Ref(a)})
+		seen = m.do(core.SeeAgent{A: m.fleet.Ref(a)})
 	}
 	m.setFocus(core.FocusAgent)
 	m.focusTerms(t)
@@ -201,11 +201,11 @@ func (m *Model) focusTerms(t *core.Tab) {
 // one used last when p had it, mostly the one it was opened from.
 func (m *Model) paneClosed(t *core.Tab, p core.PaneRef) {
 	for q := range m.paneLooks {
-		if m.Core.PaneRef(q) == p {
+		if m.fleet.PaneRef(q) == p {
 			delete(m.paneLooks, q)
 		}
 	}
-	if on := m.tl(t).on; on != nil && m.Core.PaneRef(on) == p {
+	if on := m.tl(t).on; on != nil && m.fleet.PaneRef(on) == p {
 		var next *core.PaneTab
 		for _, q := range t.Panes() {
 			if next == nil || m.pl(q).used.After(m.pl(next).used) {
@@ -268,25 +268,25 @@ func (m *Model) askClosePane() tea.Cmd {
 			defaultNo: true,
 			yesLabel:  "Stop and close", noLabel: "Cancel",
 			yes: func(m *Model) tea.Cmd {
-				if m.Core.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
+				if m.fleet.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
 					return nil
 				}
-				return m.do(core.ClosePane{P: m.Core.PaneRef(p)})
+				return m.do(core.ClosePane{P: m.fleet.PaneRef(p)})
 			},
 		}
 		return nil
 	}
 	if p.Kind == core.PaneShell || p.A == nil || !p.A.Light.AtWork() || p == t.OwnPane() {
-		return m.do(core.ClosePane{P: m.Core.PaneRef(p)})
+		return m.do(core.ClosePane{P: m.fleet.PaneRef(p)})
 	}
 	m.dialog = &confirm{
-		title: "Stop " + m.Core.PaneName(t, p) + "?",
+		title: "Stop " + m.machineOf(t).Core.PaneName(t, p) + "?",
 		lines: []string{closeLine(p.A)},
 		yes: func(m *Model) tea.Cmd {
-			if m.Core.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
+			if m.fleet.TabIndex(t) < 0 || !slices.Contains(t.Panes(), p) {
 				return nil
 			}
-			return m.do(core.ClosePane{P: m.Core.PaneRef(p)})
+			return m.do(core.ClosePane{P: m.fleet.PaneRef(p)})
 		},
 	}
 	return nil
@@ -300,9 +300,9 @@ func (m *Model) openNewAgent() tea.Cmd {
 		return nil
 	}
 	var items []menuItem
-	for _, k := range m.Core.Available() {
+	for _, k := range m.machineOf(t).Core.Available() {
 		items = append(items, menuItem{label: string(k), key: strconv.Itoa(len(items) + 1),
-			run: func(m *Model) tea.Cmd { return m.do(core.NewAgent{T: m.Core.Ref(t), Kind: k}) }})
+			run: func(m *Model) tea.Cmd { return m.do(core.NewAgent{T: m.fleet.Ref(t), Kind: k}) }})
 	}
 	if len(items) == 0 {
 		m.toast("no agent on PATH")
@@ -330,7 +330,7 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 	for _, p := range small {
 		bg := tabBarBg
 		st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("245"))
-		tip := m.Core.PaneName(t, p) + " · minimised"
+		tip := m.machineOf(t).Core.PaneName(t, p) + " · minimised"
 		part := st.Render(" ")
 		s, ok := p.Status()
 		switch {
@@ -339,7 +339,7 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 		case p.Kind == core.PaneShell:
 			part += lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("114")).Render("$") + st.Render(" ")
 		}
-		part += st.Render("▸" + m.Core.PaneName(t, p) + " ")
+		part += st.Render("▸" + m.machineOf(t).Core.PaneName(t, p) + " ")
 		part = m.tip(part, tip+" · click: go there · right-click: more · middle-click: close")
 		items = append(items, barItem{st: s, s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.paneMouse(t, p, ev) })})
 	}
@@ -371,8 +371,8 @@ func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 	sp := lipgloss.NewStyle().Background(bg).Render(" ")
 	btn := func(label, keys, tip string, run func(m *Model) tea.Cmd) string {
 		return m.tip(m.onClick(st.Render("+"+label), func(m *Model) tea.Cmd {
-			if m.Core.TabIndex(t) >= 0 && t != m.Cur() {
-				m.selectTab(m.Core.TabIndex(t))
+			if m.fleet.TabIndex(t) >= 0 && t != m.Cur() {
+				m.selectTab(m.fleet.TabIndex(t))
 			}
 			return run(m)
 		}), tip+" · "+m.pk(keys))
@@ -385,7 +385,7 @@ func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 // goToPane goes to tab t and gives its pane p the keyboard.
 func (m *Model) goToPane(t *core.Tab, p *core.PaneTab) tea.Cmd {
 	var cmd tea.Cmd
-	if i := m.Core.TabIndex(t); i >= 0 && t != m.Cur() {
+	if i := m.fleet.TabIndex(t); i >= 0 && t != m.Cur() {
 		cmd = m.selectTab(i)
 	}
 	return tea.Batch(cmd, m.focusPane(t, p))
@@ -397,7 +397,7 @@ func (m *Model) goToAgent(a *core.Tab) tea.Cmd {
 	o := a.Owner()
 	p := a.PaneOf()
 	if p == nil {
-		return m.selectTab(m.Core.TabIndex(o))
+		return m.selectTab(m.fleet.TabIndex(o))
 	}
 	return m.goToPane(o, p)
 }
@@ -428,7 +428,7 @@ func (m *Model) openPaneMenu(t *core.Tab, p *core.PaneTab, x, y int) {
 		small = "Show"
 	}
 	items := []menuItem{
-		{label: m.Core.PaneName(t, p)},
+		{label: m.machineOf(t).Core.PaneName(t, p)},
 		{label: small, key: "t m", run: func(m *Model) tea.Cmd { return m.minimisePane(t, p) }},
 		{label: "Close", key: "t x", run: func(m *Model) tea.Cmd { return m.askClosePane() }},
 		{label: "New panes"},
@@ -497,7 +497,7 @@ func (m *Model) tabLines(t *core.Tab, w, h int) []string {
 func (m *Model) paneColumn(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	title := ""
 	if one := len(t.Panes()) == 1; !one || m.splitShown() {
-		title = m.Core.PaneName(t, p)
+		title = m.machineOf(t).Core.PaneName(t, p)
 		if s, ok := p.Status(); ok {
 			title = m.tip(light(s), statusTip(s)) + " " + title
 		}
@@ -525,7 +525,7 @@ func (m *Model) paneColumn(t *core.Tab, p *core.PaneTab, w, h int) []string {
 // scrolled back.
 func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	if t == nil {
-		msg := []string{"", "  No tabs open.", "", "  Press " + keyHint(m.Core.Cfg.Prefix) + " then " + keyHint(m.shownKeys("c")) + " (or enter) to start one,",
+		msg := []string{"", "  No tabs open.", "", "  Press " + keyHint(m.cfg().Prefix) + " then " + keyHint(m.shownKeys("c")) + " (or enter) to start one,",
 			"  or click " + m.onClick(buttonStyle.Render(" + new tab "), (*Model).openWizard) + "."}
 		return fitLines(msg, w, h)
 	}
@@ -536,7 +536,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 		case a == nil:
 		case a.Err != "":
 			msg = []string{"", "  " + warn(a.Err), "", "  " + keyHint("r") + " / enter: try again   " +
-				keyHint(m.Core.Cfg.Prefix) + " " + keyHint(m.shownKeys("x")) + ": close the tab"}
+				keyHint(m.cfg().Prefix) + " " + keyHint(m.shownKeys("x")) + ": close the tab"}
 		default:
 			msg = []string{"", "  Starting " + string(a.Agent) + " in " + a.Dir + " …"}
 		}
@@ -572,7 +572,7 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 		note := " scrollback " + strconv.Itoa(m.tl(t).scroll) + "/" + strconv.Itoa(n) + " · ↑↓ pgup pgdn g G wheel · q or click here: back "
 		if tp.AltScreen() {
 			// It keeps no scrollback for nerdr: the keys scroll it.
-			note = " scrolling " + m.Core.PaneName(t, p) + "'s own screen · ↑↓ pgup pgdn wheel · q or click here: back "
+			note = " scrolling " + m.machineOf(t).Core.PaneName(t, p) + "'s own screen · ↑↓ pgup pgdn wheel · q or click here: back "
 		}
 		lines[0] = m.onClick(lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).
 			Render(padTo(ansi.Truncate(note, w, "…"), w)), func(m *Model) tea.Cmd {
@@ -621,7 +621,7 @@ func (m *Model) cycleFocus() tea.Cmd {
 	case i+1 < len(cols):
 		return m.focusPane(t, cols[i+1].P)
 	case m.splitTab() != nil && m.splitShown():
-		return m.selectTab(m.Core.TabIndex(m.splitTab()))
+		return m.selectTab(m.fleet.TabIndex(m.splitTab()))
 	case !m.reviewOpen && len(cols) > 1:
 		return m.focusPane(t, cols[0].P)
 	}
@@ -646,7 +646,7 @@ func (m *Model) stepPane(d int) core.Cmd {
 	}
 	ps := t.Panes()
 	i := slices.Index(ps, m.focused(t))
-	m.Core.Gen++
+	m.fleet.Bump()
 	return toCore(m.focusPane(t, ps[(i+d+len(ps))%len(ps)]))
 }
 
@@ -660,14 +660,14 @@ func (m *Model) movePane(d int) core.Cmd {
 	ps := t.Panes()
 	i := slices.Index(ps, m.focused(t))
 	if i == 0 {
-		m.Core.Toast(m.Core.AgentLabel(t, t) + " is the tab's first agent: it stays first")
+		m.home().Core.Toast(m.machineOf(t).Core.AgentLabel(t, t) + " is the tab's first agent: it stays first")
 		return nil
 	}
 	j := i + d
 	if j < 1 || j >= len(ps) {
 		return nil
 	}
-	return toCore(m.do(core.MovePane{P: m.Core.PaneRef(ps[i]), By: d}))
+	return toCore(m.do(core.MovePane{P: m.fleet.PaneRef(ps[i]), By: d}))
 }
 
 // newShell opens a terminal in the active tab's worktree, in a pane of
@@ -677,7 +677,7 @@ func (m *Model) newShell() tea.Cmd {
 	if t == nil {
 		return nil
 	}
-	return m.do(core.NewShell{T: m.Core.Ref(t)})
+	return m.do(core.NewShell{T: m.fleet.Ref(t)})
 }
 
 // paneCols are the panes of t shown in w columns: the one with the
@@ -693,7 +693,7 @@ func (m *Model) paneCols(t *core.Tab, w int) []paneCol {
 		}
 	}
 	slices.SortStableFunc(open[1:], func(a, b *core.PaneTab) int { return m.pl(b).used.Compare(m.pl(a).used) })
-	n := min(len(open), max((w+1)/(m.Core.PaneMinW()+1), 1))
+	n := min(len(open), max((w+1)/(m.home().Core.PaneMinW()+1), 1))
 	shown := open[:n]
 	var out []paneCol
 	for _, p := range ps {
@@ -731,10 +731,10 @@ type paneCol struct {
 
 // Cur is the active tab, or nil when there are none.
 func (m *Model) Cur() *core.Tab {
-	if m.Active < 0 || m.Active >= len(m.Core.Tabs) {
+	if m.Active < 0 || m.Active >= len(m.fleet.Tabs()) {
 		return nil
 	}
-	return m.Core.Tabs[m.Active]
+	return m.fleet.Tabs()[m.Active]
 }
 
 // CurAgent is the agent the keyboard is with, or the one it is nearest

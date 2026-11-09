@@ -177,7 +177,7 @@ func TestEveryCommandHasADescription(t *testing.T) {
 // with ctrl+r, r twice quits and q renames, and every list of keys says so.
 func TestPrefixLetterSwapsWithQ(t *testing.T) {
 	m := testModel(t)
-	m.Core.Cfg.Prefix = "ctrl+r"
+	m.home().Core.Cfg.Prefix = "ctrl+r"
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlR})
 	m.handleKey(keyMsg("q"))
 	if _, ok := m.dialog.(*renamer); !ok {
@@ -215,7 +215,7 @@ func TestPrefixLetterSwapsWithQ(t *testing.T) {
 	}
 
 	// A letter no command has changes nothing.
-	m.Core.Cfg.Prefix = "ctrl+y"
+	m.home().Core.Cfg.Prefix = "ctrl+y"
 	if m.pk("q") != "ctrl+y q" || m.pk("r") != "ctrl+y r" {
 		t.Errorf("ctrl+y: %q %q", m.pk("q"), m.pk("r"))
 	}
@@ -253,7 +253,7 @@ func TestFunctionKeysOff(t *testing.T) {
 		t.Fatalf("F-keys by default, got %q", m.screenKey(3))
 	}
 	off := false
-	m.Core.Cfg.FunctionKeys = &off
+	m.home().Core.Cfg.FunctionKeys = &off
 	m.review = m.review.SetScreenKeys(m.screenMenuKeys())
 	m.reviewOpen = true
 	m.resize()
@@ -275,7 +275,7 @@ func TestFunctionKeysOff(t *testing.T) {
 // the review panel, and the prefix stays on for more.
 func TestBracketsStepRepositories(t *testing.T) {
 	m := testModel(t)
-	if len(m.Core.Groups()) < 2 {
+	if len(m.home().Core.Groups()) < 2 {
 		t.Skip("needs two repositories")
 	}
 	g := m.curGroup()
@@ -296,15 +296,15 @@ func TestCloseDialogNoIsNo(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
 	m.openCloseFor(tb)
-	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Core.Ref(tb)}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.home().Core.Ref(tb)}})
 	m.Update(keyMsg("n"))
-	if m.dialog != nil || m.Core.TabIndex(tb) < 0 {
-		t.Fatalf("n should cancel: dialog %T, tab at %d", m.dialog, m.Core.TabIndex(tb))
+	if m.dialog != nil || m.home().Core.TabIndex(tb) < 0 {
+		t.Fatalf("n should cancel: dialog %T, tab at %d", m.dialog, m.home().Core.TabIndex(tb))
 	}
 	m.openCloseFor(tb)
-	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Core.Ref(tb)}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.home().Core.Ref(tb)}})
 	m.Update(keyMsg("k"))
-	if m.Core.TabIndex(tb) >= 0 {
+	if m.home().Core.TabIndex(tb) >= 0 {
 		t.Fatal("k should close the tab, keeping the worktree")
 	}
 }

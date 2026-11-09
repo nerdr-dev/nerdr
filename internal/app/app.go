@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/review"
@@ -24,11 +24,11 @@ import (
 // Model is the whole program's state. It is used through a pointer: the
 // panes' goroutines hold on to it (notify), so it must not be copied.
 type Model struct {
-	// Core is the TUI's copy of core's state, which core.Connect keeps up
-	// to date, or core itself when it runs in this process
-	// (NERDR_HOLDER=0). It is named, not embedded, so that each use of
-	// core says so; see TestModelNamesItsCore.
-	Core core.Core
+	// fleet holds the cores the TUI shows, a machine's each: the TUI's
+	// copy of core's state, which core.Connect keeps up to date, or core
+	// itself when it runs in this process (NERDR_HOLDER=0). Core is
+	// reached through it alone; see TestModelReachesCoreByFleet.
+	fleet fleet.Fleet
 	// laidRows and laidSide are the bar rows and the sidebar's width at
 	// the end of the last Update, laidOut once they are; see Update.
 	laidRows, laidSide int
@@ -49,19 +49,6 @@ type Model struct {
 	// Loop runs core on its own goroutine, once the program has started; nil
 	// in tests that drive Update by hand.
 	Loop *core.Loop
-	// screens keeps copies of core's screens sent as rows, to draw and
-	// send keys to (nerdr as the client of a core in a process of its
-	// own); nil when the programs are drawn from core's own. See SetScreens.
-	screens *core.ScreenClient
-	// remote is the connection to core, when it runs in a process of its
-	// own (see remote.go); said what the TUI last told it it shows, and
-	// pending what core told it before the program started.
-	remote *core.CoreConn
-	// coreHost is the machine core runs on, as ssh names it, when it is
-	// not this one: "" for core here, in this process or another.
-	coreHost string
-	said     core.ClientState
-	pending  []core.Event
 	// skillsAsked is the tab whose skills core was last asked to look at,
 	// at skillsAskedAt; see lookAtSkills.
 	skillsAsked   string
@@ -74,10 +61,6 @@ type Model struct {
 	// closing is set once the TUI is ending of its own will: the
 	// connection closing then is no news.
 	closing bool
-	// redial connects to core again; coreAway is set while the TUI is
-	// without it. See coreGone.
-	redial   func() (*attach.Conn, error)
-	coreAway bool
 	// keysTo is the agent core was last told has the keyboard (KeysTo):
 	// told again only when that changes, not after every message.
 	keysTo     keysTarget
@@ -314,11 +297,11 @@ type Model struct {
 // New builds the model for a session rooted at root.
 func New(cfg config.Config, root string, router *input.Router, sess state.Session) *Model {
 	m := &Model{
-		Core: core.Core{
+		fleet: fleet.New(&fleet.Machine{Core: core.Core{
 			Cfg:  cfg,
 			Root: root,
 			Wake: make(chan struct{}, 1),
-		},
+		}}),
 		router:      router,
 		Herdr:       herdr.Detect(),
 		review:      review.NewEmbedded(review.Local{}),
@@ -334,7 +317,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 	}
 	m.review = m.review.SetFocused(false).SetWideKey(m.pk("z z")).SetScreenKeys(m.screenMenuKeys())
 	m.review, _ = m.review.SetDiffColors(cfg.DiffColors)
-	m.review = m.review.SetPRRefresh(m.Core.GithubEvery(core.PrPanelEvery))
+	m.review = m.review.SetPRRefresh(m.home().Core.GithubEvery(core.PrPanelEvery))
 	if st, err := os.Stat(config.Path()); err == nil {
 		m.cfgMod = st.ModTime()
 	}
@@ -344,19 +327,19 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		m.mouse = mouseOff
 	}
 	now := time.Now()
-	m.Core.Restore(sess, now)
+	m.home().Core.Restore(sess, now)
 	m.restoreLayout(core.LayoutOf(sess))
-	m.Core.Client = m
+	m.home().Core.Client = m
 	return m
 }
 
 // restoreLayout lays the tabs out as sess was left.
 func (m *Model) restoreLayout(sess core.Layout) {
-	if sess.Active >= 0 && sess.Active < len(m.Core.Tabs) {
+	if sess.Active >= 0 && sess.Active < len(m.fleet.Tabs()) {
 		m.Active = sess.Active
 	}
 	m.entered = m.Cur() // as enter does; core marks it active
-	for i, t := range m.Core.Tabs {
+	for i, t := range m.fleet.Tabs() {
 		if sess.Split != "" && t.ID == sess.Split && i != m.Active && t.GroupName() == m.curGroup() {
 			m.split, m.splitLeft = t, sess.SplitLeft
 			m.reviewOpen = false
@@ -368,9 +351,9 @@ func (m *Model) restoreLayout(sess core.Layout) {
 // Init starts the restored tabs' agents, or the new-tab wizard when there
 // are none.
 func (m *Model) Init() tea.Cmd {
-	m.Core.Mu.Lock()
-	defer m.Core.Mu.Unlock()
-	if m.remote != nil {
+	m.fleet.Lock()
+	defer m.fleet.Unlock()
+	if m.Remote() {
 		return m.initRemote()
 	}
 	// Core's own ticks wait on Mu until this is done.
@@ -381,26 +364,26 @@ func (m *Model) Init() tea.Cmd {
 	// program running in it can show in place of the one running last
 	// under nerdr: its shells and git.
 	cmds := []tea.Cmd{tea.SetWindowTitle("nerdr"), m.review.Init()}
-	if m.Core.Cfg.Install == "" {
+	if m.home().Core.Cfg.Install == "" {
 		// The first start: where the worktrees, the skills and plugins and the notes
 		// go, before anything else. The new-tab dialog follows when there
 		// are no tabs.
 		var then func(m *Model) tea.Cmd
-		if len(m.Core.Tabs) == 0 {
+		if len(m.fleet.Tabs()) == 0 {
 			then = (*Model).openWizard
 		}
 		cmds = append(cmds, m.openSetup(then))
 	} else {
 		m.do(core.ApplySkills{})
 	}
-	if len(m.Core.Tabs) == 0 {
+	if len(m.fleet.Tabs()) == 0 {
 		if m.dialog == nil {
 			cmds = append(cmds, m.openWizard())
 		}
 	} else {
 		cmds = append(cmds, m.restoreStarts()...)
-		cmds = append(cmds, m.pinReview(), fromCore(core.PruneOrders(m.Core.Tabs)))
-		m.toast("restored " + core.Plural(len(m.Core.Tabs), "tab"))
+		cmds = append(cmds, m.pinReview(), fromCore(core.PruneOrders(m.fleet.Tabs())))
+		m.toast("restored " + core.Plural(len(m.fleet.Tabs()), "tab"))
 		if t := m.Cur(); t != nil && t.Spinoff != nil && m.dialog == nil {
 			cmds = append(cmds, m.openSpinoff(t))
 		}
@@ -420,20 +403,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if p, ok := msg.(core.PanicMsg); ok {
 		panic(p.String()) // here, where the terminal is put back
 	}
-	m.Core.Mu.Lock()
-	defer m.Core.Mu.Unlock()
+	m.fleet.Lock()
+	defer m.fleet.Unlock()
+	mc, msg := m.machineMsg(msg)
+	if mc == nil {
+		return m, nil // of a machine no longer the fleet's
+	}
 	msgs := m.panelMessages()
 	if !m.laidOut {
 		m.laidRows, m.laidSide, m.laidOut = m.barRows(), m.sideW(), true
 	}
 	switch msg.(type) {
 	case core.FrameMsg, core.DetectMsg, core.InfoTickMsg, core.RedrawMsg, core.ScreensMsg:
-		m.reviewReuse = m.Core.Gen == m.reviewGen
+		m.reviewReuse = m.fleet.Gen() == m.reviewGen
 	default:
 		m.reviewReuse = false
 	}
 	m.sameFrame = false
-	cmd := m.update(msg)
+	cmd := m.updateOn(mc, msg)
 	m.askReviewDone()
 	if m.barRows() != m.laidRows || m.sideW() != m.laidSide {
 		// The repository row came or went: a second repository's first
@@ -465,31 +452,49 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.review, shown = m.review.SetShown(m.reviewZoom || m.reviewOpen && !m.splitShown())
 	m.review = m.review.SetAlone(m.reviewZoom)
 	m.syncInput()
-	if m.remote != nil {
-		m.sayState()
-	}
+	m.sayStates()
 	return m, tea.Batch(cmd, shown, m.syncMouse())
 }
 
-func (m *Model) update(msg tea.Msg) tea.Cmd {
-	if m.Core.Quitting {
-		return m.whileQuitting(msg)
+// machineMsg is the machine msg is of, and msg itself: what a machine's
+// core told the TUI comes as fleet.Told, and what is of none is home's.
+// The machine is nil when it is no longer the fleet's.
+func (m *Model) machineMsg(msg tea.Msg) (*fleet.Machine, tea.Msg) {
+	if t, ok := msg.(fleet.Told); ok {
+		return m.fleet.Named(t.Machine), t.Msg
 	}
-	if m.remote == nil {
-		if cmd, ok := m.Core.Handle(msg); ok {
+	return m.home(), msg
+}
+
+// update handles msg, as Update does but for what is done every time.
+func (m *Model) update(msg tea.Msg) tea.Cmd {
+	mc, msg := m.machineMsg(msg)
+	if mc == nil {
+		return nil
+	}
+	return m.updateOn(mc, msg)
+}
+
+// updateOn handles msg, of machine mc.
+func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
+	if m.home().Core.Quitting {
+		return m.whileQuitting(mc, msg)
+	}
+	if mc.Conn == nil {
+		if cmd, ok := mc.Core.Handle(msg); ok {
 			return fromCore(cmd)
 		}
 	}
 	switch msg := msg.(type) {
 	case core.InboxMsg:
-		evs := m.remote.Take()
+		evs := mc.Conn.Take()
 		// What core sent leaves the review panel as it was when it is only
 		// what is passed on, each drawn by its own rules, and no part:
 		// a part moves Gen on. A program drawing sends a frame many
 		// times a second, and the panel is the costly part to draw.
-		m.reviewReuse = m.Core.Gen == m.reviewGen && !slices.ContainsFunc(evs, func(ev core.Event) bool { return !passedOn(ev) })
-		cmd := m.told(evs)
-		if m.remote.Started() {
+		m.reviewReuse = m.fleet.Gen() == m.reviewGen && !slices.ContainsFunc(evs, func(ev core.Event) bool { return !passedOn(ev) })
+		cmd := m.told(mc, evs)
+		if mc.Conn.Started() {
 			// A program core started at the size the TUI last said: it
 			// gets the size it is shown at now.
 			m.reviewReuse = false
@@ -498,13 +503,13 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return cmd
 
 	case core.CoreGoneMsg:
-		return m.coreGone(msg.Why)
+		return m.coreGone(mc, msg.Why)
 
 	case coreBackMsg:
-		return m.coreBack(msg.conn)
+		return m.coreBack(mc, msg.conn)
 
 	case coreEndedMsg:
-		return m.onCoreEnded(msg)
+		return m.onCoreEnded(mc, msg)
 
 	case core.ChangedMsg, core.RedrawMsg:
 		return nil // only to draw what core has done
@@ -535,12 +540,12 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		return nil
 
 	case core.FrameMsg:
-		if m.screens != nil {
-			m.screens.Drop(m.Core.Runs)
+		if mc.Screens != nil {
+			mc.Screens.Drop(mc.Core.Runs)
 		}
 		m.checkEditor()
-		if m.remote == nil { // core looks at its programs itself
-			m.do(core.CheckPrograms{})
+		if mc.Conn == nil { // core looks at its programs itself
+			m.doOn(mc, core.CheckPrograms{})
 		}
 		m.checkCopied()
 		return nil
@@ -572,7 +577,7 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 		if t := m.Cur(); t != nil {
 			m.focusTerms(t)
 			if m.dwelt() {
-				m.do(core.SeeAgent{A: m.Core.Ref(t), Glance: true})
+				m.do(core.SeeAgent{A: m.fleet.Ref(t), Glance: true})
 			}
 		}
 		m.reportHerdr()
@@ -654,8 +659,8 @@ func (m *Model) update(msg tea.Msg) tea.Cmd {
 // is in is still taken, and saved, for the next start to resume: one it
 // moved to just before (a /clear), one found for it. A report waiting
 // for an answer is told why there is none.
-func (m *Model) whileQuitting(msg tea.Msg) tea.Cmd {
-	if _, ok := m.Core.Handle(msg); ok {
+func (m *Model) whileQuitting(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
+	if _, ok := mc.Core.Handle(msg); ok {
 		return nil
 	}
 	switch msg := msg.(type) {
@@ -687,7 +692,7 @@ func (m *Model) syncInput() {
 		}
 	}
 	t := m.Cur()
-	if m.Core.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil {
+	if m.home().Core.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil {
 		m.router.Passthrough(nil)
 		return
 	}
@@ -710,7 +715,7 @@ func (m *Model) syncInput() {
 	if f.Kind != core.PaneShell && a != nil {
 		// Core follows what is typed to an agent but Claude, whose
 		// prompts it reads from its log: the program it gives then does.
-		if to := (keysTarget{m.Core.PaneRef(f), a.ID}); to != m.keysTo {
+		if to := (keysTarget{m.fleet.PaneRef(f), a.ID}); to != m.keysTo {
 			m.keysTo = to
 			m.do(core.KeysTo{Ref: core.ProgramRef{Pane: to.pane}})
 			p = m.keyPane()
@@ -739,7 +744,7 @@ func (m *Model) tabShown(t *core.Tab) bool {
 // the tabs shown has done its job, and what was gathered to tell is told.
 func (m *Model) detected(now time.Time) tea.Cmd {
 	if m.editor == nil && !m.blurred {
-		for _, t := range m.Core.Tabs {
+		for _, t := range m.fleet.Tabs() {
 			if m.tabShown(t) {
 				m.toastSeen(t)
 			}
@@ -782,7 +787,7 @@ func (m *Model) resize() tea.Cmd {
 
 func (m *Model) resizePanes() {
 	m.fitPanel()
-	for _, t := range m.Core.Tabs {
+	for _, t := range m.fleet.Tabs() {
 		for _, p := range t.Panes() {
 			switch {
 			case p.Kind == core.PaneShell:
@@ -853,7 +858,7 @@ func (m *Model) pinReview() tea.Cmd {
 	// it was chosen in, not on whichever is active by now: a tab opened or
 	// closed changes the active one before the panel hears of it.
 	moved := t != m.screenTab
-	if moved && m.screenTab != nil && m.Core.TabIndex(m.screenTab) >= 0 {
+	if moved && m.screenTab != nil && m.fleet.TabIndex(m.screenTab) >= 0 {
 		if m.panelScreens == nil {
 			m.panelScreens = map[*core.Tab]review.Screen{}
 		}
@@ -879,7 +884,7 @@ func (m *Model) pinReview() tea.Cmd {
 func (m *Model) shareOverlaps() {
 	var shared map[string][]string
 	if t := m.Cur(); t != nil {
-		for k, names := range m.Core.Shared[t.ID] {
+		for k, names := range m.machineOf(t).Core.Shared[t.ID] {
 			if shared == nil {
 				shared = map[string][]string{}
 			}
@@ -922,7 +927,7 @@ func (m *Model) setFocus(f core.FocusArea) {
 
 // selectTab makes tab i the active one.
 func (m *Model) selectTab(i int) tea.Cmd {
-	if i < 0 || i >= len(m.Core.Tabs) {
+	if i < 0 || i >= len(m.fleet.Tabs()) {
 		return nil
 	}
 	if i != m.Active {
@@ -935,20 +940,20 @@ func (m *Model) selectTab(i int) tea.Cmd {
 			}
 		}
 	}
-	if s := m.splitTab(); s != nil && m.Core.Tabs[i] == s {
+	if s := m.splitTab(); s != nil && m.fleet.Tabs()[i] == s {
 		// The other tab on screen: the keyboard moves across, and each
 		// keeps its side.
 		m.split, m.splitLeft = m.Cur(), !m.splitLeft
 	}
-	splitEnded := m.split != nil && m.split.GroupName() != m.Core.Tabs[i].GroupName()
+	splitEnded := m.split != nil && m.split.GroupName() != m.fleet.Tabs()[i].GroupName()
 	if splitEnded {
 		m.split = nil // only tabs of one repository share the screen
 	}
 	m.Active = i
 	m.scrolling = false
-	t := m.Core.Tabs[i]
+	t := m.fleet.Tabs()[i]
 	tracked := m.track() // before seen: a finished agent is summed up as finished
-	m.lastInGroup[t.GroupName()] = m.Core.Ref(t)
+	m.lastInGroup[t.GroupName()] = m.fleet.Ref(t)
 	m.landed, m.looking = time.Now(), true
 	m.focusTerms(t)
 	if m.split != nil || splitEnded {
@@ -972,7 +977,7 @@ func (m *Model) look() {
 	}
 	m.looking = false
 	// The user has seen what became of the last message too.
-	m.do(core.SeeAgent{A: m.Core.Ref(t)})
+	m.do(core.SeeAgent{A: m.fleet.Ref(t)})
 }
 
 // dwelt reports whether the active tab has been so long enough to count as
@@ -994,9 +999,9 @@ func (m *Model) Shutdown() {
 		m.Loop.Stop()
 	}
 	m.shutdown.Do(func() {
-		m.Core.Mu.Lock()
+		m.fleet.Lock()
 		panes := m.stopping()
-		m.Core.Mu.Unlock()
+		m.fleet.Unlock()
 		core.StopPanes(panes)
 		m.Herdr.Release()
 	})
@@ -1006,10 +1011,12 @@ func (m *Model) Shutdown() {
 // then: what reads the model is done before the programs are stopped,
 // which takes a while and runs out of the screen's way when quitting.
 func (m *Model) stopping() []*term.Pane {
-	m.Core.Quitting = true
-	m.Core.SaveSession()
+	for _, mc := range m.fleet.Machines() {
+		mc.Core.Quitting = true
+		mc.Core.SaveSession()
+	}
 	var panes []*term.Pane
-	for _, t := range m.Core.Tabs {
+	for _, t := range m.fleet.Tabs() {
 		for _, p := range t.Panes() {
 			if tp := p.Term(); tp != nil {
 				panes = append(panes, tp)
@@ -1019,7 +1026,7 @@ func (m *Model) stopping() []*term.Pane {
 	if m.editor != nil {
 		panes = append(panes, m.editor)
 	}
-	return append(panes, m.Core.PluginUIPanes()...)
+	return append(panes, m.home().Core.PluginUIPanes()...)
 }
 
 // onPanelLayout follows F1's file list going beside the diff or back above

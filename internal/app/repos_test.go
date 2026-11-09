@@ -77,7 +77,7 @@ func TestReposDirtyAsksAgain(t *testing.T) {
 func TestReposOneChangeAtATime(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
-	change := core.ChangeRepos{T: m.Core.Ref(tb), C: core.RepoChange{Remove: tb.Worktrees}}
+	change := core.ChangeRepos{T: m.home().Core.Ref(tb), C: core.RepoChange{Remove: tb.Worktrees}}
 	if m.do(change) == nil {
 		t.Fatal("the change did not start")
 	}
@@ -91,7 +91,7 @@ func TestReposOneChangeAtATime(t *testing.T) {
 		t.Fatalf("the dialog opened while the change ran: %T", m.dialog)
 	}
 	m.closeTab(tb, true, false, nil)
-	if m.Core.TabIndex(tb) < 0 {
+	if m.home().Core.TabIndex(tb) < 0 {
 		t.Fatal("the tab closed while its repositories changed")
 	}
 	m.Update(core.ReposChangedMsg{T: tb, Wts: tb.Worktrees})

@@ -23,11 +23,11 @@ func TestCloseWaitsForTheCheck(t *testing.T) {
 	}
 	for _, k := range []string{"y", "n", "b"} {
 		m.Update(keyMsg(k))
-		if m.dialog != c || m.Core.TabIndex(tb) < 0 {
+		if m.dialog != c || m.home().Core.TabIndex(tb) < 0 {
 			t.Fatalf("%s typed ahead acted on a dialog not yet drawn", k)
 		}
 	}
-	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Core.Ref(tb)}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.home().Core.Ref(tb)}})
 	v := ansi.Strip(m.View())
 	for _, want := range []string{"Close tab", "branch login", "y delete the worktree",
 		"k keep the worktree and the branch", "n cancel, the tab stays open"} {
@@ -40,7 +40,7 @@ func TestCloseWaitsForTheCheck(t *testing.T) {
 	}
 	m.Update(closeShowMsg{c}) // closeWait passing after the answer changes nothing
 	clickOn(t, m, "keep the worktree", tea.MouseButtonLeft)
-	if m.dialog != nil || m.Core.TabIndex(tb) >= 0 {
+	if m.dialog != nil || m.home().Core.TabIndex(tb) >= 0 {
 		t.Fatal("n should close the tab")
 	}
 }
@@ -59,11 +59,11 @@ func TestCloseShowsTheCheckWhenSlow(t *testing.T) {
 		t.Fatalf("shown while checking:\n%s", v)
 	}
 	m.Update(keyMsg("y"))
-	if m.dialog != c || m.Core.TabIndex(tb) < 0 {
+	if m.dialog != c || m.home().Core.TabIndex(tb) < 0 {
 		t.Fatal("y before the check is done could lose work")
 	}
 	path := tb.Worktrees[0].Path
-	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Core.Ref(tb), MergedHeads: map[string]string{path: "abc"}, Heads: map[string]string{path: "abc"}}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.home().Core.Ref(tb), MergedHeads: map[string]string{path: "abc"}, Heads: map[string]string{path: "abc"}}})
 	v = ansi.Strip(m.View())
 	if !strings.Contains(v, "y delete the worktree and the branch — merged on GitHub") ||
 		!strings.Contains(v, "w delete the worktree, keep the branch") ||
@@ -80,7 +80,7 @@ func TestCloseCancelsWhileWaiting(t *testing.T) {
 	m.openCloseFor(tb)
 	old := m.dialog.(*closeTab)
 	m.Update(keyMsg("esc"))
-	if m.dialog != nil || m.Core.TabIndex(tb) < 0 {
+	if m.dialog != nil || m.home().Core.TabIndex(tb) < 0 {
 		t.Fatal("esc should cancel and keep the tab")
 	}
 
@@ -90,7 +90,7 @@ func TestCloseCancelsWhileWaiting(t *testing.T) {
 		t.Fatal("the first dialog's closeWait showed the second")
 	}
 	m.Update(tea.MouseMsg{X: 5, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if m.dialog != nil || m.Core.TabIndex(tb) < 0 {
+	if m.dialog != nil || m.home().Core.TabIndex(tb) < 0 {
 		t.Fatal("a click while waiting should cancel and keep the tab")
 	}
 }
@@ -104,7 +104,7 @@ func TestCloseDeletesAnUnmergedBranch(t *testing.T) {
 	path := tb.Worktrees[0].Path
 	m.openCloseFor(tb)
 	c := m.dialog.(*closeTab)
-	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.Core.Ref(tb), Unpushed: []string{"login"}, Heads: map[string]string{path: "abc"}}})
+	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.home().Core.Ref(tb), Unpushed: []string{"login"}, Heads: map[string]string{path: "abc"}}})
 	v := ansi.Strip(m.View())
 	if !strings.Contains(v, "y delete the worktree and the branch — not merged, commits not pushed") {
 		t.Fatalf("not merged:\n%s", v)
@@ -118,12 +118,12 @@ func TestCloseDeletesAnUnmergedBranch(t *testing.T) {
 		t.Fatalf("y with unpushed commits should ask first:\n%s", v)
 	}
 	m.Update(keyMsg("n"))
-	if m.dialog != c || c.ask != "" || m.Core.TabIndex(tb) < 0 {
+	if m.dialog != c || c.ask != "" || m.home().Core.TabIndex(tb) < 0 {
 		t.Fatal("n should go back to the dialog")
 	}
 	m.Update(keyMsg("y"))
 	m.Update(keyMsg("Y"))
-	if m.dialog != nil || m.Core.TabIndex(tb) >= 0 {
+	if m.dialog != nil || m.home().Core.TabIndex(tb) >= 0 {
 		t.Fatal("Y should close the tab")
 	}
 }
@@ -137,7 +137,7 @@ func TestEnterInTheCloseDialog(t *testing.T) {
 		tb := m.Cur()
 		path := tb.Worktrees[0].Path
 		m.openCloseFor(tb)
-		info := core.CloseInfoMsg{T: m.Core.Ref(tb), Heads: map[string]string{path: "abc"}, Dirty: []string{"login"}}
+		info := core.CloseInfoMsg{T: m.home().Core.Ref(tb), Heads: map[string]string{path: "abc"}, Dirty: []string{"login"}}
 		if merged {
 			info.MergedHeads = map[string]string{path: "abc"}
 		}

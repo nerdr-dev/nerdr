@@ -150,16 +150,16 @@ func TestWizardHiddenWhileCreating(t *testing.T) {
 	if m.Cur().Name != "login" {
 		t.Fatalf("on %s: the new tab must not take the keyboard", m.Cur().Name)
 	}
-	nt := m.Core.Tabs[len(m.Core.Tabs)-1]
+	nt := m.home().Core.Tabs[len(m.home().Core.Tabs)-1]
 	if nt.Name != "new" || len(nt.Messages) != 1 || nt.Goal != "do it" {
 		t.Fatalf("the new tab and its task: %+v", nt.Tab)
 	}
 
 	m.dialog = nil
-	n := len(m.Core.Tabs)
+	n := len(m.home().Core.Tabs)
 	m.Update(core.Reply{Ev: core.WorktreesMadeMsg{Job: w.id, Plan: plan, Err: "no fetch"}})
-	if len(m.Core.Tabs) != n || !strings.Contains(m.toastText, "no fetch") {
-		t.Fatalf("a failure is told, and opens nothing: %d tabs, toast %q", len(m.Core.Tabs), m.toastText)
+	if len(m.home().Core.Tabs) != n || !strings.Contains(m.toastText, "no fetch") {
+		t.Fatalf("a failure is told, and opens nothing: %d tabs, toast %q", len(m.home().Core.Tabs), m.toastText)
 	}
 }
 
@@ -251,8 +251,8 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 	wts := []workspace.Worktree{{Repo: "/r/a"}, {Repo: "/r/b"}}
 	open := func(group string) *core.Tab {
 		t := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: core.NewTabID(), Name: "feat", Dir: "/w/feat-a-b", Worktrees: wts}}}
-		t.Group = m.Core.RememberGroup(t.Dir, group, wts) // as addTab does, without starting an agent
-		m.Core.Tabs = append(m.Core.Tabs, t)
+		t.Group = m.home().Core.RememberGroup(t.Dir, group, wts) // as addTab does, without starting an agent
+		m.home().Core.Tabs = append(m.home().Core.Tabs, t)
 		return t
 	}
 	m.closeTab(open("platform"), false, false, nil)
@@ -273,8 +273,8 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 	m.dialog = nil
 
 	m.renameGroup("platform", "infra")
-	if again.GroupName() != "infra" || m.Core.GroupNames["/w/feat-a-b"] != "infra" {
-		t.Fatalf("renamed: group %q, kept %q", again.GroupName(), m.Core.GroupNames["/w/feat-a-b"])
+	if again.GroupName() != "infra" || m.home().Core.GroupNames["/w/feat-a-b"] != "infra" {
+		t.Fatalf("renamed: group %q, kept %q", again.GroupName(), m.home().Core.GroupNames["/w/feat-a-b"])
 	}
 	m.renameGroup("infra", "")
 	if again.GroupName() != core.MultiGroup {
@@ -284,7 +284,7 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 	// Deleting the worktrees forgets the name.
 	m.renameGroup(core.MultiGroup, "infra")
 	m.closeTab(again, true, true, nil)
-	if _, ok := m.Core.GroupNames["/w/feat-a-b"]; ok {
+	if _, ok := m.home().Core.GroupNames["/w/feat-a-b"]; ok {
 		t.Fatal("the name of deleted worktrees should be forgotten")
 	}
 }
@@ -294,7 +294,7 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 // closes it, not going back to the repository list it never showed.
 func TestWizardForARepoClosesOnEsc(t *testing.T) {
 	m := tabsModel(t)
-	repo := filepath.Join(m.Core.Root, "app")
+	repo := filepath.Join(m.home().Core.Root, "app")
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -322,7 +322,7 @@ func TestWizardForARepoClosesOnEsc(t *testing.T) {
 // or cloning one too; with none, at the form for a new one.
 func TestNewRepoPicksFromTheRepositoriesFirst(t *testing.T) {
 	m := tabsModel(t)
-	m.Core.Cfg.RepoDirs = []string{m.Core.Root}
+	m.home().Core.Cfg.RepoDirs = []string{m.home().Core.Root}
 	scanned(m)
 	m.openNewRepoDialog()
 	if w, ok := m.dialog.(*wizard); !ok || w.repoDir == "" || w.step != stepNewRepo {
@@ -330,7 +330,7 @@ func TestNewRepoPicksFromTheRepositoriesFirst(t *testing.T) {
 	}
 
 	m.dialog = nil
-	if err := os.MkdirAll(filepath.Join(m.Core.Root, "app", ".git"), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Join(m.home().Core.Root, "app", ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	scanned(m)
@@ -415,8 +415,8 @@ func TestWizardScrollsLongLists(t *testing.T) {
 	m := tabsModel(t)
 	// Folders too long for a line, as a Mac's temporary ones are: their
 	// headings take two rows each.
-	m.Core.Root = "/" + strings.Repeat("folder/", 15) + "code"
-	m.Core.WtRoot = m.Core.Root + "/worktrees"
+	m.home().Core.Root = "/" + strings.Repeat("folder/", 15) + "code"
+	m.home().Core.WtRoot = m.home().Core.Root + "/worktrees"
 	m.openWizard()
 	w := m.dialog.(*wizard)
 	w.repos = []workspace.Repo{{Name: "app", Path: "/r/app"}}

@@ -79,7 +79,7 @@ func (m *Model) needAllMotion() bool {
 	return p != nil && p.WantsAllMotion()
 }
 
-func (m *Model) mouseOn() bool { return m.Core.Cfg.Mouse != nil && *m.Core.Cfg.Mouse }
+func (m *Model) mouseOn() bool { return m.cfg().Mouse != nil && *m.cfg().Mouse }
 
 // syncMouse asks the terminal for the reports wantMouse says, if that has
 // changed.
@@ -246,7 +246,7 @@ func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 			return nil
 		}
 		if t != m.Cur() {
-			cmd = m.selectTab(m.Core.TabIndex(t))
+			cmd = m.selectTab(m.fleet.TabIndex(t))
 		}
 		cmd = tea.Batch(cmd, m.focusPane(t, p))
 		if !isWheel(ev) || !inside {
@@ -473,7 +473,7 @@ func (m *Model) shownScroll(t *core.Tab) int {
 // you over SSH and through herdr), and the local clipboard's own way too
 // where there is one.
 func (m *Model) copySelection(p core.Program) {
-	if c, ok := p.(*term.Copy); ok && m.screens != nil {
+	if c, ok := p.(*term.Copy); ok && m.home().Screens != nil {
 		m.copyFromCopy(c)
 	} else {
 		m.copyText(selectedText(p, m.sel))
@@ -489,6 +489,7 @@ func (m *Model) copySelection(p core.Program) {
 // waiting for nothing meanwhile.
 func (m *Model) copyFromCopy(c *term.Copy) {
 	sel := m.sel
+	screens := m.home().Screens
 	from, to := sel.From.Line, sel.To.Line
 	if to < from {
 		from, to = to, from
@@ -505,7 +506,7 @@ func (m *Model) copyFromCopy(c *term.Copy) {
 		}
 		mu.Unlock()
 		if later {
-			m.screens.Tell(selectionMsg{text: text, whole: rows != nil})
+			screens.Tell(selectionMsg{text: text, whole: rows != nil})
 		}
 	})
 	mu.Lock()
@@ -566,7 +567,7 @@ func (m *Model) checkCopied() {
 	if m.editor != nil {
 		panes = append(panes, m.editor)
 	}
-	for _, t := range m.Core.Tabs {
+	for _, t := range m.fleet.Tabs() {
 		for _, p := range t.Panes() {
 			panes = append(panes, m.program(p))
 		}

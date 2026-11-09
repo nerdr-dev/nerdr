@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -49,17 +50,17 @@ func TestFindOverlaps(t *testing.T) {
 	a := mk("a", map[string][]string{"/r/app": {"x.go", "y.go"}})
 	b := mk("b", map[string][]string{"/r/app": {"y.go", "z.go"}})
 	c := mk("c", map[string][]string{"/r/other": {"y.go"}}) // same name, other repo
-	m := &Model{Core: core.Core{Tabs: []*core.Tab{a, b, c}}}
-	m.Core.Client = m
-	m.Core.FindOverlaps()
+	m := &Model{fleet: fleet.New(&fleet.Machine{Core: core.Core{Tabs: []*core.Tab{a, b, c}}})}
+	m.home().Core.Client = m
+	m.home().Core.FindOverlaps()
 
-	if got := m.Core.Overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
+	if got := m.home().Core.Overlaps["a"]; len(got) != 1 || got[0].With != b || !reflect.DeepEqual(got[0].Files, []string{"app/y.go"}) {
 		t.Fatalf("a: %+v", got)
 	}
-	if got := m.Core.Overlaps["b"]; len(got) != 1 || got[0].With != a {
+	if got := m.home().Core.Overlaps["b"]; len(got) != 1 || got[0].With != a {
 		t.Fatalf("b: %+v", got)
 	}
-	if got := m.Core.Overlaps["c"]; len(got) != 0 {
+	if got := m.home().Core.Overlaps["c"]; len(got) != 0 {
 		t.Fatalf("c: %+v", got)
 	}
 }
@@ -110,9 +111,9 @@ func TestNotesInsideHerdr(t *testing.T) {
 	}
 	top := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "top"}, Light: core.StBlocked}}
 	other := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "other"}, Light: core.StDone}}
-	m := &Model{Core: core.Core{Tabs: []*core.Tab{top, other}}, Herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
-	m.Core.Client = m
-	m.Core.Cfg.Notify = "all"
+	m := &Model{fleet: fleet.New(&fleet.Machine{Core: core.Core{Tabs: []*core.Tab{top, other}}}), Herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
+	m.home().Core.Client = m
+	m.home().Core.Cfg.Notify = "all"
 	now := time.Now()
 	m.notifyChange(top, false, now)
 	m.notifyChange(other, false, now)

@@ -44,7 +44,7 @@ func (m *Model) openSent() tea.Cmd { return m.openSentOf(m.CurAgent()) }
 
 // openSentOf opens the list of what was sent to agent t.
 func (m *Model) openSentOf(t *core.Tab) tea.Cmd {
-	if t == nil || !m.Core.Live(t) {
+	if t == nil || !m.machineOf(t).Core.Live(t) {
 		return nil
 	}
 	d := &sentDialog{t: t, list: t.Prompts}
@@ -179,7 +179,7 @@ func (d *sentDialog) view(m *Model, w, h int) string {
 	}
 	lines = append(lines, m.button("↑↓", "pick")+"  "+m.button("enter", "in full")+"  "+
 		m.button("c", "copy")+"  "+m.button("esc", "close"))
-	return box("Sent to "+m.Core.AgentName(d.t), lines, w)
+	return box("Sent to "+m.machineOf(d.t).Core.AgentName(d.t), lines, w)
 }
 
 // fullView is the prompt picked alone, as many of its rows as fit from off.
@@ -197,7 +197,7 @@ func (d *sentDialog) fullView(m *Model, inner, w, h int) string {
 	}
 	lines = append(lines, "", dim(sentTime(p.At)+" · "+where), "",
 		m.button("↑↓", "scroll")+"  "+m.button("c", "copy")+"  "+m.button("enter", "back to the list"))
-	return box("Sent to "+m.Core.AgentName(d.t), lines, w)
+	return box("Sent to "+m.machineOf(d.t).Core.AgentName(d.t), lines, w)
 }
 
 // sentTime is when a prompt was sent, as short as is clear: the time

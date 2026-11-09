@@ -20,14 +20,14 @@ func TestApprovalRemarksReachAuthor(t *testing.T) {
 		for _, rounds := range []int{1, 2} {
 			t.Run(fmt.Sprintf("%s/%d", mode, rounds), func(t *testing.T) {
 				m := testModel(t)
-				m.Core.Cfg.Review.SendFindings = mode
+				m.home().Core.Cfg.Review.SendFindings = mode
 				tb := m.Cur()
 				tb.Messages = []state.Message{{Text: "queued task"}}
 				r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "approval-reviewer", Agent: "claude"}}, ReviewOf: tb}
 				tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: rounds, Tree: "approved-tree"}
 				res := &codereview.Result{Verdict: codereview.Approve, Summary: "Approved with small remarks",
 					Findings: []codereview.Finding{{File: "a.go", Severity: codereview.Low, Text: "keep this remark"}}}
-				m.Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: res})
+				m.home().Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: res})
 				if tb.Review != nil || tb.Reviewed != "approved-tree" {
 					t.Fatal("approval should end the review")
 				}
@@ -42,7 +42,7 @@ func TestApprovalRemarksReachAuthor(t *testing.T) {
 					if tb.ReviewDone == nil || tb.ReviewDone.Msg != msg {
 						t.Fatal("no offer to send remarks")
 					}
-					m.Core.SendFindings(tb, msg)
+					m.home().Core.SendFindings(tb, msg)
 					if !tb.Messages[0].Auto {
 						t.Fatal("remarks could not be sent")
 					}
@@ -60,7 +60,7 @@ func TestApprovalWithoutRemarksDoesNotQueueMessage(t *testing.T) {
 	r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "approval-reviewer", Agent: "claude"}}, ReviewOf: tb}
 	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 2}
 	before := len(tb.Messages)
-	m.Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
+	m.home().Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
 	if tb.Review != nil || len(tb.Messages) != before {
 		t.Fatal("approval without remarks should simply end the review")
 	}
@@ -88,11 +88,11 @@ func TestApprovalWithoutRemarksDoesNotQueueMessage(t *testing.T) {
 
 func TestAutoApprovalWithoutRemarksDoesNotAsk(t *testing.T) {
 	m := testModel(t)
-	m.Core.Cfg.Review.SendFindings = config.FindingsAuto
+	m.home().Core.Cfg.Review.SendFindings = config.FindingsAuto
 	tb := m.Cur()
 	r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "approval-reviewer", Agent: "claude"}}, ReviewOf: tb}
 	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 2}
-	m.Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
+	m.home().Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
 	if tb.Review != nil || tb.ReviewDone != nil {
 		t.Fatal("with send_findings = auto, approval ends the review without a dialog")
 	}
@@ -104,9 +104,9 @@ func TestApprovalRemarksJoinRequestedChanges(t *testing.T) {
 	approved := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "approved", Agent: "claude"}}, ReviewOf: tb}
 	changes := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "changes", Agent: "codex"}}, ReviewOf: tb}
 	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: approved}, {R: changes}}, Round: 1, Rounds: 2}
-	m.Core.OnReview(hooks.Report{Pane: approved.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine",
+	m.home().Core.OnReview(hooks.Report{Pane: approved.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.Low, Text: "optional remark"}}}})
-	m.Core.OnReview(hooks.Report{Pane: changes.HookKey(), Review: &codereview.Result{Verdict: codereview.Changes, Summary: "fix",
+	m.home().Core.OnReview(hooks.Report{Pane: changes.HookKey(), Review: &codereview.Result{Verdict: codereview.Changes, Summary: "fix",
 		Findings: []codereview.Finding{{File: "b.go", Severity: codereview.High, Text: "required fix"}}}})
 	if tb.Review == nil || len(tb.Review.Seats) != 1 || tb.Review.Seats[0].R != changes || tb.Review.Phase != core.Fixing {
 		t.Fatal("only the reviewer requesting changes should stay")
@@ -122,16 +122,16 @@ func TestApprovalRemarksJoinRequestedChanges(t *testing.T) {
 func TestReviewDoneOutlivesARestart(t *testing.T) {
 	restart := func(t *testing.T, m *Model) *Model {
 		t.Helper()
-		sess, err := state.Load(m.Core.Root)
+		sess, err := state.Load(m.home().Core.Root)
 		if err != nil {
 			t.Fatal(err)
 		}
-		return New(m.Core.Cfg, m.Core.Root, nil, sess)
+		return New(m.home().Core.Cfg, m.home().Core.Root, nil, sess)
 	}
 	done := func(m *Model, tb *core.Tab, res *codereview.Result) {
 		r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "reviewer", Agent: "codex"}}, ReviewOf: tb}
 		tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 1, Tree: "t1"}
-		m.Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: res})
+		m.home().Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: res})
 	}
 	findings := &codereview.Result{Verdict: codereview.Changes, Summary: "needs a fix",
 		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "bug"}}}
@@ -150,7 +150,7 @@ func TestReviewDoneOutlivesARestart(t *testing.T) {
 			t.Fatalf("asked in the wrong tab: %#v", m.dialog)
 		}
 		var back *core.Tab
-		for _, x := range m.Core.Tabs {
+		for _, x := range m.home().Core.Tabs {
 			if x.ID == id {
 				back = x
 			}
@@ -158,7 +158,7 @@ func TestReviewDoneOutlivesARestart(t *testing.T) {
 		if !strings.Contains(ansi.Strip(m.tabBar()), "⚑") {
 			t.Fatalf("the tab's entry should be marked: %s", ansi.Strip(m.tabBar()))
 		}
-		m.Active = m.Core.TabIndex(back)
+		m.Active = m.home().Core.TabIndex(back)
 		m.askReviewDone()
 		rd, ok := m.dialog.(*reviewDoneDialog)
 		if !ok || !rd.asks() {
@@ -170,13 +170,13 @@ func TestReviewDoneOutlivesARestart(t *testing.T) {
 
 		// Told of once: another restart does not ask again.
 		m = restart(t, m)
-		m.Active = m.Core.TabIndex(m.Core.Tabs[0])
+		m.Active = m.home().Core.TabIndex(m.home().Core.Tabs[0])
 		m.askReviewDone()
 		if m.dialog != nil {
 			t.Fatalf("asked again after another restart: %#v", m.dialog)
 		}
-		if len(m.Core.Tabs[0].Messages) != 1 || !m.Core.Tabs[0].FindingsWait() {
-			t.Fatalf("the findings should still wait in F3: %+v", m.Core.Tabs[0].Messages)
+		if len(m.home().Core.Tabs[0].Messages) != 1 || !m.home().Core.Tabs[0].FindingsWait() {
+			t.Fatalf("the findings should still wait in F3: %+v", m.home().Core.Tabs[0].Messages)
 		}
 	})
 
@@ -186,7 +186,7 @@ func TestReviewDoneOutlivesARestart(t *testing.T) {
 		m.Active = 1
 		done(m, tb, findings)
 		tb.Messages[0].Auto = true // space in F3
-		m.Core.SaveSession()
+		m.home().Core.SaveSession()
 
 		m = restart(t, m)
 		m.Active = 0

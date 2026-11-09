@@ -127,20 +127,22 @@ func statusTip(s core.Status) string {
 // View draws the screen, and notes where its zones ended up for the
 // mouse; see zones.go.
 func (m *Model) View() string {
-	m.Core.Mu.Lock()
-	defer m.Core.Mu.Unlock()
-	if m.sameFrame && m.frame != "" && m.frameGen == m.Core.Gen {
+	m.fleet.Lock()
+	defer m.fleet.Unlock()
+	if m.sameFrame && m.frame != "" && m.frameGen == m.fleet.Gen() {
 		m.sameFrame = false
 		return m.frame
 	}
 	m.sameFrame = false
-	m.frameGen = m.Core.Gen
+	m.frameGen = m.fleet.Gen()
 	term.NextFrame()
 	m.zoneFns, m.zoneTips = m.zoneFns[:0], m.zoneTips[:0]
 	m.dialogZones, m.hintZones = noZones, noZones
 	frame, rects := scanZones(m.draw())
-	if m.screens != nil {
-		m.screens.Shown()
+	for _, mc := range m.fleet.Machines() {
+		if mc.Screens != nil {
+			mc.Screens.Shown()
+		}
 	}
 	m.zoneRects = rects
 	if m.hover.shown {
@@ -310,11 +312,12 @@ func (m *Model) activeBg() lipgloss.Color {
 // shows or not, so the entries do not move about as messages come and go.
 // hostBadge names the machine core runs on, when it is not this one.
 func (m *Model) hostBadge() string {
-	if m.coreHost == "" {
+	host := m.home().Host
+	if host == "" {
 		return ""
 	}
 	return m.tip(lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).Bold(true).
-		Render(" "+m.coreHost+" "), "The agents of these tabs run on "+m.coreHost)
+		Render(" "+host+" "), "The agents of these tabs run on "+host)
 }
 
 func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
@@ -329,19 +332,19 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	msg = status
 	switch {
 	case m.prefix:
-		label := " " + m.Core.Cfg.Prefix + " … "
+		label := " " + m.cfg().Prefix + " … "
 		if m.nav {
-			label = " " + m.Core.Cfg.Prefix + " ← → tabs · enter to stay "
-			if len(m.Core.Groups()) > 1 {
-				label = " " + m.Core.Cfg.Prefix + " ← → tabs · ↑ repos · enter to stay "
+			label = " " + m.cfg().Prefix + " ← → tabs · enter to stay "
+			if len(m.fleet.Groups()) > 1 {
+				label = " " + m.cfg().Prefix + " ← → tabs · ↑ repos · enter to stay "
 			}
 			if m.onGroups {
-				label = " " + m.Core.Cfg.Prefix + " ← → repos · ↓ tabs · enter to stay "
+				label = " " + m.cfg().Prefix + " ← → repos · ↓ tabs · enter to stay "
 			}
 			if m.sideW() > 0 {
-				label = " " + m.Core.Cfg.Prefix + " ↑ ↓ tabs · ← → repos · enter to stay "
+				label = " " + m.cfg().Prefix + " ↑ ↓ tabs · ← → repos · enter to stay "
 				if m.onGroups {
-					label = " " + m.Core.Cfg.Prefix + " ↑ ↓ repos · ← → tabs · enter to stay "
+					label = " " + m.cfg().Prefix + " ↑ ↓ repos · ← → tabs · enter to stay "
 				}
 			}
 		}
@@ -370,11 +373,11 @@ func (m *Model) groupBar() string {
 	cur := m.curGroup()
 	msg, menuBtn, reserve := m.barStatus()
 
-	gs := m.Core.Groups()
+	gs := m.fleet.Groups()
 	items := make([]barItem, len(gs))
 	at := 0
 	for i, g := range gs {
-		n := len(m.Core.GroupTabs(g))
+		n := len(m.fleet.GroupTabs(g))
 		var part string
 		if g == cur {
 			at = i
@@ -383,15 +386,15 @@ func (m *Model) groupBar() string {
 				bg = navActiveBg
 			}
 			st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
-			part = st.Render(" ") + m.lightTip(m.Core.GroupStatus(g), bg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
+			part = st.Render(" ") + m.lightTip(m.fleet.GroupStatus(g), bg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
 				lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("250")).Render("("+strconv.Itoa(n)+") ")
 		} else {
 			st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("250"))
-			part = st.Render(" ") + m.lightTip(m.Core.GroupStatus(g), tabBarBg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
+			part = st.Render(" ") + m.lightTip(m.fleet.GroupStatus(g), tabBarBg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
 				lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("241")).Render("("+strconv.Itoa(n)+") ")
 		}
 		part = m.tip(part, g+": "+core.Plural(n, "tab")+" · click: go there · right-click: more")
-		items[i] = barItem{st: m.Core.GroupStatus(g), s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd {
+		items[i] = barItem{st: m.fleet.GroupStatus(g), s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd {
 			switch {
 			case ev.Action != tea.MouseActionPress:
 				return nil
@@ -411,7 +414,7 @@ func (m *Model) groupBar() string {
 	avail := m.width - reserve - lipgloss.Width(plus)
 	left := m.scrollBar(items, at, &m.groupRow, avail, "repository",
 		func(m *Model, i int) tea.Cmd {
-			if gs := m.Core.Groups(); i < len(gs) {
+			if gs := m.fleet.Groups(); i < len(gs) {
 				return m.selectGroup(gs[i])
 			}
 			return nil
@@ -448,16 +451,16 @@ func (m *Model) tabBar() string {
 	at := 0
 	now := time.Now()
 	g := m.curGroup()
-	idx := m.Core.GroupTabs(g)
+	idx := m.fleet.GroupTabs(g)
 	for n, i := range idx {
-		t := m.Core.Tabs[i]
+		t := m.fleet.Tabs()[i]
 		num := strconv.Itoa(n+1) + ":"
 		bg := tabBarBg
 		if i == m.Active {
 			bg = m.activeBg()
 		}
 		var extra string
-		cold := m.Core.Cold(t, now)
+		cold := m.machineOf(t).Core.Cold(t, now)
 		if cold {
 			extra = m.tip(lipgloss.NewStyle().Background(bg).Foreground(groupAccent).Render("❄"), "Cold: not used for a while") +
 				lipgloss.NewStyle().Background(bg).Render(" ")
@@ -513,7 +516,7 @@ func (m *Model) tabBar() string {
 		var r int
 		msg, menuBtn, r = m.barStatus()
 		reserve += r
-		if len(m.Core.Groups()) > 1 {
+		if len(m.fleet.Groups()) > 1 {
 			repo = m.repoLabel(g)
 		}
 	}
@@ -527,7 +530,7 @@ func (m *Model) tabBar() string {
 	}
 	left := repo + m.scrollBar(items, at, row, m.width-reserve-lipgloss.Width(plus)-lipgloss.Width(repo), "tab",
 		func(m *Model, i int) tea.Cmd {
-			if idx := m.Core.GroupTabs(g); i < len(idx) {
+			if idx := m.fleet.GroupTabs(g); i < len(idx) {
 				return m.selectTab(idx[i])
 			}
 			return nil
@@ -544,7 +547,7 @@ func (m *Model) overlapWarning() string {
 	if t == nil {
 		return ""
 	}
-	ov := m.Core.Overlaps[t.ID]
+	ov := m.machineOf(t).Core.Overlaps[t.ID]
 	if len(ov) == 0 {
 		return ""
 	}
@@ -576,7 +579,7 @@ func (m *Model) repoLabel(g string) string {
 // tabMouse handles the mouse on tab t in the tab bar: a click goes to it,
 // a middle click closes it, a right click shows what can be done to it.
 func (m *Model) tabMouse(t *core.Tab, ev tea.MouseMsg) tea.Cmd {
-	i := m.Core.TabIndex(t)
+	i := m.fleet.TabIndex(t)
 	if ev.Action != tea.MouseActionPress || i < 0 {
 		return nil
 	}

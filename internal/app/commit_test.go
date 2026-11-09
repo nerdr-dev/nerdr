@@ -97,14 +97,14 @@ func TestLookAfterCommitIsNotLost(t *testing.T) {
 		Worktrees: []workspace.Worktree{{Path: repo, Repo: repo, Branch: "main"}}})
 	tb := m.Cur()
 	tb.LookAgain(false)
-	before := fromCore(m.Core.RefreshInfo())
+	before := fromCore(m.home().Core.RefreshInfo())
 	if before == nil {
 		t.Fatal("a look starts")
 	}
 	look := before()
 
 	gitRun(t, repo, "-c", "commit.gpgsign=false", "commit", "-qam", "commit while looking")
-	m.Update(core.Reply{Ev: core.BranchDoneMsg{T: m.Core.Ref(tb), Note: "committed feat"}})
+	m.Update(core.Reply{Ev: core.BranchDoneMsg{T: m.home().Core.Ref(tb), Note: "committed feat"}})
 	_, again := m.Update(look)
 	if !tb.Info.Stale || again == nil {
 		t.Fatal("the look the commit asked for is still to come")

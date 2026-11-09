@@ -43,8 +43,8 @@ func TestOpenConversation(t *testing.T) {
 		t.Fatalf("carried on in %s, want %s", a.Dir, sub)
 	}
 	again := &core.Tab{AgentState: core.Agent{Tab: tb.Tab}}
-	again.Agents = m.Core.SavedAgents(tb)
-	m.Core.RestoreAgents(again)
+	again.Agents = m.home().Core.SavedAgents(tb)
+	m.home().Core.RestoreAgents(again)
 	if got := again.ExtraAgents()[1].Dir; got != sub {
 		t.Fatalf("restored in %s, want %s", got, sub)
 	}

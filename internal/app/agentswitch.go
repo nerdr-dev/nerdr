@@ -31,17 +31,17 @@ func (m *Model) openSwitchAgent() tea.Cmd {
 		return nil
 	}
 	if w := t.Handoff; w != nil {
-		m.dialog = &menu{title: "Switch " + m.Core.AgentName(t) + " to " + string(w.To), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
+		m.dialog = &menu{title: "Switch " + m.machineOf(t).Core.AgentName(t) + " to " + string(w.To), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
 			{label: "Waiting for " + string(t.Agent) + "'s handoff"},
 			{label: "Switch now: " + string(w.To) + " reads " + string(t.Agent) + "'s conversation", key: "1",
-				run: func(m *Model) tea.Cmd { return m.do(core.SwitchAgent{A: m.Core.Ref(t), Kind: w.To}) }},
+				run: func(m *Model) tea.Cmd { return m.do(core.SwitchAgent{A: m.fleet.Ref(t), Kind: w.To}) }},
 			{label: "Cancel the switch", key: "2",
-				run: func(m *Model) tea.Cmd { return m.do(core.CancelHandoff{A: m.Core.Ref(t)}) }},
+				run: func(m *Model) tea.Cmd { return m.do(core.CancelHandoff{A: m.fleet.Ref(t)}) }},
 		}}
 		return nil
 	}
 	var items []menuItem
-	for _, k := range m.Core.Available() {
+	for _, k := range m.machineOf(t).Core.Available() {
 		if k == t.Agent {
 			continue
 		}
@@ -62,7 +62,7 @@ func (m *Model) openSwitchAgent() tea.Cmd {
 		head = "Stops " + string(t.Agent) + "; the next agent gets the handoff it wrote"
 	}
 	items = append([]menuItem{{label: head}}, items...)
-	m.dialog = &menu{title: "Switch " + m.Core.AgentName(t) + " to", items: items, x: m.width / 3, y: m.height / 3, hi: 1}
+	m.dialog = &menu{title: "Switch " + m.machineOf(t).Core.AgentName(t) + " to", items: items, x: m.width / 3, y: m.height / 3, hi: 1}
 	return nil
 }
 
@@ -70,24 +70,24 @@ func (m *Model) openSwitchAgent() tea.Cmd {
 // with its agent running, asks whether to ask it for one first; else it
 // switches at once.
 func (m *Model) pickAgent(t *core.Tab, k agents.Kind) tea.Cmd {
-	if !m.Core.Live(t) || k == t.Agent {
+	if !m.machineOf(t).Core.Live(t) || k == t.Agent {
 		return nil
 	}
 	if text := t.ReadyHandoff(time.Now()); text != "" {
-		return m.do(core.SwitchAgent{A: m.Core.Ref(t), Kind: k, Handoff: true})
+		return m.do(core.SwitchAgent{A: m.fleet.Ref(t), Kind: k, Handoff: true})
 	}
 	if !t.AgentRunning() || t.QueuePaused {
-		return m.do(core.SwitchAgent{A: m.Core.Ref(t), Kind: k})
+		return m.do(core.SwitchAgent{A: m.fleet.Ref(t), Kind: k})
 	}
 	// Asking costs the old agent a turn and the user a wait, and is no use
 	// when it is out of tokens: the user knows which, nerdr does not.
 	old := t.Agent
-	m.dialog = &menu{title: "Switch " + m.Core.AgentName(t) + " to " + string(k), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
+	m.dialog = &menu{title: "Switch " + m.machineOf(t).Core.AgentName(t) + " to " + string(k), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
 		{label: string(k) + " is told what " + string(old) + " did"},
 		{label: "Switch now: " + string(k) + " reads " + string(old) + "'s conversation", key: "1",
-			run: func(m *Model) tea.Cmd { return m.do(core.SwitchAgent{A: m.Core.Ref(t), Kind: k}) }},
+			run: func(m *Model) tea.Cmd { return m.do(core.SwitchAgent{A: m.fleet.Ref(t), Kind: k}) }},
 		{label: "Ask " + string(old) + " for a handoff first", key: "2",
-			run: func(m *Model) tea.Cmd { return m.do(core.AskHandoff{A: m.Core.Ref(t), Kind: k}) }},
+			run: func(m *Model) tea.Cmd { return m.do(core.AskHandoff{A: m.fleet.Ref(t), Kind: k}) }},
 	}}
 	return nil
 }

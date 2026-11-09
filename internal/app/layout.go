@@ -46,7 +46,7 @@ var layouts = []layout{
 // startLayout lays the screen out as the config's layout setting says,
 // before nerdr has a window size: only the fields, no resize.
 func (m *Model) startLayout() {
-	switch m.Core.Cfg.Layout {
+	switch m.cfg().Layout {
 	case "wide":
 		m.reviewOpen, m.reviewWidth = true, agentWideReview
 	case "small":
@@ -74,7 +74,7 @@ func (m *Model) currentLayout() string {
 		return "a"
 	case m.reviewWidth == agentWideReview:
 		return "+"
-	case m.reviewWidth == m.Core.Cfg.PanelWidth:
+	case m.reviewWidth == m.cfg().PanelWidth:
 		return "="
 	}
 	return ""
@@ -89,7 +89,7 @@ func (m *Model) setLayout(k string) tea.Cmd {
 	switch k {
 	case "=", "+":
 		m.reviewOpen, m.reviewZoom = true, false
-		m.reviewWidth = m.Core.Cfg.PanelWidth
+		m.reviewWidth = m.cfg().PanelWidth
 		if k == "+" {
 			m.reviewWidth = agentWideReview
 		}
@@ -159,7 +159,7 @@ func (m *Model) openLayouts() tea.Cmd {
 func (p *layoutPicker) restore(m *Model) tea.Cmd {
 	b := p.before
 	var cmd tea.Cmd
-	if i := m.Core.TabIndex(b.active); i >= 0 && b.active != m.Cur() {
+	if i := m.fleet.TabIndex(b.active); i >= 0 && b.active != m.Cur() {
 		cmd = m.selectTab(i) // two agents moved the keyboard to the neighbour
 	}
 	splitChanged := m.split != b.split

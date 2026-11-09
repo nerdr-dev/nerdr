@@ -32,7 +32,7 @@ func prLook(answered []workspace.Repo, failed []workspace.Repo, prs ...core.PREn
 
 func newsOf(m *Model) string {
 	var whats []string
-	for _, n := range m.Core.PRWatch.News {
+	for _, n := range m.home().Core.PRWatch.News {
 		whats = append(whats, n.What)
 	}
 	return strings.Join(whats, "|")
@@ -46,7 +46,7 @@ func newsOf(m *Model) string {
 func TestPRWatchTellsWhatChanged(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.Core.Cfg.PRNotify = &yes
+	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
 	t0 := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -55,9 +55,9 @@ func TestPRWatchTellsWhatChanged(t *testing.T) {
 		Reviews: []github.Review{{Author: "ann", State: "COMMENTED", SubmittedAt: t0}},
 	}
 
-	m.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
-	if len(m.Core.PRWatch.News) != 0 || m.prBadge() != "" {
-		t.Fatalf("the first look is no news: %+v", m.Core.PRWatch.News)
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
+	if len(m.home().Core.PRWatch.News) != 0 || m.prBadge() != "" {
+		t.Fatalf("the first look is no news: %+v", m.home().Core.PRWatch.News)
 	}
 
 	// The test fails, ann approves, and I answer a comment (a review of
@@ -69,7 +69,7 @@ func TestPRWatchTellsWhatChanged(t *testing.T) {
 		{Author: "me", State: "COMMENTED", SubmittedAt: t0.Add(time.Hour)},
 	}
 	libPR := github.PR{Number: 3, Author: "me", Checks: []github.Check{{Name: "lint", Status: "FAILURE"}}}
-	m.Core.OnPRWatch(prLook([]workspace.Repo{app, lib}, nil, core.PREntry{Repo: app, PR: pr}, core.PREntry{Repo: lib, PR: libPR}))
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app, lib}, nil, core.PREntry{Repo: app, PR: pr}, core.PREntry{Repo: lib, PR: libPR}))
 	if got, want := newsOf(m), "check failed: test|approved by ann|changes requested by bob"; got != want {
 		t.Fatalf("news = %q, want %q", got, want)
 	}
@@ -82,13 +82,13 @@ func TestPRWatchTellsWhatChanged(t *testing.T) {
 
 	// app does not answer: its PRs are still listed, and what is known of
 	// it stands, so its answering again is no news.
-	m.Core.OnPRWatch(prLook([]workspace.Repo{lib}, []workspace.Repo{app}, core.PREntry{Repo: lib, PR: libPR}))
-	if len(m.Core.PRWatch.Entries) != 2 || len(m.Core.PRWatch.Errs) != 1 {
-		t.Fatalf("entries %d, errs %v", len(m.Core.PRWatch.Entries), m.Core.PRWatch.Errs)
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{lib}, []workspace.Repo{app}, core.PREntry{Repo: lib, PR: libPR}))
+	if len(m.home().Core.PRWatch.Entries) != 2 || len(m.home().Core.PRWatch.Errs) != 1 {
+		t.Fatalf("entries %d, errs %v", len(m.home().Core.PRWatch.Entries), m.home().Core.PRWatch.Errs)
 	}
-	m.Core.OnPRWatch(prLook([]workspace.Repo{app, lib}, nil, core.PREntry{Repo: app, PR: pr}, core.PREntry{Repo: lib, PR: libPR}))
-	if len(m.Core.PRWatch.News) != 3 || len(m.Core.PRWatch.Errs) != 0 {
-		t.Fatalf("nothing changed, yet news %+v, errs %v", m.Core.PRWatch.News, m.Core.PRWatch.Errs)
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app, lib}, nil, core.PREntry{Repo: app, PR: pr}, core.PREntry{Repo: lib, PR: libPR}))
+	if len(m.home().Core.PRWatch.News) != 3 || len(m.home().Core.PRWatch.Errs) != 0 {
+		t.Fatalf("nothing changed, yet news %+v, errs %v", m.home().Core.PRWatch.News, m.home().Core.PRWatch.Errs)
 	}
 
 	// Opening the list shows the news on its PR, and takes the mark away.
@@ -109,14 +109,14 @@ func TestPRWatchGonePR(t *testing.T) {
 	m := testModel(t)
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me"}
-	tb := m.Core.Tabs[1]
+	tb := m.home().Core.Tabs[1]
 	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", HasPR: true, Pr: github.Status{Number: 7, State: "OPEN"}}}}
-	m.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
-	m.Core.OnPRWatch(prLook(nil, []workspace.Repo{app}))
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
+	m.home().Core.OnPRWatch(prLook(nil, []workspace.Repo{app}))
 	if tb.Info.StalePR {
 		t.Fatal("still open, or not answered: no look asked for")
 	}
-	m.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil))
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil))
 	if !tb.Info.StalePR || !tb.Info.Stale {
 		t.Fatal("a PR gone from the open ones should have its tab looked at")
 	}
@@ -127,10 +127,10 @@ func TestPRWatchGonePR(t *testing.T) {
 func TestPRWatchChecks(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.Core.Cfg.PRNotify = &yes
+	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me", Head: "c1", Checks: []github.Check{{Name: "lint", Status: "FAILURE"}}}
-	look := func() { m.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr})) }
+	look := func() { m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr})) }
 	look()
 
 	pr.Head = "c2" // pushed, and lint fails again before the next look
@@ -139,7 +139,7 @@ func TestPRWatchChecks(t *testing.T) {
 		t.Fatalf("news = %q", got)
 	}
 
-	m.Core.PRWatch.News = nil
+	m.home().Core.PRWatch.News = nil
 	pr.Head, pr.Checks = "c3", []github.Check{{Name: "lint", Status: "CANCELLED"}}
 	look()
 	if got := newsOf(m); got != "" {
@@ -155,15 +155,15 @@ func TestPRWatchChecks(t *testing.T) {
 func TestPRWatchDropsStaleNews(t *testing.T) {
 	m := tabsModel(t, state.Tab{Name: "login", Dir: t.TempDir()}, state.Tab{Name: "other", Dir: t.TempDir()})
 	yes := true
-	m.Core.Cfg.PRNotify = &yes
+	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me", Head: "c1", Checks: []github.Check{{Name: "lint", Status: "SUCCESS"}}}
-	look := func(prs ...core.PREntry) { m.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, prs...)) }
+	look := func(prs ...core.PREntry) { m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, prs...)) }
 	look(core.PREntry{Repo: app, PR: pr})
 
 	pr.Checks[0].Status = "FAILURE"
 	look(core.PREntry{Repo: app, PR: pr})
-	m.Core.OnPRWatch(prLook(nil, []workspace.Repo{app}))
+	m.home().Core.OnPRWatch(prLook(nil, []workspace.Repo{app}))
 	if got := newsOf(m); got != "check failed: lint" {
 		t.Fatalf("news = %q", got)
 	}
@@ -187,11 +187,11 @@ func TestPRWatchDropsStaleNews(t *testing.T) {
 		t.Fatalf("a PR no longer open should take its news away: %q", got)
 	}
 
-	m.Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 8), Repo: "app", Number: 8, What: "approved by ann", Tab: "login"},
+	m.home().Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 8), Repo: "app", Number: 8, What: "approved by ann", Tab: "login"},
 		{Key: core.PrKey(app.Path, 9), Repo: "app", Number: 9, What: "approved by ann"}})
-	m.closeTab(m.Core.Tabs[0], false, false, nil)
-	if len(m.Core.PRWatch.News) != 1 || m.Core.PRWatch.News[0].Number != 9 {
-		t.Fatalf("closing a tab should take its news away, and only its: %+v", m.Core.PRWatch.News)
+	m.closeTab(m.home().Core.Tabs[0], false, false, nil)
+	if len(m.home().Core.PRWatch.News) != 1 || m.home().Core.PRWatch.News[0].Number != 9 {
+		t.Fatalf("closing a tab should take its news away, and only its: %+v", m.home().Core.PRWatch.News)
 	}
 }
 
@@ -202,15 +202,15 @@ func TestPRWatchLeavesNonGitHubAlone(t *testing.T) {
 	local := workspace.Repo{Name: "local", Path: "/r/local"}
 	msg := prLook(nil, []workspace.Repo{local})
 	msg.NotGitHub[local.Path] = true
-	m.Core.OnPRWatch(msg)
-	if until := m.Core.PRWatch.Skip[local.Path]; time.Until(until) < core.NotGitHubFor-time.Minute {
+	m.home().Core.OnPRWatch(msg)
+	if until := m.home().Core.PRWatch.Skip[local.Path]; time.Until(until) < core.NotGitHubFor-time.Minute {
 		t.Fatalf("not left alone: %v", until)
 	}
 	skipped := prLook(nil, nil)
 	skipped.Skipped[local.Path] = true
-	m.Core.OnPRWatch(skipped)
-	if !strings.Contains(m.Core.PRWatch.Errs[local.Path], "local:") {
-		t.Fatalf("errs = %v", m.Core.PRWatch.Errs)
+	m.home().Core.OnPRWatch(skipped)
+	if !strings.Contains(m.home().Core.PRWatch.Errs[local.Path], "local:") {
+		t.Fatalf("errs = %v", m.home().Core.PRWatch.Errs)
 	}
 }
 
@@ -220,23 +220,23 @@ func TestPRWatchLeavesNonGitHubAlone(t *testing.T) {
 func TestPRWatchAcrossRestarts(t *testing.T) {
 	m := tabsModel(t)
 	yes := true
-	m.Core.Cfg.PRNotify = &yes
+	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	pr := github.PR{Number: 7, Author: "me", Head: "c1"}
-	m.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
+	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
 
-	saved := m.Core.SavedPRWatch()
+	saved := m.home().Core.SavedPRWatch()
 	m2 := tabsModel(t)
-	m2.Core.Cfg.PRNotify = &yes
-	m2.Core.LoadPRWatch(saved)
+	m2.home().Core.Cfg.PRNotify = &yes
+	m2.home().Core.LoadPRWatch(saved)
 	pr.Reviews = []github.Review{{Author: "ann", State: "APPROVED", SubmittedAt: time.Now()}}
-	m2.Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
+	m2.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
 	if got := newsOf(m2); got != "approved by ann" {
 		t.Fatalf("news after a restart = %q", got)
 	}
 
 	m3 := tabsModel(t)
-	m3.Core.LoadPRWatch(m2.Core.SavedPRWatch())
+	m3.home().Core.LoadPRWatch(m2.home().Core.SavedPRWatch())
 	if m3.prBadge() == "" {
 		t.Fatal("news not seen should be kept across a restart")
 	}
@@ -247,8 +247,8 @@ func TestPRWatchAcrossRestarts(t *testing.T) {
 func TestPRWatchOff(t *testing.T) {
 	m := tabsModel(t)
 	no := false
-	m.Core.Cfg.PRNotify = &no
-	if m.Core.TickPRs(time.Now()) != nil {
+	m.home().Core.Cfg.PRNotify = &no
+	if m.home().Core.TickPRs(time.Now()) != nil {
 		t.Fatal("watching while turned off")
 	}
 }
@@ -260,8 +260,8 @@ func TestAllPRsInPanel(t *testing.T) {
 	m := tabsModel(t, state.Tab{ID: "a", Name: "a", Dir: "/w/a"})
 	m.reviewOpen = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	m.Core.PRWatch.At = time.Now() // known already: GitHub is not asked
-	m.Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Fix login"}}}
+	m.home().Core.PRWatch.At = time.Now() // known already: GitHub is not asked
+	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Fix login"}}}
 
 	m.handleKey(keyMsg("f2"))
 	if m.review.AllPRs() {
@@ -281,7 +281,7 @@ func TestAllPRsInPanel(t *testing.T) {
 
 	// News while on F1: F2 is marked, and going there shows it.
 	m.handleKey(keyMsg("f1"))
-	m.Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann"}})
+	m.home().Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann"}})
 	if menu := ansi.Strip(strings.Join(m.railLines(30), "\n")); !strings.Contains(menu, "github◆") {
 		t.Fatalf("F2 not marked: %s", menu)
 	}
@@ -318,13 +318,13 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 	m.Active = 0
 	m.reviewOpen = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	m.Core.PRWatch.At = time.Now()
-	m.Core.PRWatch.Entries = []core.PREntry{
+	m.home().Core.PRWatch.At = time.Now()
+	m.home().Core.PRWatch.Entries = []core.PREntry{
 		{Repo: app, PR: github.PR{Number: 7, Branch: "fix/login", Title: "Fix login"}},
 		{Repo: app, PR: github.PR{Number: 9, Branch: "nowhere", Title: "Elsewhere"}},
 	}
 	m.showAllPRs()
-	login := m.Core.Tabs[1]
+	login := m.home().Core.Tabs[1]
 
 	if m.askAboutPR(true) == nil {
 		t.Fatal("f on a PR with a tab should start making the message")
@@ -362,7 +362,7 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 		t.Fatalf("enter should go to the tab, on its PR: tab %s, all %v, focus %v", m.Cur().Name, m.review.AllPRs(), m.focus)
 	}
 
-	m.Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann", Tab: "login"}})
+	m.home().Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann", Tab: "login"}})
 	if !strings.HasPrefix(m.toastText, "login #7: approved by ann") {
 		t.Fatalf("news should name the tab: %q", m.toastText)
 	}
@@ -393,7 +393,7 @@ func TestAskRepo(t *testing.T) {
 // the branches above it, with its push keys, which work there.
 func TestBranchesOnF3(t *testing.T) {
 	m := testModel(t)
-	m.Core.PRWatch.At = time.Now() // known already: GitHub is not asked
+	m.home().Core.PRWatch.At = time.Now() // known already: GitHub is not asked
 	m.handleKey(keyMsg("f2"))
 	if !m.panelBranchPR() {
 		t.Fatal("F2 should show the branch's PR")
@@ -442,8 +442,8 @@ func TestBranchLinesLeaveShownPR(t *testing.T) {
 // round to the branch's PR; esc gives the agent the keyboard.
 func TestIssuesOnF3(t *testing.T) {
 	m := testModel(t)
-	m.Core.PRWatch.At = time.Now() // known already: GitHub is not asked
-	m.Core.IssueWatch.At = time.Now()
+	m.home().Core.PRWatch.At = time.Now() // known already: GitHub is not asked
+	m.home().Core.IssueWatch.At = time.Now()
 	m.handleKey(keyMsg("f2"))
 	m.handleKey(keyMsg("f2"))
 	if !m.review.AllPRs() {
@@ -476,8 +476,8 @@ func TestIssuesOnF3(t *testing.T) {
 // or enter go back down to the conversation.
 func TestF3ListsTheReposBranches(t *testing.T) {
 	m := testModel(t)
-	m.Core.PRWatch.At = time.Now()
-	m.Core.IssueWatch.At = time.Now()
+	m.home().Core.PRWatch.At = time.Now()
+	m.home().Core.IssueWatch.At = time.Now()
 	tb := m.Cur()
 	a, b := t.TempDir(), t.TempDir()
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/front", Path: a, Branch: "x"}, {Repo: "/r/back", Path: b, Branch: "y"}}
@@ -611,15 +611,15 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 	m := tabsModel(t, state.Tab{ID: "a", Name: "a", Dir: "/w/a"})
 	m.reviewOpen = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	m.Core.PRWatch.At = time.Now()
-	m.Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me"}}}
+	m.home().Core.PRWatch.At = time.Now()
+	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me"}}}
 	now := time.Now()
-	m.Core.PRAll.Repos = map[string]core.RepoPRs{app.Path: {At: now, Names: []string{"acme/app"}, Entries: []core.PREntry{
+	m.home().Core.PRAll.Repos = map[string]core.RepoPRs{app.Path: {At: now, Names: []string{"acme/app"}, Entries: []core.PREntry{
 		{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me", Branch: "mine", UpdatedAt: now}},
 		{Repo: app, PR: github.PR{Number: 8, Title: "Theirs", Author: "ann", Branch: "theirs", UpdatedAt: now.Add(-time.Hour)}},
 		{Repo: app, PR: github.PR{Number: 9, Title: "Forked", Author: "bob", Branch: "main", Fork: "bob", UpdatedAt: now.Add(-2 * time.Hour)}},
 	}}}
-	m.Core.PRAll.Asked = map[string]bool{github.RequestKey("Acme/App", 9): true}
+	m.home().Core.PRAll.Asked = map[string]bool{github.RequestKey("Acme/App", 9): true}
 
 	m.handleKey(keyMsg("f2"))
 	m.handleKey(keyMsg("f2"))
@@ -627,7 +627,7 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 		t.Fatal("F2 again should show your PRs")
 	}
 	m.handleKey(keyMsg("m"))
-	m.Core.PRAll.Busy = false // as if GitHub had answered
+	m.home().Core.PRAll.Busy = false // as if GitHub had answered
 	m.applyPRs()
 	d := m.prPanel
 	if !d.all || len(d.entries) != 3 || d.entries[0].PR.Number != 9 || !d.entries[0].Asked {
@@ -660,10 +660,10 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 func TestPRListSaysWhatItIs(t *testing.T) {
 	m := testModel(t)
 	home, _ := os.UserHomeDir()
-	m.Core.Root = filepath.Join(home, "develop")
-	m.Core.Cfg.RepoDirs = []string{"/srv/repos"}
-	m.Core.PRWatch.Repos = map[string]bool{"/a": true}
-	m.Core.PRAll.Repos = map[string]core.RepoPRs{"/a": {}, "/b": {}, "/c": {}}
+	m.home().Core.Root = filepath.Join(home, "develop")
+	m.home().Core.Cfg.RepoDirs = []string{"/srv/repos"}
+	m.home().Core.PRWatch.Repos = map[string]bool{"/a": true}
+	m.home().Core.PRAll.Repos = map[string]core.RepoPRs{"/a": {}, "/b": {}, "/c": {}}
 	if got := ansi.Strip(m.prScope(false)); got != "Your open pull requests · in 1 repository under ~/develop, /srv/repos" {
 		t.Fatalf("mine: %q", got)
 	}

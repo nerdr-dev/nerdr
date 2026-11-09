@@ -12,6 +12,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -108,10 +109,10 @@ func TestRemoteTUI(t *testing.T) {
 		return strings.Contains(v, "login") && strings.Contains(v, "ready")
 	})
 
-	m.Core.Mu.Lock()
-	m.do(core.RenameTab{T: m.Core.Ref(m.Cur()), Name: "signin"})
+	m.home().Core.Mu.Lock()
+	m.do(core.RenameTab{T: m.home().Core.Ref(m.Cur()), Name: "signin"})
 	name := m.Cur().Name
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Unlock()
 	if name != "signin" {
 		t.Fatalf("the copy shows %q once core has done it", name)
 	}
@@ -126,9 +127,9 @@ func TestRemoteTUI(t *testing.T) {
 		t.Errorf("core goes by front %+v, %d×%d", front, w, h)
 	}
 
-	m.Core.Mu.Lock()
+	m.home().Core.Mu.Lock()
 	kp := m.keyPane()
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Unlock()
 	if kp == nil {
 		t.Fatal("no program for the keys")
 	}
@@ -141,9 +142,9 @@ func TestRemoteTUI(t *testing.T) {
 func TestRemoteTUIConnectsAgain(t *testing.T) {
 	m, c, _, told := remoteTUI(t, "sh", "-c", `stty -echo; echo ready; while read l; do echo "got $l"; done`)
 	pump(t, m, told, "the agent", func(v string) bool { return strings.Contains(v, "ready") })
-	m.Core.Mu.Lock()
+	m.home().Core.Mu.Lock()
 	tab := m.Cur()
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Unlock()
 
 	loop := core.NewLoop(c, nil)
 	loop.StartSteps()
@@ -159,16 +160,16 @@ func TestRemoteTUIConnectsAgain(t *testing.T) {
 		c.Mu.Unlock()
 		return b, nil
 	})
-	m.Core.Mu.Lock()
-	m.remote.Close("") // as core gone would
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Lock()
+	m.home().Conn.Close("") // as core gone would
+	m.home().Core.Mu.Unlock()
 
 	var back tea.Cmd
 	deadline := time.After(5 * time.Second)
 	for back == nil {
 		select {
 		case msg := <-told:
-			if _, ok := msg.(core.CoreGoneMsg); ok {
+			if _, ok := msg.(fleet.Told).Msg.(core.CoreGoneMsg); ok {
 				_, back = m.Update(msg)
 			}
 		case <-deadline:
@@ -176,16 +177,16 @@ func TestRemoteTUIConnectsAgain(t *testing.T) {
 		}
 	}
 	m.Update(back())
-	m.Core.Mu.Lock()
-	m.do(core.RenameTab{T: m.Core.Ref(m.Cur()), Name: "again"})
+	m.home().Core.Mu.Lock()
+	m.do(core.RenameTab{T: m.home().Core.Ref(m.Cur()), Name: "again"})
 	same, name := m.Cur() == tab, m.Cur().Name
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Unlock()
 	if !same || name != "again" {
 		t.Fatalf("after connecting again: same tab %v, name %q", same, name)
 	}
-	m.Core.Mu.Lock()
+	m.home().Core.Mu.Lock()
 	kp := m.keyPane()
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Unlock()
 	kp.Input([]byte("hello\r"))
 	pump(t, m, told, "typed after connecting again", func(v string) bool { return strings.Contains(v, "got hello") })
 }

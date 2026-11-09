@@ -244,7 +244,7 @@ func TestSkillsScreen(t *testing.T) {
 	if _, err := skills.Install(filepath.Join(home, ".claude", "skills")); err != nil {
 		t.Fatal(err)
 	}
-	m.Core.LookAtSkillsSoon()
+	m.home().Core.LookAtSkillsSoon()
 	m.skillsAsked = "" // as SkillsCheckEvery on
 	body = ansi.Strip(strings.Join(m.skillsBody(m.Cur(), 70, 40), "\n"))
 	if !strings.Contains(body, "available to claude") || !strings.Contains(body, "~/.claude/skills/nerdr-spinoff") {

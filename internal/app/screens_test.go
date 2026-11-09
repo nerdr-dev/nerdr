@@ -23,10 +23,10 @@ func withScreens(t *testing.T, m *Model) chan any {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.Core.Screens = core.NewScreenServer(a, func(ev core.RequestEv) {
-		m.Core.Mu.Lock()
-		ev.Run(&m.Core)
-		m.Core.Mu.Unlock()
+	m.home().Core.Screens = core.NewScreenServer(a, func(ev core.RequestEv) {
+		m.home().Core.Mu.Lock()
+		ev.Run(&m.home().Core)
+		m.home().Core.Mu.Unlock()
 	})
 	m.SetScreens(core.NewScreenClient(b, func(msg any) {
 		if _, ok := msg.(core.ScreensMsg); !ok {
@@ -49,9 +49,9 @@ func withScreens(t *testing.T, m *Model) chan any {
 			case <-stop:
 				return
 			case <-tick.C:
-				m.Core.Mu.Lock()
-				m.Core.Screens.Tick(&m.Core, false)
-				m.Core.Mu.Unlock()
+				m.home().Core.Mu.Lock()
+				m.home().Core.Screens.Tick(&m.home().Core, false)
+				m.home().Core.Mu.Unlock()
 			}
 		}
 	}()
@@ -86,9 +86,9 @@ func TestTUIDrawsFromRows(t *testing.T) {
 		t.Skip(err)
 	}
 	defer pane.Close()
-	m.Core.Mu.Lock()
+	m.home().Core.Mu.Lock()
 	login.Pane, login.Light = pane, core.StIdle
-	m.Core.Mu.Unlock()
+	m.home().Core.Mu.Unlock()
 	told := withScreens(t, m)
 	m.Update(tea.WindowSizeMsg{Width: 110, Height: 28})
 

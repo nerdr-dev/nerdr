@@ -18,6 +18,8 @@ import (
 	"sort"
 	"strings"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
 // The TUI is to run in a process of its own, with a copy of core's state
@@ -136,20 +138,107 @@ func TestTUIChangesCoreByRequest(t *testing.T) {
 	t.Log("changes to core go by m.do(core.Request); when one listed is gone, run go test -run TestTUIChangesCoreByRequest -update-corestate")
 }
 
-// TestModelNamesItsCore holds Model to reaching core by its named field,
-// m.Core, never by one of core's types embedded: with core's fields and
-// methods promoted, a use of core does not say it is one, and the TUI is
-// to show more than one core (the fleet), each a copy of its own.
-func TestModelNamesItsCore(t *testing.T) {
+// TestModelReachesCoreByFleet holds Model to reaching core through the
+// fleet alone (m.fleet), which holds a core for each machine the TUI shows:
+// no core, connection or screens of its own, named or embedded. What is of
+// no tab is home's (m.home), until it asks which machine it is for;
+// testdata/home.txt counts those by file, and only gets shorter.
+func TestModelReachesCoreByFleet(t *testing.T) {
+	machine := map[reflect.Type]bool{
+		reflect.TypeFor[core.Core]():         true,
+		reflect.TypeFor[core.CoreConn]():     true,
+		reflect.TypeFor[core.ScreenClient](): true,
+	}
 	for f := range reflect.TypeFor[Model]().Fields() {
 		ft := f.Type
 		if ft.Kind() == reflect.Pointer {
 			ft = ft.Elem()
 		}
 		if f.Anonymous && ft.PkgPath() == corePkg {
-			t.Errorf("Model embeds %s: name the field, and reach core by it", f.Type)
+			t.Errorf("Model embeds %s: reach core by the fleet", f.Type)
+		}
+		if machine[ft] {
+			t.Errorf("Model.%s is a %s: it is a machine's, in the fleet", f.Name, f.Type)
 		}
 	}
+	if testing.Short() {
+		return
+	}
+	got, err := homeCalls()
+	if err != nil {
+		t.Skip("cannot type-check the package here:", err)
+	}
+	const file = "testdata/home.txt"
+	if *updateHome {
+		if err := os.WriteFile(file, []byte(got), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
+	b, _ := os.ReadFile(file)
+	want := map[string]int{}
+	for _, l := range lines(string(b)) {
+		var n int
+		k, c, _ := strings.Cut(l, " ")
+		fmt.Sscan(c, &n)
+		want[k] = n
+	}
+	for _, l := range lines(got) {
+		var n int
+		k, c, _ := strings.Cut(l, " ")
+		fmt.Sscan(c, &n)
+		if n > want[k] {
+			t.Errorf("more of m.home() in %s: %d, was %d; a tab's machine is m.machineOf(t)", k, n, want[k])
+		}
+	}
+	if got != string(b) {
+		t.Log("fewer of m.home(): run go test -run TestModelReachesCoreByFleet -update-home")
+	}
+}
+
+var updateHome = flag.Bool("update-home", false, "write testdata/home.txt anew")
+
+// homeCalls are the calls of m.home() in the package's own files, as a
+// count a line by file.
+func homeCalls() (string, error) {
+	fset, files, info, _, err := typeCheckPackage()
+	if err != nil {
+		return "", err
+	}
+	count := map[string]int{}
+	for _, f := range files {
+		file := filepath.Base(fset.Position(f.Pos()).Filename)
+		ast.Inspect(f, func(n ast.Node) bool {
+			if c, ok := n.(*ast.CallExpr); ok && isModelMethod(info, c, "home") {
+				count[file]++
+			}
+			return true
+		})
+	}
+	var ls []string
+	for k, n := range count {
+		ls = append(ls, fmt.Sprintf("%s %d", k, n))
+	}
+	sort.Strings(ls)
+	return strings.Join(ls, "\n") + "\n", nil
+}
+
+// isModelMethod reports whether c calls Model's method name.
+func isModelMethod(info *types.Info, c *ast.CallExpr, name string) bool {
+	se, ok := c.Fun.(*ast.SelectorExpr)
+	if !ok || se.Sel.Name != name {
+		return false
+	}
+	sel := info.Selections[se]
+	if sel == nil || sel.Kind() != types.MethodVal {
+		return false
+	}
+	recv := sel.Recv()
+	if p, ok := recv.(*types.Pointer); ok {
+		recv = p.Elem()
+	}
+	n, ok := types.Unalias(recv).(*types.Named)
+	return ok && n.Obj().Name() == "Model" && n.Obj().Pkg() != nil && n.Obj().Pkg().Name() == "app"
 }
 
 func lines(s string) []string {
@@ -349,10 +438,13 @@ func (c *checker) configTold(file string, fd *ast.FuncDecl) {
 	}
 }
 
-// inConfig reports whether e is the config of core.Core, or within it.
+// inConfig reports whether e is the config of core.Core, or within it:
+// m.cfg() is Home's.
 func (c *checker) inConfig(e ast.Expr) bool {
 	for {
 		switch x := e.(type) {
+		case *ast.CallExpr:
+			return isModelMethod(c.info, x, "cfg")
 		case *ast.SelectorExpr:
 			if sel := c.info.Selections[x]; sel != nil && sel.Kind() == types.FieldVal &&
 				x.Sel.Name == "Cfg" && sel.Obj().Pkg() != nil && sel.Obj().Pkg().Path() == corePkg {

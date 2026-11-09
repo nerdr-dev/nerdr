@@ -13,7 +13,7 @@ import (
 // prefix and b, or shown in the sidebar. Without it, the tab row shows the
 // repository's name, and nerdr's messages on its right.
 func (m *Model) showGroups() bool {
-	return !m.hideGroups && len(m.Core.Groups()) > 1 && m.sideW() == 0
+	return !m.hideGroups && len(m.fleet.Groups()) > 1 && m.sideW() == 0
 }
 
 // barRows is how many rows the bars take, and tabRow the one the tabs are on.
@@ -29,7 +29,7 @@ func (m *Model) tabRow() int { return m.barRows() - 1 }
 // selectInGroup goes to the n-th tab (0-based) of the active group; a
 // negative n counts from the end.
 func (m *Model) selectInGroup(n int) tea.Cmd {
-	idx := m.Core.GroupTabs(m.curGroup())
+	idx := m.fleet.GroupTabs(m.curGroup())
 	if len(idx) == 0 {
 		return nil
 	}
@@ -46,8 +46,8 @@ func (m *Model) selectInGroup(n int) tea.Cmd {
 // the next or previous group at the end of one, and wrapping round.
 func (m *Model) stepTab(delta int) tea.Cmd {
 	var idx []int
-	for _, g := range m.Core.Groups() {
-		idx = append(idx, m.Core.GroupTabs(g)...)
+	for _, g := range m.fleet.Groups() {
+		idx = append(idx, m.fleet.GroupTabs(g)...)
 	}
 	for pos, i := range idx {
 		if i == m.Active {
@@ -60,7 +60,7 @@ func (m *Model) stepTab(delta int) tea.Cmd {
 // stepInGroup moves to the next or previous tab of the active group,
 // wrapping round within it.
 func (m *Model) stepInGroup(delta int) tea.Cmd {
-	idx := m.Core.GroupTabs(m.curGroup())
+	idx := m.fleet.GroupTabs(m.curGroup())
 	for pos, i := range idx {
 		if i == m.Active {
 			if len(idx) < 2 {
@@ -75,7 +75,7 @@ func (m *Model) stepInGroup(delta int) tea.Cmd {
 // stepGroup moves to the next or previous group, landing on the tab that
 // was last active in it.
 func (m *Model) stepGroup(delta int) tea.Cmd {
-	gs := m.Core.Groups()
+	gs := m.fleet.Groups()
 	if len(gs) < 2 {
 		return nil
 	}
@@ -96,13 +96,13 @@ func (m *Model) selectGroup(g string) tea.Cmd {
 // groupTab is the index of group g's last active tab, or its first; -1
 // when it has none.
 func (m *Model) groupTab(g string) int {
-	idx := m.Core.GroupTabs(g)
+	idx := m.fleet.GroupTabs(g)
 	if len(idx) == 0 {
 		return -1
 	}
 	want := m.lastInGroup[g]
 	for _, i := range idx {
-		if m.Core.Ref(m.Core.Tabs[i]) == want {
+		if m.fleet.Ref(m.fleet.Tabs()[i]) == want {
 			return i
 		}
 	}

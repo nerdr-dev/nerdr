@@ -158,7 +158,7 @@ func TestRepositoryRow(t *testing.T) {
 	}
 
 	// With one repository there is no row to show, nor a name to give.
-	m.Core.Tabs = m.Core.Tabs[:2]
+	m.home().Core.Tabs = m.home().Core.Tabs[:2]
 	row = bars()[0]
 	if m.barRows() != 1 || !strings.HasPrefix(row, " ○ 1:login") || !strings.Contains(row, "? help") {
 		t.Fatalf("one repository, one row: %q", row)
@@ -187,8 +187,8 @@ func TestRepositoryRowBackground(t *testing.T) {
 
 func TestRepoListCountsTheLights(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
-	m.Core.Tabs[0].Light, m.Core.Tabs[1].Light = core.StDone, core.StWorking
-	m.Core.Tabs[2].Light = core.StIdle
+	m.home().Core.Tabs[0].Light, m.home().Core.Tabs[1].Light = core.StDone, core.StWorking
+	m.home().Core.Tabs[2].Light = core.StIdle
 	out := ansi.Strip(strings.Join(m.repoList(40, 8, false), "\n"))
 	if !strings.Contains(out, "app (2 1)") {
 		t.Fatalf("a done tab's light hides one working, so the count shows it:\n%s", out)
@@ -200,11 +200,11 @@ func TestRepoListCountsTheLights(t *testing.T) {
 
 func TestPassingATabLeavesItDone(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
-	m.Core.Tabs[1].Light = core.StDone
+	m.home().Core.Tabs[1].Light = core.StDone
 	m.selectTab(1)
 	m.selectTab(2)
 	m.look()
-	if m.Core.Tabs[1].Light != core.StDone {
+	if m.home().Core.Tabs[1].Light != core.StDone {
 		t.Fatal("a tab only passed on the way to another is not seen")
 	}
 	if m.dwelt() {
@@ -212,22 +212,22 @@ func TestPassingATabLeavesItDone(t *testing.T) {
 	}
 
 	m.selectTab(1)
-	m.Core.Tabs[1].QueuePaused = true
+	m.home().Core.Tabs[1].QueuePaused = true
 	m.landed = m.landed.Add(-core.SeenAfter)
 	m.blurred = true
 	m.look()
-	if m.Core.Tabs[1].Light != core.StDone {
+	if m.home().Core.Tabs[1].Light != core.StDone {
 		t.Fatal("a tab is not seen while you are in another window")
 	}
 	m.blurred = false
 	m.editor = &term.Pane{}
 	m.look()
-	if m.Core.Tabs[1].Light != core.StDone {
+	if m.home().Core.Tabs[1].Light != core.StDone {
 		t.Fatal("a tab is not seen behind an editor")
 	}
 	m.editor = nil
 	m.look()
-	if m.Core.Tabs[1].Light != core.StIdle || m.Core.Tabs[1].QueuePaused {
-		t.Fatalf("a tab stayed on is seen, its queue let go: %s, paused %v", m.Core.Tabs[1].Light.Label(), m.Core.Tabs[1].QueuePaused)
+	if m.home().Core.Tabs[1].Light != core.StIdle || m.home().Core.Tabs[1].QueuePaused {
+		t.Fatalf("a tab stayed on is seen, its queue let go: %s, paused %v", m.home().Core.Tabs[1].Light.Label(), m.home().Core.Tabs[1].QueuePaused)
 	}
 }

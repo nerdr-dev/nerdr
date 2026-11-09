@@ -16,14 +16,14 @@ import (
 // askAgent opens the message dialog for the tab working in msg.Dir, with
 // msg.Text written in.
 func (m *Model) askAgent(msg review.AgentMsg) tea.Cmd {
-	t := m.Core.TabFor(msg.Dir)
+	t := m.home().Core.TabFor(msg.Dir)
 	if t == nil {
 		m.toast("no tab works in " + msg.Dir)
 		return nil
 	}
 	var cmd tea.Cmd
 	if t != m.Cur() {
-		cmd = m.selectTab(m.Core.TabIndex(t))
+		cmd = m.selectTab(m.fleet.TabIndex(t))
 	}
 	m.openMessage(false)
 	d, ok := m.dialog.(*messageDialog)

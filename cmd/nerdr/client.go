@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"sync"
 	"syscall"
 	"time"
 
@@ -22,6 +23,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -149,32 +151,37 @@ func runClient(start bool, remote string) error {
 	return nil
 }
 
-// tellProgram gives the program what comes of the connection to core,
-// never waiting for it: one InboxMsg or ScreensMsg waiting is enough for
-// all that came.
+// tellProgram gives the program what comes of the connections to the
+// machines' cores, each wrapped as fleet.Told, never waiting for it: one
+// InboxMsg or ScreensMsg of a machine's waiting is enough for all of that
+// machine's that came.
 func tellProgram(prog func() *tea.Program) func(any) {
-	inbox, screens := make(chan struct{}, 1), make(chan struct{}, 1)
+	var mu sync.Mutex
+	var waiting []fleet.Told
+	wake := make(chan struct{}, 1)
 	go func() {
 		p := prog()
-		for {
-			select {
-			case <-inbox:
-				p.Send(core.InboxMsg{})
-			case <-screens:
-				p.Send(core.ScreensMsg{})
+		for range wake {
+			mu.Lock()
+			msgs := waiting
+			waiting = nil
+			mu.Unlock()
+			for _, msg := range msgs {
+				p.Send(msg)
 			}
 		}
 	}()
 	return func(msg any) {
-		switch msg.(type) {
-		case core.InboxMsg:
-			select {
-			case inbox <- struct{}{}:
-			default:
+		told, _ := msg.(fleet.Told)
+		switch told.Msg.(type) {
+		case core.InboxMsg, core.ScreensMsg:
+			mu.Lock()
+			if !slices.Contains(waiting, told) {
+				waiting = append(waiting, told)
 			}
-		case core.ScreensMsg:
+			mu.Unlock()
 			select {
-			case screens <- struct{}{}:
+			case wake <- struct{}{}:
 			default:
 			}
 		default:

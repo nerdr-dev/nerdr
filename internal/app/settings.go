@@ -373,14 +373,14 @@ func reviewModelExample(k agents.Kind) string {
 // settingAgents are the agents the dialog has a part for: those nerdr
 // knows, the installed first, and those of the config's own.
 func (m *Model) settingAgents() []agents.Kind {
-	out := m.Core.Available()
+	out := m.home().Core.Available()
 	for _, k := range agents.All {
 		if !core.Contains(out, k) {
 			out = append(out, k)
 		}
 	}
 	var own []agents.Kind
-	for k := range m.Core.Cfg.Agents {
+	for k := range m.home().Core.Cfg.Agents {
 		if !core.Contains(out, k) {
 			own = append(own, k)
 		}
@@ -392,7 +392,7 @@ func (m *Model) settingAgents() []agents.Kind {
 // reviewAgents are review.agent's choices.
 func (m *Model) reviewAgents() []string {
 	out := []string{config.ReviewOther}
-	for _, k := range m.Core.Available() {
+	for _, k := range m.home().Core.Available() {
 		out = append(out, string(k))
 	}
 	return out
@@ -669,8 +669,8 @@ func (m *Model) reloadConfig() tea.Cmd {
 		m.toast(err.Error())
 		return nil
 	}
-	old := m.Core.Cfg
-	if m.remote != nil {
+	old := m.home().Core.Cfg
+	if m.home().Conn != nil {
 		// Core's own settings are in the file where it runs, which it
 		// watches itself; this one's are the TUI's alone.
 		c = config.Merge(old, c)
@@ -691,7 +691,7 @@ func (m *Model) reloadConfig() tea.Cmd {
 	}
 	c.Prefix, c.WorktreesDir, c.Layout, c.Mouse = old.Prefix, old.WorktreesDir, old.Layout, old.Mouse
 	c.Install, c.DataDir, c.EnabledSkills, c.FPS = old.Install, old.DataDir, old.EnabledSkills, old.FPS
-	m.Core.Cfg = c
+	m.home().Core.Cfg = c
 	m.do(core.SetConfig{Cfg: c})
 	browser.Setting = c.Browser
 	lightSymbols = c.StatusLights == "symbols"
@@ -717,7 +717,7 @@ func (m *Model) reloadConfig() tea.Cmd {
 		m.review = m.review.SetScreenKeys(m.screenMenuKeys())
 	}
 	if c.GitHubRefresh != old.GitHubRefresh {
-		m.review = m.review.SetPRRefresh(m.Core.GithubEvery(core.PrPanelEvery))
+		m.review = m.review.SetPRRefresh(m.home().Core.GithubEvery(core.PrPanelEvery))
 	}
 	var colors tea.Cmd
 	if c.DiffColors != old.DiffColors {
@@ -884,7 +884,7 @@ func (d *settings) footer(m *Model, w int) []string {
 	var out []string
 	home, _ := os.UserHomeDir()
 	if d.err != "" || d.coreErr != "" {
-		out = append(out, warn(ansi.Truncate(cmp.Or(d.err, m.Core.ConfigPath()+": "+d.coreErr), w, "…")))
+		out = append(out, warn(ansi.Truncate(cmp.Or(d.err, m.home().Core.ConfigPath()+": "+d.coreErr), w, "…")))
 	} else {
 		out = append(out, dim(ansi.Truncate("Saved to "+core.TildePath(config.Path(), home)+" as you go; dimmed is the default.", w, "…")))
 	}

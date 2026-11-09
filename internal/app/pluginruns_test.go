@@ -41,10 +41,10 @@ func started(t *testing.T, m *Model, c chan hooks.Answer) *core.PluginRun {
 	t.Helper()
 	a := answered(c)
 	id, ok := strings.CutPrefix(a, "started ")
-	if !ok || m.Core.RunByID(id) == nil {
+	if !ok || m.home().Core.RunByID(id) == nil {
 		t.Fatalf("nerdr did not start the run: %q", a)
 	}
-	return m.Core.RunByID(id)
+	return m.home().Core.RunByID(id)
 }
 
 // readRun reads what run printed until it ends, as nerdr plugin run does,
@@ -82,7 +82,7 @@ func pumped(t *testing.T, m *Model, run *core.PluginRun) {
 		if time.Now().After(deadline) {
 			t.Fatal("the run did not end")
 		}
-		m.Core.PumpRuns(time.Now())
+		m.home().Core.PumpRuns(time.Now())
 	}
 }
 
@@ -182,7 +182,7 @@ func TestPluginRunTellsTheScreen(t *testing.T) {
 		"\"tail -f \\\"$NERDR_PLUGIN_EVENTS\\\" | grep --line-buffered -o 'event...[a-z]*\\\\|clean..true\\\\|done-it\\\\|exit..0'\"]\nshow = [\"ui\"]\n"+
 		"[[params]]\nname = \"clean\"\ntype = \"bool\"\n")
 	run := started(t, m, askRun(m, tb, "board", map[string]any{"clean": true}))
-	if !m.Core.PluginUIOf(tb, p).Running() {
+	if !m.home().Core.PluginUIOf(tb, p).Running() {
 		t.Fatal("the plugin's screen was not started for the run")
 	}
 	if m.pluginUIPane() != nil {
@@ -199,8 +199,8 @@ func TestPluginRunTellsTheScreen(t *testing.T) {
 			t.Fatalf("the screen was not told of the run:\n%s", view)
 		}
 	}
-	events := m.Core.PluginUIOf(tb, p).Events.Name()
-	m.Core.StopPluginUI(tb, p)
+	events := m.home().Core.PluginUIOf(tb, p).Events.Name()
+	m.home().Core.StopPluginUI(tb, p)
 	if _, err := os.Stat(events); !os.IsNotExist(err) {
 		t.Fatal("the events file outlives its screen")
 	}
@@ -237,7 +237,7 @@ func TestPluginRunOpenOff(t *testing.T) {
 	if m.panelPlugins() {
 		t.Fatal("F5 opened for a plugin whose open is false")
 	}
-	if m.Core.PluginRunOf(tb, p) == nil {
+	if m.home().Core.PluginRunOf(tb, p) == nil {
 		t.Fatal("the run was not kept, for its light")
 	}
 }
@@ -269,7 +269,7 @@ func TestPluginRunConfirmed(t *testing.T) {
 	if a := answered(askRun(m, tb, "free", vals)); !strings.HasPrefix(a, "started ") {
 		t.Fatalf("a run not to be asked about, while another is, was answered %q", a)
 	}
-	m.Core.Cfg.ConfirmPluginRuns = true
+	m.home().Core.Cfg.ConfirmPluginRuns = true
 	if a := answered(askRun(m, tb, "free", vals)); a != core.RunBusy {
 		t.Fatalf("a second question was answered %q", a)
 	}
@@ -283,8 +283,8 @@ func TestPluginRunConfirmed(t *testing.T) {
 		t.Fatalf("yes was answered %q, dialog %T", a, m.dialog)
 	}
 	c = askRun(m, tb, "free", vals)
-	m.Core.Asking[0].Until = time.Now().Add(-time.Second)
-	m.Core.ExpireAsks(time.Now())
+	m.home().Core.Asking[0].Until = time.Now().Add(-time.Second)
+	m.home().Core.ExpireAsks(time.Now())
 	if a := answered(c); a != core.RunUnanswered || m.dialog != nil {
 		t.Fatalf("a question not answered in time was answered %q, dialog %T", a, m.dialog)
 	}
@@ -311,17 +311,17 @@ func TestPluginWatch(t *testing.T) {
 		if time.Now().After(deadline) {
 			t.Fatalf("what it printed did not come to the agent: %+v", tb.Messages)
 		}
-		m.Core.PumpRuns(time.Now())
+		m.home().Core.PumpRuns(time.Now())
 	}
 	if n := len(tb.Messages); n != 1 || !strings.Contains(tb.Messages[0].Text, "ERROR one\nERROR two") ||
 		!strings.Contains(tb.Messages[0].Text, "nerdr plugin stop logwatch") || !tb.Messages[0].Auto {
 		t.Fatalf("what it printed should wait for the agent in one message: %+v", tb.Messages)
 	}
-	if !m.Core.Watching(tb) {
+	if !m.home().Core.Watching(tb) {
 		t.Fatal("the agent should be watching: it would be put to sleep")
 	}
 	// The command that started it has long returned: it goes on.
-	m.Core.PumpRuns(time.Now().Add(time.Hour))
+	m.home().Core.PumpRuns(time.Now().Add(time.Hour))
 	if !run.Running() || run.StopBy != "" {
 		t.Fatal("a watch stopped for want of a command reading it")
 	}
@@ -358,7 +358,7 @@ func TestPluginWatch(t *testing.T) {
 
 	// A run its command no longer reads is stopped.
 	slow := started(t, m, askRun(m, tb, "slow", nil))
-	m.Core.PumpRuns(time.Now().Add(time.Minute))
+	m.home().Core.PumpRuns(time.Now().Add(time.Minute))
 	pumped(t, m, slow)
 	if !strings.Contains(slow.StopBy, "command") {
 		t.Fatalf("a run left unread was not stopped: %q", slow.StopBy)
@@ -379,15 +379,15 @@ func TestPluginOverlappingRunResults(t *testing.T) {
 	second := started(t, m, askRun(m, tb, p.Name, map[string]any{"name": "second"}))
 	pumped(t, m, first)
 	pumped(t, m, second)
-	if got := m.Core.PluginRunOf(tb, p); got != second {
+	if got := m.home().Core.PluginRunOf(tb, p); got != second {
 		t.Fatal("F5 should show the latest run")
 	}
-	if m.Core.RunByID(first.Id) != first {
+	if m.home().Core.RunByID(first.Id) != first {
 		t.Fatal("older run disappeared before its result was read")
 	}
 	// Knowing its ID must not let another agent read the output.
 	reply := make(chan hooks.Answer, 1)
-	m.Core.OnReadRun(hooks.Report{Run: first.Id, Reply: reply}, &core.Tab{})
+	m.home().Core.OnReadRun(hooks.Report{Run: first.Id, Reply: reply}, &core.Tab{})
 	if a := <-reply; a.Err == "" {
 		t.Fatal("another agent could read the result")
 	}
@@ -399,21 +399,21 @@ func TestPluginOverlappingRunResults(t *testing.T) {
 	}
 	// A repeated pump must not end the same run again.
 	ended := first.Ended
-	m.Core.PumpRuns(time.Now())
+	m.home().Core.PumpRuns(time.Now())
 	if !first.Ended.Equal(ended) {
 		t.Fatal("completed run was ended twice")
 	}
 	future := time.Now().Add(2 * core.KeepRunResult)
 	first.ReadAt = future
-	m.Core.PumpRuns(future)
-	if m.Core.RunByID(first.Id) != first {
+	m.home().Core.PumpRuns(future)
+	if m.home().Core.RunByID(first.Id) != first {
 		t.Fatal("a result being read was expired")
 	}
-	m.Core.PumpRuns(future.Add(core.KeepRunResult + time.Second))
-	if len(m.Core.PluginRuns.Finished) != 0 || m.Core.RunByID(first.Id) != nil {
+	m.home().Core.PumpRuns(future.Add(core.KeepRunResult + time.Second))
+	if len(m.home().Core.PluginRuns.Finished) != 0 || m.home().Core.RunByID(first.Id) != nil {
 		t.Fatal("abandoned results were not expired")
 	}
-	if m.Core.PluginRunOf(tb, p) != second {
+	if m.home().Core.PluginRunOf(tb, p) != second {
 		t.Fatal("expiry removed the latest F5 result")
 	}
 }
@@ -490,24 +490,24 @@ func TestPluginRunLimit(t *testing.T) {
 	m := testModel(t)
 	defer m.Shutdown()
 	a := m.Cur()
-	m.Core.PluginRuns.ByID = map[string]*core.PluginRun{}
+	m.home().Core.PluginRuns.ByID = map[string]*core.PluginRun{}
 	for i := 0; i < core.MaxPluginRunsPerAgent; i++ {
 		id := fmt.Sprintf("%016x", i)
-		m.Core.PluginRuns.ByID[id] = &core.PluginRun{Id: id, T: a, From: a}
+		m.home().Core.PluginRuns.ByID[id] = &core.PluginRun{Id: id, T: a, From: a}
 	}
-	if why := m.Core.RunLimit(a); why == "" || !strings.Contains(why, "you already have") {
+	if why := m.home().Core.RunLimit(a); why == "" || !strings.Contains(why, "you already have") {
 		t.Fatalf("an agent's limit was not reached: %q", why)
 	}
-	m.Core.PluginRuns.ByID = map[string]*core.PluginRun{}
+	m.home().Core.PluginRuns.ByID = map[string]*core.PluginRun{}
 
 	for i := 0; i < core.MaxPluginRuns; i++ {
 		id := fmt.Sprintf("%016x", i)
-		m.Core.PluginRuns.ByID[id] = &core.PluginRun{Id: id, T: a, From: &core.Tab{}}
+		m.home().Core.PluginRuns.ByID[id] = &core.PluginRun{Id: id, T: a, From: &core.Tab{}}
 	}
-	if why := m.Core.RunLimit(a); why == "" || !strings.Contains(why, "nerdr already runs") {
+	if why := m.home().Core.RunLimit(a); why == "" || !strings.Contains(why, "nerdr already runs") {
 		t.Fatalf("nerdr's limit was not reached: %q", why)
 	}
-	m.Core.PluginRuns.ByID = nil
+	m.home().Core.PluginRuns.ByID = nil
 }
 
 // A watch that prints only blank lines does not send its agent a message.
@@ -522,7 +522,7 @@ func TestPluginWatchSkipsBlankLines(t *testing.T) {
 		"run = [\"sh\", \"-c\", \"printf '\\\\n\\\\n'; sleep 30\"]\n")
 	run := started(t, m, askRun(m, tb, "blank", nil))
 	time.Sleep(100 * time.Millisecond)
-	m.Core.PumpRuns(time.Now())
+	m.home().Core.PumpRuns(time.Now())
 	if len(tb.Messages) != 0 {
 		t.Fatalf("blank output became messages: %+v", tb.Messages)
 	}

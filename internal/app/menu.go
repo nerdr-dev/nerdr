@@ -235,7 +235,7 @@ func (m *Model) tabItems() []menuItem {
 // openTabMenu shows what can be done to tab t, which it makes the active
 // tab: the commands act on that one.
 func (m *Model) openTabMenu(t *core.Tab, x, y int) tea.Cmd {
-	i := m.Core.TabIndex(t)
+	i := m.fleet.TabIndex(t)
 	if i < 0 {
 		return nil
 	}
@@ -253,13 +253,13 @@ func (m *Model) openTabMenu(t *core.Tab, x, y int) tea.Cmd {
 
 // openGroupMenu shows what can be done in group g.
 func (m *Model) openGroupMenu(g string, x, y int) tea.Cmd {
-	idx := m.Core.GroupTabs(g)
+	idx := m.fleet.GroupTabs(g)
 	if len(idx) == 0 {
 		return nil
 	}
 	cmd := m.selectTab(m.groupTab(g))
 	var items []menuItem
-	if repo := tabRepo(m.Core.Tabs[idx[0]]); repo != "" && g != core.MultiGroup {
+	if repo := tabRepo(m.fleet.Tabs()[idx[0]]); repo != "" && g != core.MultiGroup {
 		items = append(items, menuItem{label: "New tab in " + g + "…",
 			run: func(m *Model) tea.Cmd { return m.openWizardFor(repo) }})
 	} else {
@@ -268,7 +268,7 @@ func (m *Model) openGroupMenu(g string, x, y int) tea.Cmd {
 	}
 	items = append(items, menuItem{label: "Task to its tabs…",
 		run: func(m *Model) tea.Cmd { return m.command(keyMsg("M")) }})
-	if len(m.Core.Tabs[idx[0]].Worktrees) > 1 {
+	if len(m.fleet.Tabs()[idx[0]].Worktrees) > 1 {
 		items = append(items, menuItem{label: "Rename group…",
 			run: func(m *Model) tea.Cmd { return m.openGroupRename(g) }})
 	}

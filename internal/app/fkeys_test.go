@@ -34,7 +34,7 @@ func TestFKeysLeaveAShellAtItsPrompt(t *testing.T) {
 				}
 			}
 			tb := m.Cur()
-			m.Core.AddPane(tb, &core.PaneTab{Kind: core.PaneShell, Shell: pane}, false)
+			m.home().Core.AddPane(tb, &core.PaneTab{Kind: core.PaneShell, Shell: pane}, false)
 			if m.screen(tb) != pane || m.keyPane() != pane {
 				t.Fatal("the terminal pane should have the keyboard")
 			}

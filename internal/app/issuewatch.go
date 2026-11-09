@@ -34,13 +34,13 @@ func (m *Model) issuesShown() bool {
 // of them when force is set.
 func (m *Model) refreshAllIssues(force bool) tea.Cmd {
 	d := m.issuePanel
-	w := m.Core.IssueWatch
+	w := m.home().Core.IssueWatch
 	if !m.panelIssues() || d == nil || !d.all || w.AllBusy {
 		return nil
 	}
 	var ask []workspace.Repo
 	for _, r := range d.scope {
-		if got, ok := w.All[r.Path]; force || !ok || time.Since(got.At) >= m.Core.GithubEvery(core.IssueAllEvery) {
+		if got, ok := w.All[r.Path]; force || !ok || time.Since(got.At) >= m.home().Core.GithubEvery(core.IssueAllEvery) {
 			ask = append(ask, r)
 		}
 	}
@@ -83,7 +83,7 @@ func (m *Model) tellIssueNews(news []state.IssueNews) {
 // issueBadge is the mark in the bar while issues newly assigned to you
 // are not seen yet; a click shows them.
 func (m *Model) issueBadge() string {
-	n := len(m.Core.IssueWatch.News)
+	n := len(m.home().Core.IssueWatch.News)
 	if n == 0 {
 		return ""
 	}
