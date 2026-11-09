@@ -32,6 +32,17 @@ func (m *Model) onHerdrFocus() tea.Cmd {
 // openEditor opens the file the review panel asked for in the user's
 // editor.
 func (m *Model) openEditor(msg review.EditMsg) tea.Cmd {
+	if m.coreHost != "" {
+		if c, ok := editor.RemoteFileCommand(m.coreHost, msg.Dir, msg.File, msg.Line); ok {
+			return m.runEditor(c, "")
+		}
+		// A terminal editor runs where the file is, in a pane of the tab.
+		t := m.TabOfDir(msg.Dir)
+		if t == nil {
+			t = m.Cur()
+		}
+		return m.do(core.EditInTab{T: m.Ref(t), File: msg.File, Line: msg.Line, Setting: editor.File})
+	}
 	return m.runEditor(editor.FileCommand(msg.Dir, msg.File, msg.Line), msg.Dir)
 }
 
@@ -41,6 +52,12 @@ func (m *Model) openWorktreeEditor() tea.Cmd {
 	t := m.Cur()
 	if t == nil || t.Dir == "" {
 		return nil
+	}
+	if m.coreHost != "" {
+		if c, ok := editor.RemoteDirCommand(m.coreHost, t.Dir); ok {
+			return m.runEditor(c, "")
+		}
+		return m.do(core.EditInTab{T: m.Ref(t), Setting: editor.Worktree})
 	}
 	return m.runEditor(editor.DirCommand(t.Dir), t.Dir)
 }

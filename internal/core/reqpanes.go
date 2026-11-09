@@ -1,14 +1,17 @@
 package core
 
 import (
+	"strings"
+
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/editor"
 	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // The requests about a tab's panes, and the code reviews in them.
 
 func init() {
-	registerRequests(SeeAgent{}, ClosePane{}, DropPane{}, NewAgent{}, NewShell{}, MovePane{},
+	registerRequests(SeeAgent{}, ClosePane{}, DropPane{}, NewAgent{}, NewShell{}, EditInTab{}, MovePane{},
 		OpenReviewPane{}, AskModels{}, StartReview{}, StopReview{}, SetRounds{}, DropReviewDone{},
 		SendFindings{}, CarryOnConversation{})
 }
@@ -79,6 +82,51 @@ func (q NewShell) Do(m *Core) Cmd {
 		return cmd
 	}
 	return nil
+}
+
+// EditInTab opens File, a file in tab T's worktree, on Line (none when 0),
+// or with no File the worktree itself, in a terminal pane of T's that
+// closes when the editor exits: for a client on another machine than
+// core, where no editor of its own can reach the files. The editor is
+// Setting (the client's editor or worktree_editor setting), else $VISUAL
+// or $EDITOR as the programs core starts have them, else vim. One with a
+// window of its own cannot open one here, and vim opens the file instead.
+type EditInTab struct {
+	T       TabRef
+	File    string `json:",omitempty"`
+	Line    int    `json:",omitempty"`
+	Setting string `json:",omitempty"`
+}
+
+func (q EditInTab) Do(m *Core) Cmd {
+	t := m.ByRef(q.T)
+	if t == nil || t.Dir == "" {
+		return nil
+	}
+	env := m.BaseEnv()
+	getenv := func(k string) string {
+		for i := len(env) - 1; i >= 0; i-- {
+			if v, ok := strings.CutPrefix(env[i], k+"="); ok {
+				return v
+			}
+		}
+		return ""
+	}
+	var c editor.Command
+	if q.File == "" {
+		c = editor.DirCommandIn(q.Setting, t.Dir)
+	} else {
+		c = editor.FileCommandIn(q.Setting, getenv, t.Dir, q.File, q.Line)
+	}
+	if c.Window {
+		if q.File == "" {
+			m.Toast(c.Argv[0] + " opens a window, which cannot show here: set worktree_editor to one in a terminal")
+			return nil
+		}
+		c = editor.FileCommandIn("vim", getenv, t.Dir, q.File, q.Line)
+	}
+	_, cmd := m.newTermIn(t, false, c.Argv)
+	return cmd
 }
 
 // MovePane moves pane P By places along its tab's panes, not past the

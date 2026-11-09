@@ -52,9 +52,12 @@ type Model struct {
 	// remote is the connection to core, when it runs in a process of its
 	// own (see remote.go); said what the TUI last told it it shows, and
 	// pending what core told it before the program started.
-	remote  *core.CoreConn
-	said    core.ClientState
-	pending []core.Event
+	remote *core.CoreConn
+	// coreHost is the machine core runs on, as ssh names it, when it is
+	// not this one: "" for core here, in this process or another.
+	coreHost string
+	said     core.ClientState
+	pending  []core.Event
 	// skillsAsked is the tab whose skills core was last asked to look at,
 	// at skillsAskedAt; see lookAtSkills.
 	skillsAsked   string

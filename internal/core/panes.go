@@ -192,6 +192,11 @@ func (m *Core) AddPane(t *Tab, p *PaneTab, quiet bool) Cmd {
 // last; quiet leaves the keyboard where it is, and env is added to its
 // environment. It returns the pane, nil when the terminal did not start.
 func (m *Core) NewShellIn(t *Tab, quiet bool, env ...string) (*PaneTab, Cmd) {
+	return m.newTermIn(t, quiet, m.ShellCommand(), env...)
+}
+
+// newTermIn is NewShellIn running argv in place of the shell.
+func (m *Core) newTermIn(t *Tab, quiet bool, argv []string, env ...string) (*PaneTab, Cmd) {
 	if m.ReposHold(t) {
 		return nil, nil
 	}
@@ -205,7 +210,7 @@ func (m *Core) NewShellIn(t *Tab, quiet bool, env ...string) (*PaneTab, Cmd) {
 	cmd := m.AddPane(t, p, quiet)
 	w, h := m.Client.ShellSize(m.Ref(t), m.PaneRef(p))
 	env = append(append(m.TabEnv(t), "NERDR_SHELL=1"), env...)
-	spec := spawn.Spec{Argv: m.ShellCommand(), Dir: t.Dir, Env: env, W: w, H: h}
+	spec := spawn.Spec{Argv: argv, Dir: t.Dir, Env: env, W: w, H: h}
 	m.Hold(&spec, Label{Kind: HeldShell, Tab: t.ID, N: n}, false, "")
 	sh, err := term.StartWith(m.Programs(), spec, m.Notify)
 	if err != nil {
