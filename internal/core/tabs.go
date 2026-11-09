@@ -217,9 +217,9 @@ func BeforePrompt(argv, opts []string, commandLen int) []string {
 
 // agentID is the agent t's screen is read as and its integration reports
 // as: detectAs, or the tab's kind before its agent has been started.
-// tabIndex is where t is in the tab row, or -1 once it has been closed.
-func (m *Core) TabIndex(t *Tab) int {
-	for i, x := range m.Tabs {
+// Index is where t is in the tab row, or -1 once it has been closed.
+func (l TabList) Index(t *Tab) int {
+	for i, x := range l {
 		if x == t {
 			return i
 		}

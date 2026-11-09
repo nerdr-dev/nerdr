@@ -29,9 +29,9 @@ func (m *Core) FrontAgent() *Tab {
 
 // AllAgents are every agent nerdr runs: the tabs' own, the others beside
 // them and the reviewers.
-func (m *Core) AllAgents() []*Tab {
+func (l TabList) AllAgents() []*Tab {
 	var out []*Tab
-	for _, t := range m.Tabs {
+	for _, t := range l {
 		out = append(out, t.AgentsIn()...)
 	}
 	return out

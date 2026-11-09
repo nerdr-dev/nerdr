@@ -41,39 +41,17 @@ func (m *Core) PaneRef(p *PaneTab) PaneRef {
 
 // ByRef is the tab or agent r names, nil when it is not one of this core's.
 func (m *Core) ByRef(r TabRef) *Tab {
-	if r.Core != m.ID || r.Tab == "" {
+	if r.Core != m.ID {
 		return nil
 	}
-	for _, t := range m.Tabs {
-		if t.ID == r.Tab {
-			return t
-		}
-		for _, a := range t.AgentsIn() {
-			if a.ID == r.Tab {
-				return a
-			}
-		}
-		for _, p := range t.Panes() {
-			if p.A != nil && p.A.ID == r.Tab {
-				return p.A // a reviewer starting, not yet at its seat
-			}
-		}
-	}
-	return nil
+	return TabList(m.Tabs).Find(r.Tab)
 }
 
 // PaneByRef is the pane r names, and the tab it is in; nils when it is not
 // one of this core's.
 func (m *Core) PaneByRef(r PaneRef) (*Tab, *PaneTab) {
-	if r.Core != m.ID || r.Pane == "" {
+	if r.Core != m.ID {
 		return nil, nil
 	}
-	for _, t := range m.Tabs {
-		for _, p := range t.Panes() {
-			if p.ID == r.Pane {
-				return t, p
-			}
-		}
-	}
-	return nil, nil
+	return TabList(m.Tabs).FindPane(r.Pane)
 }

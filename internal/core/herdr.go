@@ -4,9 +4,9 @@ package core
 // finished, then working, then waiting on a background process, the most
 // recent change winning a tie — or nil
 // when every agent is idle.
-func (m *Core) Neediest() (int, *Tab) {
+func (l TabList) Neediest() (int, *Tab) {
 	best, bi := (*Tab)(nil), -1
-	for i, t := range m.Tabs {
+	for i, t := range l {
 		if t.Attention() == 0 {
 			continue
 		}
