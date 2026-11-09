@@ -13,7 +13,7 @@ import (
 // list, each with the files its branch changes; the one shown counts its
 // own list.
 func TestRepoBar(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m.pins = []Pin{{Repo: "/r/front", Path: "/w/front"}, {Repo: "/r/back", Path: "/w/back"}, {Repo: "/r/lib", Path: "/w/lib"}}
 	m.repos = []git.Repo{{Name: "front"}, {Name: "back"}, {Name: "lib"}}
 	m = m.SetPinCounts([]int{9, 2, -1})
@@ -40,7 +40,7 @@ func TestRepoBar(t *testing.T) {
 // ↑ from the first file goes on to the bar, where ← and → switch the
 // repository and ↓ goes back to the files.
 func TestRepoBarArrows(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m.pins = []Pin{{Repo: "/r/front", Path: "/w/front"}, {Repo: "/r/back", Path: "/w/back"}}
 	m.repos = []git.Repo{{Name: "front"}, {Name: "back"}}
 	key := func(k string) {
@@ -80,7 +80,7 @@ func TestRepoBarArrows(t *testing.T) {
 // is beside it; beside the diff in a wide panel alone on the screen. L
 // puts them the other way.
 func TestFilesBesideTheDiff(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	if l := m.embeddedLayout(160, 40); l.files.y == l.diff.y {
 		t.Error("beside an agent, the files should be above the diff")
 	}
@@ -107,7 +107,7 @@ func TestFilesBesideTheDiff(t *testing.T) {
 
 // c in F1 steps through the diff's colour schemes, and back to nerdr's.
 func TestDiffColors(t *testing.T) {
-	m := NewEmbedded()
+	m := NewEmbedded(Local{})
 	m, _ = m.SetDiffColors("unknown")
 	if m.diffColors != "nerdr" {
 		t.Fatalf("an unknown scheme is nerdr's, got %q", m.diffColors)

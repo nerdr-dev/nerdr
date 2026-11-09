@@ -51,6 +51,9 @@ type editorDoneMsg struct{}
 type toastMsg struct{ text string }
 
 type Model struct {
+	// src is what the panel reads the repositories through.
+	src Source
+
 	cwd string
 
 	repos        []git.Repo
@@ -287,10 +290,12 @@ func (m *Model) toggleMouse() tea.Cmd {
 	return tea.DisableMouse
 }
 
-// New creates the root model, discovering repositories under cwd.
-func New(cwd string) Model {
-	repos, err := git.DiscoverRepos(cwd)
+// New creates the root model, discovering repositories under cwd
+// through src.
+func New(cwd string, src Source) Model {
+	repos, err := src.DiscoverRepos(cwd)
 	m := Model{
+		src:       src,
 		cwd:       cwd,
 		repos:     repos,
 		focus:     focusRepos,
@@ -337,7 +342,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	wt := mm.ctxLoad
 	mm.ctxLoad = ""
-	return mm, tea.Batch(cmd, loadContextCmd(wt))
+	return mm, tea.Batch(cmd, loadContextCmd(m.src, wt))
 }
 
 func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {

@@ -162,7 +162,7 @@ func TestPRRowGlyphsRankByWhatNeedsAttention(t *testing.T) {
 // TestMenuSwitchesModes covers F1/F2 and, more importantly, that the review
 // layout's keys stop at the PR screen: they act on panes that aren't shown.
 func TestMenuSwitchesModes(t *testing.T) {
-	m := Model{height: 40, width: 120, baseRef: "main"}
+	m := Model{src: Local{}, height: 40, width: 120, baseRef: "main"}
 
 	send := func(key string) {
 		var msg tea.Msg
@@ -250,7 +250,7 @@ func TestRepoRescanKeepsTheSelectedRepo(t *testing.T) {
 	mk("beta")
 	mk("gamma")
 
-	m := New(parent)
+	m := New(parent, Local{})
 	if len(m.repos) != 2 {
 		t.Fatalf("expected 2 repos, got %#v", m.repos)
 	}
@@ -311,7 +311,7 @@ func TestConversationEntriesAnchorEachBlock(t *testing.T) {
 // "all of them" in the list.
 // prModel is the PR screen on a worktree whose PR is pr.
 func prModel(pr github.PR) Model {
-	return Model{height: 40, width: 120, mode: modePRs, curWT: "/wt",
+	return Model{src: Local{}, height: 40, width: 120, mode: modePRs, curWT: "/wt",
 		worktrees: []git.Worktree{{Path: "/wt"}}, pr: pr, prOK: true}
 }
 

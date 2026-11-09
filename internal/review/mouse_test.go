@@ -14,7 +14,7 @@ import (
 // ones on screen. It renders the view and checks that each pane's heading
 // really is at the top-left corner layout claims for it.
 func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		width: 120, height: 40,
 		repos: []git.Repo{{Name: "myrepo"}},
 	}
@@ -67,7 +67,7 @@ func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
 // screen row into a list index — off by one here means clicking a file
 // opens its neighbour.
 func TestClickSelectsTheRowUnderThePointer(t *testing.T) {
-	m := Model{width: 120, height: 40, repos: []git.Repo{
+	m := Model{src: Local{}, width: 120, height: 40, repos: []git.Repo{
 		{Name: "alpha"}, {Name: "beta"}, {Name: "gamma"}, {Name: "delta"},
 	}}
 	lay := m.layout(m.width, m.height)
@@ -108,7 +108,7 @@ func TestWheelScrollsWithoutTakingFocus(t *testing.T) {
 	for i := range lines {
 		lines[i] = diffLine{kind: ' ', text: "code"}
 	}
-	m := Model{width: 120, height: 40, focus: focusFiles, diffLines: lines}
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines}
 	lay := m.layout(m.width, m.height)
 
 	nm, _ := m.Update(tea.MouseMsg{
@@ -146,7 +146,7 @@ func TestScrollbar(t *testing.T) {
 	for i := range lines {
 		lines[i] = diffLine{kind: ' ', text: "code"}
 	}
-	m := Model{width: 120, height: 40, focus: focusFiles, diffLines: lines}
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines}
 	lay := m.layout(m.width, m.height)
 	if !strings.Contains(m.View(), thumbGlyph) {
 		t.Fatal("a long diff shows a scrollbar")
@@ -171,7 +171,7 @@ func TestScrollbar(t *testing.T) {
 		t.Fatal("letting go ends the drag")
 	}
 
-	short := Model{width: 120, height: 40, focus: focusFiles, diffLines: lines[:3]}
+	short := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines[:3]}
 	if got := renderDiff(short.diffLines, 0, 0, 60, 20, false, "diff", "", lineSpan{}); strings.Contains(got, thumbGlyph) {
 		t.Fatal("a diff that fits has no scrollbar")
 	}
@@ -193,7 +193,7 @@ func TestThumb(t *testing.T) {
 // TestMouseIsOffUntilAskedFor covers the default: text selection belongs to
 // the terminal until the user says otherwise.
 func TestMouseIsOffUntilAskedFor(t *testing.T) {
-	m := New(t.TempDir())
+	m := New(t.TempDir(), Local{})
 	if m.mouseOn {
 		t.Fatal("mouse reporting must be off by default")
 	}
@@ -226,7 +226,7 @@ func TestMouseIsOffUntilAskedFor(t *testing.T) {
 // brightness and volume keys on a laptop unless the system setting is
 // changed, so the menu must have a plain-key route too.
 func TestMenuIsReachableWithoutFunctionKeys(t *testing.T) {
-	m := Model{width: 120, height: 40}
+	m := Model{src: Local{}, width: 120, height: 40}
 	press := func() {
 		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("m")})
 		m = nm.(Model)
@@ -254,7 +254,7 @@ func TestClickLeavingThePeekSelectsTheClickedFile(t *testing.T) {
 		"more.ts": "export const a = 1;\n",
 		"zed.ts":  "export const z = 1;\n",
 	})
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff
@@ -297,7 +297,7 @@ func TestDraggingTheFilesScrollbarLeavesThePeek(t *testing.T) {
 		"more.ts": "export const a = 1;\n",
 		"zed.ts":  "export const z = 1;\n",
 	})
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	m.diffCursor = annotationIndex(t, m)
 	m.focus = focusDiff

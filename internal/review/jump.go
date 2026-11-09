@@ -6,8 +6,6 @@ package review
 import (
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/git"
-
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -257,7 +255,7 @@ func (m *Model) restoreJump(st jumpState) {
 // diff markers, since it isn't necessarily changed) for the diff pane.
 func (m *Model) loadPeekDiff() tea.Cmd {
 	wt := m.worktrees[m.wtIdx].Path
-	src, err := git.ReadWorktreeFile(wt, m.peek.file)
+	src, err := m.src.ReadFile(wt, m.peek.file)
 	if err != nil {
 		m.err = err
 		m.diff = ""

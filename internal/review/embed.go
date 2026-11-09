@@ -52,9 +52,11 @@ type EditMsg struct {
 	Line int    // the line to open it on; 0 for none
 }
 
-// NewEmbedded creates the panel. It shows nothing until Pin is called.
-func NewEmbedded() Model {
+// NewEmbedded creates the panel, reading the repositories through src.
+// It shows nothing until Pin is called.
+func NewEmbedded(src Source) Model {
 	m := Model{
+		src:       src,
 		embedded:  true,
 		focus:     focusFiles,
 		expanded:  map[string]bool{},
@@ -122,12 +124,13 @@ func (m *Model) loadPinned() tea.Cmd {
 		// The slow part of a worktree's context (imports, PR); Update
 		// starts it when a move asks for it, but Pin is called from
 		// outside Update.
-		cmds = append(cmds, loadContextCmd(m.ctxLoad))
+		cmds = append(cmds, loadContextCmd(m.src, m.ctxLoad))
 		m.ctxLoad = ""
 	}
+	src := m.src
 	cmds = append(cmds, func() tea.Msg {
 		msg := pinnedMsg{wt: path, token: token, found: true}
-		if wts, err := git.ListWorktrees(repo); err == nil {
+		if wts, err := src.ListWorktrees(repo); err == nil {
 			msg.found = false
 			for _, w := range wts {
 				if samePath(w.Path, path) {
@@ -135,7 +138,7 @@ func (m *Model) loadPinned() tea.Cmd {
 				}
 			}
 		}
-		msg.base = git.DetectBase(path)
+		msg.base = src.DetectBase(path)
 		msg.notes = loadNotes(path)
 		msg.order = order.Load(path, msg.listed.Branch)
 		msg.walk, msg.hasWalk = walkthrough.Load(path, msg.listed.Branch)
@@ -143,9 +146,7 @@ func (m *Model) loadPinned() tea.Cmd {
 		if showBase && msg.base != "" {
 			c.Base = msg.base
 		}
-		if msg.files, msg.err = c.Files(); msg.err == nil {
-			msg.stats = c.NumStat()
-		}
+		msg.files, msg.stats, msg.err = src.Files(c)
 		return msg
 	})
 	return tea.Batch(cmds...)
@@ -275,7 +276,7 @@ func (m *Model) ShowPin(i int) tea.Cmd {
 	if m.ctxLoad != "" {
 		wt := m.ctxLoad
 		m.ctxLoad = ""
-		cmd = tea.Batch(cmd, loadContextCmd(wt))
+		cmd = tea.Batch(cmd, loadContextCmd(m.src, wt))
 	}
 	return cmd
 }

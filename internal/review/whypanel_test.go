@@ -12,7 +12,7 @@ import (
 // never advanced focus, so a rationale longer than the panel could not be
 // scrolled at all.
 func TestOpenWhyDetailFocusesThePanel(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		focus:  focusDiff,
 		height: 40,
 		diffLines: []diffLine{
@@ -37,7 +37,7 @@ func TestOpenWhyDetailFocusesThePanel(t *testing.T) {
 }
 
 func TestOpenWhyDetailIgnoresOtherLines(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		focus:      focusDiff,
 		height:     40,
 		diffLines:  []diffLine{{kind: '+', text: "+something"}},
@@ -62,7 +62,7 @@ func TestPageFollowsFocus(t *testing.T) {
 	for i := range lines {
 		lines[i] = diffLine{kind: ' ', text: "code"}
 	}
-	m := Model{height: 40, diffLines: lines, relRows: rows}
+	m := Model{src: Local{}, height: 40, diffLines: lines, relRows: rows}
 
 	m.focus = focusDiff
 	m.page(1)
@@ -88,7 +88,7 @@ func TestPageFollowsFocus(t *testing.T) {
 // heights the cursor logic derives from these, since a mismatch there
 // makes scrolling jump.
 func TestZoomGivesTheFocusedPaneTheWholeWindow(t *testing.T) {
-	m := Model{height: 40}
+	m := Model{src: Local{}, height: 40}
 
 	normalDiff := m.diffInnerHeight()
 	normalRel := m.relationsInnerHeight()
@@ -117,7 +117,7 @@ func TestZoomGivesTheFocusedPaneTheWholeWindow(t *testing.T) {
 }
 
 func TestZoomedViewRendersOnlyTheFocusedPane(t *testing.T) {
-	m := Model{
+	m := Model{src: Local{},
 		width: 100, height: 30, zoomed: true, focus: focusDiff,
 		diffLines: []diffLine{{kind: '+', text: "+unique_diff_marker"}},
 		repos:     []git.Repo{{Name: "unique_repo_marker"}},

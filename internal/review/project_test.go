@@ -22,7 +22,7 @@ func TestProjectIsReadAgainInTheBackground(t *testing.T) {
 	}
 	write("a.ts")
 	shown := analysis.LoadProject(dir)
-	m := Model{curWT: dir, project: shown, projectLoad: true}
+	m := Model{src: Local{}, curWT: dir, project: shown, projectLoad: true}
 
 	nm, _ := m.Update(projectMsg{wt: "elsewhere", project: analysis.LoadProject(dir)})
 	if got := nm.(Model); got.project != shown || !got.projectLoad {
@@ -43,7 +43,7 @@ func TestProjectIsReadAgainInTheBackground(t *testing.T) {
 // TestAskWithNoWorktreeDoesNothing covers "?" on an empty worktree list,
 // which used to index it to say what the change is compared with.
 func TestAskWithNoWorktreeDoesNothing(t *testing.T) {
-	m := Model{focus: focusRepos}
+	m := Model{src: Local{}, focus: focusRepos}
 	if cmd := m.askSelected(false); cmd != nil {
 		t.Fatal("asked about a worktree that is not there")
 	}

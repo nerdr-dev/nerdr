@@ -13,7 +13,7 @@ import (
 // directly. Jumping to code lives in the diff pane's own ↳ annotations; the
 // panel itself only links out to GitHub.
 func TestNumberKeysSelectTabs(t *testing.T) {
-	m := Model{height: 40}
+	m := Model{src: Local{}, height: 40}
 	for key, want := range map[string]int{"1": 0, "2": relationsTabWhy} {
 		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(key)})
 		m = nm.(Model)
@@ -24,7 +24,7 @@ func TestNumberKeysSelectTabs(t *testing.T) {
 }
 
 func TestRelationsCursorStaysWithinViewBeforeScrolling(t *testing.T) {
-	m := Model{height: 40, relationsTab: relationsTabWhy}
+	m := Model{src: Local{}, height: 40, relationsTab: relationsTabWhy}
 	m.whyDetail = strings.Repeat("a rationale line\n", 30)
 	m.buildRelRows()
 	if len(m.relRows) < 2 {
@@ -43,7 +43,7 @@ func TestGithubTabPlaceholderWhenNoPR(t *testing.T) {
 	repo := setupJumpRepo(t, nil, map[string]string{
 		"lib.ts": "export function helper() { return 1; }\n",
 	})
-	m := New(repo)
+	m := New(repo, Local{})
 	m = openFileDiff(t, m, "lib.ts")
 	if m.relationsTab != 0 {
 		t.Fatalf("expected github to be the default tab (0), got %d", m.relationsTab)
@@ -57,7 +57,7 @@ func TestGithubTabPlaceholderWhenNoPR(t *testing.T) {
 }
 
 func TestTabCyclesRelationsTabsBothWays(t *testing.T) {
-	m := Model{height: 40}
+	m := Model{src: Local{}, height: 40}
 
 	for want := 1; want < relationsTabCount; want++ {
 		nm, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
@@ -82,7 +82,7 @@ func TestTabCyclesRelationsTabsBothWays(t *testing.T) {
 }
 
 func TestSwitchingTabResetsTheCursor(t *testing.T) {
-	m := Model{height: 40, relCursor: 5, relViewTop: 3}
+	m := Model{src: Local{}, height: 40, relCursor: 5, relViewTop: 3}
 	m.setRelationsTab(2)
 	if m.relCursor != 0 || m.relViewTop != 0 {
 		t.Fatalf("expected the cursor to reset for unrelated rows, got cursor=%d top=%d", m.relCursor, m.relViewTop)

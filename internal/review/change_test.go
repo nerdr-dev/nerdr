@@ -21,7 +21,7 @@ func TestBaseToggleOvertakesARefreshUnderWay(t *testing.T) {
 	runGit(t, repo, "add", ".")
 	runGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "feature")
 	writeFile(t, filepath.Join(repo, "a.txt"), "changed\n")
-	m := New(parent)
+	m := New(parent, Local{})
 	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
 	m = m.send(tea.KeyMsg{Type: tea.KeyRight})
 	pending := m.refreshFiles()

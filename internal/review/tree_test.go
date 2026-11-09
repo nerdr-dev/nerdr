@@ -139,7 +139,7 @@ func TestBuildTreeHasNoCollapsedFolders(t *testing.T) {
 		{Path: "deep/nested/path/a.ts", Code: " M"},
 		{Path: "b.ts", Code: "??"},
 	}
-	m := Model{tree: buildTree(files, nil)}
+	m := Model{src: Local{}, tree: buildTree(files, nil)}
 	var seen []string
 	for _, r := range m.flatRows() {
 		if r.node.isDir {
