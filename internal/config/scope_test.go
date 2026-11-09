@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"reflect"
 	"testing"
 
@@ -68,5 +69,22 @@ func TestScopeOf(t *testing.T) {
 		if got := ScopeOf(c.table, c.key); got != c.want {
 			t.Errorf("ScopeOf(%q, %q) = %s, want %s", c.table, c.key, got, c.want)
 		}
+	}
+}
+
+// TestConfigAsJSON: what a core sends a client of its settings keeps what
+// its file sets, which the first-start setup asks by.
+func TestConfigAsJSON(t *testing.T) {
+	c := Config{WorktreesDir: "/srv/wt", Review: Review{Rounds: 3}, dataDirSet: true}
+	b, err := json.Marshal(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got Config
+	if err := json.Unmarshal(b, &got); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, c) {
+		t.Fatalf("got %+v, want %+v (%s)", got, c, b)
 	}
 }

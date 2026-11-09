@@ -69,9 +69,15 @@ type Core struct {
 	// see held.go.
 	Held *Held `json:"-"`
 
-	Cfg         config.Config `json:"-"`
-	Root        string        // the folder nerdr was started in
-	Tabs        []*Tab        `json:"-"`
+	Cfg config.Config `json:"-"`
+	// ConfigFile is where Cfg's own settings are read from, on the
+	// machine core runs on; see WatchConfigFile. cfgMod is when it was
+	// last changed as core took it in, cfgWatch whether core watches it.
+	ConfigFile  string
+	cfgMod      time.Time
+	cfgWatch    bool
+	Root        string // the folder nerdr was started in
+	Tabs        []*Tab `json:"-"`
 	AgentModels map[agents.Kind]ModelList
 	// IssueWatch is the watching of the issues assigned to you; see
 	// issuewatch.go.

@@ -9,6 +9,8 @@ import (
 	"reflect"
 	"slices"
 	"strings"
+
+	"github.com/nerdr-dev/nerdr/internal/config"
 )
 
 // A client in a process of its own keeps a copy of core's state: the same
@@ -62,6 +64,10 @@ type corePart struct {
 	// Programs are the programs core runs, which a copy has no
 	// term.Pane of; see ProgramState.
 	Programs []ProgramState `json:"$programs"`
+	// Config is core's config: a copy takes core's own settings from it
+	// (config.ScopeCore), and keeps the client's, which are the client's
+	// to read where it runs.
+	Config *config.Config `json:"$config,omitempty"`
 }
 
 // ProgramState is a program core runs, as a copy of its state knows it:
@@ -170,7 +176,7 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 		// A tab that cannot be sent is left out, not every tab with it.
 		errs = append(errs, add(PartTab(t.ID), p))
 	}
-	errs = append(errs, add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids, Programs: m.programStates()}))
+	errs = append(errs, add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids, Programs: m.programStates(), Config: &m.Cfg}))
 	for k := range s.sums {
 		if !live[k] {
 			delete(s.sums, k) // closed: should it be back, it goes again
@@ -314,6 +320,9 @@ func (r *Mirror) applyCore(body []byte) error {
 		return err
 	}
 	copyWire(reflect.ValueOf(r.C).Elem(), reflect.ValueOf(fresh).Elem())
+	if p.Config != nil {
+		r.C.Cfg = config.Merge(*p.Config, r.C.Cfg)
+	}
 	r.order, r.progs = p.Order, p.Programs
 	r.listed = map[string]bool{}
 	for _, id := range p.Agents {

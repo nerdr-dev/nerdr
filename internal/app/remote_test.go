@@ -25,7 +25,8 @@ func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, cha
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
-	c := &core.Core{Root: t.TempDir(), Wake: make(chan struct{}, 1)}
+	// Set up already: install is the core's to say, as its own setting.
+	c := &core.Core{Root: t.TempDir(), Wake: make(chan struct{}, 1), Cfg: config.Config{Install: "x"}}
 	pane, err := term.Start(argv, t.TempDir(), os.Environ(), 80, 20, c.Notify)
 	if err != nil {
 		t.Skip(err)
@@ -51,7 +52,7 @@ func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, cha
 	})
 
 	yes, no := true, false
-	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes, Install: "x"}
+	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
 	told := make(chan any, 64)
 	// A router, as in a terminal: what has the keyboard is told core.
 	router := input.New(strings.NewReader(""), 0x11)
