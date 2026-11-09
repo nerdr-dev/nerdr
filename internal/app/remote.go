@@ -2,6 +2,7 @@ package app
 
 import (
 	"reflect"
+	"slices"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -21,10 +22,11 @@ import (
 // core goes by (core.ClientSays).
 
 // NewRemote builds the model for the core at the other end of conn, for
-// the session rooted at root, laid out as sess was. tell gives the program
-// what comes of the connection (see core.Connect). It takes in core's
-// state before it returns.
-func NewRemote(cfg config.Config, root string, router *input.Router, sess state.Session, conn *attach.Conn, tell func(any)) (*Model, error) {
+// the session rooted at root, laid out as core says the last client left
+// it: the session is core's, where core runs, and not read here. tell
+// gives the program what comes of the connection (see core.Connect). It
+// takes in core's state before it returns.
+func NewRemote(cfg config.Config, root string, router *input.Router, conn *attach.Conn, tell func(any)) (*Model, error) {
 	m := New(cfg, root, router, state.Session{})
 	m.remote = core.Connect(conn, &m.Core, tell)
 	m.screens = m.remote.Screens
@@ -36,14 +38,26 @@ func NewRemote(cfg config.Config, root string, router *input.Router, sess state.
 	m.review = m.review.SetSource(m.reviewAsk)
 	m.Mu.Lock()
 	defer m.Mu.Unlock()
+	// Asked before the client says what it shows, which core keeps as
+	// the layout from then on.
+	saved, err := m.remote.Run(core.SavedLayout{})
+	if err != nil {
+		return nil, err
+	}
+	var layout core.Layout
+	saved = slices.DeleteFunc(saved, func(ev core.Event) bool {
+		l, ok := ev.(core.SavedLayoutMsg)
+		if ok {
+			layout = l.Layout
+		}
+		return ok
+	})
 	evs, err := m.remote.Run(core.ClientSays{State: m.clientState()})
 	if err != nil {
 		return nil, err
 	}
-	// Laid out as the session was left, as core saved it with what the
-	// last client showed.
-	m.restoreLayout(sess)
-	m.pending = evs
+	m.restoreLayout(layout)
+	m.pending = append(saved, evs...)
 	return m, nil
 }
 

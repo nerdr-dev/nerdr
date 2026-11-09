@@ -16,6 +16,31 @@ type Layout struct {
 	SideWidth int
 }
 
+// LayoutOf is the layout sess keeps.
+func LayoutOf(sess state.Session) Layout {
+	return Layout{Active: sess.Active, Split: sess.Split, SplitLeft: sess.SplitLeft, SideWidth: sess.SideWidth}
+}
+
+func init() { registerRequests(SavedLayout{}) }
+
+// SavedLayout asks core how the tabs were laid out by the client last
+// connected, or as the session was saved when none has been since core
+// started: told as a SavedLayoutMsg. A client in another process lays
+// them out so as it connects, as it reads no session of its own: the
+// session is core's, where core runs.
+type SavedLayout struct{}
+
+// SavedLayoutMsg is the layout SavedLayout asked for.
+type SavedLayoutMsg struct{ Layout Layout }
+
+func (SavedLayout) Do(m *Core) Cmd {
+	var l Layout
+	if m.Client != nil {
+		l = m.Client.Layout()
+	}
+	return m.Tell(SavedLayoutMsg{Layout: l})
+}
+
 // SaveSession saves the tabs, with how the client lays them out.
 func (m *Core) SaveSession() {
 	var l Layout
