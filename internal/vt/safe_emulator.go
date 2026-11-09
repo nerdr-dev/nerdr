@@ -196,9 +196,10 @@ func (se *SafeEmulator) ScrollbackLen() int {
 }
 
 // ScrollbackCellAt returns a cell from the scrollback buffer in a concurrency-safe manner.
+// It takes the lock for writing: the scrollback unpacks the line for it.
 func (se *SafeEmulator) ScrollbackCellAt(x, y int) *uv.Cell {
-	se.mu.RLock()
-	defer se.mu.RUnlock()
+	se.mu.Lock()
+	defer se.mu.Unlock()
 	return se.Emulator.ScrollbackCellAt(x, y)
 }
 
