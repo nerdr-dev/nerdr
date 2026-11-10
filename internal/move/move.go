@@ -385,25 +385,52 @@ func Land(repo, wt string, p Part, bundle string) error {
 	if old != "" && !Ancestor(repo, old, p.Head) {
 		return errors.New("branch " + p.Branch + " there has commits this one has not")
 	}
+	// What Land made goes again if it fails after: the branch put back
+	// as it was, and the worktree.
+	branchBack := func() {
+		switch {
+		case old == p.Head:
+		case old == "":
+			_, _ = run(repo, nil, "update-ref", "-d", "refs/heads/"+p.Branch, p.Head)
+		default:
+			_, _ = run(repo, nil, "update-ref", "refs/heads/"+p.Branch, old, p.Head)
+		}
+	}
 	if old != p.Head {
 		if _, err := run(repo, nil, "update-ref", "-m", "nerdr: moved here", "refs/heads/"+p.Branch, p.Head, old); err != nil {
 			return err
 		}
 	}
 	if err := os.MkdirAll(filepath.Dir(wt), 0o755); err != nil {
+		branchBack()
 		return err
 	}
 	if _, err := run(repo, nil, "worktree", "add", "--quiet", wt, p.Branch); err != nil {
-		if old != p.Head {
-			if old == "" {
-				_, _ = run(repo, nil, "update-ref", "-d", "refs/heads/"+p.Branch, p.Head)
-			} else {
-				_, _ = run(repo, nil, "update-ref", "refs/heads/"+p.Branch, old, p.Head)
-			}
-		}
+		branchBack()
 		return err
 	}
 	gitsafe.Trust(repo, wt)
+	if err := restoreWork(wt, p); err != nil {
+		_, _ = run(repo, nil, "worktree", "remove", "--force", wt)
+		_ = os.RemoveAll(wt)
+		_, _ = run(repo, nil, "worktree", "prune")
+		branchBack()
+		return err
+	}
+	return nil
+}
+
+// afterAdd, when set, fails the landing after the worktree is added: for
+// tests.
+var afterAdd func(wt string) error
+
+// restoreWork puts what p had not committed back in the worktree at wt.
+func restoreWork(wt string, p Part) error {
+	if afterAdd != nil {
+		if err := afterAdd(wt); err != nil {
+			return err
+		}
+	}
 	if p.Wip == "" {
 		return nil
 	}

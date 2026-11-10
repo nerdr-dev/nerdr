@@ -54,6 +54,9 @@ type moveRun struct {
 	// sandboxed is whether the tab's agent is in a sandbox here; handoff
 	// whether it is asked for a handoff first, when it runs.
 	sandboxed, running, handoff bool
+	// weakerYes is set only when the user said yes to an agent in less
+	// of a sandbox there than here; it is what the target is told.
+	weakerYes bool
 	// stops is what stops here and does not go.
 	stops []string
 	// size is the pack's, sum its SHA-256, sent how much of it the target
@@ -241,7 +244,7 @@ func (m *Model) onMove(ev core.Event) tea.Cmd {
 			paths = append(paths, t.Path)
 		}
 		return m.doOn(r.to, core.MoveLand{Job: r.job, ID: r.id, Size: r.size, Sum: r.sum, Kind: r.kind,
-			Repos: paths, Dir: r.check.Dir, From: machineLabel(r.from), Sandboxed: r.sandboxed, Weaker: r.weaker()})
+			Repos: paths, Dir: r.check.Dir, From: machineLabel(r.from), Sandboxed: r.sandboxed, Weaker: r.weakerYes})
 	case core.MoveLandedMsg:
 		if ev.Job != r.job || r.stage != moveLanding {
 			return nil
@@ -314,6 +317,7 @@ func (m *Model) moveGo() tea.Cmd {
 		r.stage = moveWeaker
 		return nil
 	}
+	r.weakerYes = r.stage == moveWeaker
 	if len(r.clones()) > 0 {
 		r.stage = moveCloning
 		return m.doOn(r.to, core.MoveCheck{Job: r.job, Repos: r.repos, Clone: true})

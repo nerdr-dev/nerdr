@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
@@ -17,6 +18,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/move"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/store"
+	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -61,9 +63,9 @@ type moveOut struct {
 	t    *Tab
 	have [][]string
 	dir  string
-	// stopped is set once the agent was stopped for the move, to start
-	// again if it does not go.
-	stopped bool
+	// stopped are the agents stopped for the move, the tab's own first,
+	// to start again if it does not go.
+	stopped []*Tab
 }
 
 // validJob is a move's job id: it names temporary folders.
@@ -358,12 +360,9 @@ func (m *Core) movePack(t *Tab, summary string) Cmd {
 		t.Handoff = nil
 	}
 	t.HandoffReady = nil
-	if t.Pane != nil {
-		old := t.Pane
-		go old.Close()
-		t.Pane = nil
-		o.stopped = true
-	}
+	// Every program in the tab stops before the work is packed, and the
+	// pack waits for them: whatever wrote after would be lost to the move.
+	progs := m.stopForMove(t, o)
 	t.Light = StExited
 	t.AwaitWork, t.QueuePaused = false, false
 	t.Moving.Packing = true
@@ -384,6 +383,12 @@ func (m *Core) movePack(t *Tab, summary string) Cmd {
 	specs, kind, id, dir := m.SpecsFor(t), t.Agent, t.SessionID, t.Dir
 	job, ref, pdir, have := t.Moving.Job, m.Ref(t), o.dir, o.have
 	return Later(func() Event {
+		var wg sync.WaitGroup
+		for _, p := range progs {
+			wg.Add(1)
+			go func() { defer wg.Done(); p.Close() }()
+		}
+		wg.Wait()
 		text, err := agents.Transcript(specs, kind, id, dir)
 		if err != nil {
 			man.TranscriptErr = err.Error()
@@ -399,6 +404,36 @@ func (m *Core) movePack(t *Tab, summary string) Cmd {
 		}
 		return msg
 	})
+}
+
+// stopForMove takes every program in t from its pane, its agent's and
+// the other agents', terminals' and a review's, for the pack to close and
+// wait for; o keeps the agents stopped, to start again if the move does
+// not go.
+func (m *Core) stopForMove(t *Tab, o *moveOut) []*term.Pane {
+	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
+		if a.Review != nil {
+			m.EndReview(a, "stopped for a move", false)
+		}
+	}
+	var progs []*term.Pane
+	for _, p := range t.Panes() {
+		if tp := p.Term(); tp != nil && !slices.Contains(progs, tp) {
+			progs = append(progs, tp)
+		}
+	}
+	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
+		if a.Pane == nil {
+			continue
+		}
+		if !slices.Contains(progs, a.Pane) {
+			progs = append(progs, a.Pane)
+		}
+		a.Pane = nil
+		a.Light = StExited
+		o.stopped = append(o.stopped, a)
+	}
+	return progs
 }
 
 // tabFolder is the folder of a tab on wts: its worktree's, or with
@@ -531,12 +566,16 @@ func (m *Core) moveAbort(job, why string) Cmd {
 	if w := t.Handoff; w != nil && w.Move {
 		m.CancelHandoff(t)
 	}
-	var cmd Cmd
-	if m.TabIndex(t) >= 0 && o.stopped && t.Pane == nil {
-		cmd = m.Start(t, true)
-	} else if t.Pane != nil {
+	var cmds []Cmd
+	for _, a := range o.stopped {
+		if m.Live(a) && a.Pane == nil {
+			cmds = append(cmds, m.Start(a, true))
+		}
+	}
+	if t.Pane != nil {
 		t.Light = StIdle
 	}
+	cmd := Batch(cmds...)
 	m.SaveSession()
 	m.Tell(PanesMsg{})
 	msg := m.AgentName(t) + ": not moved"
@@ -674,10 +713,9 @@ func (q MoveLand) Do(m *Core) Cmd {
 	if why := m.landRefusal(q); why != "" {
 		return m.Tell(MoveLandedMsg{Job: q.Job, Err: why})
 	}
-	wtRoot := m.WtRoot
+	wtRoot, sandboxedThere := m.WtRoot, m.SandboxedKind(q.Kind)
 	return func() Event {
-		ev := landMove(q, dir, wtRoot)
-		return ev
+		return landMove(q, dir, wtRoot, sandboxedThere)
 	}
 }
 
@@ -702,7 +740,7 @@ var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
 
 // landMove unpacks move q's pack in dir and puts its work in worktrees
 // under wtRoot.
-func landMove(q MoveLand, dir, wtRoot string) moveLanded {
+func landMove(q MoveLand, dir, wtRoot string, sandboxedThere bool) moveLanded {
 	ev := moveLanded{q: q}
 	in := filepath.Join(dir, "in")
 	if err := os.Mkdir(in, 0o700); err != nil {
@@ -734,6 +772,10 @@ func landMove(q MoveLand, dir, wtRoot string) moveLanded {
 		return ev
 	}
 	man := ev.man
+	if weakerSandbox(q, man, sandboxedThere) {
+		ev.err = errors.New(string(q.Kind) + " is not set to run in a sandbox there, and the tab's agent was in one")
+		return ev
+	}
 	var repos []workspace.Repo
 	for i, p := range man.Parts {
 		if !move.SameOrigin(q.Repos[i], p.Origin) {
@@ -781,7 +823,13 @@ func landMove(q MoveLand, dir, wtRoot string) moveLanded {
 		made = append(made, w)
 	}
 	ev.wts = made
-	ev.dir = filepath.Join(tabFolder(made), man.Sub)
+	tabDir, err := insideTab(tabFolder(made), man.Sub)
+	if err != nil {
+		undo()
+		ev.err = err
+		return ev
+	}
+	ev.dir = tabDir
 	info := handoff.Info{Machine: q.From, From: man.Agent, To: q.Kind, Summary: man.Handoff, TranscriptErr: man.TranscriptErr}
 	if man.Transcript != "" {
 		text, err := os.ReadFile(filepath.Join(in, man.Transcript))
@@ -796,6 +844,36 @@ func landMove(q MoveLand, dir, wtRoot string) moveLanded {
 	}
 	ev.prompt = handoff.Prompt(info)
 	return ev
+}
+
+// weakerSandbox says whether move q would have its tab's agent in less
+// of a sandbox than it was, as the pack says it was or the client did,
+// without the user's yes to that: with the agent there sandboxed or not
+// as sandboxedThere says.
+func weakerSandbox(q MoveLand, man moveManifest, sandboxedThere bool) bool {
+	return (q.Sandboxed || man.Sandboxed) && !sandboxedThere && !q.Weaker
+}
+
+// insideTab is folder sub of the tab's folder root, as it is on disk
+// once its work has landed: a folder, and in root, though a link the
+// pack brought would point elsewhere.
+func insideTab(root, sub string) (string, error) {
+	dir := filepath.Join(root, sub)
+	realRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		return "", err
+	}
+	real, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "", fmt.Errorf("the tab's folder %s: %w", sub, err)
+	}
+	if rel, err := filepath.Rel(realRoot, real); err != nil || !filepath.IsLocal(rel) && rel != "." {
+		return "", fmt.Errorf("the tab's folder %s is outside its worktree", sub)
+	}
+	if st, err := os.Stat(real); err != nil || !st.IsDir() {
+		return "", fmt.Errorf("the tab's folder %s is not a folder", sub)
+	}
+	return dir, nil
 }
 
 // checkManifest checks what a pack from another machine says of its tab:
@@ -863,6 +941,15 @@ func (m *Core) onMoveLanded(ev moveLanded) Cmd {
 		return m.Tell(MoveLandedMsg{Job: q.Job, Err: ev.err.Error()})
 	}
 	man := ev.man
+	if weakerSandbox(q, man, m.SandboxedKind(q.Kind)) {
+		// The config changed while the work landed.
+		wts, group := ev.wts, ""
+		if len(wts) > 1 {
+			group = tabFolder(wts)
+		}
+		go func() { _ = workspace.Remove(group, wts, true) }()
+		return m.Tell(MoveLandedMsg{Job: q.Job, Err: string(q.Kind) + " is no longer set to run in a sandbox there, and the tab's agent was in one"})
+	}
 	t, cmd := m.addTab(AddTab{ID: q.ID, Name: man.Name, Dir: ev.dir, Group: man.Group, Wts: ev.wts, Kind: q.Kind,
 		Task: ev.prompt, Goal: man.Goal, Sandboxed: man.Sandboxed})
 	t.Note = man.Note
