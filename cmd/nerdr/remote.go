@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
+	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
@@ -91,6 +92,13 @@ func (t *tail) String() string {
 // dialRemote connects to the core of folder on host over ssh. again is a
 // connection after the first, which never asks for a password.
 func dialRemote(host, folder string, again bool) (*attach.Conn, error) {
+	return dialRemoteTTY(host, folder, again, nil)
+}
+
+// dialRemoteTTY is dialRemote, ssh having tty for its terminal when it is
+// not nil, to ask for a password on: the terminal of a login the TUI
+// shows while it pauses, its own being read by the TUI.
+func dialRemoteTTY(host, folder string, again bool, tty *os.File) (*attach.Conn, error) {
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
@@ -105,6 +113,12 @@ func dialRemote(host, folder string, again bool) (*attach.Conn, error) {
 	cmd := exec.Command(argv[0], argv[1:]...)
 	stderr := &tail{}
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = theirs, theirs, stderr
+	if tty != nil {
+		// A session of its own, with tty its controlling terminal: what
+		// ssh opens as /dev/tty to ask for a password.
+		cmd.ExtraFiles = []*os.File{tty}
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 3}
+	}
 	if err := cmd.Start(); err != nil {
 		mine.Close()
 		theirs.Close()
@@ -187,4 +201,46 @@ func remoteAllowed() error {
 		return errRemoteInATab
 	}
 	return nil
+}
+
+// dialedServer is a server of [[servers]], and what came of connecting
+// to its core as the TUI started.
+type dialedServer struct {
+	s    config.Server
+	conn *attach.Conn
+	err  error
+}
+
+// dialServers connects to the core of each server of cfg's, in turn, as
+// the TUI starts: when servers is set, and nerdr is not a program's in a
+// tab, which goes to no other machine. One that cannot be reached is shown
+// grey, saying why.
+func dialServers(cfg config.Config, servers bool) []dialedServer {
+	if !servers || remoteAllowed() != nil {
+		return nil
+	}
+	var out []dialedServer
+	for _, s := range cfg.Servers {
+		d := dialedServer{s: s}
+		var before []config.Server
+		for _, o := range out {
+			before = append(before, o.s)
+		}
+		if err := config.CheckServerName(s.Name, before); err != nil {
+			d.err = err
+		} else if _, _, err := parseRemote(s.Host() + ":" + s.Dir()); err != nil {
+			d.err = err
+		} else {
+			fmt.Fprintf(os.Stderr, "nerdr: connecting to %s…\n", s.Name)
+			d.conn, d.err = dialRemote(s.Host(), s.Dir(), false)
+		}
+		out = append(out, d)
+	}
+	return out
+}
+
+// dialServer connects to the core of server s, as the TUI does once it
+// runs; see app.Dialer.
+func dialServer(s config.Server, again bool, tty *os.File) (*attach.Conn, error) {
+	return dialRemoteTTY(s.Host(), s.Dir(), again, tty)
 }

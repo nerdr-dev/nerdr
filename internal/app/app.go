@@ -67,6 +67,12 @@ type Model struct {
 	// chosen is the machine the dialog open was moved to (ctrl+o), nil
 	// while it is the active tab's: see dialogOn. It goes with the dialog.
 	chosen *fleet.Machine
+	// tellFn gives the program what comes of a connection to a machine's
+	// core, as NewRemote was given it: for the machines connected to
+	// later.
+	tellFn func(any)
+	// dial connects to a server's core over ssh; see SetDial.
+	dial Dialer
 	// goneErr is why the TUI ended, its core gone; see GoneErr.
 	goneErr string
 	// closing is set once the TUI is ending of its own will: the
@@ -528,6 +534,9 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 
 	case coreEndedMsg:
 		return m.onCoreEnded(mc, msg)
+
+	case serverDialedMsg:
+		return m.onServerDialed(msg)
 
 	case core.ChangedMsg, core.RedrawMsg:
 		return nil // only to draw what core has done

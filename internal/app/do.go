@@ -25,6 +25,11 @@ func (m *Model) forOf(r core.Request) *fleet.Machine {
 
 // doOn has the core of mc do r, as do.
 func (m *Model) doOn(mc *fleet.Machine, r core.Request) tea.Cmd {
+	if mc.Conn == nil && mc.Core.Copy {
+		// A server never connected to: nothing to do it.
+		m.toast(m.goneToast(mc))
+		return nil
+	}
 	if mc.Conn != nil {
 		return m.doRemote(mc, r)
 	}

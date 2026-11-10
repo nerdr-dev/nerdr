@@ -30,6 +30,7 @@ import (
 // fleet.Told by the machine. It takes in core's state before it returns.
 func NewRemote(cfg config.Config, root string, router *input.Router, conn *attach.Conn, tell func(any)) (*Model, error) {
 	m := New(cfg, root, router, state.Session{})
+	m.tellFn = tell
 	mc := m.home()
 	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(tell))
 	mc.Screens = mc.Conn.Screens
@@ -73,24 +74,45 @@ func NewRemote(cfg config.Config, root string, router *input.Router, conn *attac
 // core telling the TUI as it connected, for the program to run. Before F4
 // no user has a way to it: tests show several machines so.
 func (m *Model) addMachine(name, host string, conn *attach.Conn, redial func() (*attach.Conn, error), tell func(any)) (tea.Cmd, error) {
-	mc := &fleet.Machine{Name: name, Host: host, Redial: redial,
-		Core: core.Core{ID: name, Cfg: *m.cfg(), Wake: make(chan struct{}, 1)}}
-	mc.Core.Client = m
-	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(tell))
-	mc.Screens = mc.Conn.Screens
+	if m.tellFn == nil {
+		m.tellFn = tell
+	}
+	mc := newMachine(name, host, *m.cfg())
+	mc.Redial = redial
 	m.fleet.Lock()
+	defer m.fleet.Unlock()
+	return m.joinMachine(mc, conn)
+}
+
+// newMachine is a machine named name, on host, of a core in another
+// process not yet connected to; cfg has the TUI's own settings.
+func newMachine(name, host string, cfg config.Config) *fleet.Machine {
+	mc := &fleet.Machine{Name: name, Host: host,
+		Core: core.Core{ID: name, Cfg: cfg, Wake: make(chan struct{}, 1), Copy: true}}
+	return mc
+}
+
+// joinMachine has mc be the fleet's, its tabs shown after the others',
+// and goes on over conn to its core: nil leaves it grey, for its Gone. A
+// core that does not take the TUI in leaves it grey too, saying why. The
+// fleet is locked, and mc then with it.
+func (m *Model) joinMachine(mc *fleet.Machine, conn *attach.Conn) (tea.Cmd, error) {
+	mc.Core.Client = m
 	mc.Core.Mu.Lock()
+	m.fleet.Add(mc) // unlocked with the fleet from now on
+	m.fleet.Bump()
+	if conn == nil {
+		return nil, nil
+	}
+	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(m.tellFn))
+	mc.Screens = mc.Conn.Screens
 	// Its copy has no tabs yet, to say it shows: they come as it is done.
 	evs, err := mc.Conn.Run(core.ClientSays{State: m.clientState(mc)})
 	if err != nil {
-		mc.Core.Mu.Unlock()
-		m.fleet.Unlock()
 		mc.Conn.Close("")
+		mc.Gone = err.Error()
 		return nil, err
 	}
-	m.fleet.Add(mc)
-	defer m.fleet.Unlock() // mc's too, one of the fleet's now
-	m.fleet.Bump()
 	return m.told(mc, evs), nil
 }
 
@@ -128,6 +150,9 @@ func (m *Model) tellCore(r core.Request) { m.tellOn(m.forOf(r), r) }
 
 // tellOn has the core of mc do r, as tellCore.
 func (m *Model) tellOn(mc *fleet.Machine, r core.Request) {
+	if mc.Conn == nil && mc.Core.Copy {
+		return // a server never connected to
+	}
 	if mc.Conn != nil {
 		mc.Conn.Send(r)
 		return
@@ -384,7 +409,12 @@ func (m *Model) coreBack(mc *fleet.Machine, conn *attach.Conn) tea.Cmd {
 		conn.Close("")
 		return nil
 	}
-	mc.Conn.Reconnect(conn)
+	if mc.Conn == nil {
+		// A server not connected to before.
+		mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(m.tellFn))
+	} else {
+		mc.Conn.Reconnect(conn)
+	}
 	mc.Screens = mc.Conn.Screens
 	m.drawnPanes = nil
 	mc.Away, mc.Err = false, ""

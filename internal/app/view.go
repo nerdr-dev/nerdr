@@ -328,7 +328,7 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	if m.focus == core.FocusReview {
 		hint = " review · esc → agent" + hint
 	}
-	status := m.hostBadge() + m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
+	status := m.emptyMachines() + m.hostBadge() + m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
 		func(m *Model) tea.Cmd {
 			return m.openPalette()
 		}), "All commands")

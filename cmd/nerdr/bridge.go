@@ -125,7 +125,11 @@ func bridgeCore(root string, env []string) (net.Conn, string, error) {
 		return nil, "", err
 	}
 	release()
-	if err := startCore(root, env); err != nil {
+	scope, err := logindScope(logindProbe())
+	if err != nil {
+		return nil, "", err
+	}
+	if err := startCoreIn(root, env, scope); err != nil {
 		return nil, "", err
 	}
 	for deadline := time.Now().Add(coreStartWait); ; {
@@ -197,4 +201,41 @@ func loginEnvOf(shell, line string) ([]string, error) {
 		}
 	}
 	return env, nil
+}
+
+// logind is what systemd-logind does here with a user's programs as they
+// log out: Kills, KillUserProcesses=yes, ends all of them, but those of a
+// user who Lingers in a scope of their own. Known is unset where there is
+// no logind to ask, as on macOS.
+type logind struct {
+	Known, Kills, Lingers bool
+}
+
+// logindProbe asks logind, through loginctl and busctl, when they are
+// here.
+var logindProbe = func() logind {
+	out, err := exec.Command("loginctl", "show-user", os.Getenv("USER"), "--property=Linger").Output()
+	if err != nil {
+		return logind{}
+	}
+	l := logind{Known: true, Lingers: strings.TrimSpace(string(out)) == "Linger=yes"}
+	out, err = exec.Command("busctl", "get-property", "org.freedesktop.login1", "/org/freedesktop/login1",
+		"org.freedesktop.login1.Manager", "KillUserProcesses").Output()
+	l.Kills = err == nil && strings.TrimSpace(string(out)) == "b true"
+	return l
+}
+
+// logindScope says whether a core started here goes in a scope of its
+// own, out of the ssh session's, so that logind leaves it be when the
+// session ends; and why none can be started, when logind would end it
+// whatever nerdr did.
+func logindScope(l logind) (bool, error) {
+	switch {
+	case !l.Known || !l.Kills:
+		return false, nil
+	case l.Lingers:
+		return true, nil
+	}
+	return false, fmt.Errorf("logind here ends all of your programs when you log out (KillUserProcesses=yes), "+
+		"and nerdr's agents with them: run loginctl enable-linger %s on %s, and connect again", os.Getenv("USER"), hostname())
 }

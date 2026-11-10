@@ -10,6 +10,14 @@ prompts.go: prompts.Load 1
 prompts.go: prompts.Path 4
 prompts.go: prompts.Save 1
 prpanel.go: os.UserHomeDir 1
+servers.go: config.AddServer 1
+servers.go: config.Path 1
+servers.go: config.RemoveServer 1
+servers.go: config.Server.Host 2
+servers.go: core.HomeDir 1
+servers.go: os.*File.Close 2
+servers.go: os.*File.Fd 1
+servers.go: os.*File.Write 1
 settings.go: config.Load 1
 settings.go: config.Path 2
 settings.go: config.Raw 1
