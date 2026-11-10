@@ -30,6 +30,9 @@ func (m *Model) openSwitchAgent() tea.Cmd {
 	if t == nil {
 		return nil
 	}
+	if t.Moving != nil {
+		return m.openMove()
+	}
 	if w := t.Handoff; w != nil {
 		m.dialog = &menu{title: "Switch " + m.machineOf(t).Core.AgentName(t) + " to " + string(w.To), x: m.width / 3, y: m.height / 3, hi: 1, items: []menuItem{
 			{label: "Waiting for " + string(t.Agent) + "'s handoff"},

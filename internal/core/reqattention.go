@@ -144,6 +144,10 @@ func (q Restart) Do(m *Core) Cmd {
 	if t == nil || m.ReposHold(t) {
 		return nil
 	}
+	if t.Moving != nil {
+		m.Toast(m.AgentName(t) + ": being moved to another machine; it starts again if the move does not go")
+		return nil
+	}
 	if t.Pane != nil {
 		old := t.Pane
 		go old.Close()
