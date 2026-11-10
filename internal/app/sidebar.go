@@ -56,8 +56,8 @@ func (m *Model) wideW() int {
 	}
 	w := 0
 	for _, g := range m.fleet.Groups() {
-		// light, name, (n)
-		w = max(w, lipgloss.Width(g)+len(strconv.Itoa(len(m.fleet.GroupTabs(g))))+6)
+		// its machine's badge, light, name, (n)
+		w = max(w, m.groupWidth(g)+len(strconv.Itoa(len(m.fleet.GroupTabs(g))))+6)
 		for n, i := range m.fleet.GroupTabs(g) {
 			// light, n:name, a mark or two, and its details
 			w = max(w, lipgloss.Width(m.fleet.Tabs()[i].Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(m.fleet.Tabs()[i], i == m.Active)))
@@ -193,8 +193,9 @@ func (m *Model) repoList(w, h int, small bool) []string {
 					tip += ", " + strconv.Itoa(k) + " " + st.Label()
 				}
 			}
-			s = m.sideEntry(w-2, g == cur, walking, m.fleet.GroupStatus(g), "the tab here that most wants a look",
-				g, "", count+moreSt.Render(")"))
+			badge := m.machineBadge(g)
+			s = badge + m.sideEntry(w-2-lipgloss.Width(badge), g == cur, walking, m.fleet.GroupStatus(g), "the tab here that most wants a look",
+				m.groupShown(g), "", count+moreSt.Render(")"))
 		}
 		s = m.tip(s, g+": "+tip+" · click: go there · right-click: more")
 		lines = append(lines, m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd {

@@ -32,12 +32,17 @@ func (m *Model) onHerdrFocus() tea.Cmd {
 // openEditor opens the file the review panel asked for in the user's
 // editor.
 func (m *Model) openEditor(msg review.EditMsg) tea.Cmd {
-	if host := m.home().Host; host != "" {
+	// The file is on the machine of the tab the panel shows.
+	mc := m.machineOf(m.screenTab)
+	if host := mc.Host; host != "" {
 		if c, ok := editor.RemoteFileCommand(host, msg.Dir, msg.File, msg.Line); ok {
 			return m.runEditor(c, "")
 		}
 		// A terminal editor runs where the file is, in a pane of the tab.
-		t := m.home().Core.TabOfDir(msg.Dir)
+		t := mc.Core.TabOfDir(msg.Dir)
+		if t == nil {
+			t = m.screenTab
+		}
 		if t == nil {
 			t = m.Cur()
 		}

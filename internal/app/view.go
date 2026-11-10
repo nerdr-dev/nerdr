@@ -310,10 +310,13 @@ func (m *Model) activeBg() lipgloss.Color {
 // left leave them: msgRoom, or what the badges need when that is more,
 // though never more than half the row. It is kept whether a message
 // shows or not, so the entries do not move about as messages come and go.
-// hostBadge names the machine core runs on, when it is not this one.
+// hostBadge names the machine the active tab's core runs on, when it is
+// not this one and has no name of its own among the TUI's: one that does
+// is named by its groups' badges (machineBadge).
 func (m *Model) hostBadge() string {
-	host := m.home().Host
-	if host == "" {
+	mc := m.machineOf(m.Cur())
+	host := mc.Host
+	if host == "" || mc.Name != "" {
 		return ""
 	}
 	return m.tip(lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).Bold(true).

@@ -94,8 +94,9 @@ func (m *Model) addMachine(name, host string, conn *attach.Conn, redial func() (
 	return m.told(mc, evs), nil
 }
 
-// SetCoreHost says core runs on host, a machine reached over ssh: what
-// opens files or the worktree is then made to reach them there.
+// SetCoreHost says the core NewRemote connected to runs on host, a machine
+// reached over ssh: what opens files or the worktree of its tabs is then
+// made to reach them there. Each machine has its own (see addMachine).
 func (m *Model) SetCoreHost(host string) { m.home().Host = host }
 
 // Remote reports whether the TUI is a client of a core in another
@@ -401,8 +402,9 @@ func (m *Model) coreBack(mc *fleet.Machine, conn *attach.Conn) tea.Cmd {
 	return cmd
 }
 
-// SetRedial gives the TUI a way to connect to its core again, should the
-// connection close.
+// SetRedial gives the TUI a way to connect again to the core NewRemote
+// connected to, should the connection close. Each machine has its own
+// (see addMachine).
 func (m *Model) SetRedial(f func() (*attach.Conn, error)) { m.home().Redial = f }
 
 // GoneErr is why the TUI ended with its core gone, "" when it did not.

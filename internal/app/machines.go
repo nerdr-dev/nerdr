@@ -175,3 +175,18 @@ func (m *Model) groupShown(g string) string {
 	_, name := m.fleet.GroupOf(g)
 	return name
 }
+
+// groupWidth is the columns group g's name takes in the bars, its
+// machine's badge with it: as machineBadge draws it, without a tip made.
+func (m *Model) groupWidth(g string) int {
+	mc, name := m.fleet.GroupOf(g)
+	w := lipgloss.Width(name)
+	switch {
+	case mc.Name == "":
+	case grey(mc):
+		w += lipgloss.Width(" " + mc.Name + " ✕ ")
+	default:
+		w += lipgloss.Width(" " + mc.Name + " ")
+	}
+	return w
+}

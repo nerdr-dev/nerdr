@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
@@ -328,5 +329,36 @@ func TestFleetSwapsWithinItsMachine(t *testing.T) {
 	box.Mu.Unlock()
 	if n != 1 || k != 1 {
 		t.Fatalf("tabs here %d, on box %d", n, k)
+	}
+}
+
+// TestFleetSideListNamesMachines: the list of repositories at the side
+// names box's under its badge, as the repository row does.
+func TestFleetSideListNamesMachines(t *testing.T) {
+	m, _, _, _, told := twoMachines(t)
+	locked(m, func() { m.sideBar, m.sideSmall = true, false })
+	v := pump(t, m, told, "the side list", func(v string) bool { return strings.Contains(v, " box ") && strings.Contains(v, "ops") })
+	var side int
+	locked(m, func() { side = m.sideW() })
+	if side == 0 {
+		t.Fatal("no side list")
+	}
+	if strings.Contains(v, "box:ops") {
+		t.Fatalf("the group's name shown whole:\n%s", v)
+	}
+}
+
+// TestFleetHostIsEachMachines: the machine a tab's core runs on is named
+// by the bar while the tab is in front, each machine's by its own.
+func TestFleetHostIsEachMachines(t *testing.T) {
+	m, _, _, _, _ := twoMachines(t)
+	locked(m, func() { m.SetCoreHost("devbox") })
+	goTo(m, 0)
+	var here, box string
+	locked(m, func() { here = ansi.Strip(m.hostBadge()) })
+	goTo(m, 1)
+	locked(m, func() { box = ansi.Strip(m.hostBadge()) })
+	if !strings.Contains(here, "devbox") || box != "" {
+		t.Fatalf("badge %q here, %q on box", here, box)
 	}
 }
