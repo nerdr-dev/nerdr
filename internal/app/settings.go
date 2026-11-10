@@ -14,6 +14,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -62,6 +63,9 @@ func (r settingRow) heading() bool { return r.key == "" }
 
 // settings is the dialog's state.
 type settings struct {
+	// mc is the machine whose core's own settings the dialog shows and
+	// changes; the TUI's are the same on every machine.
+	mc   *fleet.Machine
 	rows []settingRow
 	// raw is what the TUI's config file sets, coreRaw what core's does,
 	// read where core runs (see readCoreConfig): each setting is shown
@@ -87,7 +91,9 @@ func (m *Model) openSettings() tea.Cmd { return m.openSettingsAt("") }
 // openSettingsAt opens the dialog with the cursor on the setting key of
 // the top level, or on the first setting when there is none such.
 func (m *Model) openSettingsAt(key string) tea.Cmd {
-	d := &settings{rows: m.settingRows()}
+	d := &settings{mc: m.dialogOn()}
+	m.dialog = d // the rows are of its machine's agents
+	d.rows = m.settingRows()
 	d.reload()
 	d.cursor = d.next(-1, 1)
 	for i, r := range d.rows {
@@ -95,8 +101,18 @@ func (m *Model) openSettingsAt(key string) tea.Cmd {
 			d.cursor = i
 		}
 	}
-	m.dialog = d
 	return m.readCoreConfig(d)
+}
+
+func (d *settings) machine() *fleet.Machine { return d.mc }
+
+// reopen opens the dialog anew on the machine chosen, at the same setting.
+func (d *settings) reopen(m *Model) tea.Cmd {
+	key := ""
+	if d.cursor < len(d.rows) && d.rows[d.cursor].table == "" {
+		key = d.rows[d.cursor].key
+	}
+	return m.openSettingsAt(key)
 }
 
 // layoutNotes say what layout's choices look like.
@@ -373,14 +389,14 @@ func reviewModelExample(k agents.Kind) string {
 // settingAgents are the agents the dialog has a part for: those nerdr
 // knows, the installed first, and those of the config's own.
 func (m *Model) settingAgents() []agents.Kind {
-	out := m.home().Core.Available()
+	out := m.dialogOn().Core.Available()
 	for _, k := range agents.All {
 		if !core.Contains(out, k) {
 			out = append(out, k)
 		}
 	}
 	var own []agents.Kind
-	for k := range m.home().Core.Cfg.Agents {
+	for k := range m.dialogOn().Core.Cfg.Agents {
 		if !core.Contains(out, k) {
 			own = append(own, k)
 		}
@@ -392,7 +408,7 @@ func (m *Model) settingAgents() []agents.Kind {
 // reviewAgents are review.agent's choices.
 func (m *Model) reviewAgents() []string {
 	out := []string{config.ReviewOther}
-	for _, k := range m.home().Core.Available() {
+	for _, k := range m.dialogOn().Core.Available() {
 		out = append(out, string(k))
 	}
 	return out
@@ -669,8 +685,9 @@ func (m *Model) reloadConfig() tea.Cmd {
 		m.toast(err.Error())
 		return nil
 	}
-	old := m.home().Core.Cfg
-	if m.home().Conn != nil {
+	home := m.home()
+	old := home.Core.Cfg
+	if home.Conn != nil {
 		// Core's own settings are in the file where it runs, which it
 		// watches itself; this one's are the TUI's alone.
 		c = config.Merge(old, c)
@@ -691,8 +708,18 @@ func (m *Model) reloadConfig() tea.Cmd {
 	}
 	c.Prefix, c.WorktreesDir, c.Layout, c.Mouse = old.Prefix, old.WorktreesDir, old.Layout, old.Mouse
 	c.Install, c.DataDir, c.EnabledSkills, c.FPS = old.Install, old.DataDir, old.EnabledSkills, old.FPS
-	m.home().Core.Cfg = c
-	m.do(core.SetConfig{Cfg: c})
+	// The TUI's own settings are each machine's copy's too, and go to
+	// each machine's core.
+	for _, mc := range m.fleet.Live() {
+		if mc == home {
+			mc.Core.Cfg = c
+		} else {
+			mc.Core.Cfg = config.Merge(mc.Core.Cfg, c)
+		}
+		if !mc.Away {
+			m.doOn(mc, core.SetConfig{Cfg: mc.Core.Cfg})
+		}
+	}
 	browser.Setting = c.Browser
 	lightSymbols = c.StatusLights == "symbols"
 	editor.File, editor.Worktree = c.Editor, c.WorktreeEditor
@@ -717,7 +744,7 @@ func (m *Model) reloadConfig() tea.Cmd {
 		m.review = m.review.SetScreenKeys(m.screenMenuKeys())
 	}
 	if c.GitHubRefresh != old.GitHubRefresh {
-		m.review = m.review.SetPRRefresh(m.home().Core.GithubEvery(core.PrPanelEvery))
+		m.review = m.review.SetPRRefresh(home.Core.GithubEvery(core.PrPanelEvery))
 	}
 	var colors tea.Cmd
 	if c.DiffColors != old.DiffColors {
@@ -788,6 +815,9 @@ func (d *settings) view(m *Model, w, h int) string {
 		}
 		name := rowName(r)
 		val := d.shown(r)
+		if len(m.fleet.Machines()) > 1 && config.ScopeOf(r.table, r.key) == config.ScopeCore {
+			val += dim("  " + machineLabel(d.mc) + "'s")
+		}
 		if i == d.cursor && d.editing {
 			d.input.Width = max(inner-keyW-6, 10)
 			val = d.input.View()
@@ -810,7 +840,7 @@ func (d *settings) view(m *Model, w, h int) string {
 	// whichever lines happen to be in view; box leaves 6 columns for its
 	// border and padding.
 	lines = append(lines, strings.Repeat(" ", inner))
-	return box("Settings", append(lines, foot...), inner+6)
+	return box(m.onTitle("Settings"), append(lines, foot...), inner+6)
 }
 
 // aboutLines are what the picked setting does, shown over its line.
@@ -884,7 +914,7 @@ func (d *settings) footer(m *Model, w int) []string {
 	var out []string
 	home, _ := os.UserHomeDir()
 	if d.err != "" || d.coreErr != "" {
-		out = append(out, warn(ansi.Truncate(cmp.Or(d.err, m.home().Core.ConfigPath()+": "+d.coreErr), w, "…")))
+		out = append(out, warn(ansi.Truncate(cmp.Or(d.err, d.mc.Core.ConfigPath()+": "+d.coreErr), w, "…")))
 	} else {
 		out = append(out, dim(ansi.Truncate("Saved to "+core.TildePath(config.Path(), home)+" as you go; dimmed is the default.", w, "…")))
 	}

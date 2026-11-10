@@ -182,7 +182,7 @@ func (m *Model) syncPRPanel() tea.Cmd {
 
 // syncAllPRs is syncPRPanel for the list of all your PRs.
 func (m *Model) syncAllPRs() tea.Cmd {
-	m.review.SetPRNews(len(m.home().Core.PRWatch.News) > 0)
+	m.review.SetPRNews(len(m.tabOn().Core.PRWatch.News) > 0)
 	shown := m.panelAllPRs()
 	entered := shown && !m.prPanelShown
 	m.prPanelShown = shown
@@ -197,11 +197,11 @@ func (m *Model) syncAllPRs() tea.Cmd {
 		d.news = nil
 		d.pointAt(m.Cur())
 	}
-	if len(m.home().Core.PRWatch.News) > 0 {
+	if len(m.tabOn().Core.PRWatch.News) > 0 {
 		if d.news == nil {
 			d.news = map[string][]string{}
 		}
-		for k, whats := range m.home().Core.PRNewsByKey() {
+		for k, whats := range m.tabOn().Core.PRNewsByKey() {
 			d.news[k] = append(d.news[k], whats...)
 		}
 		m.do(core.ClearPRNews{})
@@ -270,15 +270,15 @@ func (m *Model) allPRsBody(w, h int) []string {
 // those nerdr finds where it was started and in repo_dirs, which with
 // everyone's can be many more than one works in.
 func (m *Model) prScope(all bool) string {
-	whose, n := "Your", len(m.home().Core.PRWatch.Repos)
+	whose, n := "Your", len(m.tabOn().Core.PRWatch.Repos)
 	if all {
-		whose, n = "Everyone's", len(m.home().Core.PRAll.Repos)
+		whose, n = "Everyone's", len(m.tabOn().Core.PRAll.Repos)
 	}
 	home, _ := os.UserHomeDir()
-	where := []string{core.TildePath(m.home().Core.Root, home)}
-	for _, d := range m.home().Core.Cfg.RepoDirs {
+	where := []string{core.TildePath(m.tabOn().Core.Root, home)}
+	for _, d := range m.tabOn().Core.Cfg.RepoDirs {
 		if !filepath.IsAbs(d) {
-			d = filepath.Join(m.home().Core.Root, d)
+			d = filepath.Join(m.tabOn().Core.Root, d)
 		}
 		where = append(where, core.TildePath(d, home))
 	}
@@ -297,8 +297,8 @@ func (m *Model) prScope(all bool) string {
 // shown the one on: each a button for its view.
 func (m *Model) prViewsLine(shown review.PRView) string {
 	var out string
-	prNews := len(m.home().Core.PRWatch.News) > 0 && shown != review.ViewMyPRs
-	issueNews := len(m.home().Core.IssueWatch.News) > 0 && shown != review.ViewIssues
+	prNews := len(m.tabOn().Core.PRWatch.News) > 0 && shown != review.ViewMyPRs
+	issueNews := len(m.tabOn().Core.IssueWatch.News) > 0 && shown != review.ViewIssues
 	for i, l := range review.PRViews(shown, prNews, issueNews) {
 		v := review.PRView(i)
 		if v == shown {
@@ -338,7 +338,7 @@ func (m *Model) panelKeys(do func(tea.KeyMsg) tea.Cmd, w int, pairs ...string) [
 // with the panel on that PR — its reviews, checks and conversation, where
 // a and f answer them — and the keyboard. With no tab, as the P list does.
 func (m *Model) openPRInPanel(e core.PREntry) tea.Cmd {
-	if m.home().Core.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
+	if m.tabOn().Core.TabOnBranch(e.Repo.Path, e.Branch()) == nil {
 		return m.goToPR(e)
 	}
 	cmd := m.goToPR(e)
@@ -376,7 +376,7 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 		return nil
 	}
 	e := d.entries[d.cursor]
-	t := m.home().Core.TabOnBranch(e.Repo.Path, e.Branch())
+	t := m.tabOn().Core.TabOnBranch(e.Repo.Path, e.Branch())
 	if t == nil {
 		m.toast("no tab works on " + e.Branch() + ": enter opens one")
 		return nil

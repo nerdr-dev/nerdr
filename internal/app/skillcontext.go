@@ -146,7 +146,7 @@ func (m *Model) contextList(t *core.Tab, rows []core.ContextRow, textW int) (hea
 	if c.Shown != r.Path {
 		if v.fileAsked != r.Path {
 			v.fileAsked = r.Path
-			m.tellCore(core.ReadContextFile{Job: r.Path, File: r.Path})
+			m.tellOn(m.tabOn(), core.ReadContextFile{Job: r.Path, File: r.Path})
 		}
 		if c.Shown != r.Path {
 			return head, append(text, "", dim("  Reading…")), picked

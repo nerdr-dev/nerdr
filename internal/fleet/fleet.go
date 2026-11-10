@@ -142,11 +142,26 @@ func (f *Fleet) OfPane(p *core.PaneTab) *Machine {
 // names, else Home.
 func (f *Fleet) For(r core.Request) *Machine {
 	if len(f.Machines()) > 1 {
-		if name, ok := refCore(reflect.ValueOf(r)); ok {
-			return f.Machine(name)
+		if mc := f.Naming(r); mc != nil {
+			return mc
 		}
 	}
 	return f.Home()
+}
+
+// Naming is the machine of the first tab or pane r names, nil when it
+// names none.
+func (f *Fleet) Naming(r core.Request) *Machine {
+	if len(f.Machines()) == 1 {
+		if _, ok := refCore(reflect.ValueOf(r)); ok {
+			return f.Machines()[0]
+		}
+		return nil
+	}
+	if name, ok := refCore(reflect.ValueOf(r)); ok {
+		return f.Machine(name)
+	}
+	return nil
 }
 
 var (

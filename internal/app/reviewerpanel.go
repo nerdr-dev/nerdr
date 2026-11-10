@@ -150,14 +150,14 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 			return tea.Batch(m.goToPane(t, p), m.startReviewWith(of, core.Reviewer{Kind: k}))
 		})
 		if agents.TakesModel(k) {
-			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.home().Core.ReviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
+			row += "  " + m.onClick(buttonStyle.Render(" "+cmp.Or(m.tabOn().Core.ReviewModel(k), "model")+" ▾ "), func(m *Model) tea.Cmd {
 				m.reviewerCursor = i
 				return tea.Batch(m.goToPane(t, p), m.openModelPick(k))
 			})
 		}
 		lines = append(lines, row)
 	}
-	rounds := max(m.home().Core.Cfg.Review.Rounds, 1)
+	rounds := max(m.tabOn().Core.Cfg.Review.Rounds, 1)
 	if of.Review != nil {
 		rounds = of.Review.Rounds
 	}
@@ -167,9 +167,9 @@ func (m *Model) reviewPaneLines(t *core.Tab, p *core.PaneTab, w, h int) []string
 			m.onClick(buttonStyle.Render(" + "), func(m *Model) tea.Cmd { return m.setRounds(of, 1) })+
 			dim("  how many times the reviewer looks, with fixes between, before you decide"))
 	switch {
-	case m.home().Core.Cfg.Review.Auto && m.machineOf(of).Core.WaitsForReady(of):
+	case m.tabOn().Core.Cfg.Review.Auto && m.machineOf(of).Core.WaitsForReady(of):
 		lines = append(lines, dim(" Auto: on · a review starts by itself when the agent says its work is ready for one"))
-	case m.home().Core.Cfg.Review.Auto:
+	case m.tabOn().Core.Cfg.Review.Auto:
 		lines = append(lines, dim(" Auto: on · a review starts by itself when the agent ends a turn that changed files"))
 	default:
 		lines = append(lines, dim(" Auto: off · a review starts only when you start one here (auto in [review] in the config)"))
@@ -247,16 +247,16 @@ const maxRounds = 9
 // it holds for the reviews to come, and for t's review when one goes on:
 // never below the round it is in.
 func (m *Model) setRounds(t *core.Tab, d int) tea.Cmd {
-	n := min(max(max(m.home().Core.Cfg.Review.Rounds, 1)+d, 1), maxRounds)
+	n := min(max(max(m.tabOn().Core.Cfg.Review.Rounds, 1)+d, 1), maxRounds)
 	var cmd tea.Cmd
 	if t != nil && t.Review != nil {
 		n = min(max(t.Review.Rounds+d, t.Review.Round, 1), maxRounds)
 		cmd = m.do(core.SetRounds{A: m.fleet.Ref(t), N: n})
 	}
-	if n == m.home().Core.Cfg.Review.Rounds {
+	if n == m.tabOn().Core.Cfg.Review.Rounds {
 		return cmd
 	}
-	m.home().Core.Cfg.Review.Rounds = n
+	m.tabOn().Core.Cfg.Review.Rounds = n
 	return tea.Batch(cmd, m.editCoreConfig("rounds", core.EditConfig{
 		Keys: []config.Edit{{Table: "review", Key: "rounds", Value: strconv.Itoa(n)}}}))
 }

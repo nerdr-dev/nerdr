@@ -9,6 +9,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,8 @@ import (
 // drawn again with every frame, so the times count down. Any other key
 // closes it.
 type usageDialog struct {
+	// mc is the machine whose agents' usage is shown.
+	mc        *fleet.Machine
 	codex     *usage.Report
 	codexAt   time.Time
 	reading   bool
@@ -35,13 +38,19 @@ type usageDialog struct {
 }
 
 func (m *Model) openUsage() tea.Cmd {
-	if m.home().Core.ClaudeLimits == nil {
-		m.do(core.ReadClaudeLimits{})
+	mc := m.dialogOn()
+	if mc.Core.ClaudeLimits == nil {
+		m.doOn(mc, core.ReadClaudeLimits{})
 	}
-	d := &usageDialog{}
+	d := &usageDialog{mc: mc}
 	m.dialog = d
 	return m.readUsage(d)
 }
+
+func (d *usageDialog) machine() *fleet.Machine { return d.mc }
+
+// reopen shows the usage of the machine chosen instead.
+func (d *usageDialog) reopen(m *Model) tea.Cmd { return m.openUsage() }
 
 // readUsage has core read codex's logs for d, where codex runs.
 func (m *Model) readUsage(d *usageDialog) tea.Cmd {
@@ -106,12 +115,12 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "")
 	}
 	switch {
-	case !core.IsOn(m.home().Core.Cfg.ClaudeStatusLine):
+	case !core.IsOn(m.dialogOn().Core.Cfg.ClaudeStatusLine):
 		account("Claude", "not known: claude_status_line is off", nil, time.Time{})
-	case m.home().Core.ClaudeLimits == nil:
+	case m.dialogOn().Core.ClaudeLimits == nil:
 		account("Claude", "not known yet: a claude agent tells it after its first answer", nil, time.Time{})
 	default:
-		account("Claude", "from claude's status line", m.home().Core.ClaudeLimits, m.home().Core.ClaudeAt)
+		account("Claude", "from claude's status line", m.dialogOn().Core.ClaudeLimits, m.dialogOn().Core.ClaudeAt)
 	}
 	switch {
 	case d.codex != nil:
@@ -166,7 +175,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "  "+r)
 	}
 	lines = append(lines, "", m.keys("r", "read codex's logs again", "esc", "close"))
-	return box("Usage and rate limits", lines, w)
+	return box(m.onTitle("Usage and rate limits"), lines, w)
 }
 
 // limitLine is one window of an account's limits: a bar, the share used

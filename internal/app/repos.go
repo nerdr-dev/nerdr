@@ -54,15 +54,15 @@ func (m *Model) openRepos() tea.Cmd {
 	}
 	d.scan(m)
 	m.dialog = d
-	return m.do(core.ScanRepos{})
+	return m.doOn(m.machineOf(t), core.ScanRepos{})
 }
 
 // scan has the repositories to pick from as core last found them (see
 // core.RepoScan), and the tab's own.
 func (d *repoDialog) scan(m *Model) {
-	repos := slices.Clone(m.home().Core.Scan.Repos)
-	if m.home().Core.Scan.Err != "" && d.err == "" {
-		d.err = m.home().Core.Scan.Err
+	repos := slices.Clone(m.machineOf(d.t).Core.Scan.Repos)
+	if m.machineOf(d.t).Core.Scan.Err != "" && d.err == "" {
+		d.err = m.machineOf(d.t).Core.Scan.Err
 	}
 	have := map[string]bool{}
 	for _, r := range repos {

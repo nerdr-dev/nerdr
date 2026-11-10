@@ -92,14 +92,14 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 	case " ", "x":
 		switch {
 		case has && r.A == nil:
-			m.home().Core.InactiveToast(o.Inactive[r.I])
+			m.tabOn().Core.InactiveToast(o.Inactive[r.I])
 		case has:
 			return m.do(core.ToggleAuto{M: m.machineOf(o).Core.MsgRefOf(o, r)})
 		}
 	case "enter":
 		switch {
 		case has && r.A == nil:
-			m.home().Core.InactiveToast(o.Inactive[r.I])
+			m.tabOn().Core.InactiveToast(o.Inactive[r.I])
 		case has:
 			return m.putIn(r.A, r.I)
 		case len(refs) > 0:

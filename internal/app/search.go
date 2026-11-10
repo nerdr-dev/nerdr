@@ -5,6 +5,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,6 +23,8 @@ import (
 // changed; and searched there (core.SearchConversations).
 
 type searchDialog struct {
+	// mc is the machine whose agents' conversations are searched.
+	mc      *fleet.Machine
 	input   textinput.Model
 	cursor  int
 	top     int
@@ -40,9 +43,20 @@ func (m *Model) openSearch() tea.Cmd {
 	in.Prompt = "search: "
 	in.Placeholder = "words said in a conversation…"
 	in.Focus()
-	d := &searchDialog{input: in, reading: true}
+	d := &searchDialog{mc: m.dialogOn(), input: in, reading: true}
 	m.dialog = d
-	return m.do(core.ReadConversations{Job: d.nextJob(m)})
+	return m.doOn(d.mc, core.ReadConversations{Job: d.nextJob(m)})
+}
+
+func (d *searchDialog) machine() *fleet.Machine { return d.mc }
+
+// reopen searches the conversations of the machine chosen instead.
+func (d *searchDialog) reopen(m *Model) tea.Cmd {
+	cmd := m.openSearch()
+	if n, ok := m.dialog.(*searchDialog); ok {
+		n.input.SetValue(d.input.Value())
+	}
+	return cmd
 }
 
 // nextJob names the next read or search of d's.
@@ -84,7 +98,7 @@ func (d *searchDialog) find(m *Model) tea.Cmd {
 		d.hits, d.gone, d.cursor, d.top = nil, nil, 0, 0
 		return nil
 	}
-	return m.do(core.SearchConversations{Job: d.nextJob(m), Words: d.words})
+	return m.doOn(d.mc, core.SearchConversations{Job: d.nextJob(m), Words: d.words})
 }
 
 func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
@@ -107,7 +121,7 @@ func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "enter":
 		if d.cursor < len(d.hits) {
 			m.dialog = nil
-			return m.openConversation(d.hits[d.cursor].Conv, d.cursor < len(d.gone) && d.gone[d.cursor])
+			return m.openConversation(d.mc, d.hits[d.cursor].Conv, d.cursor < len(d.gone) && d.gone[d.cursor])
 		}
 		return nil
 	}
@@ -122,16 +136,16 @@ func (d *searchDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 
 // openConversation goes to the agent carrying on c, or carries it on in
 // a new pane of the tab working in its folder, unless that is gone.
-func (m *Model) openConversation(c *agents.Conversation, gone bool) tea.Cmd {
+func (m *Model) openConversation(mc *fleet.Machine, c *agents.Conversation, gone bool) tea.Cmd {
 	for _, a := range m.fleet.AllAgents() {
 		if a.SessionID == c.ID && a.ReviewOf == nil {
 			m.setFocus(core.FocusAgent)
 			return tea.Batch(m.goToAgent(a), m.resize())
 		}
 	}
-	t := m.home().Core.TabOfDir(c.Dir)
+	t := mc.Core.TabOfDir(c.Dir)
 	if t == nil {
-		m.toast("no tab works in " + m.home().Core.ShortDir(c.Dir) + "; carry it on there with " + core.ResumeHint(c))
+		m.toast("no tab works in " + mc.Core.ShortDir(c.Dir) + "; carry it on there with " + core.ResumeHint(c))
 		return nil
 	}
 	if !agentAvailable(m, c.Kind) {
@@ -139,7 +153,7 @@ func (m *Model) openConversation(c *agents.Conversation, gone bool) tea.Cmd {
 		return nil
 	}
 	if gone {
-		m.toast(m.home().Core.ShortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
+		m.toast(mc.Core.ShortDir(c.Dir) + " is gone: the conversation cannot be carried on there")
 		return nil
 	}
 	m.setFocus(core.FocusAgent)
@@ -161,7 +175,7 @@ func (m *Model) selectTabCmd(t *core.Tab) tea.Cmd {
 }
 
 func agentAvailable(m *Model, k agents.Kind) bool {
-	for _, a := range m.home().Core.Available() {
+	for _, a := range m.dialogOn().Core.Available() {
 		if a == k {
 			return true
 		}
@@ -195,8 +209,8 @@ func (d *searchDialog) view(m *Model, w, h int) string {
 	for i := d.top; i < min(len(d.hits), d.top+room); i++ {
 		hit := d.hits[i]
 		c := hit.Conv
-		where := m.home().Core.ShortDir(c.Dir)
-		if t := m.home().Core.TabOfDir(c.Dir); t != nil {
+		where := m.dialogOn().Core.ShortDir(c.Dir)
+		if t := m.dialogOn().Core.TabOfDir(c.Dir); t != nil {
 			where = t.Name
 		}
 		head := c.Modified.Format("Jan 2 15:04") + "  " + where + dim("  "+string(c.Kind))
@@ -220,5 +234,5 @@ func (d *searchDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "", dim("  reading the conversations changed since…"))
 	}
 	lines = append(lines, "", m.keys("", "type to find", "", "↑↓ move", "enter", "go to it / carry it on", "esc", "close"))
-	return box("Search conversations", lines, w)
+	return box(m.onTitle("Search conversations"), lines, w)
 }

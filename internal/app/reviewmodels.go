@@ -41,7 +41,7 @@ func (m *Model) openModelPick(k agents.Kind) tea.Cmd {
 	in.Placeholder = "type to narrow, or a model of your own"
 	in.Focus()
 	m.reviewPick = &modelPick{kind: k, filter: in}
-	if c := m.home().Core.Cfg.Review.Models[k]; c != "" {
+	if c := m.tabOn().Core.Cfg.Review.Models[k]; c != "" {
 		for i, ch := range m.choices(m.reviewPick) {
 			if ch.Model == c {
 				m.reviewPick.cursor = i
@@ -56,14 +56,14 @@ func (m *Model) openModelPick(k agents.Kind) tea.Cmd {
 // itself.
 func (m *Model) pickModel(of *core.Tab, k agents.Kind, model string) tea.Cmd {
 	m.reviewPick = nil
-	if model != m.home().Core.Cfg.Review.Models[k] {
-		if m.home().Core.Cfg.Review.Models == nil {
-			m.home().Core.Cfg.Review.Models = map[agents.Kind]string{}
+	if model != m.tabOn().Core.Cfg.Review.Models[k] {
+		if m.tabOn().Core.Cfg.Review.Models == nil {
+			m.tabOn().Core.Cfg.Review.Models = map[agents.Kind]string{}
 		}
 		if model == "" {
-			delete(m.home().Core.Cfg.Review.Models, k)
+			delete(m.tabOn().Core.Cfg.Review.Models, k)
 		} else {
-			m.home().Core.Cfg.Review.Models[k] = model
+			m.tabOn().Core.Cfg.Review.Models[k] = model
 		}
 		value := ""
 		if model != "" {
@@ -81,14 +81,14 @@ func (m *Model) pickModel(of *core.Tab, k agents.Kind, model string) tea.Cmd {
 // listed, all narrowed by what is typed, and what is typed, when it is
 // none of them.
 func (m *Model) choices(p *modelPick) []core.PickChoice {
-	l := m.home().Core.AgentModels[p.kind]
+	l := m.tabOn().Core.AgentModels[p.kind]
 	own := "the model it starts with"
 	if l.Own != "" {
 		own = l.Own
 	}
 	out := []core.PickChoice{{Label: "its own: " + own}}
 	typed := strings.TrimSpace(p.filter.Value())
-	current := m.home().Core.Cfg.Review.Models[p.kind]
+	current := m.tabOn().Core.Cfg.Review.Models[p.kind]
 	seen := map[string]bool{}
 	add := func(am agents.AgentModel, note string) {
 		if seen[am.ID] || !core.ModelMatches(am, typed) {
@@ -111,7 +111,7 @@ func (m *Model) choices(p *modelPick) []core.PickChoice {
 	for _, am := range l.Models {
 		listed[am.ID] = am
 	}
-	for _, id := range m.home().Core.UsedModels(p.kind) {
+	for _, id := range m.tabOn().Core.UsedModels(p.kind) {
 		note := ""
 		if _, ok := listed[id]; !ok {
 			note = "used before"
@@ -166,7 +166,7 @@ func (m *Model) modelPickLines(t *core.Tab, pane *core.PaneTab, w, h int) []stri
 	of := pane.Of
 	lines := []string{" Review " + m.machineOf(t).Core.AgentLabel(t, of) + "'s work with " + string(p.kind) + ", with the model:", "",
 		" " + p.filter.View(), ""}
-	l := m.home().Core.AgentModels[p.kind]
+	l := m.tabOn().Core.AgentModels[p.kind]
 	cs := m.choices(p)
 	p.cursor = min(max(p.cursor, 0), len(cs)-1)
 	switch {

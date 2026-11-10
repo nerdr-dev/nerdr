@@ -473,7 +473,7 @@ func (m *Model) shownScroll(t *core.Tab) int {
 // you over SSH and through herdr), and the local clipboard's own way too
 // where there is one.
 func (m *Model) copySelection(p core.Program) {
-	if c, ok := p.(*term.Copy); ok && m.home().Screens != nil {
+	if c, ok := p.(*term.Copy); ok && m.someScreens() != nil {
 		m.copyFromCopy(c)
 	} else {
 		m.copyText(selectedText(p, m.sel))
@@ -489,7 +489,7 @@ func (m *Model) copySelection(p core.Program) {
 // waiting for nothing meanwhile.
 func (m *Model) copyFromCopy(c *term.Copy) {
 	sel := m.sel
-	screens := m.home().Screens
+	screens := m.someScreens()
 	from, to := sel.From.Line, sel.To.Line
 	if to < from {
 		from, to = to, from
@@ -516,6 +516,18 @@ func (m *Model) copyFromCopy(c *term.Copy) {
 	if got != nil {
 		m.copyText(*got)
 	}
+}
+
+// someScreens is a machine's copies of its core's screens, nil when no
+// machine's are copies: what tells the TUI of a selection read later, of
+// whichever machine.
+func (m *Model) someScreens() *core.ScreenClient {
+	for _, mc := range m.fleet.Machines() {
+		if mc.Screens != nil {
+			return mc.Screens
+		}
+	}
+	return nil
 }
 
 // selectionMsg is the text chosen in a copy of a screen, once the lines
