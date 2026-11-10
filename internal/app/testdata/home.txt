@@ -5,7 +5,7 @@ calls.go 3
 coreconfig.go 2
 fleet.go 2
 fromcore_client.go 2
-herdr.go 3
+herdr.go 1
 issuelist.go 4
 issuepanel.go 5
 issuewatch.go 3
@@ -29,6 +29,5 @@ setup.go 15
 skillspanel.go 8
 unseen.go 5
 usage.go 5
-view.go 1
 wizard.go 19
 wizardprs.go 8
