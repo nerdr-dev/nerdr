@@ -333,7 +333,7 @@ func (d *messageDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "", "To:")
 		sel := lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 		for i, t := range m.fleet.Tabs() {
-			line := core.Checkbox(d.picked[m.fleet.Ref(t)]) + " " + light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName())
+			line := core.Checkbox(d.picked[m.fleet.Ref(t)]) + " " + light(t.Lit()) + " " + t.Name + dim("  "+m.fleet.Group(t))
 			id := m.fleet.Ref(t)
 			lines = append(lines, m.onClick(cursorLine(d.inList && i == d.cursor, line, sel), func(*Model) tea.Cmd {
 				d.cursor = i

@@ -3,6 +3,7 @@ package app
 import (
 	"reflect"
 	"slices"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,10 +33,12 @@ func NewRemote(cfg config.Config, root string, router *input.Router, conn *attac
 	mc := m.home()
 	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(tell))
 	mc.Screens = mc.Conn.Screens
-	// The repositories are where core is, which may be another machine.
-	remote := mc.Conn
+	// The repositories are where core is, which may be another machine:
+	// that of the tab the panel shows (reviewOn).
+	m.reviewOn.Store(mc)
 	m.reviewAsk = reviewsource.NewAsker(func(job string, q reviewsource.Query) bool {
-		return remote.Send(core.ReadForReview{Job: job, Q: q})
+		on := m.reviewOn.Load()
+		return on.Conn != nil && on.Conn.Send(core.ReadForReview{Job: job, Q: q})
 	})
 	m.review = m.review.SetSource(m.reviewAsk)
 	m.fleet.Lock()
@@ -63,6 +66,34 @@ func NewRemote(cfg config.Config, root string, router *input.Router, conn *attac
 	return m, nil
 }
 
+// addMachine has the TUI show the tabs of one more machine's core, at the
+// other end of conn, after those it shows: its copy is named name, and
+// tell gives the program what comes of the connection, as for NewRemote.
+// It is called with the fleet not locked, and returns what came of the
+// core telling the TUI as it connected, for the program to run. Before F4
+// no user has a way to it: tests show several machines so.
+func (m *Model) addMachine(name, host string, conn *attach.Conn, redial func() (*attach.Conn, error), tell func(any)) (tea.Cmd, error) {
+	mc := &fleet.Machine{Name: name, Host: host, Redial: redial,
+		Core: core.Core{ID: name, Cfg: *m.cfg(), Wake: make(chan struct{}, 1)}}
+	mc.Core.Client = m
+	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(tell))
+	mc.Screens = mc.Conn.Screens
+	m.fleet.Lock()
+	mc.Core.Mu.Lock()
+	// Its copy has no tabs yet, to say it shows: they come as it is done.
+	evs, err := mc.Conn.Run(core.ClientSays{State: m.clientState(mc)})
+	if err != nil {
+		mc.Core.Mu.Unlock()
+		m.fleet.Unlock()
+		mc.Conn.Close("")
+		return nil, err
+	}
+	m.fleet.Add(mc)
+	defer m.fleet.Unlock() // mc's too, one of the fleet's now
+	m.fleet.Bump()
+	return m.told(mc, evs), nil
+}
+
 // SetCoreHost says core runs on host, a machine reached over ssh: what
 // opens files or the worktree is then made to reach them there.
 func (m *Model) SetCoreHost(host string) { m.home().Host = host }
@@ -75,8 +106,8 @@ func (m *Model) Remote() bool { return m.home().Conn != nil }
 // and takes in what came of it: the TUI then sees core as it would have r
 // done in its own process.
 func (m *Model) doRemote(mc *fleet.Machine, r core.Request) tea.Cmd {
-	if mc.Away {
-		m.toast("nerdr's core is gone: connecting again…")
+	if mc.Away || mc.Gone != "" {
+		m.toast(m.goneToast(mc))
 		return nil
 	}
 	m.sayState(mc)
@@ -126,7 +157,10 @@ func (m *Model) told(mc *fleet.Machine, evs []core.Event) tea.Cmd {
 		if passedOn(ev) {
 			cmds = append(cmds, func() tea.Msg { return fleet.Told{Machine: mc.Name, Msg: ev} })
 		} else {
+			was := m.telling
+			m.telling = mc
 			cmds = append(cmds, fromCore(m.Tell(ev)))
+			m.telling = was
 		}
 	}
 	return tea.Batch(cmds...)
@@ -145,7 +179,16 @@ func passedOn(ev core.Event) bool {
 // clientState is what the TUI shows of mc's tabs, as its core asks it; see
 // core.Client.
 func (m *Model) clientState(mc *fleet.Machine) core.ClientState {
-	s := core.ClientState{Front: m.Front(), DialogClosed: m.DialogClosed(), Layout: m.Layout(), Sight: m.Sight()}
+	// Of what the TUI shows, the core of mc is told of its own tabs.
+	own := func(r core.TabRef) core.TabRef {
+		if r.Core != mc.Name {
+			return core.TabRef{}
+		}
+		return r
+	}
+	sight := m.Sight()
+	sight.Keyboard, sight.Beside = own(sight.Keyboard), own(sight.Beside)
+	s := core.ClientState{Front: own(m.Front()), DialogClosed: m.DialogClosed(), Layout: m.layoutOn(mc), Sight: sight}
 	// As a new tab's agent would be shown, in a tab made for the asking.
 	fresh := &core.Tab{}
 	s.Fresh.W, s.Fresh.H = m.paneSize(fresh)
@@ -180,7 +223,7 @@ func (m *Model) clientState(mc *fleet.Machine) core.ClientState {
 // sayState tells the core of mc what the TUI shows, when that has changed
 // since it last did.
 func (m *Model) sayState(mc *fleet.Machine) {
-	if mc.Away {
+	if mc.Away || mc.Gone != "" {
 		return
 	}
 	s := m.clientState(mc)
@@ -255,26 +298,27 @@ func (m *Model) initRemote() tea.Cmd {
 // said:
 // core having crashed or been ended, its holder starts it again, the
 // agents living on, and the TUI connects to it again when it can. Without
-// a way to (SetRedial) it ends; and when another nerdr took over, as the
-// two would take it from each other without end, or the holder is gone,
-// when no core comes back.
+// a way to (SetRedial) it is gone for good; and so when another nerdr took
+// over, as the two would take it from each other without end, or the
+// holder is gone, when no core comes back. A machine gone for good is
+// grey while another is left (goneFor); the TUI ends when none is.
 func (m *Model) coreGone(mc *fleet.Machine, why string) tea.Cmd {
 	mc.Conn.Close("")
-	// What the review panel asked will not be answered.
-	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
-	if m.closing {
+	if m.closing || mc.Gone != "" {
 		return nil
 	}
 	if why == attach.ByeTakenOver || why == attach.ByeHolderGone {
-		m.goneErr = why
-		return tea.Quit
+		return m.goneFor(mc, why, why)
 	}
 	if mc.Redial == nil {
-		m.goneErr = "the connection to nerdr's core has closed"
-		return tea.Quit
+		return m.goneFor(mc, "the connection to nerdr's core has closed", "the connection to nerdr's core has closed")
 	}
-	mc.Away = true
-	m.toast("nerdr's core is gone: connecting again…")
+	// What the review panel asked will not be answered.
+	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
+	mc.Away, mc.Err = true, ""
+	m.fleet.Bump()
+	m.syncInput()
+	m.toast(m.goneToast(mc))
 	return m.redialCore(mc)
 }
 
@@ -301,21 +345,27 @@ func (m *Model) redialCore(mc *fleet.Machine) tea.Cmd {
 	}
 }
 
-// coreGoneWait is how long the TUI tries to connect to its core again
-// before it ends: a core that crashed is started again by its holder at
-// once, but one whose holder has ended too never comes back.
+// coreGoneWait is how long the TUI tries to connect to a core again
+// before it gives it up: a core that crashed is started again by its
+// holder at once, but one whose holder has ended too never comes back.
 var coreGoneWait = 20 * time.Second
 
 // coreEndedMsg is core not back within coreGoneWait, err the last try.
 type coreEndedMsg struct{ err error }
 
-// onCoreEnded ends the TUI when core is not back: when it is on another
+// onCoreEnded gives the core of mc up when it is not back: grey while
+// another machine is left, else the TUI ends. When it is on another
 // machine, it says why and tries again.
 func (m *Model) onCoreEnded(mc *fleet.Machine, msg coreEndedMsg) tea.Cmd {
-	if mc.Host == "" {
-		m.goneErr = "nerdr's core has ended and did not come back (" + msg.err.Error() + "): start nerdr again"
-		return tea.Quit
+	if !mc.Away {
+		return nil // given up meanwhile
 	}
+	if mc.Host == "" {
+		return m.goneFor(mc, "nerdr's core has ended and did not come back ("+msg.err.Error()+")",
+			"nerdr's core has ended and did not come back ("+msg.err.Error()+"): start nerdr again")
+	}
+	mc.Err = msg.err.Error()
+	m.fleet.Bump()
 	m.toast(mc.Host + ": " + msg.err.Error() + " — trying again")
 	return m.redialCore(mc)
 }
@@ -326,16 +376,26 @@ type coreBackMsg struct{ conn *attach.Conn }
 // coreBack goes on over conn to the core of mc: core sends all of its
 // state afresh, into the same copy, and is told what the TUI shows.
 func (m *Model) coreBack(mc *fleet.Machine, conn *attach.Conn) tea.Cmd {
+	if !mc.Away {
+		// Given up meanwhile: the user connects again, when they will.
+		conn.Close("")
+		return nil
+	}
 	mc.Conn.Reconnect(conn)
 	mc.Screens = mc.Conn.Screens
 	m.drawnPanes = nil
-	mc.Away = false
+	mc.Away, mc.Err = false, ""
+	m.syncInput()
 	mc.Said, m.keysTo = core.ClientState{}, keysTarget{}
 	cmd := m.doOn(mc, core.ClientSays{State: m.clientState(mc)})
 	// A core started again took up the programs at sizes it could not
 	// know: they get the TUI's again.
 	m.resizePanes()
-	m.toast("connected to nerdr's core again")
+	if len(m.fleet.Machines()) == 1 {
+		m.toast("connected to nerdr's core again")
+	} else {
+		m.toast("connected to " + machineLabel(mc) + " again")
+	}
 	return cmd
 }
 
@@ -375,14 +435,27 @@ func (closeOrQuit) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 }
 
 func (closeOrQuit) view(m *Model, w, _ int) string {
-	return box("Close or quit nerdr?", []string{
+	lines := []string{
 		"Close: the agents work on; nerdr in " + m.home().Core.Root,
 		"shows them again as they are.",
 		"Quit: the agents are stopped. Their tabs and conversations",
 		"are restored the next time you start nerdr there.",
-		"",
-		m.button("c", "close") + "   " + m.button("q", "quit") + "   " + m.button("esc", "cancel"),
-	}, w)
+	}
+	if live := m.fleet.Live(); len(m.fleet.Machines()) > 1 {
+		var names []string
+		for _, mc := range live {
+			names = append(names, machineLabel(mc))
+		}
+		lines = []string{
+			"Close: the agents work on, and nerdr shows them",
+			"again as they are.",
+			"Quit: the agents are stopped, on " + strings.Join(names, ", ") + ".",
+			"Their tabs and conversations are restored the next",
+			"time you start nerdr there.",
+		}
+	}
+	lines = append(lines, "", m.button("c", "close")+"   "+m.button("q", "quit")+"   "+m.button("esc", "cancel"))
+	return box("Close or quit nerdr?", lines, w)
 }
 
 // closeClient ends the TUI, the agents working on in core.
@@ -391,10 +464,17 @@ func (m *Model) closeClient() tea.Cmd {
 	return tea.Quit
 }
 
-// quitAll has core stop every program and end, then ends the TUI.
+// quitAll has the core of every machine still there stop every program
+// and end, then ends the TUI.
 func (m *Model) quitAll() tea.Cmd {
 	m.toast("stopping agents…")
 	m.closing = true
 	// Waited for: core has it before the connection closes.
-	return tea.Batch(m.do(core.QuitAll{}), tea.Quit)
+	cmds := []tea.Cmd{}
+	for _, mc := range m.fleet.Live() {
+		if !mc.Away {
+			cmds = append(cmds, m.doOn(mc, core.QuitAll{}))
+		}
+	}
+	return tea.Batch(append(cmds, tea.Quit)...)
 }

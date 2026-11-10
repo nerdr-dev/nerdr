@@ -124,6 +124,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
+	if mc := m.machineOf(t); mc != nil && grey(mc) {
+		return m.greyKey(mc, msg.String())
+	}
 	f := m.focused(t)
 	if f.Kind == core.PaneReview && f.A == nil {
 		return m.reviewPickKey(t, f, msg)

@@ -8,6 +8,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -149,12 +150,14 @@ func (m *Model) runOutput(run *core.PluginRun, w, n int) []string {
 type runQuestion struct {
 	dialog *confirm
 	q      core.Question
+	// mc is the machine whose core asked it.
+	mc *fleet.Machine
 }
 
 // answer answers the question with what; core tells of it being answered
 // with AnsweredMsg, which takes it away.
 func (q *runQuestion) answer(m *Model, what string) tea.Cmd {
-	return m.do(core.Answer{ID: q.q.ID, Answer: what})
+	return m.doOn(q.mc, core.Answer{ID: q.q.ID, Answer: what})
 }
 
 // answered takes the question away once core has its answer, from the
@@ -173,9 +176,10 @@ func (q *runQuestion) answered(m *Model) {
 // a sandbox, that it runs outside: a plugin that builds or runs what is in
 // the folder runs what the agent wrote there.
 func (m *Model) askPluginRun(q core.Question) {
+	mc := m.tellingOn()
 	a, p, vals, dir := m.fleet.ByRef(q.A), q.P, q.Vals, q.Dir
 	if a == nil {
-		m.do(core.Answer{ID: q.ID, Answer: core.RunBusy}) // gone already
+		m.doOn(mc, core.Answer{ID: q.ID, Answer: core.RunBusy}) // gone already
 		return
 	}
 	o := a.Owner()
@@ -198,7 +202,7 @@ func (m *Model) askPluginRun(q core.Question) {
 		lines = append(lines, warn(agent+" runs in a sandbox: this runs outside it, on what it wrote there"))
 	}
 	lines = append(lines, "", dim(fmt.Sprintf("y runs it · n does not · unanswered in %s, it does not run", core.Duration(core.RunAskWait))))
-	rq := &runQuestion{q: q}
+	rq := &runQuestion{q: q, mc: mc}
 	rq.dialog = &confirm{
 		title: "Run " + p.Name + "?",
 		lines: lines,

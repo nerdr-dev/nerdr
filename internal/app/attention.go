@@ -251,9 +251,9 @@ func (b *inbox) view(m *Model, w, h int) string {
 	sel := lipgloss.NewStyle().Foreground(accent).Bold(true)
 	var lines []string
 	row := func(i int, t *core.Tab, what string) {
-		line := light(t.AgentLit()) + " " + m.machineOf(t).Core.AgentName(t) + dim("  "+t.Owner().GroupName()) + "  " + what
+		line := light(t.AgentLit()) + " " + m.machineOf(t).Core.AgentName(t) + dim("  "+m.fleet.Group(t.Owner())) + "  " + what
 		if m.machineOf(t).Core.Cold(t, now) {
-			line = lipgloss.NewStyle().Foreground(groupAccent).Render("❄") + " " + t.Name + dim("  "+t.GroupName()) + "  " + what
+			line = lipgloss.NewStyle().Foreground(groupAccent).Render("❄") + " " + t.Name + dim("  "+m.fleet.Group(t)) + "  " + what
 		}
 		lines = append(lines, m.onClick(cursorLine(i == b.cursor, line, sel), func(m *Model) tea.Cmd {
 			m.dialog = nil

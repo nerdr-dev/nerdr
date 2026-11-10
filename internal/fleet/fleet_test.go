@@ -67,3 +67,33 @@ func TestZeroFleetIsOneMachine(t *testing.T) {
 		t.Fatalf("%d machines, %d tabs", len(f.Machines()), len(f.Tabs()))
 	}
 }
+
+// TestGroupsByMachine: the tabs are grouped by machine first, a group of
+// another machine's named by it, and found again by that name.
+func TestGroupsByMachine(t *testing.T) {
+	here := &Machine{Core: core.Core{Tabs: []*core.Tab{tab("a"), tab("b")}}}
+	box := &Machine{Name: "box", Core: core.Core{ID: "box", Tabs: []*core.Tab{tab("c"), tab("d")}}}
+	for _, tb := range []*core.Tab{here.Core.Tabs[0], box.Core.Tabs[0]} {
+		tb.Dir = "/w/app"
+	}
+	here.Core.Tabs[1].Dir, box.Core.Tabs[1].Dir = "/w/zed", "/w/api"
+	f := New(here, box)
+	if gs := f.Groups(); len(gs) != 4 || gs[0] != "app" || gs[1] != "zed" || gs[2] != "box:api" || gs[3] != "box:app" {
+		t.Fatalf("groups %q", gs)
+	}
+	if g := f.Group(box.Core.Tabs[0]); g != "box:app" {
+		t.Fatalf("c is in %q", g)
+	}
+	if idx := f.GroupTabs("box:app"); len(idx) != 1 || idx[0] != 2 {
+		t.Fatalf("box:app holds %v", idx)
+	}
+	if idx := f.GroupTabs("app"); len(idx) != 1 || idx[0] != 0 {
+		t.Fatalf("app holds %v", idx)
+	}
+	if mc, g := f.GroupOf("box:api"); mc != box || g != "api" {
+		t.Fatalf("box:api is %q's %q", mc.Name, g)
+	}
+	if mc, g := f.GroupOf("api"); mc != here || g != "api" {
+		t.Fatalf("api is %q's %q", mc.Name, g)
+	}
+}

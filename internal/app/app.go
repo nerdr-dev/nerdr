@@ -6,6 +6,7 @@ import (
 	"os"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
@@ -56,6 +57,13 @@ type Model struct {
 	// reviewAsk is what the review panel reads the repositories through
 	// when core is in another process: it asks core (core.ReadForReview).
 	reviewAsk *reviewsource.Asker
+	// reviewOn is the machine whose repositories reviewAsk asks: that of
+	// the tab the panel shows. It is read by the panel's own goroutines.
+	reviewOn atomic.Pointer[fleet.Machine]
+	// telling is the machine whose core's event Tell takes, while it
+	// does; nil for core in the TUI's process, which tells it itself: see
+	// tellingOn.
+	telling *fleet.Machine
 	// goneErr is why the TUI ended, its core gone; see GoneErr.
 	goneErr string
 	// closing is set once the TUI is ending of its own will: the
@@ -344,7 +352,7 @@ func (m *Model) restoreLayout(sess core.Layout) {
 	}
 	m.entered = m.Cur() // as enter does; core marks it active
 	for i, t := range m.fleet.Tabs() {
-		if sess.Split != "" && t.ID == sess.Split && i != m.Active && t.GroupName() == m.curGroup() {
+		if sess.Split != "" && t.ID == sess.Split && i != m.Active && m.fleet.Group(t) == m.curGroup() {
 			m.split, m.splitLeft = t, sess.SplitLeft
 			m.reviewOpen = false
 		}
@@ -696,7 +704,7 @@ func (m *Model) syncInput() {
 		}
 	}
 	t := m.Cur()
-	if m.home().Core.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil {
+	if m.home().Core.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil || grey(m.machineOf(t)) {
 		m.router.Passthrough(nil)
 		return
 	}
@@ -875,6 +883,9 @@ func (m *Model) pinReview() tea.Cmd {
 		cmd = tea.Batch(cmd, m.review.SetScreen(m.panelScreens[t]), m.syncPRPanel())
 	}
 	m.screenTab = t
+	if t != nil && m.reviewAsk != nil {
+		m.reviewOn.Store(m.machineOf(t))
+	}
 	var unseen map[string]map[string]bool
 	if t != nil {
 		unseen = t.Unseen
@@ -950,7 +961,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 		// keeps its side.
 		m.split, m.splitLeft = m.Cur(), !m.splitLeft
 	}
-	splitEnded := m.split != nil && m.split.GroupName() != m.fleet.Tabs()[i].GroupName()
+	splitEnded := m.split != nil && m.fleet.Group(m.split) != m.fleet.Group(m.fleet.Tabs()[i])
 	if splitEnded {
 		m.split = nil // only tabs of one repository share the screen
 	}
@@ -958,7 +969,7 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	m.scrolling = false
 	t := m.fleet.Tabs()[i]
 	tracked := m.track() // before seen: a finished agent is summed up as finished
-	m.lastInGroup[t.GroupName()] = m.fleet.Ref(t)
+	m.lastInGroup[m.fleet.Group(t)] = m.fleet.Ref(t)
 	m.landed, m.looking = time.Now(), true
 	m.focusTerms(t)
 	if m.split != nil || splitEnded {

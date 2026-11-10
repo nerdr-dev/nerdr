@@ -24,6 +24,8 @@ func (m *Model) doOn(mc *fleet.Machine, r core.Request) tea.Cmd {
 // saveLayout has core save the session, with how the TUI lays out the
 // tabs now.
 func (m *Model) saveLayout() {
-	l := m.layout()
-	m.do(core.Save{Layout: &l})
+	for _, mc := range m.fleet.Live() {
+		l := m.layoutOn(mc)
+		m.doOn(mc, core.Save{Layout: &l})
+	}
 }
