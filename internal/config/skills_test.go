@@ -18,7 +18,7 @@ func TestSkillSelectionPreservesConfigAndCanBeEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, names := range [][]string{{"nerdr-plugins"}, {}, {"nerdr-explain", "nerdr-request-review"}} {
-		if err := SaveSetup(InstallWorktree, nil, names); err != nil {
+		if err := SetKeys(Edit{"", "install", Quote(InstallWorktree)}, Edit{"", "enabled_skills", List(names)}); err != nil {
 			t.Fatal(err)
 		}
 		cfg, err := Load()
@@ -84,7 +84,7 @@ func TestWritingInstallTakesOutTheOldName(t *testing.T) {
 		t.Fatalf("raw: %v %v", raw, err)
 	}
 	for _, write := range []func() error{
-		func() error { return SaveSetup(InstallWorktree, nil) },
+		func() error { return SetKeys(Edit{"", "install", Quote(InstallWorktree)}) },
 		func() error { return SetKey("", "install", Quote(InstallHome)) },
 	} {
 		if err := write(); err != nil {

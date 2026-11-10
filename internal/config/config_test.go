@@ -59,10 +59,10 @@ func TestNotifyOn(t *testing.T) {
 	}
 }
 
-// TestSaveSetupKeepsTheRestOfTheFile covers the first start writing its
+// TestSetupKeepsTheRestOfTheFile covers the first start writing its
 // answers into a config file the user already has, with [agents] tables
 // after which a plain key would land in the wrong place.
-func TestSaveSetupKeepsTheRestOfTheFile(t *testing.T) {
+func TestSetupKeepsTheRestOfTheFile(t *testing.T) {
 	dir := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", dir)
 	_ = os.MkdirAll(filepath.Join(dir, "nerdr"), 0o755)
@@ -73,7 +73,7 @@ func TestSaveSetupKeepsTheRestOfTheFile(t *testing.T) {
 		t.Fatalf("before: %+v %v", c, err)
 	}
 	notes := ".nerdr"
-	if err := SaveSetup(InstallWorktree, &notes); err != nil {
+	if err := SetKeys(Edit{"", "install", Quote(InstallWorktree)}, Edit{"", "data_dir", Quote(notes)}); err != nil {
 		t.Fatal(err)
 	}
 	c, err = Load()
@@ -94,14 +94,14 @@ func TestWorktreesDirIsInHomeUnlessSet(t *testing.T) {
 	if err != nil || c.WorktreesDirSet() || c.WorktreesDir != filepath.Join(home, "worktrees-nerdr") {
 		t.Fatalf("default: %q %v", c.WorktreesDir, err)
 	}
-	if err := SaveWorktreesDir("~/wt"); err != nil {
+	if err := SetKey("", "worktrees_dir", Quote("~/wt")); err != nil {
 		t.Fatal(err)
 	}
 	c, err = Load()
 	if err != nil || !c.WorktreesDirSet() || c.WorktreesDir != filepath.Join(home, "wt") {
 		t.Fatalf("set: %q %v", c.WorktreesDir, err)
 	}
-	if err := SaveWorktreesDir("worktrees"); err != nil {
+	if err := SetKey("", "worktrees_dir", Quote("worktrees")); err != nil {
 		t.Fatal(err)
 	}
 	if c, _ = Load(); c.WorktreesDir != "worktrees" {
@@ -109,7 +109,7 @@ func TestWorktreesDirIsInHomeUnlessSet(t *testing.T) {
 	}
 }
 
-func TestSaveReviewRounds(t *testing.T) {
+func TestSetReviewRounds(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	write := func(s string) {
 		t.Helper()
@@ -141,7 +141,7 @@ func TestSaveReviewRounds(t *testing.T) {
 		if tc.before != "" {
 			write(tc.before)
 		}
-		if err := SaveReviewRounds(3); err != nil {
+		if err := SetKey("review", "rounds", "3"); err != nil {
 			t.Fatalf("%s: %v", tc.name, err)
 		}
 		if got := read(); got != tc.after {
@@ -226,13 +226,13 @@ func TestSetKeyFollowsValues(t *testing.T) {
 		if _, err := toml.Decode(text, &c); err != nil {
 			t.Fatalf("%q is not TOML: %v", text, err)
 		}
-		got := rootSettings(text, map[string]string{"worktrees_dir": `"/tmp/new"`})
+		got := setKeys(text, []Edit{{"", "worktrees_dir", `"/tmp/new"`}})
 		if got != "worktrees_dir = \"/tmp/new\"\nprefix = \"ctrl+a\"\n" {
 			t.Errorf("%q:\n%s", text, got)
 		}
 	}
 
-	got := rootSettings("repo_dirs = [\n  \"a\",\n]\nlayout = \"small\"\n", map[string]string{"repo_dirs": `["c"]`})
+	got := setKeys("repo_dirs = [\n  \"a\",\n]\nlayout = \"small\"\n", []Edit{{"", "repo_dirs", `["c"]`}})
 	if got != "repo_dirs = [\"c\"]\nlayout = \"small\"\n" {
 		t.Errorf("root settings:\n%s", got)
 	}
