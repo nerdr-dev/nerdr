@@ -64,6 +64,9 @@ type Model struct {
 	// does; nil for core in the TUI's process, which tells it itself: see
 	// tellingOn.
 	telling *fleet.Machine
+	// chosen is the machine the dialog open was moved to (ctrl+o), nil
+	// while it is the active tab's: see dialogOn. It goes with the dialog.
+	chosen *fleet.Machine
 	// goneErr is why the TUI ended, its core gone; see GoneErr.
 	goneErr string
 	// closing is set once the TUI is ending of its own will: the
@@ -386,7 +389,7 @@ func (m *Model) Init() tea.Cmd {
 		}
 		cmds = append(cmds, m.openSetup(then))
 	} else {
-		m.do(core.ApplySkills{})
+		m.doOn(m.home(), core.ApplySkills{})
 	}
 	if len(m.fleet.Tabs()) == 0 {
 		if m.dialog == nil {
@@ -433,6 +436,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.sameFrame = false
 	cmd := m.updateOn(mc, msg)
+	if m.dialog == nil {
+		m.chosen = nil // a dialog opened next starts on the active tab's
+	}
 	m.askReviewDone()
 	if m.barRows() != m.laidRows || m.sideW() != m.laidSide {
 		// The repository row came or went: a second repository's first
@@ -563,7 +569,7 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		return nil
 
 	case core.DetectMsg:
-		return m.detect()
+		return m.doOn(mc, core.Detect{})
 
 	case core.ToastMsg:
 		m.toast(string(msg))
@@ -632,7 +638,7 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		return m.openEditor(msg)
 
 	case review.WatchMsg:
-		return m.do(core.WatchForReview{Wt: msg.Wt})
+		return m.doOn(m.machineOf(m.screenTab), core.WatchForReview{Wt: msg.Wt})
 
 	case review.AgentMsg:
 		return m.askAgent(msg)
@@ -744,9 +750,6 @@ type keysTarget struct {
 	agent string
 }
 
-// detect refreshes every agent's traffic light and passes the result on.
-func (m *Model) detect() tea.Cmd { return m.do(core.Detect{}) }
-
 // tabShown reports whether t is on screen: in front, or beside it.
 func (m *Model) tabShown(t *core.Tab) bool {
 	return t == m.Cur() || t == m.splitTab() && m.splitShown()
@@ -762,7 +765,7 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 			}
 		}
 	}
-	m.tellCore(core.KeepAwake{})
+	m.tellOn(m.tellingOn(), core.KeepAwake{})
 	m.keepScreen(now)
 	m.reportHerdr()
 	m.flushNotes(m.herdrBefore)
@@ -1042,7 +1045,10 @@ func (m *Model) stopping() []*term.Pane {
 	if m.editor != nil {
 		panes = append(panes, m.editor)
 	}
-	return append(panes, m.home().Core.PluginUIPanes()...)
+	for _, mc := range m.fleet.Machines() {
+		panes = append(panes, mc.Core.PluginUIPanes()...)
+	}
+	return panes
 }
 
 // onPanelLayout follows F1's file list going beside the diff or back above

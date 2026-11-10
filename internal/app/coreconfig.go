@@ -47,7 +47,7 @@ func (m *Model) onConfigSaved(ev core.ConfigSavedMsg) tea.Cmd {
 		return d.saved(m, ev)
 	}
 	if ev.Err != "" {
-		m.toast(cmp.Or(what, "settings") + ": not saved in " + m.home().Core.ConfigPath() + ": " + ev.Err)
+		m.toast(cmp.Or(what, "settings") + ": not saved in " + m.tellingOn().Core.ConfigPath() + ": " + ev.Err)
 	}
 	if d, ok := m.dialog.(*settings); ok {
 		d.reload()
@@ -60,13 +60,13 @@ func (m *Model) onConfigSaved(ev core.ConfigSavedMsg) tea.Cmd {
 // settings: the same file as the TUI's when core runs in this process,
 // else read by core where it runs.
 func (m *Model) readCoreConfig(d *settings) tea.Cmd {
-	if m.home().Conn == nil {
+	if d.mc.Conn == nil {
 		d.coreRaw, d.coreErr = d.raw, ""
 		return nil
 	}
 	m.cfgJob++
 	d.coreJob = "config-" + strconv.Itoa(m.cfgJob)
-	m.tellCore(core.ReadConfig{Job: d.coreJob})
+	m.tellOn(d.mc, core.ReadConfig{Job: d.coreJob})
 	return nil
 }
 

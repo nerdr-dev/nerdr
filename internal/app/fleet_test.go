@@ -2,6 +2,8 @@ package app
 
 import (
 	"os"
+	"os/exec"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -9,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -361,4 +364,125 @@ func TestFleetHostIsEachMachines(t *testing.T) {
 	if !strings.Contains(here, "devbox") || box != "" {
 		t.Fatalf("badge %q here, %q on box", here, box)
 	}
+}
+
+// gitRepo makes dir a git repository, for a core to find.
+func gitRepo(t *testing.T, dir string) {
+	t.Helper()
+	if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+		t.Skipf("git init: %v: %s", err, out)
+	}
+}
+
+// wizardRepos are the repositories the new-tab dialog open offers, and
+// the machine it is on.
+func wizardRepos(m *Model) (string, []string) {
+	var on string
+	var out []string
+	locked(m, func() {
+		w, ok := m.dialog.(*wizard)
+		if !ok {
+			return
+		}
+		on = w.mc.Name
+		for _, r := range w.repos {
+			out = append(out, r.Path)
+		}
+	})
+	return on, out
+}
+
+// TestFleetNewTabOnChosenMachine: the new-tab dialog starts on the active
+// tab's machine, ctrl+o moves it to box, whose repositories it offers
+// then, and the tab it makes is box's.
+func TestFleetNewTabOnChosenMachine(t *testing.T) {
+	m, here, box, _, told := twoMachines(t)
+	here.Mu.Lock()
+	hereRoot := here.Root
+	here.Mu.Unlock()
+	box.Mu.Lock()
+	boxRoot := box.Root
+	box.Mu.Unlock()
+	gitRepo(t, hereRoot)
+	gitRepo(t, boxRoot)
+
+	goTo(m, 0)
+	var cmd tea.Cmd
+	locked(m, func() { cmd = m.openWizard() })
+	if cmd != nil {
+		m.Update(cmd())
+	}
+	pump(t, m, told, "this machine's repositories", func(v string) bool {
+		on, repos := wizardRepos(m)
+		return on == "" && slices.Contains(repos, hereRoot) && strings.Contains(v, "New tab · on this machine")
+	})
+
+	_, cmd = m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	if cmd != nil {
+		m.Update(cmd())
+	}
+	pump(t, m, told, "box's repositories", func(v string) bool {
+		on, repos := wizardRepos(m)
+		return on == "box" && slices.Contains(repos, boxRoot) && !slices.Contains(repos, hereRoot) &&
+			strings.Contains(v, "New tab · on box")
+	})
+
+	var w *wizard
+	locked(m, func() {
+		w = m.dialog.(*wizard)
+		m.dialog = nil
+		m.addTab(w.mc, "new", boxRoot, "", nil, agents.Codex, false, "")
+	})
+	here.Mu.Lock()
+	n := len(here.Tabs)
+	here.Mu.Unlock()
+	box.Mu.Lock()
+	k := len(box.Tabs)
+	box.Mu.Unlock()
+	if n != 1 || k != 2 {
+		t.Fatalf("tabs here %d, on box %d", n, k)
+	}
+	locked(m, func() {
+		if c := m.Cur(); c == nil || c.Name != "new" || m.machineOf(c).Name != "box" {
+			t.Fatalf("in front: %+v", c)
+		}
+	})
+}
+
+// TestFleetDialogFollowsTheActiveTab: with box's tab in front, a dialog
+// of no tab is box's, and what it asks naming no tab goes to box's core.
+func TestFleetDialogFollowsTheActiveTab(t *testing.T) {
+	m, _, _, _, _ := twoMachines(t)
+	goTo(m, 1)
+	locked(m, func() {
+		if mc := m.dialogOn(); mc.Name != "box" {
+			t.Fatalf("on %q", mc.Name)
+		}
+		if mc := m.forOf(core.ScanRepos{}); mc.Name != "box" {
+			t.Fatalf("ScanRepos goes to %q", mc.Name)
+		}
+		m.openSettings()
+		if d := m.dialog.(*settings); d.mc.Name != "box" {
+			t.Fatalf("settings of %q", d.mc.Name)
+		}
+	})
+	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlO})
+	if cmd != nil {
+		m.Update(cmd())
+	}
+	locked(m, func() {
+		d, ok := m.dialog.(*settings)
+		if !ok || d.mc.Name != "" || m.dialogOn().Name != "" {
+			t.Fatalf("after ctrl+o: %T", m.dialog)
+		}
+	})
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Settings · on this machine") {
+		t.Fatalf("title:\n%s", v)
+	}
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	locked(m, func() {
+		if m.dialog != nil || m.dialogOn().Name != "box" {
+			t.Fatalf("closed: %T, on %q", m.dialog, m.dialogOn().Name)
+		}
+	})
 }

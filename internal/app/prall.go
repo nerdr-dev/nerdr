@@ -20,7 +20,7 @@ import (
 // when force is set. See core.PRAll.
 func (m *Model) refreshAllPRs(force bool) tea.Cmd {
 	d := m.prPanel
-	if !m.panelAllPRs() || d == nil || !d.all || m.home().Core.PRAll.Busy {
+	if !m.panelAllPRs() || d == nil || !d.all || m.tabOn().Core.PRAll.Busy {
 		return nil
 	}
 	return m.do(core.AskAllPRs{Force: force})
@@ -60,7 +60,7 @@ func sortAllPREntries(entries []core.PREntry) {
 // by repository, those your review is asked for first within each, and
 // what went wrong asking.
 func (m *Model) allPREntries() ([]core.PREntry, []string) {
-	a := m.home().Core.PRAll
+	a := m.tabOn().Core.PRAll
 	var entries []core.PREntry
 	var errs []string
 	for _, got := range a.Repos {

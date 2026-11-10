@@ -663,7 +663,7 @@ func (m *Model) movePane(d int) core.Cmd {
 	ps := t.Panes()
 	i := slices.Index(ps, m.focused(t))
 	if i == 0 {
-		m.home().Core.Toast(m.machineOf(t).Core.AgentLabel(t, t) + " is the tab's first agent: it stays first")
+		m.machineOf(t).Core.Toast(m.machineOf(t).Core.AgentLabel(t, t) + " is the tab's first agent: it stays first")
 		return nil
 	}
 	j := i + d
@@ -696,7 +696,7 @@ func (m *Model) paneCols(t *core.Tab, w int) []paneCol {
 		}
 	}
 	slices.SortStableFunc(open[1:], func(a, b *core.PaneTab) int { return m.pl(b).used.Compare(m.pl(a).used) })
-	n := min(len(open), max((w+1)/(m.home().Core.PaneMinW()+1), 1))
+	n := min(len(open), max((w+1)/(m.machineOf(t).Core.PaneMinW()+1), 1))
 	shown := open[:n]
 	var out []paneCol
 	for _, p := range ps {

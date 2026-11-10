@@ -281,7 +281,7 @@ func (b *inbox) view(m *Model, w, h int) string {
 		lines = append(lines, "", dim(light(core.StWorking)+" "+core.Plural(n, "agent")+" working"))
 	}
 	if len(cold) > 0 {
-		lines = append(lines, "", dim("Gone cold — nothing done in them for "+strconv.Itoa(core.IntOr0(m.home().Core.Cfg.ColdDays))+"+ days:"))
+		lines = append(lines, "", dim("Gone cold — nothing done in them for "+strconv.Itoa(core.IntOr0(m.tabOn().Core.Cfg.ColdDays))+"+ days:"))
 		for j, t := range cold {
 			row(len(waiting)+j, t, dim("last active "+core.Duration(now.Sub(t.LastActive))+" ago"))
 		}

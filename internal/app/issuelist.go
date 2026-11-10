@@ -47,10 +47,10 @@ func (d *issueList) setScope(m *Model) {
 		return
 	}
 	d.here = false
-	if m.home().Core.Scan.Err != "" {
-		d.errs = []string{m.home().Core.Scan.Err}
+	if m.tabOn().Core.Scan.Err != "" {
+		d.errs = []string{m.tabOn().Core.Scan.Err}
 	}
-	d.scope = m.home().Core.Scan.Repos
+	d.scope = m.tabOn().Core.Scan.Repos
 }
 
 // fill shows what is known of the issues in scope, keeping the cursor on
@@ -61,7 +61,7 @@ func (d *issueList) fill(m *Model) {
 		e := d.entries[d.cursor]
 		cur = core.IssueKey(e.Repo.Path, e.Issue.Number)
 	}
-	w := m.home().Core.IssueWatch
+	w := m.tabOn().Core.IssueWatch
 	in := map[string]bool{}
 	for _, r := range d.scope {
 		in[filepath.Clean(r.Path)] = true

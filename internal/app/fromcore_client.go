@@ -151,7 +151,7 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.tellPRNews(ev.News)
 	case core.PRMarkMsg:
 		m.fleet.Bump()
-		m.review.SetPRNews(len(m.home().Core.PRWatch.News) > 0)
+		m.review.SetPRNews(len(m.tabOn().Core.PRWatch.News) > 0)
 	case core.OverlapsMsg:
 		m.fleet.Bump()
 		m.shareOverlaps()
@@ -193,7 +193,7 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 	case core.PluginRunMsg:
 		m.fleet.Bump()
-		if t, run := m.fleet.ByRef(ev.T), m.home().Core.PluginRuns.ByID[ev.Run]; t != nil && run != nil {
+		if t, run := m.fleet.ByRef(ev.T), m.tellingOn().Core.PluginRuns.ByID[ev.Run]; t != nil && run != nil {
 			return toCore(m.showPluginRun(t, ev.P, run))
 		}
 	}

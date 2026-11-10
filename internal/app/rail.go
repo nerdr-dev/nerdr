@@ -186,7 +186,7 @@ func (m *Model) fitPanel() {
 	}
 	rw, _ := m.reviewArea()
 	w := max(m.mainW()-rw-1, 12)
-	fits := n <= max((w+1)/(m.home().Core.PaneMinW()+1), 1)
+	fits := n <= max((w+1)/(m.tabOn().Core.PaneMinW()+1), 1)
 	switch {
 	case fits:
 		m.panelKept = false

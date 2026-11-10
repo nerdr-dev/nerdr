@@ -101,14 +101,14 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 		all := skills.All()
 		enabled := []string{}
 		for i, sk := range all {
-			if m.home().Core.Cfg.SkillEnabled(sk.Name) != (i == v.cursor) {
+			if m.tabOn().Core.Cfg.SkillEnabled(sk.Name) != (i == v.cursor) {
 				enabled = append(enabled, sk.Name)
 			}
 		}
-		if m.home().Core.Cfg.Install == "" {
+		if m.tabOn().Core.Cfg.Install == "" {
 			return m.openSetup(nil)
 		}
-		m.home().Core.Cfg.EnabledSkills = enabled
+		m.tabOn().Core.Cfg.EnabledSkills = enabled
 		return m.editCoreConfig("skills", core.EditConfig{Now: true,
 			Keys:  []config.Edit{{Key: "enabled_skills", Value: config.List(enabled)}},
 			Apply: &core.ApplySkills{Say: skillsChangedNote}})
@@ -125,13 +125,13 @@ func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {
 // skillsMissing is how many of the skills turned on t's agent cannot find
 // when nerdr puts none in place, and so are not used.
 func (m *Model) skillsMissing(t *core.Tab) int {
-	if m.home().Core.Cfg.Install != config.InstallOff || t == nil {
+	if m.tabOn().Core.Cfg.Install != config.InstallOff || t == nil {
 		return 0
 	}
 	m.lookAtSkills(t)
 	n := 0
 	for _, s := range skills.All() {
-		if m.home().Core.Cfg.SkillEnabled(s.Name) && !m.machineOf(t).Core.SkillOn(t, s.Name) {
+		if m.tabOn().Core.Cfg.SkillEnabled(s.Name) && !m.machineOf(t).Core.SkillOn(t, s.Name) {
 			n++
 		}
 	}
@@ -268,7 +268,7 @@ func (m *Model) nerdrSkillsList(t *core.Tab, tot map[string]*core.SkillTotal, te
 			mark = dim("·")
 		}
 		name := "[ ] " + s.Name
-		if m.home().Core.Cfg.SkillEnabled(s.Name) {
+		if m.tabOn().Core.Cfg.SkillEnabled(s.Name) {
 			name = "[✓] " + s.Name
 		}
 		head = append(head, m.skillRow(i == v.cursor, mark+" ", name, tot[s.Name], func(m *Model) { m.skills.cursor = i }))
@@ -286,7 +286,7 @@ func (m *Model) nerdrSkillsList(t *core.Tab, tot map[string]*core.SkillTotal, te
 	text = append(text, dim("── "+s.Name+" "+strings.Repeat("─", max(textW-lipgloss.Width(s.Name)-4, 0))))
 	if t != nil {
 		mark, what := skillMark(states[v.cursor], agent)
-		if !m.home().Core.Cfg.SkillEnabled(s.Name) {
+		if !m.tabOn().Core.Cfg.SkillEnabled(s.Name) {
 			what = "turned off; claude notices by itself, other agents at their next start; text they already read stays"
 			if states[v.cursor] == skills.Own {
 				what += "; your own copy is still discoverable — remove it yourself"
@@ -297,7 +297,7 @@ func (m *Model) nerdrSkillsList(t *core.Tab, tot map[string]*core.SkillTotal, te
 			text = append(text, dim("  "+found[v.cursor]))
 		} else {
 			why := "nerdr puts the skills in place at start, as the install setting says."
-			if m.home().Core.Cfg.Install == config.InstallOff {
+			if m.tabOn().Core.Cfg.Install == config.InstallOff {
 				why = "nerdr puts no skills in place (install = \"off\" in the config): copy this one from skills/ in nerdr's repository into a folder " + agent + " reads skills from, or turn it off here."
 			}
 			for _, l := range wrapRows(why, textW-2, 3) {

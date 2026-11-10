@@ -64,6 +64,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	if m.dialog != nil {
+		if msg.String() == "ctrl+o" {
+			if cmd, ok := m.nextMachine(); ok {
+				return cmd
+			}
+		}
 		return m.dialog.key(m, msg)
 	}
 	if msg.String() == "f5" && m.togglePluginUI() {

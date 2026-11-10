@@ -7,38 +7,59 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 )
 
-// openUnseen lists the programs in the holder that no tab took up, each
-// to be stopped, or all of them; none is stopped without the user.
+// openUnseen lists the programs in the holders that no tab took up, each
+// to be stopped, or all of a machine's; none is stopped without the user.
+// With several machines, each machine's are under its name.
 func (m *Model) openUnseen() tea.Cmd {
-	if len(m.home().Core.Unseen) == 0 {
+	several := len(m.fleet.Machines()) > 1
+	items := []menuItem{{label: "Programs from before nerdr started again, in no tab"}}
+	found := false
+	for _, mc := range m.fleet.Live() {
+		unseen := mc.Core.Unseen
+		if len(unseen) == 0 {
+			continue
+		}
+		found = true
+		where := ""
+		if several {
+			where = " on " + machineLabel(mc)
+			items = append(items, menuItem{label: machineLabel(mc) + ":"})
+		}
+		for _, u := range unseen {
+			items = append(items, menuItem{label: unseenLine(u, time.Now()), run: func(m *Model) tea.Cmd {
+				return m.askStopUnseen(mc, u.ID, "Stop "+u.What+where+"?", []string{unseenLine(u, time.Now())})
+			}})
+		}
+		if len(unseen) > 1 {
+			key := "a"
+			if several {
+				key = ""
+			}
+			items = append(items, menuItem{label: fmt.Sprintf("Stop all %d%s", len(unseen), where), key: key, run: func(m *Model) tea.Cmd {
+				return m.askStopUnseen(mc, "", fmt.Sprintf("Stop all %d programs in no tab%s?", len(unseen), where), nil)
+			}})
+		}
+	}
+	if !found {
 		m.toast("no programs run outside the tabs")
 		return nil
-	}
-	items := []menuItem{{label: "Programs from before nerdr started again, in no tab"}}
-	for _, u := range m.home().Core.Unseen {
-		items = append(items, menuItem{label: unseenLine(u, time.Now()), run: func(m *Model) tea.Cmd {
-			return m.askStopUnseen(u.ID, "Stop "+u.What+"?", []string{unseenLine(u, time.Now())})
-		}})
-	}
-	if len(m.home().Core.Unseen) > 1 {
-		items = append(items, menuItem{label: fmt.Sprintf("Stop all %d", len(m.home().Core.Unseen)), key: "a", run: func(m *Model) tea.Cmd {
-			return m.askStopUnseen("", fmt.Sprintf("Stop all %d programs in no tab?", len(m.home().Core.Unseen)), nil)
-		}})
 	}
 	m.dialog = &menu{title: "Programs in no tab", items: items, x: m.width / 4, y: m.height / 4, hi: 1}
 	return nil
 }
 
-// askStopUnseen asks before stopping program id, all of them for "".
-func (m *Model) askStopUnseen(id, title string, lines []string) tea.Cmd {
+// askStopUnseen asks before stopping program id of mc's holder, all of
+// them for "".
+func (m *Model) askStopUnseen(mc *fleet.Machine, id, title string, lines []string) tea.Cmd {
 	m.dialog = &confirm{
 		title:     title,
 		lines:     append(lines, "It is hung up, and killed if it is still there after a few seconds."),
 		defaultNo: true,
 		yesLabel:  "Stop", noLabel: "Cancel",
-		yes: func(m *Model) tea.Cmd { return m.do(core.StopUnseen{ID: id}) },
+		yes: func(m *Model) tea.Cmd { return m.doOn(mc, core.StopUnseen{ID: id}) },
 	}
 	return nil
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/skills"
 
@@ -26,6 +27,8 @@ import (
 
 // setupDialog is the first start's questions.
 type setupDialog struct {
+	// mc is the machine whose core is set up: each has its own settings.
+	mc     *fleet.Machine
 	choice int // index into setupChoices
 	// worktrees and notes are the folders typed; field is which of
 	// setupWorktrees, setupSkills and setupNotes has the keys.
@@ -49,8 +52,14 @@ var setupChoices = []struct{ value, label string }{
 	{config.InstallOff, "Nowhere — I put them in place myself"},
 }
 
+func (d *setupDialog) machine() *fleet.Machine { return d.mc }
+
+// reopen sets up the machine chosen instead.
+func (d *setupDialog) reopen(m *Model) tea.Cmd { return m.openSetup(d.then) }
+
 func (m *Model) openSetup(then func(m *Model) tea.Cmd) tea.Cmd {
-	d := &setupDialog{then: then, notesSet: m.home().Core.Cfg.DataDirSet(), worktreesSet: m.home().Core.Cfg.WorktreesDirSet()}
+	mc := m.dialogOn()
+	d := &setupDialog{mc: mc, then: then, notesSet: mc.Core.Cfg.DataDirSet(), worktreesSet: mc.Core.Cfg.WorktreesDirSet()}
 	d.worktrees = textinput.New()
 	d.worktrees.Prompt = "worktrees folder: "
 	d.worktrees.Placeholder = config.DefaultWorktreesDir
@@ -59,10 +68,10 @@ func (m *Model) openSetup(then func(m *Model) tea.Cmd) tea.Cmd {
 	d.notes = textinput.New()
 	d.notes.Prompt = "data folder: "
 	d.notes.Placeholder = "(empty: the repository's .git folder)"
-	d.notes.SetValue(m.home().Core.Cfg.DataDir)
+	d.notes.SetValue(m.dialogOn().Core.Cfg.DataDir)
 	d.notes.CharLimit = 300
 	for i, choice := range setupChoices {
-		if choice.value == m.home().Core.Cfg.Install {
+		if choice.value == m.dialogOn().Core.Cfg.Install {
 			d.choice = i
 		}
 	}
@@ -173,7 +182,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 	d.err = ""
 	var save tea.Cmd
 	d.saving, save = m.editCoreConfigJob("the setup", core.EditConfig{Keys: keys, MoveWtRoot: moveWtRoot, Now: true,
-		Apply: &core.ApplySkills{Otherwise: "saved in " + m.home().Core.ConfigPath()}})
+		Apply: &core.ApplySkills{Otherwise: "saved in " + m.dialogOn().Core.ConfigPath()}})
 	return save
 }
 
@@ -182,7 +191,7 @@ func (d *setupDialog) save(m *Model) tea.Cmd {
 func (d *setupDialog) saved(m *Model, ev core.ConfigSavedMsg) tea.Cmd {
 	d.saving = ""
 	if ev.Err != "" {
-		d.err = "could not write " + m.home().Core.ConfigPath() + ": " + ev.Err
+		d.err = "could not write " + m.dialogOn().Core.ConfigPath() + ": " + ev.Err
 		return nil
 	}
 	m.dialog = nil
@@ -217,7 +226,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		question(core.SetupWorktrees, "Where should new worktrees go?"),
 		dim("  Each tab gets a worktree of its own: a checkout of the repository on"),
 		dim("  the tab's branch, so tabs never get in each other's way."),
-		field(core.SetupWorktrees, &d.worktrees, "worktrees folder: "+core.TildePath(m.home().Core.Cfg.WorktreesDir, home)),
+		field(core.SetupWorktrees, &d.worktrees, "worktrees folder: "+core.TildePath(m.dialogOn().Core.Cfg.WorktreesDir, home)),
 		dim("    absolute, e.g. ~/worktrees-nerdr — one folder for all repositories"),
 		dim("    relative, e.g. worktrees — in the folder nerdr is started in, or"),
 		dim("    beside it when that is a repository"),
@@ -230,26 +239,26 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 	}
 
 	var where []string
-	for _, tg := range skills.Home(home, m.home().Core.Available()) {
+	for _, tg := range skills.Home(home, m.dialogOn().Core.Available()) {
 		var names []string
 		for _, k := range tg.Agents {
 			names = append(names, string(k))
 		}
 		where = append(where, core.TildePath(tg.Dir, home)+" ("+strings.Join(names, ", ")+")")
 	}
-	if slices.Contains(m.home().Core.Available(), agents.OpenCode) {
+	if slices.Contains(m.dialogOn().Core.Available(), agents.OpenCode) {
 		where = append(where, core.TildePath(hooks.OpenCodePluginHome(home), home)+" (opencode's plugin, which says what it is doing)")
 	}
-	if slices.Contains(m.home().Core.Available(), agents.Copilot) {
+	if slices.Contains(m.dialogOn().Core.Available(), agents.Copilot) {
 		where = append(where, core.TildePath(hooks.CopilotPluginHome(home), home)+" (copilot's plugin, which says what it is doing)")
 	}
-	if slices.Contains(m.home().Core.Available(), agents.Antigravity) {
+	if slices.Contains(m.dialogOn().Core.Available(), agents.Antigravity) {
 		where = append(where, core.TildePath(hooks.AgyHooksHome(home), home)+" (nerdr's hooks for agy, which say what it is doing, beside any others)")
 	}
-	if slices.Contains(m.home().Core.Available(), agents.Grok) {
+	if slices.Contains(m.dialogOn().Core.Available(), agents.Grok) {
 		where = append(where, core.TildePath(hooks.GrokHooksHome(home), home)+" (nerdr's hooks for grok, which say what it is doing)")
 	}
-	if slices.Contains(m.home().Core.Available(), agents.Codex) {
+	if slices.Contains(m.dialogOn().Core.Available(), agents.Codex) {
 		where = append(where, core.TildePath(core.CodexConfig(home), home)+" (trust for nerdr's codex hooks, which say what it is doing)")
 	}
 	if len(where) == 0 {
@@ -278,7 +287,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		}
 	}
 
-	notesSet := m.home().Core.Cfg.DataDir
+	notesSet := m.dialogOn().Core.Cfg.DataDir
 	if notesSet == "" {
 		notesSet = "(the repository's .git folder)"
 	}
@@ -294,12 +303,12 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		dim("    relative, e.g. .nerdr — inside each worktree, for agents in a sandbox"),
 		dim("    absolute, e.g. ~/nerdr-data — one folder, a subfolder per repository"),
 		"",
-		m.keys("enter", "save in "+core.TildePath(m.home().Core.ConfigPath(), home), "tab", "next question", "esc", "ask next time"))
+		m.keys("enter", "save in "+core.TildePath(m.dialogOn().Core.ConfigPath(), home), "tab", "next question", "esc", "ask next time"))
 	if d.saving != "" {
 		lines = append(lines, "", dim("saving…"))
 	}
 	if d.err != "" {
 		lines = append(lines, "", warn(d.err))
 	}
-	return box("Set up nerdr", lines, w)
+	return box(m.onTitle("Set up nerdr"), lines, w)
 }

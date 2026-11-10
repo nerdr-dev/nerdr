@@ -16,7 +16,7 @@ import (
 // askAgent opens the message dialog for the tab working in msg.Dir, with
 // msg.Text written in.
 func (m *Model) askAgent(msg review.AgentMsg) tea.Cmd {
-	t := m.home().Core.TabFor(msg.Dir)
+	t := m.machineOf(m.screenTab).Core.TabFor(msg.Dir)
 	if t == nil {
 		m.toast("no tab works in " + msg.Dir)
 		return nil

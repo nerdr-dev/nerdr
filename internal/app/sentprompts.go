@@ -59,7 +59,7 @@ func (m *Model) openSentOf(t *core.Tab) tea.Cmd {
 	d.reading = true
 	m.sentJobs++
 	d.job = "sent-" + strconv.Itoa(m.sentJobs)
-	return m.do(core.ReadPrompts{Job: d.job, Kind: t.Agent, Session: t.SessionID})
+	return m.doOn(m.machineOf(t), core.ReadPrompts{Job: d.job, Kind: t.Agent, Session: t.SessionID})
 }
 
 // onSent takes the list core read from the agent's log into the dialog,
