@@ -92,9 +92,16 @@ func runClient(start bool, remote string) error {
 		}
 		redial = func() (*attach.Conn, error) { return dialCore(root, false) }
 	}
+	// What the client keeps of its own, where it runs: the servers it
+	// was disconnected from, the tab in front of a server's.
+	key := root
+	if remote != "" {
+		key = remote
+	}
+	kept := state.LoadClient(key)
 	// The servers too, after this machine's core, before the terminal is
 	// the TUI's: ssh may ask for a password for each.
-	servers := dialServers(cfg, remote == "")
+	servers := dialServers(cfg, remote == "", kept.Off)
 
 	old, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -125,8 +132,13 @@ func runClient(start bool, remote string) error {
 	model.SetDial(dialServer)
 	var later []tea.Cmd
 	for _, d := range servers {
-		later = append(later, model.AddServer(d.s, d.conn, d.err))
+		if d.off {
+			later = append(later, model.AddServerOff(d.s))
+		} else {
+			later = append(later, model.AddServer(d.s, d.conn, d.err))
+		}
 	}
+	model.RestoreClient(kept)
 	p = tea.NewProgram(model, opts...)
 	close(ready)
 	router.SetSend(func(m any) { p.Send(m) })
@@ -151,6 +163,9 @@ func runClient(start bool, remote string) error {
 	_, _ = os.Stdout.WriteString(ansi.ResetModeAutoWrap)
 	_, err = p.Run()
 	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap)
+	if serr := state.SaveClient(model.ClientLayout(key)); serr != nil {
+		fmt.Fprintln(os.Stderr, "nerdr: could not keep the layout:", serr)
+	}
 	model.Close()
 	// Gone from the herdr pane it ran in, if any, however it ended: the
 	// core it leaves working is not in that pane.
