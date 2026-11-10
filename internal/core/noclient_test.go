@@ -139,7 +139,7 @@ func (k *heldKeeper) Set(sleep, screen bool) { k.sleep, k.screen = sleep, screen
 func (k *heldKeeper) Err() string            { return "" }
 
 // TestNoClientKeepsTheMachineAwake: keep_awake holds while an agent works with
-// nobody looking, but keep_screen_on keeps no screen on for nobody.
+// nobody looking, and core keeps no screen on: that is a client's.
 func TestNoClientKeepsTheMachineAwake(t *testing.T) {
 	k := &heldKeeper{}
 	old := NewKeeper
@@ -148,8 +148,8 @@ func TestNoClientKeepsTheMachineAwake(t *testing.T) {
 	on := true
 	tb := &Tab{AgentState: Agent{Light: StWorking}}
 	core := &Core{Client: NoClient{}, Tabs: []*Tab{tb}, Cfg: config.Config{KeepAwake: config.KeepBusy, KeepScreenOn: &on}}
-	core.KeepAwake(time.Now(), nil)
-	if !k.sleep || k.screen {
+	core.KeepAwake(time.Now())
+	if !k.sleep || k.screen || !core.KeptAwake {
 		t.Fatalf("with an agent at work and no client: %+v", k)
 	}
 }

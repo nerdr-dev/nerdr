@@ -37,17 +37,12 @@ func (m *Core) Busy() bool {
 	return false
 }
 
-// ScreenMax is how long after the last input the screen is kept on.
-func (m *Core) ScreenMax() time.Duration {
-	return time.Duration(max(m.Cfg.KeepScreenMax, 1)) * time.Minute
-}
-
-// KeepAwake keeps the machine from sleeping, and with keep_screen_on the
-// screen on, while keep_awake asks: while an agent works, or always. The
-// screen stays on only for a while after lastInput, the user's last key or
-// click, asked for only while the screen is to be kept on; nil with no
-// client, which keeps the screen on for nobody.
-func (m *Core) KeepAwake(now time.Time, lastInput func() time.Time) {
+// KeepAwake keeps the machine from sleeping while keep_awake asks: while an
+// agent works, or always. KeptAwake says whether it does, for a client to
+// keep its own screen on by (keep_screen_on, the client's setting): the
+// screen is the user's, where the client runs, which may be another
+// machine.
+func (m *Core) KeepAwake(now time.Time) {
 	if m.Busy() {
 		m.LastBusy = now
 	}
@@ -58,17 +53,14 @@ func (m *Core) KeepAwake(now time.Time, lastInput func() time.Time) {
 	case config.KeepBusy:
 		want = !m.LastBusy.IsZero() && now.Sub(m.LastBusy) < AwakeAfter
 	}
+	m.KeptAwake = want
 	if m.Awake == nil {
 		if !want {
 			return
 		}
 		m.Awake = NewKeeper()
 	}
-	screen := false
-	if IsOn(m.Cfg.KeepScreenOn) && lastInput != nil {
-		screen = now.Sub(lastInput()) < m.ScreenMax()
-	}
-	m.Awake.Set(want, screen)
+	m.Awake.Set(want, false)
 	if err := m.Awake.Err(); err != m.AwakeErr {
 		m.AwakeErr = err
 		if err != "" {

@@ -319,9 +319,9 @@ func (m *Core) DetectAll(now time.Time) Cmd {
 	}
 	cmds = append(cmds, m.Tell(DetectDoneMsg{Now: now}))
 	if !m.HasClient() {
-		// A client does it in its turn at the end, with its user's last
-		// input: see DetectDoneMsg.
-		m.KeepAwake(now, nil)
+		// A client has it done in its turn at the end, keeping its own
+		// screen on as well: see DetectDoneMsg.
+		m.KeepAwake(now)
 	}
 	return Batch(cmds...)
 }

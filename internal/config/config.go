@@ -155,7 +155,8 @@ type Config struct {
 	// never. A locked screen stops no agent; a machine asleep stops all.
 	KeepAwake string `toml:"keep_awake" scope:"core"`
 	// KeepScreenOn keeps the screen from going dark and locking for being
-	// idle as well, when the machine is kept awake.
+	// idle as well, when the machine is kept awake: the screen of the
+	// machine the TUI runs on, which keeps it on itself.
 	KeepScreenOn *bool `toml:"keep_screen_on" scope:"client"`
 	// KeepScreenMax is the most minutes the screen is kept on after the
 	// last key or click in nerdr; then the desktop's own timeout holds

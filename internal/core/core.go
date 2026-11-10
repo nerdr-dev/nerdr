@@ -89,11 +89,13 @@ type Core struct {
 	// issuewatch.go.
 	IssueWatch IssueWatch
 	// Awake keeps the machine awake while keep_awake asks, made the first
-	// time it is wanted; AwakeErr is why it could not, as last told; and
-	// LastBusy when an agent last worked. See KeepAwake.
-	Awake    Keeper `json:"-"`
-	AwakeErr string
-	LastBusy time.Time
+	// time it is wanted; KeptAwake is set while it is asked to; AwakeErr is
+	// why it could not, as last told; and LastBusy when an agent last
+	// worked. See KeepAwake.
+	Awake     Keeper `json:"-"`
+	KeptAwake bool
+	AwakeErr  string
+	LastBusy  time.Time
 	// PRWatch is the watching of your pull requests; see prwatch.go.
 	PRWatch PRWatchState
 	// PRAll is everyone's pull requests, while a client shows them; see

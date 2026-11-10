@@ -89,6 +89,10 @@ type Model struct {
 	router       *input.Router
 
 	started time.Time // when the last input was first asked for: input counts from then
+	// screenKeeper keeps the screen on, made the first time it is wanted;
+	// screenErr is why it could not, as last told. See keepScreen.
+	screenKeeper keeper
+	screenErr    string
 
 	// lastInGroup is the id of the tab last active in each group, so
 	// moving to a group returns to where you were in it.
@@ -750,7 +754,8 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 			}
 		}
 	}
-	m.tellCore(core.KeepAwake{LastInput: m.lastInput(now)})
+	m.tellCore(core.KeepAwake{})
+	m.keepScreen(now)
 	m.reportHerdr()
 	m.flushNotes(m.herdrBefore)
 	return nil
