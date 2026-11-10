@@ -418,28 +418,6 @@ func defaults(c Config) Config {
 	return c
 }
 
-// SaveSetup writes what the first start asked into the config file: where
-// nerdr may install its skills, plugins and hooks, and — when dataDir is
-// not nil — where notes are kept.
-// The lines go at the top, where TOML keeps settings that are not in a
-// [table]; the rest of the file is left as it was.
-func SaveSetup(install string, dataDir *string, enabled ...[]string) error {
-	settings := map[string]string{"install": strconv.Quote(install)}
-	if dataDir != nil {
-		settings["data_dir"] = strconv.Quote(*dataDir)
-	}
-	if len(enabled) > 0 {
-		settings["enabled_skills"] = skillList(enabled[0])
-	}
-	return saveSettings(settings)
-}
-
-// SaveWorktreesDir writes worktrees_dir into the config file, the rest of
-// it left as it was.
-func SaveWorktreesDir(dir string) error {
-	return saveSettings(map[string]string{"worktrees_dir": strconv.Quote(dir)})
-}
-
 // ExpandHome turns a leading "~" of p into the home folder.
 func ExpandHome(p string) string {
 	home, _ := os.UserHomeDir()
@@ -447,12 +425,6 @@ func ExpandHome(p string) string {
 		return filepath.Join(home, strings.TrimPrefix(p, "~"))
 	}
 	return p
-}
-
-// SaveReviewRounds sets rounds in the [review] table, leaving the rest of
-// the file as it was.
-func SaveReviewRounds(n int) error {
-	return SetKey("review", "rounds", strconv.Itoa(n))
 }
 
 // SetKey sets key in table ("" for the keys before any table, "agents.claude"
@@ -556,11 +528,6 @@ func Table(m map[string]string) string {
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
-// saveSettings edits root keys only, retaining tables and unrelated settings.
-func saveSettings(settings map[string]string) error {
-	return editConfig(func(text string) string { return rootSettings(text, settings) })
-}
-
 // editConfig rewrites the config file with edit, as long as what it gives
 // is still a config that reads: read, edited and written with the file to
 // itself (see locked), so that two edits at once both hold.
@@ -594,33 +561,6 @@ func editUnlocked(edit func(string) string) error {
 		return err
 	}
 	return denied.Err(os.Rename(f.Name(), Path()))
-}
-
-// rootSettings puts settings at the top of text, where TOML keeps the keys
-// that are not in a [table], in place of any lines setting them already.
-func rootSettings(text string, settings map[string]string) string {
-	t := nextTable(text)
-	root, tables := text[:t], text[t:]
-	var keys []string
-	for k := range settings {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	for _, k := range keys {
-		spans := keySpans(root, k)
-		if old, ok := renamed[k]; ok {
-			spans = append(spans, keySpans(root, old)...)
-			sort.Slice(spans, func(i, j int) bool { return spans[i][0] < spans[j][0] })
-		}
-		for i := len(spans) - 1; i >= 0; i-- {
-			root = root[:spans[i][0]] + root[spans[i][1]:]
-		}
-	}
-	var block string
-	for _, k := range keys {
-		block += k + " = " + settings[k] + "\n"
-	}
-	return block + root + tables
 }
 
 // nextTable is where the first [table] header in text starts, len(text)
@@ -801,11 +741,6 @@ func (c Config) SkillEnabled(name string) bool {
 		return true
 	}
 	return slices.Contains(c.EnabledSkills, name)
-}
-
-// SaveSkills changes only the selection, preserving the rest of the user's TOML.
-func SaveSkills(names []string) error {
-	return saveSettings(map[string]string{"enabled_skills": skillList(names)})
 }
 
 func skillList(names []string) string {
