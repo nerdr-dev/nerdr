@@ -34,6 +34,13 @@ type Machine struct {
 	// when there is no way to. Away is set while the client is without it.
 	Redial func() (*attach.Conn, error)
 	Away   bool
+	// Err is why the last try to connect again failed, while Away.
+	Err string
+	// Gone is why the client is without the core for good, "" while it
+	// is not: the core ended and did not come back, or another client
+	// took it over. Its tabs are shown greyed, until the user connects to
+	// it again.
+	Gone string
 	// Said is what the client last told the core it shows, and Pending
 	// what the core told the client before the program started.
 	Said    core.ClientState
@@ -62,6 +69,10 @@ type Fleet struct {
 
 // New is a fleet of ms, in that order.
 func New(ms ...*Machine) Fleet { return Fleet{machines: ms} }
+
+// Add puts mc last among the fleet's machines; mc.Name is not one of
+// theirs. The fleet is not locked (Lock), or mc is too.
+func (f *Fleet) Add(mc *Machine) { f.machines = append(f.Machines(), mc) }
 
 // Machines are the fleet's machines, in order.
 func (f *Fleet) Machines() []*Machine {
@@ -204,6 +215,18 @@ func (f *Fleet) Gen() uint64 {
 // it was when the client had one core.
 func (f *Fleet) Bump() { f.Home().Core.Gen++ }
 
+// Live are the machines whose cores the client is with, or will be again
+// by itself: not Gone.
+func (f *Fleet) Live() []*Machine {
+	var out []*Machine
+	for _, mc := range f.Machines() {
+		if mc.Gone == "" {
+			out = append(out, mc)
+		}
+	}
+	return out
+}
+
 // Tabs are every machine's tabs, one machine's after another's.
 func (f *Fleet) Tabs() core.TabList {
 	if ms := f.Machines(); len(ms) == 1 {
@@ -260,20 +283,79 @@ func (f *Fleet) PaneByRef(r core.PaneRef) (*core.Tab, *core.PaneTab) {
 	return nil, nil
 }
 
+// IndexOn is where t is among the tabs of mc, or -1 when it is not there.
+func (f *Fleet) IndexOn(mc *Machine, t *core.Tab) int { return core.TabList(mc.Core.Tabs).Index(t) }
+
 // TabIndex is where t is in Tabs, or -1 when it is not there.
 func (f *Fleet) TabIndex(t *core.Tab) int { return f.Tabs().Index(t) }
 
-// GroupTabs is the indexes into Tabs of the tabs in group g, in order.
-func (f *Fleet) GroupTabs(g string) []int { return f.Tabs().GroupTabs(g) }
+// The tabs are grouped by machine first, then as each machine's core
+// groups them (core.Tab.GroupName): a group of this machine's is called
+// by that name, one of another machine's by the machine's name, a colon,
+// and that name.
 
-// Groups lists the groups that have tabs; see core.TabList.Groups.
-func (f *Fleet) Groups() []string { return f.Tabs().Groups() }
+// Group is the group tab t is in.
+func (f *Fleet) Group(t *core.Tab) string {
+	return groupName(f.ofOrHome(f.Of(t)), t.GroupName())
+}
+
+func groupName(mc *Machine, g string) string {
+	if mc.Name == "" {
+		return g
+	}
+	return mc.Name + ":" + g
+}
+
+// GroupOf is the machine of group g, and the group as its core names it.
+func (f *Fleet) GroupOf(g string) (*Machine, string) {
+	for _, mc := range f.Machines() {
+		if mc.Name != "" && len(g) > len(mc.Name) && g[:len(mc.Name)+1] == mc.Name+":" {
+			return mc, g[len(mc.Name)+1:]
+		}
+	}
+	return f.Home(), g
+}
+
+// GroupTabs is the indexes into Tabs of the tabs in group g, in order.
+func (f *Fleet) GroupTabs(g string) []int {
+	mc, name := f.GroupOf(g)
+	at := 0
+	for _, o := range f.Machines() {
+		if o == mc {
+			idx := core.TabList(o.Core.Tabs).GroupTabs(name)
+			for i := range idx {
+				idx[i] += at
+			}
+			return idx
+		}
+		at += len(o.Core.Tabs)
+	}
+	return nil
+}
+
+// Groups lists the groups that have tabs, a machine's after another's;
+// see core.TabList.Groups.
+func (f *Fleet) Groups() []string {
+	var out []string
+	for _, mc := range f.Machines() {
+		for _, g := range core.TabList(mc.Core.Tabs).Groups() {
+			out = append(out, groupName(mc, g))
+		}
+	}
+	return out
+}
 
 // GroupStatus is the light group g shows; see core.TabList.GroupStatus.
-func (f *Fleet) GroupStatus(g string) core.Status { return f.Tabs().GroupStatus(g) }
+func (f *Fleet) GroupStatus(g string) core.Status {
+	mc, name := f.GroupOf(g)
+	return core.TabList(mc.Core.Tabs).GroupStatus(name)
+}
 
 // GroupCount is how many of group g's tabs are lit st.
-func (f *Fleet) GroupCount(g string, st core.Status) int { return f.Tabs().GroupCount(g, st) }
+func (f *Fleet) GroupCount(g string, st core.Status) int {
+	mc, name := f.GroupOf(g)
+	return core.TabList(mc.Core.Tabs).GroupCount(name, st)
+}
 
 // CountStatus is how many tabs have status s.
 func (f *Fleet) CountStatus(s core.Status) int { return f.Tabs().CountStatus(s) }

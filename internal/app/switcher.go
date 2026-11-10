@@ -36,7 +36,7 @@ func (s *switcher) matches(m *Model) []int {
 	type hit struct{ i, score int }
 	var hits []hit
 	for i, t := range m.fleet.Tabs() {
-		score, ok := fuzzy(q, strings.ToLower(t.Name+" "+t.GroupName()+" "+string(t.Agent)))
+		score, ok := fuzzy(q, strings.ToLower(t.Name+" "+m.fleet.Group(t)+" "+string(t.Agent)))
 		if !ok {
 			continue
 		}
@@ -128,7 +128,7 @@ func (s *switcher) view(m *Model, w, h int) string {
 			break
 		}
 		t := m.fleet.Tabs()[i]
-		line := light(t.Lit()) + " " + t.Name + dim("  "+t.GroupName()+" · "+string(t.Agent)+" · "+t.Lit().Label())
+		line := light(t.Lit()) + " " + t.Name + dim("  "+m.fleet.Group(t)+" · "+string(t.Agent)+" · "+t.Lit().Label())
 		if i == m.Active {
 			line += dim("  (here)")
 		}
@@ -241,10 +241,14 @@ func (m *Model) renameGroup(g, name string) {
 	if !moved {
 		return
 	}
-	m.do(core.RenameGroup{G: g, Name: name})
+	mc, in := m.fleet.GroupOf(g)
+	m.doOn(mc, core.RenameGroup{G: in, Name: name})
 	to := name
 	if to == "" {
 		to = core.MultiGroup
+	}
+	if mc.Name != "" {
+		to = mc.Name + ":" + to
 	}
 	if id, ok := m.lastInGroup[g]; ok && m.lastInGroup[to] == (core.TabRef{}) {
 		m.lastInGroup[to] = id
@@ -273,8 +277,9 @@ func (m *Model) moveTab(delta int) tea.Cmd {
 		j := idx[to]
 		a, b := m.fleet.Ref(m.fleet.Tabs()[i]), m.fleet.Ref(m.fleet.Tabs()[j])
 		m.Active = j
-		l := m.layout()
-		return m.do(core.SwapTabs{A: a, B: b, Layout: &l})
+		mc := m.machineOf(m.fleet.Tabs()[i])
+		l := m.layoutOn(mc)
+		return m.doOn(mc, core.SwapTabs{A: a, B: b, Layout: &l})
 	}
 	return nil
 }

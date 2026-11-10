@@ -368,7 +368,7 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	if i < 0 || m.machineOf(t).Core.ReposHold(t) {
 		return nil
 	}
-	group := t.GroupName()
+	group := m.fleet.Group(t)
 	beside, wasActive, cur := m.splitTab(), i == m.Active, m.Cur()
 	closed := m.do(core.CloseTab{T: m.fleet.Ref(t), Remove: remove, Force: force, BranchHeads: branchHeads})
 	delete(m.panelScreens, t)
@@ -420,9 +420,16 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 
 type quitReadyMsg struct{}
 
-// quit stops the agents and exits, keeping the tabs for next time.
+// quit stops the agents and exits, keeping the tabs for next time: those
+// of the core in the TUI's process, and of every other machine's.
 func (m *Model) quit() tea.Cmd {
 	m.toast("stopping agents…")
+	// The machines' cores in other processes stop theirs.
+	for _, mc := range m.fleet.Live() {
+		if mc.Conn != nil && !mc.Away {
+			m.doOn(mc, core.QuitAll{})
+		}
+	}
 	var panes []*term.Pane
 	m.shutdown.Do(func() { panes = m.stopping() })
 	h := m.Herdr

@@ -242,7 +242,7 @@ func (m *Model) openTabMenu(t *core.Tab, x, y int) tea.Cmd {
 	prev := m.Cur()
 	cmd := m.selectTab(i)
 	items := m.tabItems()
-	if prev != nil && prev != t && m.splitTab() != prev && prev.GroupName() == t.GroupName() {
+	if prev != nil && prev != t && m.splitTab() != prev && m.fleet.Group(prev) == m.fleet.Group(t) {
 		// Beside the tab that was on screen, which is where it goes back to.
 		items = append([]menuItem{{label: "Show beside " + prev.Name,
 			run: func(m *Model) tea.Cmd { return m.splitWith(prev, t) }}}, items...)

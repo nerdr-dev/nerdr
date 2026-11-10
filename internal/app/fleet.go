@@ -26,3 +26,12 @@ func (m *Model) machineOf(t *core.Tab) *fleet.Machine {
 // each machine's copy, and read of Home's. Core's own are each machine's,
 // read of its copy (Core.Cfg).
 func (m *Model) cfg() *config.Config { return &m.home().Core.Cfg }
+
+// tellingOn is the machine whose core told what Tell takes: one in
+// another process says so (told); core in the TUI's process is Home's.
+func (m *Model) tellingOn() *fleet.Machine {
+	if m.telling != nil {
+		return m.telling
+	}
+	return m.fleet.Home()
+}

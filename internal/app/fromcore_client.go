@@ -170,7 +170,7 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 	case core.AnsweredMsg:
 		m.fleet.Bump()
-		if q := m.plugins.asking; q != nil && q.q.ID == ev.ID {
+		if q := m.plugins.asking; q != nil && q.q.ID == ev.ID && q.mc == m.tellingOn() {
 			q.answered(m)
 		}
 	case core.SpinoffAskMsg:

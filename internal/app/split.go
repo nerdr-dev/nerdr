@@ -16,7 +16,7 @@ import (
 // Only tabs of one repository share the screen: going to a tab of another
 // ends the split.
 func (m *Model) splitTab() *core.Tab {
-	if m.split == nil || m.split == m.Cur() || m.split.GroupName() != m.curGroup() {
+	if m.split == nil || m.split == m.Cur() || m.fleet.Group(m.split) != m.curGroup() {
 		return nil
 	}
 	if m.fleet.TabIndex(m.split) < 0 {
@@ -113,7 +113,7 @@ func (m *Model) neighbour(t *core.Tab) *core.Tab {
 	if t == nil {
 		return nil
 	}
-	idx := m.fleet.GroupTabs(t.GroupName())
+	idx := m.fleet.GroupTabs(m.fleet.Group(t))
 	for pos, i := range idx {
 		if m.fleet.Tabs()[i] != t {
 			continue

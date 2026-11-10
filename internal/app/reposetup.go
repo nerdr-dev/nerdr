@@ -44,17 +44,17 @@ func (m *Model) askRepoSetup(q core.Question) {
 		lines = append(lines, "")
 	}
 	lines = append(lines, keyHint("y")+dim(" allows it until it changes · ")+keyHint("n")+dim(" makes the worktree without it"))
-	back := m.dialog
+	back, mc := m.dialog, m.tellingOn()
 	m.dialog = &confirm{
 		title: "Allow " + workspace.RepoConfigFile + "?",
 		lines: lines,
 		yes: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return m.do(core.Answer{ID: q.ID, Answer: core.AnswerAllowed})
+			return m.doOn(mc, core.Answer{ID: q.ID, Answer: core.AnswerAllowed})
 		},
 		no: func(m *Model) tea.Cmd {
 			m.dialog = back
-			return m.do(core.Answer{ID: q.ID, Answer: core.RunDeclined})
+			return m.doOn(mc, core.Answer{ID: q.ID, Answer: core.RunDeclined})
 		},
 	}
 }

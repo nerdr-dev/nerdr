@@ -112,7 +112,7 @@ func (m *Model) groupTab(g string) int {
 // curGroup is the active tab's group.
 func (m *Model) curGroup() string {
 	if t := m.Cur(); t != nil {
-		return t.GroupName()
+		return m.fleet.Group(t)
 	}
 	return ""
 }

@@ -475,6 +475,9 @@ func (m *Model) tabLines(t *core.Tab, w, h int) []string {
 	if t == nil {
 		return framed(m.paneLines(nil, nil, w-2, h-2), w, h, "", m.focus == core.FocusAgent)
 	}
+	if mc := m.machineOf(t); mc != nil && grey(mc) {
+		return m.greyLines(mc, w, h)
+	}
 	var out []string
 	if m.rowShown(t) {
 		out = append(out, m.paneRow(t, w))
