@@ -36,13 +36,8 @@ func parseRemote(arg string) (host, folder string, err error) {
 	if folder == "" {
 		folder = "~"
 	}
-	if host == "" || strings.HasPrefix(host, "-") || strings.ContainsFunc(host, func(r rune) bool {
-		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-@", r))
-	}) {
-		return "", "", fmt.Errorf("not a host: %q", host)
-	}
-	if strings.ContainsAny(folder, "'\"$`\\\n\x00") || strings.HasPrefix(folder, "-") {
-		return "", "", fmt.Errorf("a folder nerdr cannot name over ssh: %q", folder)
+	if err := config.CheckRemote(host, folder); err != nil {
+		return "", "", err
 	}
 	return host, folder, nil
 }
@@ -100,6 +95,11 @@ func dialRemote(host, folder string, again bool) (*attach.Conn, error) {
 // not nil, to ask for a password on: the terminal of a login the TUI
 // shows while it pauses, its own being read by the TUI.
 func dialRemoteTTY(host, folder string, again bool, tty *os.File) (*attach.Conn, error) {
+	// The folder goes into the quoting of two shells: nothing that would
+	// end it, whichever way the host and folder came.
+	if err := config.CheckRemote(host, folder); err != nil {
+		return nil, err
+	}
 	fds, err := syscall.Socketpair(syscall.AF_UNIX, syscall.SOCK_STREAM, 0)
 	if err != nil {
 		return nil, err
@@ -234,7 +234,7 @@ func dialServers(cfg config.Config, servers bool, off []string) []dialedServer {
 			d.err = err
 		} else if slices.Contains(off, s.Name) {
 			d.off = true
-		} else if _, _, err := parseRemote(s.Host() + ":" + s.Dir()); err != nil {
+		} else if err := s.Check(); err != nil {
 			d.err = err
 		} else {
 			fmt.Fprintf(os.Stderr, "nerdr: connecting to %s…\n", s.Name)

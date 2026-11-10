@@ -1,9 +1,13 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/config"
 )
 
 func TestParseRemote(t *testing.T) {
@@ -78,5 +82,24 @@ func TestRemoteFailedSaysWhatToDo(t *testing.T) {
 	}
 	if got := versionMismatch("box", 99, "v9").Error(); !strings.HasSuffix(got, "update nerdr here") {
 		t.Errorf("newer there: %q", got)
+	}
+}
+
+// TestDialServerChecked: a server of the config file or the Machines
+// dialog whose folder would end the shells' quoting never reaches ssh.
+func TestDialServerChecked(t *testing.T) {
+	ran := filepath.Join(t.TempDir(), "ran")
+	ssh := filepath.Join(t.TempDir(), "ssh")
+	if err := os.WriteFile(ssh, []byte("#!/bin/sh\ntouch "+ran+"\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(EnvSSH, ssh)
+	for _, again := range []bool{false, true} {
+		if _, err := dialServer(config.Server{Name: "box", Folder: "x'; touch /tmp/pwned; '"}, again, nil); err == nil {
+			t.Fatal("dialed")
+		}
+	}
+	if _, err := os.Stat(ran); err == nil {
+		t.Fatal("ssh ran")
 	}
 }

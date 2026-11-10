@@ -23,13 +23,21 @@ func (m *Model) panelIssues() bool { return m.reviewOpen && m.review.Issues() }
 func (m *Model) syncIssuePanel() tea.Cmd {
 	m.review.SetIssueNews(len(m.tabOn().Core.IssueWatch.News) > 0)
 	shown := m.panelIssues()
-	entered := shown && !m.issuePanelShown
+	on := m.tabOn()
+	moved := m.issuePanelOn != on
+	entered := shown && (!m.issuePanelShown || moved)
 	m.issuePanelShown = shown
 	if !shown {
 		return nil
 	}
-	if m.issuePanel == nil {
-		m.issuePanel = &issueList{}
+	if m.issuePanel == nil || moved {
+		// Another machine's: nothing of the last one's stays.
+		var keep issueList
+		if old := m.issuePanel; old != nil {
+			keep.all, keep.here = old.all, old.here
+		}
+		m.issuePanel = &keep
+		m.issuePanelOn = on
 	}
 	d := m.issuePanel
 	if entered {

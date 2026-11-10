@@ -51,3 +51,27 @@ func TestServers(t *testing.T) {
 		t.Error("servers is not the client's")
 	}
 }
+
+// TestServerChecked: a server whose host or folder would not go through
+// ssh and the shell there as a plain word is not added, nor connected to.
+func TestServerChecked(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	for _, s := range []Server{
+		{Name: "a", Folder: "it's"},
+		{Name: "b", Folder: "$(rm -rf ~)"},
+		{Name: "c", Folder: "`id`"},
+		{Name: "d", Folder: "-x"},
+		{Name: "e", SSH: "-oProxyCommand=x"},
+		{Name: "f", SSH: "box;id"},
+	} {
+		if s.Check() == nil {
+			t.Errorf("%+v passes", s)
+		}
+		if AddServer(s) == nil {
+			t.Errorf("%+v added", s)
+		}
+	}
+	if err := (Server{Name: "box", SSH: "me@box.lan", Folder: "~/src/my repo"}).Check(); err != nil {
+		t.Error(err)
+	}
+}

@@ -252,6 +252,9 @@ type Model struct {
 	prPanel *prList
 
 	prPanelShown bool
+	// prPanelOn and issuePanelOn are the machines the lists were filled
+	// from: another's tab in front, they are filled afresh from its.
+	prPanelOn, issuePanelOn *fleet.Machine
 	// branchPanel is what F2 shows about the active tab's branches, as the
 	// tab panel does, and branchShown whether F2 showed it at the last
 	// look; see prpanel.go.
@@ -431,7 +434,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	defer m.fleet.Unlock()
 	mc, msg := m.machineMsg(msg)
 	if mc == nil {
-		return m, nil // of a machine no longer the fleet's
+		// Of a machine no longer the fleet's: a connection made for it
+		// is let go of.
+		if back, ok := msg.(coreBackMsg); ok {
+			back.conn.Close("")
+		}
+		return m, nil
 	}
 	msgs := m.panelMessages()
 	if !m.laidOut {
@@ -538,7 +546,7 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		return m.coreGone(mc, msg.Why)
 
 	case coreBackMsg:
-		return m.coreBack(mc, msg.conn)
+		return m.coreBack(mc, msg.conn, msg.try)
 
 	case coreEndedMsg:
 		return m.onCoreEnded(mc, msg)

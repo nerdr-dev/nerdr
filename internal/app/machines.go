@@ -52,6 +52,7 @@ func (m *Model) goneFor(mc *fleet.Machine, why, err string) tea.Cmd {
 		return tea.Quit
 	}
 	mc.Gone = why
+	mc.Tries.Add(1) // a try under way gives up
 	// What the review panel asked of it will not be answered.
 	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
 	m.fleet.Bump()
