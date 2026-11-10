@@ -8,6 +8,7 @@ package fleet
 
 import (
 	"reflect"
+	"slices"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -73,6 +74,12 @@ func New(ms ...*Machine) Fleet { return Fleet{machines: ms} }
 // Add puts mc last among the fleet's machines; mc.Name is not one of
 // theirs. The fleet is not locked (Lock), or mc is too.
 func (f *Fleet) Add(mc *Machine) { f.machines = append(f.Machines(), mc) }
+
+// Remove takes mc out of the fleet: its tabs are no longer shown. What
+// Lock locked of it stays locked.
+func (f *Fleet) Remove(mc *Machine) {
+	f.machines = slices.DeleteFunc(f.Machines(), func(o *Machine) bool { return o == mc })
+}
 
 // Machines are the fleet's machines, in order.
 func (f *Fleet) Machines() []*Machine {

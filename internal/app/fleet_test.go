@@ -1,10 +1,14 @@
 package app
 
 import (
+	"bufio"
+	"bytes"
+	"errors"
 	"os"
 	"os/exec"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -485,4 +489,151 @@ func TestFleetDialogFollowsTheActiveTab(t *testing.T) {
 			t.Fatalf("closed: %T, on %q", m.dialog, m.dialogOn().Name)
 		}
 	})
+}
+
+// TestFleetServerUnreachableAtStart: a server that could not be reached
+// as the TUI started is shown grey, saying why; one that answers later,
+// as the user connects again, is shown with its tabs.
+func TestFleetServerUnreachableAtStart(t *testing.T) {
+	m, _, _, told := remoteTUI(t, "sh", "-c", `echo here-ready; sleep 30`)
+	_, _, dial := boxCore(t, "sh", "-c", `echo box-ready; sleep 30`)
+	s := config.Server{Name: "box"}
+	if cmd := m.AddServer(s, nil, errors.New("ssh: connect to host box: Connection refused")); cmd != nil {
+		t.Fatal("a command for a server not reached")
+	}
+	var mc *fleet.Machine
+	locked(m, func() { mc = m.fleet.Named("box") })
+	if mc == nil || mc.Gone == "" || mc.Conn != nil {
+		t.Fatalf("box: %+v", mc)
+	}
+	pump(t, m, told, "box grey", func(v string) bool { return strings.Contains(v, "box ✕") || strings.Contains(v, "here-ready") })
+	locked(m, func() {
+		if cmd := m.doOn(mc, core.ScanRepos{}); cmd != nil {
+			t.Error("a request done on a server never connected to")
+		}
+	})
+
+	conn, err := dial()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, cmd := m.Update(serverDialedMsg{s: s, conn: conn})
+	if cmd != nil {
+		m.Update(cmd())
+	}
+	if mc.Gone != "" || mc.Away || mc.Conn == nil {
+		t.Fatalf("box after connecting: gone %q, away %v", mc.Gone, mc.Away)
+	}
+	goTo(m, 1)
+	pump(t, m, told, "box's tab", func(v string) bool { return strings.Contains(v, "box-ready") })
+}
+
+// TestFleetLoginGoesToSsh: while a login runs, what is typed goes to
+// ssh's own terminal, and what it writes there is shown.
+func TestFleetLoginGoesToSsh(t *testing.T) {
+	var sink func([]byte)
+	r := routerFunc(func(f func([]byte)) { sink = f })
+	var typed string
+	l := &loginExec{s: config.Server{Name: "box"}, router: r,
+		dial: func(s config.Server, again bool, tty *os.File) (*attach.Conn, error) {
+			if again || tty == nil {
+				return nil, errors.New("no terminal to ask on")
+			}
+			_, _ = tty.WriteString("box's password: ")
+			go sink([]byte("secret\r"))
+			line, err := bufio.NewReader(tty).ReadString('\n')
+			typed = strings.TrimSpace(line)
+			return nil, err
+		}}
+	var out syncBuffer
+	l.SetStdout(&out)
+	if err := l.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if typed != "secret" {
+		t.Fatalf("ssh read %q", typed)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for !strings.Contains(out.String(), "box's password:") && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if !strings.Contains(out.String(), "box's password:") {
+		t.Fatalf("shown: %q", out.String())
+	}
+	if sink != nil {
+		t.Error("what is typed still goes to ssh's terminal")
+	}
+}
+
+// routerFunc is an input router for loginExec.
+type routerFunc func(func([]byte))
+
+func (r routerFunc) Passthrough(f func([]byte)) { r(f) }
+
+// syncBuffer is a bytes.Buffer written from one goroutine, read from
+// another.
+type syncBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.b.String()
+}
+
+// TestFleetMachinesDialog: the Machines dialog lists both machines, d
+// disconnects box, its agents working on, and x takes it out of the TUI
+// and of [[servers]].
+func TestFleetMachinesDialog(t *testing.T) {
+	m, _, box, _, told := twoMachines(t)
+	if err := config.AddServer(config.Server{Name: "box", SSH: "box.lan"}); err != nil {
+		t.Fatal(err)
+	}
+	locked(m, func() { m.cfg().Servers = []config.Server{{Name: "box", SSH: "box.lan"}} })
+	locked(m, func() { m.openMachines() })
+	v := pump(t, m, told, "the machines", func(v string) bool { return strings.Contains(v, "Machines") })
+	if !strings.Contains(v, "this machine") || !strings.Contains(v, "box") {
+		t.Fatalf("listed:\n%s", v)
+	}
+	key := func(k string) {
+		_, cmd := m.Update(keyMsg(k))
+		if cmd != nil {
+			m.Update(cmd())
+		}
+	}
+	key("down")
+	key("d")
+	var mc *fleet.Machine
+	locked(m, func() { mc = m.fleet.Named("box") })
+	if mc.Gone == "" {
+		t.Fatal("box not disconnected")
+	}
+	pump(t, m, told, "box disconnected", func(v string) bool { return strings.Contains(v, "disconnected") })
+
+	key("x")
+	key("y")
+	locked(m, func() {
+		if m.fleet.Named("box") != nil || len(m.fleet.Tabs()) != 1 {
+			t.Fatalf("box still shown: %d tabs", len(m.fleet.Tabs()))
+		}
+	})
+	c, err := config.Load()
+	if err != nil || len(c.Servers) != 0 {
+		t.Fatalf("servers %+v, %v", c.Servers, err)
+	}
+	box.Mu.Lock()
+	n := len(box.Tabs)
+	box.Mu.Unlock()
+	if n != 1 {
+		t.Fatalf("box's core has %d tabs", n)
+	}
+	pump(t, m, told, "this machine's tab", func(v string) bool { return strings.Contains(v, "here-ready") })
 }

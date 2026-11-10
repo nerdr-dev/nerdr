@@ -246,7 +246,7 @@ func prefixCommand(k string) bool {
 	switch k {
 	case "c", "C", "x", "tab", "o", "<", ",", ">", ".",
 		"b", "pgup", "s", "q", "?", ":", "t",
-		"m", "M", "l", "w", "n", "f", " ", "r", "h", "p", "g", "u", "/", "j":
+		"m", "M", "l", "w", "n", "f", " ", "r", "h", "p", "g", "u", "/", "j", "k":
 		return true
 	}
 	return core.IsGroup(k)
@@ -597,6 +597,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "u":
 		return m.openUsage()
+	case "k":
+		return m.openMachines()
 	case "/":
 		return m.openSearch()
 	case "z d":

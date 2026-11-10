@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -58,5 +59,30 @@ func TestBridgeRoot(t *testing.T) {
 	}
 	if _, err := bridgeRoot("~/nope"); err == nil {
 		t.Fatal("a folder that is not there was taken")
+	}
+}
+
+// TestLogindScope: a core goes in a scope of its own only where logind
+// ends a user's programs as they log out, and is refused, saying how to
+// let it be, where the user does not linger.
+func TestLogindScope(t *testing.T) {
+	for _, c := range []struct {
+		l       logind
+		scope   bool
+		refused bool
+	}{
+		{logind{}, false, false},
+		{logind{Known: true}, false, false},
+		{logind{Known: true, Lingers: true}, false, false},
+		{logind{Known: true, Kills: true, Lingers: true}, true, false},
+		{logind{Known: true, Kills: true}, false, true},
+	} {
+		scope, err := logindScope(c.l)
+		if scope != c.scope || (err != nil) != c.refused {
+			t.Errorf("%+v: scope %v, %v", c.l, scope, err)
+		}
+		if err != nil && !strings.Contains(err.Error(), "loginctl enable-linger") {
+			t.Errorf("%+v: %v", c.l, err)
+		}
 	}
 }

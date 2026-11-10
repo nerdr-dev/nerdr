@@ -92,6 +92,9 @@ func runClient(start bool, remote string) error {
 		}
 		redial = func() (*attach.Conn, error) { return dialCore(root, false) }
 	}
+	// The servers too, after this machine's core, before the terminal is
+	// the TUI's: ssh may ask for a password for each.
+	servers := dialServers(cfg, remote == "")
 
 	old, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
@@ -119,6 +122,11 @@ func runClient(start bool, remote string) error {
 	}
 	model.SetRedial(redial)
 	model.SetCoreHost(host)
+	model.SetDial(dialServer)
+	var later []tea.Cmd
+	for _, d := range servers {
+		later = append(later, model.AddServer(d.s, d.conn, d.err))
+	}
 	p = tea.NewProgram(model, opts...)
 	close(ready)
 	router.SetSend(func(m any) { p.Send(m) })
@@ -126,6 +134,11 @@ func runClient(start bool, remote string) error {
 	defer close(stop)
 	model.StartLocal(p.Send, stop)
 	go router.Run()
+	for _, cmd := range later {
+		if cmd != nil {
+			go func() { p.Send(cmd()) }()
+		}
+	}
 
 	// The window closing closes the client; the agents work on.
 	sig := make(chan os.Signal, 1)
@@ -280,7 +293,12 @@ func quitting(err error) bool {
 // startCore starts the holder and the core of root, with env, in a session
 // of their own with no terminal: they live on when the client and its
 // terminal go, an ssh session too. What they write goes to the core's log.
-func startCore(root string, env []string) error {
+func startCore(root string, env []string) error { return startCoreIn(root, env, false) }
+
+// startCoreIn is startCore, the holder in a systemd scope of its own when
+// scope is set: out of the session that starts it, which logind may end
+// (see logindScope).
+func startCoreIn(root string, env []string, scope bool) error {
 	bin, err := spawn.Bin()
 	if err != nil {
 		return err
@@ -303,7 +321,11 @@ func startCore(root string, env []string) error {
 	}
 	defer null.Close()
 	fmt.Fprintf(logf, "--- %s: nerdr %s starts its core in %s\n", time.Now().Format(time.RFC3339), version(), root)
-	cmd := exec.Command(bin, "holder", "--", bin, "core")
+	argv := []string{bin, "holder", "--", bin, "core"}
+	if scope {
+		argv = append([]string{"systemd-run", "--user", "--scope", "--quiet", "--collect", "--"}, argv...)
+	}
+	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Dir = root
 	cmd.Env = append(slices.Clone(env), core.EnvHolder+"=1")
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = null, logf, logf

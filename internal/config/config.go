@@ -145,6 +145,10 @@ type Config struct {
 	// FPS is the most times a second the screen is drawn, from 1 to 120.
 	// Fewer take less CPU, more show typing sooner. Read only at start.
 	FPS int `toml:"fps" scope:"client"`
+	// Servers are the other machines whose cores the TUI shows beside
+	// this one's, each reached over ssh: [[servers]], in the order their
+	// tabs are shown, after this machine's.
+	Servers []Server `toml:"servers" scope:"client"`
 	// GitHubRefresh is how many seconds apart the pull request of the tab
 	// on screen is asked about; nerdr's other questions to GitHub are
 	// spaced the same share longer or shorter than at the default.

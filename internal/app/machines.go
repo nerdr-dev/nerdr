@@ -98,6 +98,10 @@ func (m *Model) greyKey(mc *fleet.Machine, k string) tea.Cmd {
 // connectAgain has the TUI connect to the core of mc again, once it was
 // gone for good: as when the connection has just closed.
 func (m *Model) connectAgain(mc *fleet.Machine) tea.Cmd {
+	if s, ok := m.server(mc); ok && m.dial != nil {
+		// Asked for by the user: ssh may ask for a password.
+		return m.login(s)
+	}
 	mc.Gone, mc.Away = "", true
 	m.fleet.Bump()
 	m.toast(m.goneToast(mc))
@@ -157,6 +161,24 @@ func (m *Model) greyLines(mc *fleet.Machine, w, h int) []string {
 // it is not this one: grey, with a cross, while its core is out of reach.
 func (m *Model) machineBadge(g string) string {
 	mc, _ := m.fleet.GroupOf(g)
+	return m.badgeOf(mc)
+}
+
+// emptyMachines are the badges of the named machines with no tabs, for
+// the bar: else nothing would show they are there, or grey.
+func (m *Model) emptyMachines() string {
+	var out string
+	for _, mc := range m.fleet.Machines() {
+		if mc.Name == "" || len(mc.Core.Tabs) > 0 {
+			continue
+		}
+		out += m.onClick(m.badgeOf(mc), (*Model).openMachines)
+	}
+	return out
+}
+
+// badgeOf is machine mc's badge, "" for this one.
+func (m *Model) badgeOf(mc *fleet.Machine) string {
 	if mc.Name == "" {
 		return ""
 	}
