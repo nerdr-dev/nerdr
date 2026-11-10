@@ -201,7 +201,7 @@ func (q MoveLook) Do(m *Core) Cmd {
 	if t == nil {
 		return nil
 	}
-	if err := m.canMove(t); err != "" {
+	if err := m.CanMove(t); err != "" {
 		return m.Tell(MoveLookMsg{Job: q.Job, Err: err})
 	}
 	wts := slices.Clone(t.Worktrees)
@@ -235,8 +235,8 @@ func (q MoveLook) Do(m *Core) Cmd {
 	})
 }
 
-// canMove is why t cannot be moved now, "" when it can.
-func (m *Core) canMove(t *Tab) string {
+// CanMove is why t cannot be moved now, "" when it can.
+func (m *Core) CanMove(t *Tab) string {
 	switch {
 	case t.PartOf != nil || t.ReviewOf != nil:
 		return "only a tab's own agent moves with it"
@@ -263,13 +263,15 @@ type MoveStart struct {
 }
 
 // MovePackedMsg is the work of tab T packed for move Job: Size bytes,
-// whose SHA-256 is Sum. Err is why it was not.
+// whose SHA-256 is Sum, with Heads the commit of each worktree's branch
+// it carries, by path. Err is why it was not.
 type MovePackedMsg struct {
-	Job  string
-	T    TabRef
-	Size int64
-	Sum  string
-	Err  string
+	Job   string
+	T     TabRef
+	Size  int64
+	Sum   string
+	Heads map[string]string
+	Err   string
 }
 
 func (q MoveStart) Do(m *Core) Cmd {
@@ -277,7 +279,7 @@ func (q MoveStart) Do(m *Core) Cmd {
 	if t == nil {
 		return m.Tell(MovePackedMsg{Job: q.Job, T: q.T, Err: "the tab is gone"})
 	}
-	if err := m.canMove(t); err != "" || !validJob.MatchString(q.Job) {
+	if err := m.CanMove(t); err != "" || !validJob.MatchString(q.Job) {
 		if err == "" {
 			err = "no move " + q.Job
 		}
@@ -388,9 +390,12 @@ func (m *Core) movePack(t *Tab, summary string) Cmd {
 			text = ""
 		}
 		size, sum, err := packWork(pdir, wts, have, &man, text)
-		msg := MovePackedMsg{Job: job, T: ref, Size: size, Sum: sum}
+		msg := MovePackedMsg{Job: job, T: ref, Size: size, Sum: sum, Heads: map[string]string{}}
 		if err != nil {
 			msg.Err = err.Error()
+		}
+		for i, p := range man.Parts {
+			msg.Heads[wts[i].Path] = p.Head
 		}
 		return msg
 	})
@@ -665,23 +670,32 @@ type moveLanded struct {
 }
 
 func (q MoveLand) Do(m *Core) Cmd {
-	fail := func(err string) Cmd { return m.Tell(MoveLandedMsg{Job: q.Job, Err: err}) }
 	dir := m.movesIn[q.Job]
-	switch {
-	case dir == "":
-		return fail("nothing of the move came")
-	case !slices.Contains(m.Available(), q.Kind):
-		return fail(string(q.Kind) + " is not on PATH there")
-	case q.Sandboxed && !m.SandboxedKind(q.Kind) && !q.Weaker:
-		return fail(string(q.Kind) + " is not set to run in a sandbox there, and the tab's agent was in one")
-	case !validID.MatchString(q.ID) || m.tabByID(q.ID) != nil:
-		return fail("no tab id " + q.ID)
+	if why := m.landRefusal(q); why != "" {
+		return m.Tell(MoveLandedMsg{Job: q.Job, Err: why})
 	}
 	wtRoot := m.WtRoot
 	return func() Event {
 		ev := landMove(q, dir, wtRoot)
 		return ev
 	}
+}
+
+// landRefusal is why move q cannot land here, "" when it can: the
+// agent is not here, or would be in less of a sandbox than the tab's was
+// without the user's yes to it.
+func (m *Core) landRefusal(q MoveLand) string {
+	switch {
+	case m.movesIn[q.Job] == "":
+		return "nothing of the move came"
+	case !slices.Contains(m.Available(), q.Kind):
+		return string(q.Kind) + " is not on PATH there"
+	case q.Sandboxed && !m.SandboxedKind(q.Kind) && !q.Weaker:
+		return string(q.Kind) + " is not set to run in a sandbox there, and the tab's agent was in one"
+	case !validID.MatchString(q.ID) || m.tabByID(q.ID) != nil:
+		return "no tab id " + q.ID
+	}
+	return ""
 }
 
 var validID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,64}$`)
@@ -731,6 +745,10 @@ func landMove(q MoveLand, dir, wtRoot string) moveLanded {
 	folder := workspace.DirFor(wtRoot, man.Parts[0].Branch, repos)
 	if folder != q.Dir {
 		ev.err = errors.New("the folder for the worktrees is not the one checked")
+		return ev
+	}
+	if _, err := os.Lstat(folder); err == nil {
+		ev.err = errors.New(folder + " already exists there")
 		return ev
 	}
 	var made []workspace.Worktree

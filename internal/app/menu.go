@@ -212,6 +212,7 @@ func (m *Model) tabItems() []menuItem {
 		menuItem{label: "Task for the agent…", key: "m", run: cmd("m")},
 		menuItem{label: "Tasks for the agent", key: m.screenMenuKey(3), run: cmd("e 3")},
 		menuItem{label: "Switch agent…", key: "a s", run: cmd("a s")},
+		menuItem{label: "Move to another machine…", key: "a m", run: cmd("a m"), off: m.commandOff("a m")},
 		menuItem{label: "Restart " + string(t.Agent), key: "a r", run: cmd("a r")},
 		menuItem{label: "Panes beside the agent"},
 		menuItem{label: "Terminal", key: "t t", run: cmd("t t")},

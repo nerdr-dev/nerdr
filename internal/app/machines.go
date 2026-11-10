@@ -53,12 +53,13 @@ func (m *Model) goneFor(mc *fleet.Machine, why, err string) tea.Cmd {
 	}
 	mc.Gone = why
 	mc.Tries.Add(1) // a try under way gives up
+	moved := m.moveMachineGone(mc)
 	// What the review panel asked of it will not be answered.
 	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
 	m.fleet.Bump()
 	m.syncInput()
 	m.toast(machineLabel(mc) + ": " + why)
-	return nil
+	return moved
 }
 
 // goneToast says the core of mc is out of reach, for what was asked of it.

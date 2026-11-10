@@ -94,6 +94,7 @@ func KeyGroups() map[string]CommandGroup {
 			{Key: "n", Label: "Note for yourself", Run: "a n", Desc: "a note for the tab, shown in the panel above the agent"},
 			{Key: "h", Label: "What you sent the agent", Run: "a h", Desc: "what you sent the agent, the latest first, each in full when picked; a click on last: above the agent too"},
 			{Key: "s", Label: "Switch agent", Run: "a s", Desc: "carry on the work of the agent with the keyboard with another kind (claude, opencode, …)"},
+			{Key: "m", Label: "Move tab to another machine", Run: "a m", Desc: "the branch, its changes not committed and the conversation go to a server (or back), and the tab carries on there"},
 			{Key: "r", Label: "Restart agent", Run: "a r", Desc: "restart the agent, continuing its conversation"},
 			{Key: "c", Label: "Code review", Run: "a c", Desc: "another agent reviews this agent's work, in a pane beside it (as t r)"},
 			{Key: "x", Label: "Stop code review", Run: "a x", Rare: true, Desc: "stop the code review of this agent's work"},

@@ -42,11 +42,12 @@ const (
 	// Chunk is how much of a pack goes in one request: the frames between
 	// a client and a core are at most 16 MB, and a chunk goes as base64.
 	Chunk = 1 << 20
-	// Limit is the largest pack a move takes.
-	Limit = 100 << 20
 	// listMax is how many new or ignored files a Look names.
 	listMax = 50
 )
+
+// Limit is the largest pack a move takes; a variable for tests.
+var Limit int64 = 100 << 20
 
 // Look is what moving the worktree at a path would carry and leave.
 type Look struct {
