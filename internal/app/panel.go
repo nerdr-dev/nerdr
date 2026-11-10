@@ -89,7 +89,10 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 	if n := strings.TrimSpace(t.Note); n != "" {
 		rows = append(rows, core.PanelRow{Label: "note:", Text: wrapRows(n, textW, 1)[0]})
 	}
-	if w := t.Handoff; w != nil {
+	if w := t.Handoff; w != nil && w.Move {
+		rows = append(rows, core.PanelRow{Label: "move:", Text: ansi.Truncate("waiting for "+string(t.Agent)+"'s handoff before the move · "+
+			m.pk("a m")+" moves now or cancels", textW, "…"), Dim: true})
+	} else if w != nil {
 		rows = append(rows, core.PanelRow{Label: "swap:", Text: ansi.Truncate("waiting for "+string(t.Agent)+"'s handoff to "+string(w.To)+" · "+
 			m.pk("a s")+" switches now or cancels", textW, "…"), Dim: true})
 	}
