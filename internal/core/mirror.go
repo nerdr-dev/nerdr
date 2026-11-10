@@ -267,6 +267,7 @@ func (r *Mirror) applyTab(id string, body []byte) error {
 	if err := json.Unmarshal(body, &p); err != nil {
 		return err
 	}
+	renameRefs(reflect.ValueOf(&p).Elem(), "", r.C.ID)
 	if len(p.Agents) == 0 || p.Agents[0].ID != id {
 		return fmt.Errorf("tab part %s does not start with the tab", id)
 	}
@@ -319,6 +320,11 @@ func (r *Mirror) applyCore(body []byte) error {
 	if err := json.Unmarshal(body, &p); err != nil {
 		return err
 	}
+	// The copy's ID is the client's name for the core, which is ""
+	// to itself; see CoreConn.
+	fresh.ID = r.C.ID
+	renameRefs(reflect.ValueOf(fresh).Elem(), "", r.C.ID)
+	renameRefs(reflect.ValueOf(&p.Programs).Elem(), "", r.C.ID)
 	copyWire(reflect.ValueOf(r.C).Elem(), reflect.ValueOf(fresh).Elem())
 	if p.Config != nil {
 		r.C.Cfg = config.Merge(*p.Config, r.C.Cfg)
