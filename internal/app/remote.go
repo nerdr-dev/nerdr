@@ -335,6 +335,7 @@ func (m *Model) coreGone(mc *fleet.Machine, why string) tea.Cmd {
 	if m.closing || mc.Gone != "" {
 		return nil
 	}
+
 	if why == attach.ByeTakenOver || why == attach.ByeHolderGone {
 		return m.goneFor(mc, why, why)
 	}

@@ -565,6 +565,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return fromCore(m.movePane(1))
 	case "a s":
 		return m.openSwitchAgent()
+	case "a m":
+		return m.openMove()
 	case "a x":
 		return m.stopReview()
 	case "m":

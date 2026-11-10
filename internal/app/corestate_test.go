@@ -55,7 +55,7 @@ func init() {
 		*Core.KnownGroupNames *Core.GroupCount *Core.CutOff
 		*Core.CountStatus *Core.Program *Core.InactiveToast *Core.MsgRefOf
 		*Core.PRNewsByKey *Core.IssueNewsByKey *Core.Runs *Tab.HasProgram
-		*Core.ClosedGroups *Core.Available *Core.ConfigPath
+		*Core.ClosedGroups *Core.Available *Core.ConfigPath *Core.CanMove
 
 		*Core.SkillStates *Core.SkillLookOf *Core.SkillOn *Core.AgentNote
 		*Loop.Run

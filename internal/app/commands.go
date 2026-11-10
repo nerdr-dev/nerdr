@@ -12,6 +12,10 @@ func (m *Model) commandOff(run string) string {
 		}
 	case "i r":
 		return m.machineOf(m.Cur()).Core.ReposOff(m.Cur())
+	case "a m":
+		if len(m.fleet.Machines()) < 2 {
+			return "connect to another machine first (k)"
+		}
 	case "z v":
 		if m.splitTab() == nil && m.neighbour(m.Cur()) == nil {
 			return "two tabs need a second tab in this repository"
