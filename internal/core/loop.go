@@ -358,6 +358,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.onRepoPRs(ev), true
 	case setupProgress:
 		return m.onSetupProgress(ev), true
+	case moveLanded:
+		return m.onMoveLanded(ev), true
 	case repoMadeMsg:
 		return m.onRepoMade(ev), true
 	case RepoScanMsg:

@@ -119,6 +119,10 @@ type Core struct {
 	// convIndex is the agents' conversations read for the search; see
 	// convsearch.go.
 	convIndex *agents.Index
+	// movesOut are the moves of tabs away from here, and movesIn the
+	// folders the packs of moves to here are put in, by job; see move.go.
+	movesOut map[string]*moveOut
+	movesIn  map[string]string
 	// Plugins are the user's plugins as last looked for, for a client's
 	// copy; see LookForPlugins.
 	Plugins PluginsLook

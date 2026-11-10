@@ -12,7 +12,7 @@ import (
 // askHandoff asks t's agent for a handoff, and switches t to k once it has
 // sent it, or once it is clear it will not (checkHandoff).
 func (m *Core) AskHandoff(t *Tab, k agents.Kind) {
-	if !m.Live(t) || k == t.Agent || t.Handoff != nil {
+	if !m.Live(t) || k == t.Agent || t.Handoff != nil || t.Moving != nil {
 		return
 	}
 	w := &HandoffWait{To: k, Asked: state.Message{Text: handoff.Request(t.Agent, k), Auto: true}, AskedAt: time.Now()}
@@ -57,6 +57,9 @@ func (m *Core) CheckHandoff(t *Tab, now time.Time) Cmd {
 		t.QueuePaused,
 		now.Sub(w.AskedAt) > HandoffGiveUp,
 		w.Sent && !t.AwaitWork && idle && t.Pane.Quiet() >= HandoffGrace:
+		if w.Move {
+			return m.movePack(t, "")
+		}
 		return m.SwitchAgent(t, w.To, "")
 	}
 	return nil
@@ -69,7 +72,7 @@ func (m *Core) CheckHandoff(t *Tab, now time.Time) Cmd {
 // wrote, as its first message, or with none, told to read the old agent's
 // conversation.
 func (m *Core) SwitchAgent(t *Tab, k agents.Kind, summary string) Cmd {
-	if !m.Live(t) || k == t.Agent || m.ReposHold(t) {
+	if !m.Live(t) || k == t.Agent || m.ReposHold(t) || t.Moving != nil {
 		return nil
 	}
 	if w := t.Handoff; w != nil {
@@ -149,6 +152,9 @@ const (
 // HandoffWait is a switch waiting for the old agent's handoff.
 type HandoffWait struct {
 	To agents.Kind
+	// Move is set when the handoff is for moving the tab to another
+	// machine, not for a switch: see move.go.
+	Move bool
 	// Asked is the request, in the tab's messages until it is typed in;
 	// sent is set once it has been.
 	Asked   state.Message
@@ -195,6 +201,9 @@ func (m *Core) OnHandoff(r hooks.Report) Cmd {
 		return nil
 	}
 	if w := t.Handoff; w != nil {
+		if w.Move {
+			return m.movePack(t, r.Handoff)
+		}
 		return m.SwitchAgent(t, w.To, r.Handoff)
 	}
 	t.HandoffReady = &HandoffNote{From: t.Agent, Text: r.Handoff, At: time.Now()}

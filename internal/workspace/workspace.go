@@ -466,6 +466,12 @@ func dirName(branch string, repos []Repo) string {
 	return fmt.Sprintf("%s-and-%d-more-%x", name, len(repos)-1, sum[:3])
 }
 
+// DirFor is the folder MakePlan puts the worktrees on branch of repos
+// in, under wtRoot.
+func DirFor(wtRoot, branch string, repos []Repo) string {
+	return filepath.Join(wtRoot, dirName(branch, repos))
+}
+
 // Describe says, per repository, what Execute will do.
 func (p Plan) Describe() []string {
 	var out []string
