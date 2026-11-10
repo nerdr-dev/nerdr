@@ -4,6 +4,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/move"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -77,6 +78,8 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 		m.WtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
 	}
 	m.Scan.NewRepoDir = workspace.NewRepoDir(m.Root, m.Cfg.RepoDirs)
+	// What a move left when its core ended in the middle of it.
+	go move.Sweep(6 * time.Hour)
 	for _, st := range sess.Tabs {
 		t := &Tab{AgentState: Agent{Tab: st, Light: StStarting}}
 		TrustWorktrees(t)
