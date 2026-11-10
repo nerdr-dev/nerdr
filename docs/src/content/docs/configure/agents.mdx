@@ -127,7 +127,9 @@ setting only stops nerdr from being a way out. From inside the sandbox,
 check that the agent cannot reach other ways out, such as the D-Bus
 session bus, a VS Code or browser socket in `/run/user/$UID`, services
 on localhost, or your SSH agent: the agent gets `SSH_AUTH_SOCK` from your
-environment, and only the sandbox decides whether it can use it.
+environment, and only the sandbox decides whether it can use it. With
+[servers](../../use/remote/), that matters more: see
+[below](#with-servers-ssh-keys-and-the-ssh-agent).
 
 nerdr runs Git in the agent's worktree outside the sandbox, so the
 sandbox must keep the agent from the files of the main checkout's `.git`
@@ -322,7 +324,9 @@ with nerdr's own variables and the agent's `env` added. One started with
 no nerdr connected gets the environment of the last one that connected to
 this core; before any has, as when the core has just started again, the
 one the core started with. A program keeps the environment it started
-with. What the agent can reach of it is up to its sandbox.
+with. What the agent can reach of it is up to its sandbox. On a server,
+nerdr on your laptop sends no environment: the programs there get the
+server's [login environment](../../use/remote/#the-agents-environment-on-a-server).
 
 When a `sandboxed` agent starts, nerdr first checks from inside its
 sandbox: it runs its own executable through the agent's `command`, in
@@ -367,3 +371,26 @@ The check catches a sandbox set up wrong.
 It does not stop an agent that gets out some other way, and it says
 nothing about D-Bus, sockets in `/run/user/$UID`, services on localhost,
 your SSH agent or other credentials.
+
+## With servers: SSH keys and the SSH agent
+
+When nerdr shows [agents on other machines](../../use/remote/), it
+reaches them with `ssh box nerdr bridge …`. Anything on your laptop that
+can use your SSH keys can do the same, and drive the agents on that
+server as you, approvals included. So a sandbox on your laptop must also
+deny:
+
+- `~/.ssh`, your keys and `~/.ssh/config` with them, and
+- your SSH agent: the socket `SSH_AUTH_SOCK` names, which the agent
+  inherits from your environment.
+
+nerdr does not check this: its sandbox check does not look at `~/.ssh`
+or the SSH agent. An agent outside a sandbox can reach your servers
+anyway, as you can. nerdr started by an agent in a tab does not connect
+to other machines, to catch mistakes, but that is no guard.
+
+On the server, the rules above apply as they are. nerdr's core there
+refuses a bridge started by one of its own agents, and the bridge leaves
+`SSH_AUTH_SOCK` out of the agents' environment, so an SSH agent you
+forward to the server does not reach them. nerdr itself connects with
+`ForwardAgent=no`.

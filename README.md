@@ -41,6 +41,10 @@ question.*
 - **Close it, and the agents work on.** Closing nerdr, or losing the SSH
   connection, leaves the agents running; start nerdr again to see them.
   Quit stops them. [Remote →](https://nerdr.app/use/remote/)
+- **Agents on your servers, beside your own.** nerdr connects over SSH to
+  nerdr on other machines and shows their tabs with yours. A tab can move
+  between machines with its branch, its uncommitted changes and its
+  conversation. [Other machines →](https://nerdr.app/use/remote/#several-machines-in-one-nerdr)
 - **Keyboard and mouse.** Every command has a key after `ctrl+q`, and
   most can be clicked.
   [Keys →](https://nerdr.app/configure/keyboard/)
@@ -85,7 +89,7 @@ Everything lives at [nerdr.app](https://nerdr.app/):
 [configuration](https://nerdr.app/configure/configuration/) ·
 [keyboard](https://nerdr.app/configure/keyboard/) ·
 [plugins](https://nerdr.app/configure/plugins/) ·
-[remote machines](https://nerdr.app/use/remote/) ·
+[other machines](https://nerdr.app/use/remote/) ·
 [security](https://nerdr.app/reference/security/)
 
 ## Inspired by herdr
