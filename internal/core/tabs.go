@@ -681,6 +681,10 @@ type Tab struct {
 	Handoff      *HandoffWait
 	HandoffReady *HandoffNote
 
+	// Moving is set while the tab is being moved to another machine;
+	// see move.go.
+	Moving *MoveWait
+
 	// ReviewAsk is set when the agent has said its work is ready for a
 	// review, to what it wants looked at most and who it asked to review
 	// it, until the review starts; see onReady.

@@ -184,6 +184,8 @@ type clientGone struct{ rc *RemoteClient }
 func (q clientGone) Do(m *Core) Cmd {
 	if m.Client == q.rc {
 		m.Screens = nil
+		// No one carries the moves on; the tabs stay here.
+		return m.movesGone()
 	}
 	return nil
 }

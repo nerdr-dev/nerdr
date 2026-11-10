@@ -38,8 +38,23 @@ EOF
 If the command fails, report its error and stop; do not find or build another nerdr or bypass the connection. Do not commit, push or change anything for it, and do nothing more once it is sent: nerdr then stops you and starts %s.`, from, to, to)
 }
 
+// MoveRequest is the message that asks the agent from to write a handoff
+// for the agent that carries the tab's work on on another machine.
+func MoveRequest(from agents.Kind) string {
+	return fmt.Sprintf(`nerdr: the user is moving this tab to another machine, where a new agent (perhaps not %s) carries the work on with none of your conversation. The branch and every change not committed go with it, new files too; files git ignores (.env, node_modules, build output) do not, and nor do terminals, dev servers or anything else running. Write a handoff for it using these complete instructions (no installed skill is needed): everything it needs to carry on the work — the goal and why the user wants it; what has been decided and why, including options rejected; what you found out (files, causes, constraints, pitfalls); what is done and what is left, and how to check it; what it will have to set up again there (ignored files, services); anything the user asked you to keep in mind. Write it in the language the user works with you in, including their written variety. Usually a page or two is enough; keep it under 64 KB. Point to files instead of copying their contents. Send it with
+
+"${NERDR_BIN:-nerdr}" handoff - <<'EOF'
+…the handoff…
+EOF
+
+If the command fails, report its error and stop; do not find or build another nerdr or bypass the connection. Do not commit, push or change anything for it, and do nothing more once it is sent: nerdr then stops you and moves the tab.`, from)
+}
+
 // Info is what the new agent is told about.
 type Info struct {
+	// Machine is, for a tab moved from another machine, that machine's
+	// name as the user's nerdr knows it; "" for a switch in place.
+	Machine  string
 	From, To agents.Kind
 	// Summary is the handoff the old agent wrote; empty when it wrote
 	// none.
@@ -57,10 +72,15 @@ type Info struct {
 // Prompt is the first message for the agent taking over.
 func Prompt(in Info) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "nerdr: the user switched this tab's agent from %s to you (%s).", in.From, in.To)
-	if in.Resumed {
+	switch {
+	case in.Machine != "":
+		fmt.Fprintf(&b, "nerdr: the user moved this tab here from another machine (%s), where %s worked on it. The branch and the changes not committed came with it; files git ignores (.env, node_modules, build output) did not, and nothing that ran there runs here.", in.Machine, in.From)
+		fmt.Fprintf(&b, " You have none of %s's conversation, so what it did is below.", in.From)
+	case in.Resumed:
+		fmt.Fprintf(&b, "nerdr: the user switched this tab's agent from %s to you (%s).", in.From, in.To)
 		fmt.Fprintf(&b, " You are back in your own earlier conversation in this tab; since you were stopped, %s has worked here, and what it did is below.", in.From)
-	} else {
+	default:
+		fmt.Fprintf(&b, "nerdr: the user switched this tab's agent from %s to you (%s).", in.From, in.To)
 		fmt.Fprintf(&b, " You have none of %s's conversation, so what it did is below.", in.From)
 	}
 	if in.Summary != "" {
