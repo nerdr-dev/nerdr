@@ -72,7 +72,11 @@ func moveSetup(t *testing.T, m *Model, told chan any, here, box *core.Core, sand
 	tb.Worktrees = []workspace.Worktree{{Repo: src, Path: wt, Branch: "feat", Origin: origin}}
 	tb.Note = "remember the migration"
 	tb.Messages = []state.Message{{Text: "then write the docs"}}
-	here.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Sandboxed: sandboxedHere}}
+	// An agent that only echoes here too: one started again after a move
+	// given up must not be a real codex, nor fail for want of one.
+	hereSpec := echo
+	hereSpec.Sandboxed = sandboxedHere
+	here.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: hereSpec}
 	here.Mu.Unlock()
 	box.Mu.Lock()
 	box.Scan.Repos = []workspace.Repo{{Name: "proj", Path: boxRepo}}
