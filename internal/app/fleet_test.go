@@ -2,13 +2,11 @@ package app
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"os"
 	"os/exec"
 	"slices"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -528,65 +526,58 @@ func TestFleetServerUnreachableAtStart(t *testing.T) {
 	pump(t, m, told, "box's tab", func(v string) bool { return strings.Contains(v, "box-ready") })
 }
 
-// TestFleetLoginGoesToSsh: while a login runs, what is typed goes to
-// ssh's own terminal, and what it writes there is shown.
+// TestFleetLoginGoesToSsh: while ssh logs in to a server, the TUI shows
+// what it writes on its terminal, what is typed goes there, and the
+// dialog goes once it is done.
 func TestFleetLoginGoesToSsh(t *testing.T) {
-	var sink func([]byte)
-	r := routerFunc(func(f func([]byte)) { sink = f })
+	m, _, _, told := remoteTUI(t, "sh", "-c", `echo here-ready; sleep 30`)
 	var typed string
-	l := &loginExec{s: config.Server{Name: "box"}, router: r,
-		dial: func(s config.Server, again bool, tty *os.File) (*attach.Conn, error) {
+	locked(m, func() {
+		m.SetDial(func(s config.Server, again bool, tty *os.File) (*attach.Conn, error) {
 			if again || tty == nil {
 				return nil, errors.New("no terminal to ask on")
 			}
 			_, _ = tty.WriteString("box's password: ")
-			go sink([]byte("secret\r"))
 			line, err := bufio.NewReader(tty).ReadString('\n')
 			typed = strings.TrimSpace(line)
+			if err == nil {
+				err = errors.New("Permission denied")
+			}
 			return nil, err
-		}}
-	var out syncBuffer
-	l.SetStdout(&out)
-	if err := l.Run(); err != nil {
-		t.Fatal(err)
+		})
+	})
+	var cmd tea.Cmd
+	var d *loginDialog
+	locked(m, func() {
+		cmd = m.login(config.Server{Name: "box"})
+		d, _ = m.dialog.(*loginDialog)
+	})
+	if d == nil || cmd == nil {
+		t.Fatalf("dialog %T", m.dialog)
 	}
+	dialed := make(chan tea.Msg, 1)
+	go func() { dialed <- d.dialCmd()() }()
+	for !strings.Contains(strings.Join(d.text(5), "\n"), "box's password:") {
+		m.Update(d.readCmd()())
+	}
+	v := pump(t, m, told, "the login", func(v string) bool { return strings.Contains(v, "Connecting to box") })
+	if !strings.Contains(v, "box's password:") {
+		t.Fatalf("shown:\n%s", v)
+	}
+	d.write([]byte("secret\r"))
+	msg := <-dialed
 	if typed != "secret" {
 		t.Fatalf("ssh read %q", typed)
 	}
-	deadline := time.Now().Add(2 * time.Second)
-	for !strings.Contains(out.String(), "box's password:") && time.Now().Before(deadline) {
-		time.Sleep(10 * time.Millisecond)
-	}
-	if !strings.Contains(out.String(), "box's password:") {
-		t.Fatalf("shown: %q", out.String())
-	}
-	if sink != nil {
-		t.Error("what is typed still goes to ssh's terminal")
-	}
-}
-
-// routerFunc is an input router for loginExec.
-type routerFunc func(func([]byte))
-
-func (r routerFunc) Passthrough(f func([]byte)) { r(f) }
-
-// syncBuffer is a bytes.Buffer written from one goroutine, read from
-// another.
-type syncBuffer struct {
-	mu sync.Mutex
-	b  bytes.Buffer
-}
-
-func (s *syncBuffer) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.Write(p)
-}
-
-func (s *syncBuffer) String() string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.b.String()
+	m.Update(msg)
+	locked(m, func() {
+		if m.dialog != nil || m.loggingIn != nil {
+			t.Fatalf("dialog %T after", m.dialog)
+		}
+		if mc := m.fleet.Named("box"); mc == nil || !strings.Contains(mc.Gone, "Permission denied") {
+			t.Fatalf("box: %+v", mc)
+		}
+	})
 }
 
 // TestFleetMachinesDialog: the Machines dialog lists both machines, d
@@ -636,4 +627,26 @@ func TestFleetMachinesDialog(t *testing.T) {
 		t.Fatalf("box's core has %d tabs", n)
 	}
 	pump(t, m, told, "this machine's tab", func(v string) bool { return strings.Contains(v, "here-ready") })
+}
+
+// TestFleetClientLayout: the TUI keeps box's tab in front, and box once
+// disconnected from, and lays itself out so again.
+func TestFleetClientLayout(t *testing.T) {
+	m, _, _, _, _ := twoMachines(t)
+	goTo(m, 1)
+	c := m.ClientLayout("/w")
+	if c.Key != "/w" || c.Active != (state.MachineTab{Machine: "box", Tab: "1"}) || len(c.Off) != 0 {
+		t.Fatalf("kept %+v", c)
+	}
+	goTo(m, 0)
+	m.RestoreClient(c)
+	locked(m, func() {
+		if cur := m.Cur(); cur == nil || m.machineOf(cur).Name != "box" {
+			t.Fatalf("in front: %+v", cur)
+		}
+		m.disconnect(m.fleet.Named("box"))
+	})
+	if c := m.ClientLayout("/w"); len(c.Off) != 1 || c.Off[0] != "box" {
+		t.Fatalf("kept %+v", c)
+	}
 }

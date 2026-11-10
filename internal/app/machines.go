@@ -81,6 +81,13 @@ func (m *Model) greyKey(mc *fleet.Machine, k string) tea.Cmd {
 		return nil
 	}
 	switch {
+	case mc.Gone == "" && mc.Err != "":
+		// Tried again and again without a password: the user logs in.
+		if s, ok := m.server(mc); ok && m.dial != nil {
+			return m.login(s)
+		}
+		m.toast(m.goneToast(mc))
+		return nil
 	case mc.Gone == "":
 		m.toast(m.goneToast(mc))
 		return nil
@@ -153,6 +160,9 @@ func (m *Model) greyLines(mc *fleet.Machine, w, h int) []string {
 			why = mc.Err + " — trying again"
 		}
 		lines = append(lines, "  "+dim(why))
+		if _, ok := m.server(mc); ok && mc.Err != "" {
+			lines = append(lines, "", "  "+m.keys("r", "log in"))
+		}
 	}
 	return framed(fitLines(lines, w-2, h-2), w, h, name, m.focus == core.FocusAgent)
 }

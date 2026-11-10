@@ -6,6 +6,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -209,13 +210,16 @@ type dialedServer struct {
 	s    config.Server
 	conn *attach.Conn
 	err  error
+	// off is set for a server the user disconnected from, not connected
+	// to as the TUI starts.
+	off bool
 }
 
 // dialServers connects to the core of each server of cfg's, in turn, as
 // the TUI starts: when servers is set, and nerdr is not a program's in a
 // tab, which goes to no other machine. One that cannot be reached is shown
-// grey, saying why.
-func dialServers(cfg config.Config, servers bool) []dialedServer {
+// grey, saying why; one of off, disconnected from, is not tried.
+func dialServers(cfg config.Config, servers bool, off []string) []dialedServer {
 	if !servers || remoteAllowed() != nil {
 		return nil
 	}
@@ -228,6 +232,8 @@ func dialServers(cfg config.Config, servers bool) []dialedServer {
 		}
 		if err := config.CheckServerName(s.Name, before); err != nil {
 			d.err = err
+		} else if slices.Contains(off, s.Name) {
+			d.off = true
 		} else if _, _, err := parseRemote(s.Host() + ":" + s.Dir()); err != nil {
 			d.err = err
 		} else {

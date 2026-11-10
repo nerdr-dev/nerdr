@@ -73,6 +73,9 @@ type Model struct {
 	tellFn func(any)
 	// dial connects to a server's core over ssh; see SetDial.
 	dial Dialer
+	// loggingIn is the login to a server shown, while ssh runs; see
+	// login.
+	loggingIn *loginDialog
 	// goneErr is why the TUI ended, its core gone; see GoneErr.
 	goneErr string
 	// closing is set once the TUI is ending of its own will: the
@@ -445,6 +448,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.dialog == nil {
 		m.chosen = nil // a dialog opened next starts on the active tab's
 	}
+	if d := m.loggingIn; d != nil && m.dialog != d {
+		// Given up: ssh ends with its terminal, and says so.
+		d.close()
+		m.loggingIn = nil
+	}
 	m.askReviewDone()
 	if m.barRows() != m.laidRows || m.sideW() != m.laidSide {
 		// The repository row came or went: a second repository's first
@@ -537,6 +545,13 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 
 	case serverDialedMsg:
 		return m.onServerDialed(msg)
+
+	case loginOutputMsg:
+		m.fleet.Bump()
+		if msg.done || m.loggingIn != msg.d {
+			return nil
+		}
+		return msg.d.readCmd()
 
 	case core.ChangedMsg, core.RedrawMsg:
 		return nil // only to draw what core has done
@@ -719,6 +734,11 @@ func (m *Model) syncInput() {
 		}
 	}
 	t := m.Cur()
+	if d, ok := m.dialog.(*loginDialog); ok && !m.prefix {
+		// What is typed goes to ssh, logging in.
+		m.router.Passthrough(d.write)
+		return
+	}
 	if m.home().Core.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil || grey(m.machineOf(t)) {
 		m.router.Passthrough(nil)
 		return

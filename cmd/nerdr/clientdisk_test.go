@@ -14,8 +14,9 @@ import (
 // holds client.go, which starts the client, to that: no use of a function
 // that reads or writes the disk or looks on the PATH but what
 // testdata/clientdisk.txt still lists, which only gets shorter: the
-// client's own config and terminal, and starting a core on this machine
-// when none runs.
+// client's own config and terminal, its own file of what it shows across
+// the machines (state.Client), and starting a core on this machine when
+// none runs.
 
 var updateClientDisk = flag.Bool("update-clientdisk", false, "write testdata/clientdisk.txt anew")
 

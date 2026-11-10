@@ -2,19 +2,20 @@ package app
 
 import (
 	"errors"
-	"io"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/creack/pty"
-	xterm "golang.org/x/term"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/fleet"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // The servers are the machines of [[servers]], each reached over ssh: the
@@ -125,19 +126,29 @@ func deleteServer(ss []config.Server, name string) []config.Server {
 	return out
 }
 
-// login connects to server s, pausing the TUI while ssh may ask for a
-// password: ssh gets a terminal of its own, which what is typed goes to
-// and whose output is shown in place of the TUI's. Then serverDialedMsg
-// tells what came of it.
+// login connects to server s while the TUI shows ssh logging in: ssh gets
+// a terminal of its own, a pty, whose output a dialog shows, and what is
+// typed goes there (see syncInput), so ssh may ask for a password. The
+// TUI keeps the terminal: bubbletea, reading it through the input router,
+// would not read it again once let go. Then serverDialedMsg tells what
+// came of it; the prefix and esc gives up.
 func (m *Model) login(s config.Server) tea.Cmd {
-	if m.dial == nil || m.router == nil {
+	if m.dial == nil {
 		m.toast("nerdr cannot reach other machines here")
 		return nil
 	}
-	l := &loginExec{s: s, dial: m.dial, router: m.router}
-	return tea.Exec(l, func(err error) tea.Msg {
-		return serverDialedMsg{s: s, conn: l.conn, err: err}
-	})
+	d, err := newLoginDialog(s, m.dial, m.width-10, m.height-10)
+	if err != nil {
+		m.toast(s.Name + ": " + err.Error())
+		return nil
+	}
+	if old := m.loggingIn; old != nil {
+		old.close()
+	}
+	m.loggingIn = d
+	m.dialog = d
+	m.syncInput()
+	return tea.Batch(d.dialCmd(), d.readCmd())
 }
 
 // serverDialedMsg is what came of connecting to server s from the TUI.
@@ -145,49 +156,121 @@ type serverDialedMsg struct {
 	s    config.Server
 	conn *attach.Conn
 	err  error
+	// login is the dialog it was shown in, if any.
+	login *loginDialog
 }
 
-// loginExec is a login to a server, for tea.Exec: the TUI has let go of
-// the terminal while it runs. The input router still reads the terminal
-// and passes all of it to ssh's own.
-type loginExec struct {
-	s      config.Server
-	dial   Dialer
-	router interface{ Passthrough(func([]byte)) }
-	out    io.Writer
-	conn   *attach.Conn
+// loginDialog shows ssh logging in to a server: what it writes on its
+// terminal, the pty, to which what is typed goes.
+type loginDialog struct {
+	s    config.Server
+	dial Dialer
+	ptmx *os.File
+	tty  *os.File
+
+	mu     sync.Mutex
+	out    []byte
+	closed bool
 }
 
-func (l *loginExec) SetStdin(io.Reader)    {}
-func (l *loginExec) SetStdout(w io.Writer) { l.out = w }
-func (l *loginExec) SetStderr(io.Writer)   {}
-
-func (l *loginExec) Run() error {
-	out := l.out
-	if out == nil {
-		out = os.Stdout
-	}
+func newLoginDialog(s config.Server, dial Dialer, w, h int) (*loginDialog, error) {
 	ptmx, tty, err := pty.Open()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	defer ptmx.Close()
-	if w, h, err := xterm.GetSize(int(os.Stdout.Fd())); err == nil {
-		_ = pty.Setsize(ptmx, &pty.Winsize{Cols: uint16(w), Rows: uint16(h)})
+	_ = pty.Setsize(ptmx, &pty.Winsize{Cols: uint16(max(w, 40)), Rows: uint16(max(h, 5))})
+	return &loginDialog{s: s, dial: dial, ptmx: ptmx, tty: tty}, nil
+}
+
+// dialCmd connects, ssh asking on the dialog's terminal; what came of it
+// is a serverDialedMsg.
+func (d *loginDialog) dialCmd() tea.Cmd {
+	return func() tea.Msg {
+		conn, err := d.dial(d.s, false, d.tty)
+		_ = d.tty.Close()
+		return serverDialedMsg{s: d.s, conn: conn, err: err, login: d}
 	}
-	_, _ = io.WriteString(out, "\x1b[2J\x1b[H"+"nerdr: connecting to "+l.s.Name+" ("+l.s.Host()+")…\r\n")
-	l.router.Passthrough(func(b []byte) { _, _ = ptmx.Write(b) })
-	defer l.router.Passthrough(nil)
-	go func() { _, _ = io.Copy(out, ptmx) }()
-	conn, err := l.dial(l.s, false, tty)
-	tty.Close()
-	l.conn = conn
-	return err
+}
+
+// loginOutputMsg is that ssh wrote on the dialog's terminal; done once it
+// is closed.
+type loginOutputMsg struct {
+	d    *loginDialog
+	done bool
+}
+
+// readCmd reads what ssh writes next on its terminal.
+func (d *loginDialog) readCmd() tea.Cmd {
+	return func() tea.Msg {
+		buf := make([]byte, 4096)
+		n, err := d.ptmx.Read(buf)
+		d.mu.Lock()
+		d.out = append(d.out, buf[:n]...)
+		if len(d.out) > 16<<10 {
+			d.out = d.out[len(d.out)-16<<10:]
+		}
+		d.mu.Unlock()
+		return loginOutputMsg{d: d, done: err != nil}
+	}
+}
+
+// write sends what is typed to ssh's terminal.
+func (d *loginDialog) write(b []byte) { _, _ = d.ptmx.Write(b) }
+
+// close ends the dialog's terminal: ssh, still asking, ends with it.
+func (d *loginDialog) close() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if !d.closed {
+		d.closed = true
+		_ = d.ptmx.Close()
+	}
+}
+
+// text is the last n lines ssh wrote, as a terminal would show them.
+func (d *loginDialog) text(n int) []string {
+	d.mu.Lock()
+	out := ansi.Strip(string(d.out))
+	d.mu.Unlock()
+	var lines []string
+	for _, l := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
+		if i := strings.LastIndexByte(l, '\r'); i >= 0 {
+			l = l[i+1:]
+		}
+		lines = append(lines, l)
+	}
+	return lines[max(len(lines)-n, 0):]
+}
+
+func (d *loginDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
+	// What is typed goes to ssh by the router; a key here slipped past it
+	// while it switched over.
+	if b := keyBytes(msg); len(b) > 0 {
+		d.write(b)
+	}
+	return nil
+}
+
+func (d *loginDialog) view(m *Model, w, h int) string {
+	lines := []string{dim("ssh " + d.s.Host() + ", for " + d.s.Dir() + ":"), ""}
+	lines = append(lines, d.text(max(min(h-12, 12), 3))...)
+	lines = append(lines, "", dim("What you type goes to ssh. ")+m.pk("esc")+dim(" gives up."))
+	return box("Connecting to "+d.s.Name, lines, w)
 }
 
 // onServerDialed takes what came of connecting to a server from the TUI:
 // the machine there is shown, connected or grey, a new one last.
 func (m *Model) onServerDialed(msg serverDialedMsg) tea.Cmd {
+	if d := msg.login; d != nil {
+		d.close()
+		if m.dialog == d {
+			m.dialog = nil
+		}
+		if m.loggingIn == d {
+			m.loggingIn = nil
+		}
+		m.syncInput()
+	}
 	mc := m.fleet.Named(msg.s.Name)
 	if mc == nil {
 		mc = m.serverMachine(msg.s)
@@ -380,4 +463,60 @@ func (d *machinesDialog) view(m *Model, w, _ int) string {
 	}
 	lines = append(lines, "", m.keys("enter", "go to", "a", "add a server", "r", "connect again", "d", "disconnect", "x", "remove", "esc", "close"))
 	return box("Machines", lines, w)
+}
+
+// ClientLayout is what the TUI keeps of its own as it ends, for the next
+// start (see state.Client): the servers disconnected from, and the tab
+// in front and beside it when they are a server's.
+func (m *Model) ClientLayout(key string) state.Client {
+	m.fleet.Lock()
+	defer m.fleet.Unlock()
+	c := state.Client{Key: key}
+	for _, mc := range m.fleet.Machines() {
+		if mc.Name != "" && mc.Gone == errDisconnected.Error() {
+			c.Off = append(c.Off, mc.Name)
+		}
+	}
+	at := func(t *core.Tab) state.MachineTab {
+		if t == nil {
+			return state.MachineTab{}
+		}
+		if mc := m.machineOf(t); mc.Name != "" {
+			return state.MachineTab{Machine: mc.Name, Tab: t.ID}
+		}
+		return state.MachineTab{}
+	}
+	c.Active = at(m.Cur())
+	if t := m.splitTab(); t != nil && t.ReviewOf == nil {
+		c.Split, c.SplitLeft = at(t), m.splitLeft
+	}
+	return c
+}
+
+// AddServerOff has the TUI show server s grey, disconnected from as the
+// last client left it: not connected to until the user says.
+func (m *Model) AddServerOff(s config.Server) tea.Cmd {
+	return m.AddServer(s, nil, errDisconnected)
+}
+
+// RestoreClient lays the TUI out as c keeps it, once the servers' tabs
+// are there: the tab in front and the one beside it, when they are a
+// server's and still there. The fleet is not locked.
+func (m *Model) RestoreClient(c state.Client) {
+	m.fleet.Lock()
+	defer m.fleet.Unlock()
+	find := func(at state.MachineTab) *core.Tab {
+		if at.Machine == "" {
+			return nil
+		}
+		return m.fleet.ByRef(core.TabRef{Core: at.Machine, Tab: at.Tab})
+	}
+	if t := find(c.Active); t != nil {
+		m.Active = m.fleet.TabIndex(t)
+		m.entered = t
+	}
+	if t := find(c.Split); t != nil && t != m.Cur() && m.fleet.Group(t) == m.curGroup() {
+		m.split, m.splitLeft = t, c.SplitLeft
+		m.reviewOpen = false
+	}
 }

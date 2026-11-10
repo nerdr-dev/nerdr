@@ -15,4 +15,6 @@ client.go: os.OpenFile 1
 client.go: os.Rename 1
 client.go: os.Stat 1
 client.go: state.Dir 1
+client.go: state.LoadClient 1
 client.go: state.Lock 1
+client.go: state.SaveClient 1
