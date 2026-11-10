@@ -344,17 +344,25 @@ func Land(repo, wt string, p Part, bundle string) error {
 		if _, err := run(repo, nil, "bundle", "verify", "--quiet", bundle); err != nil {
 			return fmt.Errorf("the bundle does not fit this repository: %w", err)
 		}
-		specs := []string{"refs/heads/" + p.Branch + ":" + tmp + "/head"}
-		if p.Wip != "" {
-			heads, err := run(repo, nil, "bundle", "list-heads", bundle)
-			if err != nil {
-				return err
+		// Only what the bundle has: a branch with nothing the target
+		// lacks is left out of it, though what is not committed is in.
+		heads, err := run(repo, nil, "bundle", "list-heads", bundle)
+		if err != nil {
+			return err
+		}
+		var specs []string
+		for _, l := range strings.Split(heads, "\n") {
+			f := strings.Fields(l)
+			switch {
+			case len(f) != 2:
+			case f[1] == "refs/heads/"+p.Branch && f[0] == p.Head:
+				specs = append(specs, f[1]+":"+tmp+"/head")
+			case p.Wip != "" && f[0] == p.Wip && strings.HasPrefix(f[1], "refs/nerdr-move/"):
+				specs = append(specs, f[1]+":"+tmp+"/wip")
 			}
-			for _, l := range strings.Split(heads, "\n") {
-				if f := strings.Fields(l); len(f) == 2 && f[0] == p.Wip && strings.HasPrefix(f[1], "refs/nerdr-move/") {
-					specs = append(specs, f[1]+":"+tmp+"/wip")
-				}
-			}
+		}
+		if len(specs) == 0 {
+			return errors.New("the bundle has nothing of " + p.Branch)
 		}
 		args := append([]string{"fetch", "--quiet", "--no-tags", "--no-write-fetch-head", bundle}, specs...)
 		if _, err := run(repo, nil, args...); err != nil {
