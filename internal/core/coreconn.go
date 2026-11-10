@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"sync"
 	"time"
 
@@ -12,7 +13,10 @@ import (
 
 // CoreConn is a client's connection to a core in another process: it keeps
 // the copy of core's state (a Mirror into C), the copies of the screens
-// (Screens), and sends core requests. What core sends waits until the
+// (Screens), and sends core requests. The copy's ID is the name the client
+// gives the core, which keeps "" itself: what crosses the connection names
+// the core's tabs and panes by the one on the client's side and by the
+// other on core's. What core sends waits until the
 // client takes it in (Take), or until a request it waits for is done (Run),
 // both with C.Mu held: the copy changes only then.
 type CoreConn struct {
@@ -66,7 +70,7 @@ func (cc *CoreConn) Reconnect(conn *attach.Conn) {
 	gen := cc.gen
 	cc.conn, cc.inbox, cc.closed = conn, nil, false
 	cc.mu.Unlock()
-	cc.Screens = newScreenClient(conn, cc.tell, func(b []byte) { cc.got(gen, conn, b) })
+	cc.Screens = newScreenClient(conn, cc.C.ID, cc.tell, func(b []byte) { cc.got(gen, conn, b) })
 }
 
 // got takes a message of core's over conn into the inbox; nil is the
@@ -107,7 +111,7 @@ func (cc *CoreConn) Take() []Event {
 // own process would see it. What core told the client is returned, in
 // order. C.Mu is held.
 func (cc *CoreConn) Run(r Request) ([]Event, error) {
-	b, err := EncodeRequest(r)
+	b, err := cc.encode(r)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +148,7 @@ func (cc *CoreConn) Run(r Request) ([]Event, error) {
 // what the client shows, and what it asks from a goroutine of its own. It
 // reports false when r could not go.
 func (cc *CoreConn) Send(r Request) bool {
-	b, err := EncodeRequest(r)
+	b, err := cc.encode(r)
 	if err != nil {
 		Debugf("core: %v", err)
 		return false
@@ -153,6 +157,16 @@ func (cc *CoreConn) Send(r Request) bool {
 	conn := cc.conn // Reconnect replaces it
 	cc.mu.Unlock()
 	return conn.Send("", append([]byte{wireRequest}, b...))
+}
+
+// encode is r as it goes to core: the tabs and panes it names, the copy's
+// by the copy's ID, are core's own, by "".
+func (cc *CoreConn) encode(r Request) ([]byte, error) {
+	r, err := renamedRequest(r, cc.C.ID, "")
+	if err != nil {
+		return nil, err
+	}
+	return EncodeRequest(r)
 }
 
 // takeUntil takes in the inbox, and reports whether the request of id is
@@ -186,6 +200,12 @@ func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 			if err != nil {
 				Debugf("core: %v", err)
 				continue
+			}
+			if cc.C.ID != "" {
+				v := reflect.New(reflect.TypeOf(ev)).Elem()
+				v.Set(reflect.ValueOf(ev))
+				renameRefs(v, "", cc.C.ID)
+				ev = v.Interface()
 			}
 			evs = append(evs, ev)
 		case wireDone:

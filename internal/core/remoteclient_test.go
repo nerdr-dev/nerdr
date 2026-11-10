@@ -14,6 +14,12 @@ import (
 // with a client over a pair of connections keeping a copy of it.
 func remoteCore(t *testing.T, c *Core) (*CoreConn, chan any) {
 	t.Helper()
+	return remoteCoreAs(t, c, "")
+}
+
+// remoteCoreAs is remoteCore, the client naming the core id.
+func remoteCoreAs(t *testing.T, c *Core, id string) (*CoreConn, chan any) {
+	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	a, b, err := attach.Pair()
 	if err != nil {
@@ -43,7 +49,7 @@ func remoteCore(t *testing.T, c *Core) (*CoreConn, chan any) {
 	c.AttachClient(a, func(ev RequestEv) { l.Post(ev) })
 	c.Mu.Unlock()
 	told := make(chan any, 64)
-	cc := Connect(b, &Core{}, func(msg any) {
+	cc := Connect(b, &Core{ID: id}, func(msg any) {
 		select {
 		case told <- msg:
 		default:
@@ -124,6 +130,73 @@ func TestRemoteClient(t *testing.T) {
 		t.Error("a request done with the connection closed")
 	}
 	cc.C.Mu.Unlock()
+}
+
+// TestCopyNamesCoreByItsID: a client that names a core "box" has the
+// core's tabs, and what core tells of them, named so in its copy; what it
+// asks of them by that name is done by core, which names them "" still.
+func TestCopyNamesCoreByItsID(t *testing.T) {
+	tb := &Tab{}
+	tb.ID, tb.Name = "a", "parser"
+	c := &Core{Tabs: []*Tab{tb}, Asking: []*Question{{ID: 1, A: TabRef{Tab: "a"}}}}
+	cc, told := remoteCoreAs(t, c, "box")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		cc.C.Mu.Lock()
+		cc.Take()
+		n := len(cc.C.Tabs)
+		cc.C.Mu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the copy never got the tab")
+		}
+		select {
+		case <-told:
+		case <-time.After(50 * time.Millisecond):
+		}
+	}
+	cc.C.Mu.Lock()
+	defer cc.C.Mu.Unlock()
+	ref := TabRef{Core: "box", Tab: "a"}
+	if cc.C.ID != "box" || cc.C.Ref(cc.C.Tabs[0]) != ref || cc.C.ByRef(ref) != cc.C.Tabs[0] {
+		t.Fatalf("the copy, %q, names its tab %+v", cc.C.ID, cc.C.Ref(cc.C.Tabs[0]))
+	}
+	if len(cc.C.Asking) != 1 || cc.C.Asking[0].A != ref {
+		t.Fatalf("the copy asks %+v", *cc.C.Asking[0])
+	}
+	if _, err := cc.Run(RenameTab{T: ref, Name: "lexer"}); err != nil || cc.C.Tabs[0].Name != "lexer" {
+		t.Fatalf("renamed: %q, %v", cc.C.Tabs[0].Name, err)
+	}
+	pr := cc.C.PaneRef(cc.C.Tabs[0].OwnPane())
+	if pr.Core != "box" {
+		t.Fatalf("the pane is %+v", pr)
+	}
+	if _, err := cc.Run(ClientSays{State: ClientState{Front: ref, Shown: []TabRef{ref}, Sizes: []PaneSize{{T: ref, P: pr, W: 1, H: 1}}}}); err != nil {
+		t.Fatal(err)
+	}
+	c.Mu.Lock()
+	front := c.Client.Front()
+	c.Tell(StartedMsg{A: c.Ref(tb)})
+	c.Mu.Unlock()
+	if front != (TabRef{Tab: "a"}) {
+		t.Errorf("core has the front tab as %+v", front)
+	}
+	// What core tells the client of its tab comes named "box".
+	evs, err := cc.Run(RenameTab{T: ref, Name: "parser"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, ev := range evs {
+		if s, ok := ev.(StartedMsg); ok {
+			if s.A != ref {
+				t.Fatalf("told %+v", s)
+			}
+			return
+		}
+	}
+	t.Fatalf("told %#v", evs)
 }
 
 // TestStartWhenSized: a core of its own starts the agents restored once a

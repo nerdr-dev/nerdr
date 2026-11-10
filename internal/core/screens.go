@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"reflect"
 	"slices"
 	"strconv"
 	"sync"
@@ -412,7 +413,9 @@ func (s *ScreenServer) answer(a askWire) {
 // those drawn are the ones the core is told to send (see Shown), and what
 // the user does in them is sent as requests.
 type ScreenClient struct {
-	conn  *attach.Conn
+	conn *attach.Conn
+	// id is the core's among the client's, as the copy's ID; see CoreConn.
+	id    string
 	tell  func(any)
 	other func([]byte)
 
@@ -428,14 +431,15 @@ type ScreenClient struct {
 // client ScreensMsg when one has changed, by tell, from a goroutine of its
 // own: tell must not wait for the client to take it.
 func NewScreenClient(conn *attach.Conn, tell func(any)) *ScreenClient {
-	return newScreenClient(conn, tell, nil)
+	return newScreenClient(conn, "", tell, nil)
 }
 
 // newScreenClient is NewScreenClient, giving other a message of another
 // kind, and nil once the connection has closed.
-func newScreenClient(conn *attach.Conn, tell func(any), other func([]byte)) *ScreenClient {
+func newScreenClient(conn *attach.Conn, id string, tell func(any), other func([]byte)) *ScreenClient {
 	c := &ScreenClient{
 		conn:   conn,
+		id:     id,
 		tell:   tell,
 		other:  other,
 		copies: map[ProgramRef]*term.Copy{},
@@ -507,6 +511,11 @@ func (c *ScreenClient) Shown() {
 }
 
 func (c *ScreenClient) send(r Request) {
+	r, err := renamedRequest(r, c.id, "")
+	if err != nil {
+		Debugf("client: %v", err)
+		return
+	}
 	b, err := EncodeRequest(r)
 	if err != nil {
 		Debugf("client: %v", err)
@@ -543,6 +552,7 @@ func (c *ScreenClient) read() {
 				Debugf("core: screen: %v", err)
 				continue
 			}
+			renameRefs(reflect.ValueOf(&w.Ref).Elem(), "", c.id)
 			c.mu.Lock()
 			cp := c.copies[w.Ref]
 			c.mu.Unlock()
@@ -590,7 +600,9 @@ func (c *ScreenClient) askRows(r ProgramRef, from, to int, done func(int, [][]te
 	id := c.askN
 	c.asks[id] = done
 	c.mu.Unlock()
-	if !c.conn.Send("", wire(wireAsk, askWire{ID: id, Ref: r, From: from, To: to})) {
+	at := r
+	renameRefs(reflect.ValueOf(&at).Elem(), c.id, "")
+	if !c.conn.Send("", wire(wireAsk, askWire{ID: id, Ref: at, From: from, To: to})) {
 		c.mu.Lock()
 		_, still := c.asks[id]
 		delete(c.asks, id)
