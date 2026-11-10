@@ -1,6 +1,6 @@
 ---
-title: Remote machines and herdr
-description: Keep agents running when you disconnect, and run them on another machine, with herdr.
+title: Other machines
+description: Keep agents running when you disconnect, run them on a server over SSH, see several machines in one nerdr, and move a tab between them.
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
@@ -13,11 +13,289 @@ beside a tab's own included, but not processes such as a running test or
 dev server. With `NERDR_HOLDER=0`, nerdr runs them itself, and closing it
 or losing the connection stops them too.
 
+nerdr can also run the agents on another machine, such as a build server
+or a desktop at home, while you see them in nerdr on your laptop. The
+laptop reaches that machine over SSH, and nerdr listens on no network
+port of its own.
+
+## Agents on a server
+
+Install nerdr on the server too, the same way as on your laptop (see
+[Install](../../start/install/)), and sign in to your agents there.
+There is no separate server package. Then, on the laptop:
+
+```sh
+nerdr connect box             # the tabs of ~ on box
+nerdr connect box:~/src       # the tabs of ~/src on box
+```
+
+`box` is the host as SSH knows it, so your `~/.ssh/config` applies. The
+folder is the one you would start nerdr in on that machine, `~` when you
+leave it out; it must exist there. SSH may ask for a password or
+passphrase before nerdr starts.
+
+nerdr on the laptop runs `ssh box`, and there `nerdr bridge FOLDER`,
+which connects to the nerdr core of that folder on `box`, starting one if
+none runs. The agents, worktrees and git all run on `box`. Close nerdr or
+lose the connection, and they work on there. Run `nerdr connect` again to
+see them. While the connection is down, nerdr tries again on its own, for
+as long as it runs.
+
+The server's name is shown in the tab bar. `nerdr` must be on the PATH
+of a login shell on the server (`$SHELL -lc`): set it up in `~/.profile`
+or `~/.zprofile`, not only in `~/.bashrc`.
+
+## Several machines in one nerdr
+
+To see the agents on your laptop and on one or more servers side by
+side, list the servers in your config on the laptop:
+
+```toml
+[[servers]]
+name = "box"          # how the tab bar names it
+ssh = "box"           # the host as ssh knows it; the name when left out
+folder = "~/src"      # the folder there; ~ when left out
+
+[[servers]]
+name = "gpu"
+ssh = "me@gpu.example.com"
+```
+
+When you start `nerdr`, it connects to this machine's core and then to
+each server, in turn, before the screen is nerdr's, so SSH can ask for a
+password for each. A server that cannot be reached is shown grey, with
+the reason. `nerdr connect HOST:FOLDER` shows that one server only, and
+does not connect to `[[servers]]`.
+
+Tabs are shown by machine: this machine's first, then each server's in
+the order of `[[servers]]`. A group on a server is shown after a badge
+with the server's name, as in **box** `api`, and a server with no tabs
+has its badge in the bottom line; click it for the Machines dialog. A
+tab moves left and right only among its own machine's tabs.
+
+### The Machines dialog
+
+`ctrl+q k` (or *Machines* in `ctrl+q ?`) lists this machine and every
+server, with its tabs and whether it is connected.
+
+| Key | Action |
+|---|---|
+| `enter` | Go to the machine's first tab |
+| `a` | Add a server: name, SSH host and folder. It is saved in `[[servers]]` and connected to |
+| `r` | Connect again, logging in if SSH asks |
+| `d` | Disconnect. The agents there work on; the server is grey until you connect again |
+| `x` | Remove the server from `[[servers]]` and its tabs from nerdr. The agents there work on |
+
+A server you disconnected from stays disconnected the next time you start
+nerdr, until you press `r`. nerdr keeps this, and which server tab was in
+front, in `~/.local/state/nerdr/client-<hash>.json`, one file per folder
+you start nerdr in.
+
+### Logging in from nerdr
+
+When you add a server or connect again with `r`, and SSH asks for a
+password or passphrase, nerdr shows SSH in a dialog: what you type goes
+to SSH. `ctrl+q esc` gives up. Connections nerdr makes on its own, after
+a connection drops, never ask: a server that needs a password then shows
+`r log in`.
+
+### A grey machine
+
+A server whose connection is down is grey: its tabs are dimmed, its badge
+has a `✕`, and a tab there shows why in place of its agent. Unless you
+disconnected it, nerdr keeps trying to connect again. Press `r` on one
+of its tabs to connect, or log in, now. The other machines work as before, and nerdr ends only when no
+machine is left. **Quit** stops the agents on every machine that is
+connected, and says which.
+
+If you connect to the same server from a second laptop, that nerdr takes
+it over and the first shows it grey, saying so. Neither takes it back on
+its own: `r` asks whether to take it back.
+
+### Which machine a dialog is for
+
+A dialog that belongs to no tab is for the machine of the tab you are
+in, such as a new tab, search, usage and settings. Its title says which, as in *New tab · on box*. Press `ctrl+o`
+to move it to the next machine that is connected. Its lists, such as the
+repositories and the agents on the PATH, then come from that machine.
+
+So to make a tab on a server, press `ctrl+q c`, then `ctrl+o` until the
+title names the server. The review panel, pull requests, issues, skills
+and plugins follow the machine of the tab in front.
+
+## What runs where
+
+What reads or runs the repository's files runs where the tab is. What
+you see and click runs on your laptop.
+
+| What | Where |
+|---|---|
+| Agents, terminals, git, `gh`, plugins, `.nerdr.toml` setup | The tab's machine |
+| Links to pull requests, issues and CI | Your laptop's browser, only when you click them |
+| A walkthrough's page | Sent to your laptop, written to `nerdr/pages` in its cache folder, and opened there |
+| Notifications and the clipboard | Your laptop |
+| Saved prompts | Your laptop |
+| A terminal editor (`editor`, `$EDITOR`) | A terminal pane in the tab, on the tab's machine, that closes when the editor exits |
+| VS Code and its kin (`code`, `cursor`, `windsurf`, `codium`, `positron`) | Your laptop, through their SSH remote: `--remote ssh-remote+box` |
+| Zed | Your laptop, through an `ssh://box/…` address |
+
+Another editor with a window of its own cannot reach the server's files.
+`o` in F1 then opens the file in `vim` in a pane of the tab, and
+`ctrl+q o` asks you to set `worktree_editor` to an editor in a terminal.
+
+### Settings on each machine
+
+Each machine's config applies there. The keys that shape what you see
+are your laptop's: `prefix`, `layout`, the screen settings, `notify`,
+`editor`, `browser`, `[[servers]]` and the like. The keys that start and
+run the agents are each machine's own, in `~/.config/nerdr/config.toml`
+on that machine: `[agents]` with their commands and sandboxes, `shell`,
+`repo_dirs`, `worktrees_dir`, `max_tabs`, `[review]` and the rest. Your
+laptop's agent commands and sandboxes never apply on a server. The
+[Configuration](../../configure/configuration/#which-machine-a-setting-is-for)
+page says which keys are which.
+
+`ctrl+q s` shows your laptop's own keys and the machine keys of the
+machine the dialog is on. With several machines, a machine key's value
+is marked with that machine's name, and `ctrl+o` moves to the next
+machine. A change is written to that machine's file.
+
+### The agents' environment on a server
+
+Agents, terminals and plugins on a server get the environment of a login
+shell there: the bridge runs `$SHELL -ilc` to read it, so `PATH` has what
+your shell set up, Homebrew included. It leaves out `SSH_AUTH_SOCK`,
+`SSH_CONNECTION`, `SSH_CLIENT`, `SSH_TTY` and `DISPLAY`, which belong to
+the SSH session and end with it. If reading it fails, the programs get
+the environment SSH started the bridge with, less the same variables.
+
+Nothing of your laptop's environment goes to the server. Set what an
+agent needs there in the server's shell setup, or in `env` under its
+`[agents.<name>]` in the server's config.
+
+## Moving a tab to another machine
+
+Press `ctrl+q a m`, or choose *Move to another machine…* in the tab's
+menu or `ctrl+q ?`, to carry a tab's work to another machine, from your
+laptop to a server, back, or between servers. With more than one machine
+to go to, nerdr asks which.
+
+Programs cannot move, so the work does:
+
+- **The branch**, with every change not committed, new files included.
+  What was staged is staged there, and what was not is not.
+- **The conversation**, as when you switch agents: the agent writes a
+  handoff, and its whole conversation goes along as text. The agent on
+  the other machine starts with both.
+- The tab's **queue, name, group and note**.
+
+Before you confirm, nerdr shows what goes, its size and the new files,
+where the worktree goes there, and what does not go:
+
+- **Files git ignores**, such as `.env` and `node_modules`. They stay, so
+  the tab may need setting up there.
+- **What stops**: terminals and the dev servers in them, other agents in
+  the tab, a code review, plugin runs, and questions waiting for you.
+
+| Key | Action |
+|---|---|
+| `enter` | Move |
+| `a` | Pick another agent on the other machine, when it has several |
+| `h` | Skip the handoff: the conversation goes as it is. Again to ask for one |
+| `esc` | Cancel |
+
+The other machine finds the repository by its `origin`. If it has none
+with that origin, nerdr says so before you confirm and clones it from
+`origin` there. A repository with no `origin` cannot move.
+
+Then:
+
+<Steps>
+
+1. The agent is asked for a handoff. While nerdr waits, `enter` moves
+   at once, and the new agent reads the conversation instead.
+
+2. Every program in the tab is stopped, and the work is packed. The
+   worktree on this machine is not changed.
+
+3. nerdr carries the pack over, 1 MB at a time, and the other machine
+   makes the tab: the branch, a worktree on it, and the changes put back.
+
+4. Only once the other machine has the tab does it leave this one.
+
+</Steps>
+
+Until then, the tab carries on where it was: if anything fails or you
+cancel, its agents start again and resume. At the end, nerdr asks what
+to do with the worktree and branch left behind: leave them, delete the
+worktree (the branch stays), or delete both. The branch is deleted only
+if it has not moved since.
+
+A move is refused, with the reason, when:
+
+- it is larger than 100 MB;
+- a repository has submodules or uses git-lfs, which a move does not
+  carry: push the branch and check it out there instead;
+- the branch there has commits this one has not, or is checked out in a
+  worktree there.
+
+The other machine's agent settings apply there. If the tab's agent runs
+in a sandbox here and the agent there does not, nerdr asks for an extra
+yes before moving: a move never takes away a sandbox without asking.
+
+## Tips for servers
+
+### Log in once
+
+Each connection is a new SSH login. To log in once and reuse it, let SSH
+share one connection in `~/.ssh/config` on your laptop:
+
+```text
+Host box
+  ControlMaster auto
+  ControlPath ~/.ssh/cm-%C
+  ControlPersist 1h
+```
+
+nerdr's own attempts to connect again then go through that connection,
+without asking for a password.
+
+### Agents that stop when you log out
+
+On Linux servers where systemd-logind ends a user's programs at logout
+(`KillUserProcesses=yes` in `logind.conf`), the bridge starts nerdr's
+holder, which starts the agents, with `systemd-run --user --scope`, so
+they keep working. That needs lingering for your user; without it, the bridge refuses and
+says what to run on the server:
+
+```sh
+loginctl enable-linger $USER
+```
+
+### Different versions
+
+nerdr on the laptop and on the server need the same protocol, not the
+same version. When they differ, that server is not connected, and the
+message says where to update, for example:
+`nerdr on box is v0.6.0 (protocol 3), and this is nerdr v0.5.0 (protocol 2): update nerdr here`.
+A server too old to have `nerdr bridge` gets "update nerdr on box". If a
+core on the server still runs an older nerdr than the one installed,
+quit nerdr there to have the new one start.
+
+### Safety
+
+SSH is the only way in: nerdr listens on no network, the bridge opens no
+port, and nerdr connects with `ForwardAgent=no` and `ForwardX11=no`,
+whatever your `~/.ssh/config` says. A sandboxed agent on your laptop must
+not reach `~/.ssh` or your SSH agent, or it could reach your servers
+the way nerdr does. See
+[Security](../../reference/security/#other-machines).
+
+## Inside herdr
+
 [herdr](https://herdr.dev) is a terminal workspace for agents that runs
 as a server: detach, close the terminal or lose the connection, and
 everything inside keeps going, nerdr with `NERDR_HOLDER=0` included.
-
-## Keep agents running
 
 ```sh
 herdr                 # start the server and attach
@@ -25,32 +303,10 @@ nerdr                 # in a pane, from your repositories folder
 ```
 
 Detach with `ctrl+b q`, or just close the terminal. Run `herdr` again to
-come back. You can even reconnect from a phone over SSH.
+come back. herdr can also run nerdr on another machine
+(`herdr --remote workbox`); nerdr then runs entirely on that machine.
 
-## Work on another machine
-
-Let the agents run on a build server or a desktop at home, and drive them
-from your laptop. The agents, worktrees and review panel all run on that
-machine.
-
-<Steps>
-
-1. Add the machine to herdr once:
-
-   ```sh
-   herdr machine add workbox --label "Build machine"
-   ```
-
-2. Run `herdr`, select `workbox`, open a pane and start `nerdr` there.
-   Or connect directly:
-
-   ```sh
-   herdr --remote workbox
-   ```
-
-</Steps>
-
-## What nerdr tells herdr
+### What nerdr tells herdr
 
 Inside herdr, nerdr reports its most urgent tab as the pane's agent
 status, so herdr's own lights show when nerdr needs you. When herdr
@@ -62,7 +318,7 @@ For herdr's sidebar rows, nerdr provides `$summary` (for example
 and `$done`. Notifications go through `herdr notification show` and
 herdr's delivery settings.
 
-## herdr's agent integrations
+### herdr's agent integrations
 
 herdr's integrations report conversation IDs and, for some agents such as
 opencode, whether they are working, blocked or idle. nerdr accepts these

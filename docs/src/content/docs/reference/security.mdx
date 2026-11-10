@@ -33,6 +33,11 @@ about it, and what is left for your sandbox to do.
   The check runs before every
   sandboxed launch, including when `NERDR_HOLDER=0`. See
   [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
+- **Servers widen what your SSH keys reach.** With
+  [agents on other machines](../../use/remote/), a sandboxed agent on
+  your laptop must not reach `~/.ssh` or `SSH_AUTH_SOCK`, or it could
+  drive them through `ssh box nerdr bridge`. nerdr does not check this.
+  See [Other machines](#other-machines).
 - **Closed is not stopped.** The agents work on when you close nerdr or
   its window, with no one watching, until you quit. A setup that needs your approval waits until you connect again;
   a plugin run that needs it does not run when its time to be answered
@@ -260,3 +265,38 @@ Git index snapshots accept regular files of at most 128 MiB and reject
 named pipes and symbolic links at the index path. Larger indexes cannot
 be snapshotted or staged through nerdr.
 
+## Other machines
+
+nerdr [reaches other machines](../../use/remote/) only through SSH. It
+listens on no network, and the bridge it runs on a server
+(`nerdr bridge`) opens no port: it connects SSH's input and output to
+the core's client socket there, and reads the key to that socket on the
+server itself, so the key never leaves it.
+
+| Who | Can | What stops it |
+|---|---|---|
+| Anyone who can log in to the server over SSH as you | Anything you can do there, with or without nerdr | SSH. The bridge gives no more than a shell does |
+| A sandboxed agent on the server | Start `nerdr bridge` | The core there refuses a client started under one of its own programs. The client socket's folder and key are guarded as on your laptop |
+| A sandboxed agent on your laptop | Run `ssh box nerdr bridge`, if it reaches your SSH keys or agent | Your sandbox: it must deny `~/.ssh` and `SSH_AUTH_SOCK`. nerdr does not check this |
+| An agent outside a sandbox on your laptop | Anything you can, `ssh box` included | Nothing, as before. nerdr started by an agent does not connect to other machines, to catch mistakes |
+| Your SSH agent | Would reach the agents on the server through agent forwarding | nerdr connects with `ForwardAgent=no` and `ForwardX11=no`, and the bridge leaves `SSH_AUTH_SOCK` and `DISPLAY` out of their environment |
+| Your laptop's environment | Would carry its tokens to the server | nerdr sends none: programs on the server get its login environment |
+
+What a core on another machine sends, and what agents there write, is
+not trusted on your laptop. Links open only when you click them. Paths
+go to your editor only as arguments, never through a shell. A
+walkthrough's page is written under a name and in a folder of your
+laptop's choosing. Messages larger than 16 MB are refused.
+
+A walkthrough's page from a server is opened in your browser as a local
+file, and runs its script there, as one from your laptop does.
+
+When a tab [moves to another machine](../../use/remote/#moving-a-tab-to-another-machine),
+everything goes through nerdr on your laptop: the machines' cores never
+connect to each other. The pack is checked against its SHA-256 and
+its manifest, and its git bundle is data: fetching from it runs no hooks,
+and the hooks that run on the target are its own. The handoff was
+written by an agent and is treated like any other. A move never puts
+the tab's agent in less of a sandbox without your extra yes, and the
+target checks that yes against its own config before it starts the
+agent.

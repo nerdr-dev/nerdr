@@ -40,10 +40,14 @@ sends a `ctrl+q` to the agent.
 | `u` | Usage and rate limits |
 | `/` | Search the agents' conversations |
 | `g` | git and `gh` calls per tab, and any permission errors (for example, when running nerdr in a sandbox) |
+| `k` | Machines: this machine and the [servers](../../use/remote/#several-machines-in-one-nerdr); add, connect again, disconnect, remove |
 | `j` | Programs in no tab: those from before nerdr's core started again that no tab took up; stop one or all |
 | `q` | Close or quit: Close (`enter`) leaves the agents and other programs running, to connect to again; Quit stops them, and tabs come back at the next start. With `NERDR_HOLDER=0`, quit |
 | `p` | Send `ctrl+q` to the agent |
 | `esc` | Cancel; in a command group, back to the main keys |
+
+In a dialog for no tab, such as a new tab, search or settings,
+`ctrl+o` moves it to the [next machine](../../use/remote/#which-machine-a-dialog-is-for).
 
 The prefix stays active while you move between tabs: `ctrl+q → → x`
 closes the tab two places right. See
@@ -62,6 +66,7 @@ and repeating the group key runs its main command.
 | `a n` | Edit the tab's note |
 | `a h` | List the prompts you sent the agent, the latest first |
 | `a s` | Switch agents in the same worktree, with a handoff |
+| `a m` | [Move the tab to another machine](../../use/remote/#moving-a-tab-to-another-machine) |
 | `a r` | Restart and resume the conversation |
 | `a c` | Code review of the agent, as `t r` |
 | `a x` | Stop the review of the agent |

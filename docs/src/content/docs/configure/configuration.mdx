@@ -148,6 +148,10 @@ Cinnamon, KDE and others follow. On macOS, nerdr uses `caffeinate -i`,
 adding `-d` for the screen. Closing a laptop lid still follows the
 system's lid setting.
 
+With agents on a server, `keep_awake` is that machine's setting and
+keeps it awake; `keep_screen_on` keeps the screen on where you run
+nerdr.
+
 ## Review
 
 The `[review]` table sets up [code review](../../use/code-review/).
@@ -193,6 +197,45 @@ command = ["my-sandbox", "--", "copilot"]
 args = ["--allow-all"]
 sandboxed = true
 ```
+
+## Servers
+
+`[[servers]]` lists other machines whose agents nerdr shows beside this
+machine's, each reached over SSH. See
+[Several machines in one nerdr](../../use/remote/#several-machines-in-one-nerdr).
+
+```toml
+[[servers]]
+name = "box"          # how the tab bar names it: no spaces, colons or quotes
+ssh = "box"           # the host as ssh knows it; the name when left out
+folder = "~/src"      # the folder there whose tabs nerdr shows; ~ when left out
+```
+
+The Machines dialog (`ctrl+q k`) adds and removes servers here too.
+
+## Which machine a setting is for
+
+With agents on other machines, each machine's config applies there. The
+keys about what you see and how nerdr reaches you are read where you run
+nerdr:
+
+`prefix`, `mouse`, `function_keys`, `layout`, `tab_bar`, `tab_details`,
+`panel_width`, `panel_labels`, `pane_min_width`, `diff_colors`,
+`status_lights`, `fps`, `notify`, `pr_notify`, `issue_notify`,
+`herdr_focus_jump`, `editor`, `worktree_editor`, `browser`,
+`keep_screen_on`, `keep_screen_max` and `[[servers]]`.
+
+The rest are read by the machine the agents run on, from
+`~/.config/nerdr/config.toml` there: `[agents]`, `[review]`, `shell`,
+`repo_dirs`, `worktrees_dir`, `data_dir`, `install`, `enabled_skills`,
+`max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `github_refresh`,
+`claude_status_line`, `confirm_plugin_runs` and `keep_awake`, and the
+plugins beside that file. An agent's command and sandbox on your laptop
+never apply on a server. With nerdr on one machine, it is all one file.
+
+In `ctrl+q s`, a machine's value is marked with its name when there are
+several, and `ctrl+o` shows the next machine's. A change is written to
+that machine's file.
 
 ## Per repository: `.nerdr.toml`
 

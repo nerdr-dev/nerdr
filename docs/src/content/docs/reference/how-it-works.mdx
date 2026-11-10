@@ -38,6 +38,15 @@ The programs started while a client is connected run with that client's
 environment. With `NERDR_HOLDER=0`, nerdr runs without a holder and core,
 the agents as its own children, and they end when it does.
 
+A client on another machine reaches the core over SSH: it runs
+`nerdr bridge FOLDER` there, which starts the folder's core if none
+runs, puts the key from that machine's own key file and the login
+shell's environment into the client's greeting, and then only copies
+bytes both ways. The client sends no environment of its own. One nerdr
+can be the client of several cores, this machine's and those of
+[its servers](../../use/remote/#several-machines-in-one-nerdr); the cores
+do not know about each other.
+
 ## Resuming conversations
 
 Claude starts with a session ID and resumes with `--resume <id>`.
