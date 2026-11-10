@@ -9,6 +9,7 @@ package fleet
 import (
 	"reflect"
 	"slices"
+	"sync/atomic"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -37,6 +38,10 @@ type Machine struct {
 	Away   bool
 	// Err is why the last try to connect again failed, while Away.
 	Err string
+	// Tries counts the tries to connect again: one under way gives up,
+	// and lets go of what it connected, once it is no longer the last.
+	// Read by the tries' goroutines.
+	Tries atomic.Int64
 	// Gone is why the client is without the core for good, "" while it
 	// is not: the core ended and did not come back, or another client
 	// took it over. Its tabs are shown greyed, until the user connects to

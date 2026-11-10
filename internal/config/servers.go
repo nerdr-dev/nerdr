@@ -29,6 +29,24 @@ func (s Server) Host() string { return cmp.Or(s.SSH, s.Name) }
 // Dir is the folder on s whose core is shown.
 func (s Server) Dir() string { return cmp.Or(s.Folder, "~") }
 
+// CheckRemote says why host and folder cannot name a core reached over
+// ssh, nil when they can: only a host ssh takes as one, and a folder that
+// is a plain word to the shells on the way, whose quoting it is put in.
+func CheckRemote(host, folder string) error {
+	if host == "" || strings.HasPrefix(host, "-") || strings.ContainsFunc(host, func(r rune) bool {
+		return !(r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9' || strings.ContainsRune("._-@", r))
+	}) {
+		return fmt.Errorf("not a host: %q", host)
+	}
+	if strings.ContainsAny(folder, "'\"$`\\\n\x00") || strings.HasPrefix(folder, "-") {
+		return fmt.Errorf("a folder nerdr cannot name over ssh: %q", folder)
+	}
+	return nil
+}
+
+// Check says why s cannot be connected to, nil when it can.
+func (s Server) Check() error { return CheckRemote(s.Host(), s.Dir()) }
+
 // CheckServerName says why name cannot name a server among those of
 // servers, nil when it can.
 func CheckServerName(name string, servers []Server) error {
@@ -53,6 +71,9 @@ func AddServer(s Server) error {
 		return err
 	}
 	if err := CheckServerName(s.Name, c.Servers); err != nil {
+		return err
+	}
+	if err := s.Check(); err != nil {
 		return err
 	}
 	return editConfig(func(text string) string {

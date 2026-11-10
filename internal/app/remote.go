@@ -355,17 +355,25 @@ func (m *Model) coreGone(mc *fleet.Machine, why string) tea.Cmd {
 // a network that is down is no reason to end, and the agents work on.
 func (m *Model) redialCore(mc *fleet.Machine) tea.Cmd {
 	redial, name := mc.Redial, mc.Name
+	try := mc.Tries.Add(1)
 	return func() tea.Msg {
 		wait := 100 * time.Millisecond
 		deadline := time.Now().Add(coreGoneWait)
 		for {
+			if mc.Tries.Load() != try {
+				return nil // given up: disconnected, removed, or tried anew
+			}
 			conn, err := redial()
 			if err == nil {
-				return fleet.Told{Machine: name, Msg: coreBackMsg{conn}}
+				if mc.Tries.Load() != try {
+					conn.Close("")
+					return nil
+				}
+				return fleet.Told{Machine: name, Msg: coreBackMsg{conn, try}}
 			}
 			core.Debugf("core: connecting again: %v", err)
 			if time.Now().After(deadline) {
-				return fleet.Told{Machine: name, Msg: coreEndedMsg{err}}
+				return fleet.Told{Machine: name, Msg: coreEndedMsg{err, try}}
 			}
 			time.Sleep(wait)
 			wait = min(2*wait, 2*time.Second)
@@ -379,13 +387,16 @@ func (m *Model) redialCore(mc *fleet.Machine) tea.Cmd {
 var coreGoneWait = 20 * time.Second
 
 // coreEndedMsg is core not back within coreGoneWait, err the last try.
-type coreEndedMsg struct{ err error }
+type coreEndedMsg struct {
+	err error
+	try int64 // see fleet.Machine.Tries
+}
 
 // onCoreEnded gives the core of mc up when it is not back: grey while
 // another machine is left, else the TUI ends. When it is on another
 // machine, it says why and tries again.
 func (m *Model) onCoreEnded(mc *fleet.Machine, msg coreEndedMsg) tea.Cmd {
-	if !mc.Away {
+	if !mc.Away || msg.try != mc.Tries.Load() {
 		return nil // given up meanwhile
 	}
 	if mc.Host == "" {
@@ -399,12 +410,15 @@ func (m *Model) onCoreEnded(mc *fleet.Machine, msg coreEndedMsg) tea.Cmd {
 }
 
 // coreBackMsg is a connection to core again, once it was gone.
-type coreBackMsg struct{ conn *attach.Conn }
+type coreBackMsg struct {
+	conn *attach.Conn
+	try  int64 // see fleet.Machine.Tries
+}
 
 // coreBack goes on over conn to the core of mc: core sends all of its
 // state afresh, into the same copy, and is told what the TUI shows.
-func (m *Model) coreBack(mc *fleet.Machine, conn *attach.Conn) tea.Cmd {
-	if !mc.Away {
+func (m *Model) coreBack(mc *fleet.Machine, conn *attach.Conn, try int64) tea.Cmd {
+	if !mc.Away || try != mc.Tries.Load() {
 		// Given up meanwhile: the user connects again, when they will.
 		conn.Close("")
 		return nil

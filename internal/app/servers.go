@@ -56,9 +56,12 @@ func (m *Model) serverMachine(s config.Server) *fleet.Machine {
 }
 
 // server is the server of machine mc, as [[servers]] has it.
-func (m *Model) server(mc *fleet.Machine) (config.Server, bool) {
+func (m *Model) server(mc *fleet.Machine) (config.Server, bool) { return m.serverNamed(mc.Name) }
+
+// serverNamed is the server named name in [[servers]].
+func (m *Model) serverNamed(name string) (config.Server, bool) {
 	for _, s := range m.cfg().Servers {
-		if s.Name == mc.Name && mc.Name != "" {
+		if s.Name == name && name != "" {
 			return s, true
 		}
 	}
@@ -76,6 +79,7 @@ func (m *Model) disconnect(mc *fleet.Machine) {
 		return
 	}
 	mc.Gone, mc.Away = errDisconnected.Error(), false
+	mc.Tries.Add(1) // a try under way gives up
 	if mc.Conn != nil {
 		mc.Conn.Close("")
 	}
@@ -261,6 +265,19 @@ func (d *loginDialog) view(m *Model, w, h int) string {
 // onServerDialed takes what came of connecting to a server from the TUI:
 // the machine there is shown, connected or grey, a new one last.
 func (m *Model) onServerDialed(msg serverDialedMsg) tea.Cmd {
+	if _, ok := m.serverNamed(msg.s.Name); !ok {
+		// Removed meanwhile.
+		if msg.conn != nil {
+			msg.conn.Close("")
+		}
+		if d := msg.login; d != nil {
+			d.close()
+			if m.dialog == d {
+				m.dialog = nil
+			}
+		}
+		return nil
+	}
 	if d := msg.login; d != nil {
 		d.close()
 		if m.dialog == d {
@@ -292,7 +309,7 @@ func (m *Model) onServerDialed(msg serverDialedMsg) tea.Cmd {
 		return nil
 	}
 	mc.Gone, mc.Away = "", true
-	return m.coreBack(mc, msg.conn)
+	return m.coreBack(mc, msg.conn, mc.Tries.Add(1))
 }
 
 // machinesDialog lists the machines the TUI shows, with what can be done

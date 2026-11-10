@@ -496,6 +496,7 @@ func TestFleetServerUnreachableAtStart(t *testing.T) {
 	m, _, _, told := remoteTUI(t, "sh", "-c", `echo here-ready; sleep 30`)
 	_, _, dial := boxCore(t, "sh", "-c", `echo box-ready; sleep 30`)
 	s := config.Server{Name: "box"}
+	locked(m, func() { m.cfg().Servers = []config.Server{s} })
 	if cmd := m.AddServer(s, nil, errors.New("ssh: connect to host box: Connection refused")); cmd != nil {
 		t.Fatal("a command for a server not reached")
 	}
@@ -549,6 +550,7 @@ func TestFleetLoginGoesToSsh(t *testing.T) {
 	var cmd tea.Cmd
 	var d *loginDialog
 	locked(m, func() {
+		m.cfg().Servers = []config.Server{{Name: "box"}}
 		cmd = m.login(config.Server{Name: "box"})
 		d, _ = m.dialog.(*loginDialog)
 	})
@@ -648,5 +650,109 @@ func TestFleetClientLayout(t *testing.T) {
 	})
 	if c := m.ClientLayout("/w"); len(c.Off) != 1 || c.Off[0] != "box" {
 		t.Fatalf("kept %+v", c)
+	}
+}
+
+// TestFleetRemovedWhileConnecting: a server removed while the TUI tries
+// to connect to it again has the try give up, and a connection made all
+// the same let go of, not left open with no one's.
+func TestFleetRemovedWhileConnecting(t *testing.T) {
+	m, _, _, _, bye, told := twoMachinesBye(t)
+	if err := config.AddServer(config.Server{Name: "box"}); err != nil {
+		t.Fatal(err)
+	}
+	var mc *fleet.Machine
+	release := make(chan struct{})
+	var made *attach.Conn
+	locked(m, func() {
+		m.cfg().Servers = []config.Server{{Name: "box"}}
+		mc = m.fleet.Named("box")
+		mc.Redial = func() (*attach.Conn, error) {
+			<-release
+			a, b, err := attach.Pair()
+			if err != nil {
+				return nil, err
+			}
+			t.Cleanup(func() { a.Close("") })
+			made = b
+			return b, nil
+		}
+	})
+	bye("")
+	retry := gone(t, m, told, "box")
+	if retry == nil || !mc.Away {
+		t.Fatal("not trying again")
+	}
+	result := make(chan tea.Msg, 1)
+	go func() { result <- retry() }()
+	locked(m, func() { m.removeServer(mc) })
+	close(release)
+	msg := <-result
+	if msg != nil {
+		m.Update(msg)
+	}
+	select {
+	case <-made.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("the connection made for box, removed, is still open")
+	}
+	locked(m, func() {
+		if m.fleet.Named("box") != nil {
+			t.Fatal("box back")
+		}
+	})
+	// A late one for a machine no longer there is let go of too.
+	a, b, err := attach.Pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close("")
+	m.Update(fleet.Told{Machine: "box", Msg: coreBackMsg{conn: b}})
+	select {
+	case <-b.Done():
+	case <-time.After(2 * time.Second):
+		t.Fatal("a late connection for box is still open")
+	}
+}
+
+// TestFleetPanelsFollowTheMachine: with the list of pull requests, or of
+// issues, chosen in a tab of each machine, going from one to the other
+// fills the list afresh from the machine of the tab in front.
+func TestFleetPanelsFollowTheMachine(t *testing.T) {
+	m, _, _, _, _ := twoMachines(t)
+	show := func(i int, f func() tea.Cmd) {
+		goTo(m, i)
+		locked(m, func() { f(); m.syncPRPanel() })
+	}
+	on := func(mc **fleet.Machine) string {
+		var name string
+		locked(m, func() {
+			if *mc != nil {
+				name = machineLabel(*mc)
+			}
+		})
+		return name
+	}
+	show(0, m.showAllPRs)
+	show(1, m.showAllPRs)
+	if got := on(&m.prPanelOn); got != "box" {
+		t.Fatalf("PRs of %q", got)
+	}
+	boxList := m.prPanel
+	goTo(m, 0)
+	locked(m, func() { m.syncPRPanel() })
+	if got := on(&m.prPanelOn); got != "this machine" || m.prPanel == boxList {
+		t.Fatalf("PRs of %q, box's list kept %v", got, m.prPanel == boxList)
+	}
+
+	show(0, m.showIssues)
+	show(1, m.showIssues)
+	if got := on(&m.issuePanelOn); got != "box" {
+		t.Fatalf("issues of %q", got)
+	}
+	goTo(m, 0)
+	locked(m, func() { m.syncPRPanel() })
+	if got := on(&m.issuePanelOn); got != "this machine" {
+		t.Fatalf("issues of %q", got)
 	}
 }

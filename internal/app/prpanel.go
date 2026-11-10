@@ -184,13 +184,18 @@ func (m *Model) syncPRPanel() tea.Cmd {
 func (m *Model) syncAllPRs() tea.Cmd {
 	m.review.SetPRNews(len(m.tabOn().Core.PRWatch.News) > 0)
 	shown := m.panelAllPRs()
-	entered := shown && !m.prPanelShown
+	on := m.tabOn()
+	moved := m.prPanelOn != on
+	entered := shown && (!m.prPanelShown || moved)
 	m.prPanelShown = shown
 	if !shown {
 		return nil
 	}
-	if m.prPanel == nil {
-		m.prPanel = &prList{}
+	if m.prPanel == nil || moved {
+		// Another machine's: nothing of the last one's stays.
+		all := m.prPanel != nil && m.prPanel.all
+		m.prPanel = &prList{all: all}
+		m.prPanelOn = on
 	}
 	d := m.prPanel
 	if entered {
