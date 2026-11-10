@@ -35,3 +35,34 @@ func TestFindingsToDecideLit(t *testing.T) {
 		t.Errorf("approved, nothing to send: %v, want done", got)
 	}
 }
+
+// TestLitWorkOverDone: of the agents in one tab, one asking something is
+// red over all, and one still working yellow over the others' green, so a
+// tab whose agents handed their part back to one that carries on does not
+// look done; with a process left running, cyan is over green too.
+func TestLitWorkOverDone(t *testing.T) {
+	m := restored(t)
+	tb := m.Tabs[0]
+	tb.PaneList = []*PaneTab{{Kind: PaneAgent, A: tb}}
+	var extra []*Tab
+	for range 4 {
+		a := &Tab{Light: StDone}
+		extra = append(extra, a)
+		tb.PaneList = append(tb.PaneList, &PaneTab{Kind: PaneAgent, A: a})
+	}
+	for _, c := range []struct {
+		main, other, want Status
+	}{
+		{StWorking, StDone, StWorking},
+		{StDone, StWorking, StWorking},
+		{StBackground, StDone, StBackground},
+		{StWorking, StBlocked, StBlocked},
+		{StIdle, StIdle, StDone},
+	} {
+		tb.Light = c.main
+		extra[2].Light = c.other
+		if got := tb.Lit(); got != c.want {
+			t.Errorf("main %v, one other %v, rest done: %v, want %v", c.main, c.other, got, c.want)
+		}
+	}
+}

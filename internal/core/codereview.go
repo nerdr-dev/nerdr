@@ -540,15 +540,37 @@ func (t *Tab) SeatOf(r *Tab) *Seat {
 }
 
 // Lit is the light t shows in the bars: of its agent and the others in its
-// panes, the one that most wants a look, each raised by its reviewers'.
+// panes, each raised by its reviewers', the one inTabRank puts first. One
+// agent asking something is red over all; past that, one still working
+// is yellow over the others' green, as with a reviewer: the tab's work is
+// not over while any of its agents is at it, as when agents done with
+// their part hand it back to one that carries on.
 func (t *Tab) Lit() Status {
 	s := t.AgentLit()
 	for _, a := range t.ExtraAgents() {
-		if x := a.AgentLit(); StatusRank(x) > StatusRank(s) {
+		if x := a.AgentLit(); inTabRank(x) > inTabRank(s) {
 			s = x
 		}
 	}
 	return s
+}
+
+// inTabRank ranks the lights of the agents in one tab for Lit: as
+// StatusRank does, but with work going on over work done, which
+// StatusRank puts first only between tabs, where a done one is another
+// piece of work waiting for the user.
+func inTabRank(s Status) int {
+	switch s {
+	case StBlocked:
+		return StatusRank(StBlocked)
+	case StWorking:
+		return StatusRank(StBlocked) - 1
+	case StBackground:
+		return StatusRank(StBlocked) - 2
+	case StDone:
+		return StatusRank(StBlocked) - 3
+	}
+	return StatusRank(s) - 3
 }
 
 // AgentLit is agent t's light, unless a reviewer of its work wants more
