@@ -82,7 +82,13 @@ func TestWrapperIsWhatComesBeforeTheAgent(t *testing.T) {
 // With nothing in the way, the check reaches the client socket's
 // folder, the socket and the key.
 func TestProbeReachesAnOpenClientSocket(t *testing.T) {
-	dir := t.TempDir()
+	// Short, for the socket's path: t.TempDir's is too long for one on
+	// macOS.
+	dir, err := os.MkdirTemp("", "nck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
 	sock, key := filepath.Join(dir, "core.sock"), filepath.Join(dir, "core.key")
 	ln, err := net.Listen("unix", sock)
 	if err != nil {
