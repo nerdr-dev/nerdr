@@ -63,11 +63,10 @@ type Detect struct{}
 
 func (Detect) Do(m *Core) Cmd { return m.DetectAll(time.Now()) }
 
-// KeepAwake keeps the machine awake while keep_awake asks, the client's
-// user having last typed at LastInput.
-type KeepAwake struct{ LastInput time.Time }
+// KeepAwake keeps the machine awake while keep_awake asks.
+type KeepAwake struct{}
 
-func (q KeepAwake) Do(m *Core) Cmd {
-	m.KeepAwake(time.Now(), func() time.Time { return q.LastInput })
+func (KeepAwake) Do(m *Core) Cmd {
+	m.KeepAwake(time.Now())
 	return nil
 }

@@ -139,8 +139,8 @@ type (
 	OverlapsMsg struct{}
 
 	// DetectStartMsg and DetectDoneMsg are the start and the end of a look at
-	// every agent. On DetectDoneMsg a client calls Core.KeepAwake, with its
-	// user's last input.
+	// every agent. On DetectDoneMsg a client has core keep the machine
+	// awake (KeepAwake), and keeps its own screen on.
 	DetectStartMsg struct{}
 	DetectDoneMsg  struct{ Now time.Time }
 
