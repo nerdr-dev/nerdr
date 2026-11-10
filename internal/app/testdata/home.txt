@@ -14,7 +14,6 @@ look.go 1
 messages.go 2
 mouse.go 2
 panes.go 2
-pluginspanel.go 12
 prall.go 2
 prlist.go 7
 prpanel.go 12

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 )
 
 // How the TUI shows the tabs and panes core has: the pane with the keyboard
@@ -94,7 +95,12 @@ func (m *Model) program(p *core.PaneTab) core.Program {
 // programOf is the program r names, nil when none runs there: core's
 // own, or with core's screens sent as rows, the copy kept of its screen.
 func (m *Model) programOf(r core.ProgramRef) core.Program {
-	mc := m.fleet.Machine(r.Pane.Core)
+	return m.programOn(m.fleet.Machine(r.Pane.Core), r)
+}
+
+// programOn is the program r names on mc, as programOf: for a plugin's
+// screen, which names no machine.
+func (m *Model) programOn(mc *fleet.Machine, r core.ProgramRef) core.Program {
 	if mc.Screens == nil {
 		return mc.Core.Program(r)
 	}
