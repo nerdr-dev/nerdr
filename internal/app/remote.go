@@ -123,8 +123,10 @@ func (m *Model) doRemote(mc *fleet.Machine, r core.Request) tea.Cmd {
 // done before it goes on. What r leaves to do away from Mu, core's loop
 // runs; what comes of it comes to the TUI as core tells it. It goes to the
 // machine of the tab r names (fleet.For).
-func (m *Model) tellCore(r core.Request) {
-	mc := m.fleet.For(r)
+func (m *Model) tellCore(r core.Request) { m.tellOn(m.fleet.For(r), r) }
+
+// tellOn has the core of mc do r, as tellCore.
+func (m *Model) tellOn(mc *fleet.Machine, r core.Request) {
 	if mc.Conn != nil {
 		mc.Conn.Send(r)
 		return

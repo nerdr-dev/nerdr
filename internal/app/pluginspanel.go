@@ -8,6 +8,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -35,6 +36,9 @@ type pluginsView struct {
 	// uiFocus is the pluginUIKey of the screen with the keyboard, "" for
 	// none: a screen of another tab or plugin is not taken from the user.
 	uiFocus string
+	// on is the machine whose plugins list is: that of the tab shown. Each
+	// machine has plugins of its own.
+	on *fleet.Machine
 
 	at   time.Time
 	list []plugin.Plugin
@@ -57,22 +61,34 @@ type pluginsView struct {
 // panelPlugins reports whether the review panel shows the plugins.
 func (m *Model) panelPlugins() bool { return m.reviewOpen && m.review.Plugins() }
 
-// pluginList is the plugins, as core looked for them last: the same for
-// every tab.
-func (m *Model) pluginList(*core.Tab) []plugin.Plugin {
+// pluginList is the plugins of t's machine, as its core looked for them
+// last: the same for every tab of the machine.
+func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 	v := &m.plugins
+	mc := m.machineOf(t)
+	if mc != v.on {
+		v.on, v.at, v.askedAt = mc, time.Time{}, time.Time{}
+	}
 	// The plugins are core's to read: the list is the one core read
 	// last, and core is asked to look again when it is old.
 	now := time.Now()
-	if v.stale || now.Sub(m.home().Core.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
+	if v.stale || now.Sub(mc.Core.Plugins.At) >= core.PluginsCheckEvery && now.Sub(v.askedAt) >= core.PluginsCheckEvery {
 		v.stale, v.askedAt = false, now
-		m.tellCore(core.LookForPlugins{})
+		m.tellOn(mc, core.LookForPlugins{})
 	}
-	if !m.home().Core.Plugins.At.Equal(v.at) {
-		v.at, v.list, v.allowed = m.home().Core.Plugins.At, m.home().Core.Plugins.List, m.home().Core.Plugins.Allowed
+	if !mc.Core.Plugins.At.Equal(v.at) {
+		v.at, v.list, v.allowed = mc.Core.Plugins.At, mc.Core.Plugins.List, mc.Core.Plugins.Allowed
 		v.repick()
 	}
 	return v.list
+}
+
+// pluginsOn is the machine whose plugins F5 lists; see pluginList.
+func (m *Model) pluginsOn() *fleet.Machine {
+	if m.plugins.on != nil {
+		return m.plugins.on
+	}
+	return m.machineOf(m.Cur())
 }
 
 // repick puts the cursor on the plugin picked, in the list read anew. One
@@ -119,7 +135,7 @@ func (m *Model) pluginUIPane() core.Program {
 		return nil
 	}
 	if u := m.machineOf(t).Core.PluginUIOf(t, p); u.Running() {
-		return m.programOf(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
+		return m.programOn(m.machineOf(t), core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	}
 	return nil
 }
@@ -295,7 +311,7 @@ func (m *Model) disallowNow(p plugin.Plugin, key string) tea.Cmd {
 	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
 		return done(m, ev.(core.PluginAllowedMsg).Err)
 	})
-	m.tellCore(core.DisallowPlugin{Job: job, Dir: p.Dir, Key: key})
+	m.tellOn(m.pluginsOn(), core.DisallowPlugin{Job: job, Dir: p.Dir, Key: key})
 	return nil
 }
 
@@ -359,7 +375,7 @@ func (m *Model) allowNow(p plugin.Plugin, key string, again, then func(m *Model)
 		a := ev.(core.PluginAllowedMsg)
 		return done(m, a.Changed, a.Err)
 	})
-	m.tellCore(core.AllowPluginKey{Job: job, P: p, Key: key})
+	m.tellOn(m.pluginsOn(), core.AllowPluginKey{Job: job, P: p, Key: key})
 	return nil
 }
 
@@ -369,7 +385,7 @@ func (m *Model) withPluginFacts(p plugin.Plugin, then func(m *Model, f core.Plug
 	job := m.pluginJob(func(m *Model, ev any) tea.Cmd {
 		return then(m, ev.(core.PluginFactsMsg).Facts)
 	})
-	m.tellCore(core.AskPluginFacts{Job: job, P: p})
+	m.tellOn(m.pluginsOn(), core.AskPluginFacts{Job: job, P: p})
 	return nil
 }
 
@@ -450,7 +466,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	keys := m.pluginKeys("↑↓", "pick", "enter", "open", "a", "allow", "d", "disallow", "esc", "agent")
 	if len(list) == 0 {
 		lines := []string{""}
-		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(m.home().Core.ConfigPath()), core.HomeDir())+
+		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(m.machineOf(t).Core.ConfigPath()), core.HomeDir())+
 			"/NAME, each a folder with a "+plugin.File+
 			". See https://nerdr.app/configure/plugins/.", textW, 20) {
 			lines = append(lines, " "+l)
@@ -606,18 +622,19 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 			return m.openPluginUI(t, p)
 		})
 	out := append(top, rule)
-	if uh := max(room, 3); w != m.home().Core.PluginUIW || uh != m.home().Core.PluginUIH {
-		m.do(core.PluginUISize{W: w, H: uh})
+	mc := m.machineOf(t)
+	if uh := max(room, 3); w != mc.Core.PluginUIW || uh != mc.Core.PluginUIH {
+		m.doOn(mc, core.PluginUISize{W: w, H: uh})
 	}
 	if u == nil {
 		return fitLines(out, w, h)
 	}
-	pr := m.programOf(core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
+	pr := m.programOn(mc, core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	if pr == nil {
 		return fitLines(out, w, h)
 	}
-	if pw, ph := pr.Size(); pw != m.home().Core.PluginUIW || ph != m.home().Core.PluginUIH {
-		pr.Resize(m.home().Core.PluginUIW, m.home().Core.PluginUIH)
+	if pw, ph := pr.Size(); pw != mc.Core.PluginUIW || ph != mc.Core.PluginUIH {
+		pr.Resize(mc.Core.PluginUIW, mc.Core.PluginUIH)
 	}
 	return fitLines(append(out, m.drawPane(pr, 0, inUI)...), w, h)
 }
