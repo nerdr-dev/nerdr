@@ -1,17 +1,12 @@
 package app
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
-	"go/importer"
-	"go/parser"
 	"go/token"
 	"go/types"
-	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"slices"
@@ -20,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/guard"
 )
 
 // The TUI is to run in a process of its own, with a copy of core's state
@@ -604,46 +600,5 @@ func exprString(e ast.Expr) string {
 
 // typeCheckPackage type-checks the package's own files, not its tests.
 func typeCheckPackage() (*token.FileSet, []*ast.File, *types.Info, *types.Package, error) {
-	out, err := exec.Command("go", "list", "-export", "-deps", "-json", ".").Output()
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	exports := map[string]string{}
-	dec := json.NewDecoder(strings.NewReader(string(out)))
-	for {
-		var p struct{ ImportPath, Export string }
-		if err := dec.Decode(&p); err == io.EOF {
-			break
-		} else if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		exports[p.ImportPath] = p.Export
-	}
-	fset := token.NewFileSet()
-	imp := importer.ForCompiler(fset, "gc", func(path string) (io.ReadCloser, error) {
-		return os.Open(exports[path])
-	})
-	names, _ := filepath.Glob("*.go")
-	var files []*ast.File
-	for _, n := range names {
-		if strings.HasSuffix(n, "_test.go") {
-			continue
-		}
-		f, err := parser.ParseFile(fset, n, nil, 0)
-		if err != nil {
-			return nil, nil, nil, nil, err
-		}
-		files = append(files, f)
-	}
-	info := &types.Info{
-		Types:      map[ast.Expr]types.TypeAndValue{},
-		Selections: map[*ast.SelectorExpr]*types.Selection{},
-		Uses:       map[*ast.Ident]types.Object{},
-		Defs:       map[*ast.Ident]types.Object{},
-	}
-	pkg, err := (&types.Config{Importer: imp}).Check("app", fset, files, info)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
-	return fset, files, info, pkg, nil
+	return guard.TypeCheck()
 }
