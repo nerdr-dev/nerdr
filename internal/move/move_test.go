@@ -227,6 +227,26 @@ func TestMoveCleanBranchTheTargetHas(t *testing.T) {
 	}
 }
 
+// TestMoveNewBranchWithChangesOnly: a branch with no commit of its own
+// yet, only changes not committed, which the bundle carries without the
+// branch, whose commit the target has.
+func TestMoveNewBranchWithChangesOnly(t *testing.T) {
+	_, src, dst := machines(t)
+	wt := filepath.Join(filepath.Dir(src), "worktrees", "fresh-proj")
+	git(t, src, "worktree", "add", "-q", "-b", "fresh", wt)
+	gitsafe.Trust(src, wt)
+	write(t, filepath.Join(wt, "new.txt"), "new\n")
+	status := git(t, wt, "status", "--porcelain")
+	dstWt := filepath.Join(filepath.Dir(dst), "worktrees", "fresh-proj")
+	moveOne(t, src, wt, dst, dstWt)
+	if got := git(t, dstWt, "status", "--porcelain"); got != status {
+		t.Errorf("target status %q, want %q", got, status)
+	}
+	if got := tree(t, dstWt); !mapsEqual(got, tree(t, wt)) {
+		t.Error("files differ")
+	}
+}
+
 func TestMoveRefusesABranchThatWentItsOwnWay(t *testing.T) {
 	_, src, dst := machines(t)
 	wt := work(t, src)
