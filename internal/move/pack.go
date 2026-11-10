@@ -10,6 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
+	"strings"
+	"syscall"
+	"time"
 )
 
 // A pack is what a move carries from one machine to the other, as one
@@ -152,5 +156,32 @@ func Size(n int64) string {
 		return fmt.Sprintf("%.0f KB", float64(n)/(1<<10))
 	default:
 		return fmt.Sprintf("%.1f MB", float64(n)/(1<<20))
+	}
+}
+
+// tempPrefixes are the temporary folders a move makes, in os.TempDir.
+var tempPrefixes = []string{"nerdr-move-out-", "nerdr-move-in-", "nerdr-move-look-", "nerdr-index-"}
+
+// Sweep removes the temporary folders of moves left by a core that ended
+// in the middle of one: those of this user's older than age. A move under
+// way, of another core's, is far younger.
+func Sweep(age time.Duration) {
+	entries, err := os.ReadDir(os.TempDir())
+	if err != nil {
+		return
+	}
+	uid := os.Getuid()
+	for _, e := range entries {
+		if !e.IsDir() || !slices.ContainsFunc(tempPrefixes, func(p string) bool { return strings.HasPrefix(e.Name(), p) }) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil || time.Since(info.ModTime()) < age {
+			continue
+		}
+		if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != uid {
+			continue
+		}
+		_ = os.RemoveAll(filepath.Join(os.TempDir(), e.Name()))
 	}
 }

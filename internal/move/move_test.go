@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 )
@@ -336,4 +337,26 @@ func mapsEqual(a, b map[string]string) bool {
 		}
 	}
 	return true
+}
+
+func TestSweepTakesOnlyOldMoves(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	old, err := os.MkdirTemp("", "nerdr-move-out-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	young, _ := os.MkdirTemp("", "nerdr-move-in-")
+	other, _ := os.MkdirTemp("", "something-")
+	past := time.Now().Add(-7 * time.Hour)
+	os.Chtimes(old, past, past)
+	os.Chtimes(other, past, past)
+	Sweep(6 * time.Hour)
+	if _, err := os.Stat(old); err == nil {
+		t.Error("an old move's folder was left")
+	}
+	for _, d := range []string{young, other} {
+		if _, err := os.Stat(d); err != nil {
+			t.Errorf("%s removed", d)
+		}
+	}
 }
