@@ -288,3 +288,48 @@ func TestFleetMoveAsksForAWeakerSandbox(t *testing.T) {
 	pressKey(m, "y")
 	pump(t, m, told, "moved", func(v string) bool { return strings.Contains(v, "login is on box") })
 }
+
+// TestFleetMoveSandboxDroppedAfterTheYes: box's agent was sandboxed when
+// the user said yes, and is not by the time the tab lands: box refuses
+// it, and the tab carries on here.
+func TestFleetMoveSandboxDroppedAfterTheYes(t *testing.T) {
+	m, here, box, _, told := twoMachines(t)
+	moveSetup(t, m, told, here, box, true)
+	box.Mu.Lock()
+	s := box.Cfg.Agents[agents.Codex]
+	s.Sandboxed = true
+	box.Cfg.Agents[agents.Codex] = s
+	box.Mu.Unlock()
+	locked(m, func() { m.do(core.RenameTab{T: core.TabRef{Core: "box", Tab: "1"}, Name: "deploy"}) })
+	pumpUntil(t, m, told, "box sandboxed", func() bool {
+		var ok bool
+		locked(m, func() { ok = m.fleet.Named("box").Core.SandboxedKind(agents.Codex) })
+		return ok
+	})
+	goTo(m, 0)
+	locked(m, func() { m.openMove() })
+	v := pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "Goes: branch feat") })
+	if strings.Contains(v, "Not in a sandbox there") {
+		t.Fatal("warned though box is sandboxed")
+	}
+	pressKey(m, "h")
+	pressKey(m, "enter")
+	box.Mu.Lock()
+	s.Sandboxed = false
+	box.Cfg.Agents[agents.Codex] = s
+	box.Mu.Unlock()
+	pump(t, m, told, "refused", func(v string) bool {
+		return strings.Contains(v, "login was not moved") && strings.Contains(v, "sandbox")
+	})
+	pumpUntil(t, m, told, "the tab here again", func() bool {
+		here.Mu.Lock()
+		defer here.Mu.Unlock()
+		return len(here.Tabs) == 1 && here.Tabs[0].Moving == nil
+	})
+	box.Mu.Lock()
+	n := len(box.Tabs)
+	box.Mu.Unlock()
+	if n != 1 {
+		t.Errorf("%d tabs on box", n)
+	}
+}

@@ -196,3 +196,110 @@ func TestMoveManifestFromElsewhere(t *testing.T) {
 		}
 	}
 }
+
+// writesOnStop is a program in dir that writes file as it is stopped, a
+// moment after the hangup.
+func writesOnStop(t *testing.T, dir, file string) *term.Pane {
+	t.Helper()
+	p, err := term.Start([]string{"sh", "-c", `trap 'sleep 0.3; echo late > ` + file + `; exit 0' HUP; echo up; while :; do sleep 0.05; done`},
+		dir, os.Environ(), 40, 10, func() {})
+	if err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(p.Close)
+	time.Sleep(200 * time.Millisecond) // the trap is set
+	return p
+}
+
+// TestMoveWaitsForEveryWriterToStop: the tab's agent, and another agent
+// in it, are stopped before the work is packed, and what they write as
+// they stop goes with it; given up, both start again.
+func TestMoveWaitsForEveryWriterToStop(t *testing.T) {
+	c, tb, _ := moveCore(t)
+	tb.Pane.Close()
+	tb.Pane = writesOnStop(t, tb.Dir, "own.txt")
+	other := &Tab{AgentState: Agent{Tab: state.Tab{ID: "2", Name: "feat", Agent: agents.Codex, Dir: tb.Dir, Worktrees: tb.Worktrees}}, PartOf: tb}
+	other.Pane, other.Light = writesOnStop(t, tb.Dir, "other.txt"), StIdle
+	tb.PaneList = append(tb.Panes(), &PaneTab{Kind: PaneAgent, A: other})
+
+	packed, _ := replied(t, (MoveStart{Job: "j", T: c.Ref(tb)}).Do(c)).(MovePackedMsg)
+	if packed.Err != "" {
+		t.Fatal(packed.Err)
+	}
+	if tb.Pane != nil || other.Pane != nil {
+		t.Fatal("an agent was left running")
+	}
+	var man moveManifest
+	b, _ := os.ReadFile(filepath.Join(c.movesOut["j"].dir, manifestFile))
+	if err := json.Unmarshal(b, &man); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []string{"own.txt", "other.txt"} {
+		if out, err := exec.Command("git", "-C", tb.Dir, "cat-file", "-p", man.Parts[0].Wip+":"+f).Output(); err != nil || string(out) != "late\n" {
+			t.Errorf("%s written as it stopped is not in the pack: %q %v", f, out, err)
+		}
+	}
+	c.moveAbort("j", "a test")
+	if tb.Light != StStarting || other.Light != StStarting {
+		t.Errorf("not started again: %v, %v", tb.Light, other.Light)
+	}
+}
+
+// TestMoveLandRefusesAFolderOutside: a pack whose work has a link out of
+// the worktree, and names it as the folder the agent works in, lands no
+// tab, and leaves no worktree.
+func TestMoveLandRefusesAFolderOutside(t *testing.T) {
+	_, tb, _ := moveCore(t)
+	outside := t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(tb.Dir, "outside")); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	man := moveManifest{Name: "feat", Agent: agents.Codex, Sub: "outside"}
+	size, sum, err := packWork(dir, tb.Worktrees, nil, &man, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "proj")
+	for _, args := range [][]string{{"clone", "-q", tb.Worktrees[0].Repo, dst}, {"-C", dst, "remote", "set-url", "origin", tb.Worktrees[0].Origin}} {
+		if out, err := exec.Command("git", args...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v %s", args, err, out)
+		}
+	}
+	wtRoot := t.TempDir()
+	folder := workspace.DirFor(wtRoot, "feat", []workspace.Repo{{Name: "proj", Path: dst}})
+	q := MoveLand{Job: "j", ID: "n1", Size: size, Sum: sum, Kind: agents.Codex, Repos: []string{dst}, Dir: folder}
+	ev := landMove(q, dir, wtRoot, false)
+	if ev.err == nil || !strings.Contains(ev.err.Error(), "outside its worktree") {
+		t.Fatalf("landed in %q: %v", ev.dir, ev.err)
+	}
+	if _, err := os.Stat(folder); err == nil {
+		t.Error("the worktree was left")
+	}
+
+	// The same pack, its agent in the worktree itself, lands.
+	dir2 := t.TempDir()
+	man = moveManifest{Name: "feat", Agent: agents.Codex}
+	size, sum, _ = packWork(dir2, tb.Worktrees, nil, &man, "")
+	q.Size, q.Sum = size, sum
+	if ev := landMove(q, dir2, wtRoot, false); ev.err != nil || ev.dir != folder {
+		t.Fatalf("%q %v", ev.dir, ev.err)
+	}
+}
+
+// TestMoveLandRefusesWhatThePackSaysWasSandboxed: the pack says the agent
+// was sandboxed; the target's agent is not, and the client said nothing
+// of it.
+func TestMoveLandRefusesWhatThePackSaysWasSandboxed(t *testing.T) {
+	q := MoveLand{Kind: agents.Codex}
+	if !weakerSandbox(q, moveManifest{Sandboxed: true}, false) {
+		t.Error("taken without a yes")
+	}
+	q.Weaker = true
+	if weakerSandbox(q, moveManifest{Sandboxed: true}, false) {
+		t.Error("refused with the yes")
+	}
+	if weakerSandbox(MoveLand{}, moveManifest{Sandboxed: true}, true) {
+		t.Error("refused though sandboxed there")
+	}
+}

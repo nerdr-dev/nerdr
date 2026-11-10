@@ -2,6 +2,7 @@ package move
 
 import (
 	"bytes"
+	"errors"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -358,5 +359,41 @@ func TestSweepTakesOnlyOldMoves(t *testing.T) {
 		if _, err := os.Stat(d); err != nil {
 			t.Errorf("%s removed", d)
 		}
+	}
+}
+
+// TestMoveLandFailingLateLeavesNothing: a landing that fails once the
+// worktree is added takes it away again, and the branch, so a second try
+// finds the way clear.
+func TestMoveLandFailingLateLeavesNothing(t *testing.T) {
+	_, src, dst := machines(t)
+	wt := work(t, src)
+	p, err := Snapshot(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tmp := t.TempDir()
+	bundle := filepath.Join(tmp, "b.bundle")
+	if err := Bundle(wt, &p, Have(dst, p.Branch), bundle); err != nil {
+		t.Fatal(err)
+	}
+	dstWt := filepath.Join(tmp, "wt")
+	afterAdd = func(string) error { return errors.New("disk full") }
+	err = Land(dst, dstWt, p, bundle)
+	afterAdd = nil
+	if err == nil {
+		t.Fatal("landed")
+	}
+	if _, err := os.Stat(dstWt); err == nil {
+		t.Error("the worktree was left")
+	}
+	if Tip(dst, p.Branch) != "" {
+		t.Error("the branch was left")
+	}
+	if out := git(t, dst, "worktree", "list"); strings.Contains(out, dstWt) {
+		t.Errorf("git still lists it:\n%s", out)
+	}
+	if err := Land(dst, dstWt, p, bundle); err != nil {
+		t.Fatalf("the second try: %v", err)
 	}
 }
