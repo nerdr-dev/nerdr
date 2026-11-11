@@ -264,6 +264,8 @@ func (m *Core) SpinoffCreate(t *Tab, pt spinoff.Part, kind agents.Kind, name str
 			return res
 		}
 		plan, err := workspace.MakePlan(wtRoot, name, repos)
+		// An unpinned base is one the agent that sent the part could have moved.
+		plan.Sandboxed = pt.Sandboxed
 		if err == nil {
 			for _, it := range plan.Items {
 				switch it.Mode {

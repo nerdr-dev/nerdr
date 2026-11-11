@@ -65,7 +65,7 @@ type InfoMsg struct {
 // the issues, and agents to put to sleep or wake. The loop runs it every
 // InfoTickN, with a client or without.
 func (m *Core) InfoTick(now time.Time) Cmd {
-	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now), lookForGh, m.tickScan(now), m.lookForAgents(now), m.lookAtSkills(now), m.lookAtConfig())
+	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now), lookForGh, m.tickScan(now), m.lookForAgents(now), m.lookAtSkills(now), m.lookAtConfig(), m.noticeRefusedGit())
 }
 
 // GhMsg is whether the gh CLI is there, for Core.NoGh.

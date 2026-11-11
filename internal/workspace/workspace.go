@@ -20,6 +20,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/denied"
@@ -167,6 +168,12 @@ type Plan struct {
 	// it was last fetched, without fetching it: for when the fetch failed
 	// and you would rather start from that than not at all.
 	Unfetched bool
+	// Sandboxed says a sandboxed agent asked for the plan (nerdr tab new,
+	// a spinoff). Where Sync could not pin the base to a commit origin
+	// gave (see PlanItem.Pinned) the base is a ref such an agent can move,
+	// so its code is not taken for the base's and setup is not run there
+	// (see SetupIn), nor a hook from inside the new worktree.
+	Sandboxed bool
 }
 
 // PlanItem is one repository's part of a Plan.
@@ -177,8 +184,16 @@ type PlanItem struct {
 	// local branch, "remote" tracking origin's branch of that name.
 	Mode string
 	// Base is the ref a new branch starts from, or would, for "remote"
-	// and "local".
+	// and "local". It is the name shown to the user (Describe); what a new
+	// branch is made from is Pinned when Sync set it.
 	Base string
+	// Pinned is, for "new", the commit Sync had origin itself name for its
+	// base branch, which the new branch is made from in place of Base. A
+	// sandboxed agent can write the main checkout's refs, and with them
+	// refs/remotes/origin/main, between the fetch and the worktree being
+	// made; a commit id it cannot change. "" when there was no origin to
+	// ask, or the plan is Unfetched or Stacked.
+	Pinned string
 	// Ahead is, for "remote" and "local", how many commits the existing
 	// branch has that Base has not: 0 when it has been merged with a merge
 	// or fast-forward. A squash-merged branch still counts its commits;
@@ -495,15 +510,16 @@ func (p Plan) Describe() []string {
 }
 
 // Sync brings each repository's base branch up to date with origin before a
-// new branch is made from it: it fetches origin's main (or master), starts
-// the new branch from that, and fast-forwards the local branch of the same
-// name to it, as `git pull --ff-only` would. A fetch that fails stops the
-// tab from being made rather than starting it from a copy that may be out
-// of date, with a *FetchError. A repository without origin has nothing to
-// sync with.
+// new branch is made from it: it asks origin which commit its main (or
+// master) is at, fetches it, pins the new branch to that commit (Pinned),
+// and fast-forwards the local branch of the same name to it, as `git pull
+// --ff-only` would. A fetch that fails stops the tab from being made rather
+// than starting it from a copy that may be out of date, with a *FetchError.
+// A repository without origin has nothing to sync with.
 func (p *Plan) Sync() (warnings []string, err error) {
 	for i := range p.Items {
 		it := &p.Items[i]
+		it.Pinned = ""
 		if it.Mode != "new" || it.Stacked || !hasRemote(it.Repo.Path, "origin") {
 			continue // a stacked branch starts where the local one is
 		}
@@ -512,17 +528,62 @@ func (p *Plan) Sync() (warnings []string, err error) {
 			warnings = append(warnings, fmt.Sprintf("%s: started from %s as it was last fetched; it may be out of date", it.Repo.Name, it.Base))
 			continue
 		}
+		// The commit is taken from origin's answer, not from the ref the
+		// fetch writes: that ref is in the main checkout's .git, which a
+		// sandboxed agent may write to.
+		id, err := remoteCommit(it.Repo.Path, b)
+		if err != nil {
+			return warnings, &FetchError{Repo: it.Repo.Name, Branch: b, Err: err}
+		}
 		remote := "origin/" + b
 		refspec := "+refs/heads/" + b + ":refs/remotes/" + remote
 		if _, err := gitTimeout(fetchTimeout, it.Repo.Path, "fetch", "--quiet", "origin", refspec); err != nil {
 			return warnings, &FetchError{Repo: it.Repo.Name, Branch: b, Err: err}
 		}
-		it.Base = remote
-		if w := fastForward(it.Repo.Path, b, remote); w != "" {
+		afterFetch(it.Repo.Path)
+		if _, err := git(it.Repo.Path, "cat-file", "-e", id+"^{commit}"); err != nil {
+			// Pushed over between the two: origin no longer has it.
+			return warnings, &FetchError{Repo: it.Repo.Name, Branch: b,
+				Err: fmt.Errorf("%s moved on origin while it was fetched; try again", b)}
+		}
+		it.Base, it.Pinned = remote, id
+		if w := fastForward(it.Repo.Path, b, id); w != "" {
 			warnings = append(warnings, it.Repo.Name+": "+w)
 		}
 	}
 	return warnings, nil
+}
+
+// afterFetch is called by Sync once the base is fetched: a seam for the
+// tests to move refs/remotes/origin/main there, as an agent could.
+var afterFetch = func(repo string) {}
+
+// remoteCommit is the commit origin says its branch b is at.
+func remoteCommit(repo, b string) (string, error) {
+	out, err := gitTimeout(fetchTimeout, repo, "ls-remote", "origin", "refs/heads/"+b)
+	if err != nil {
+		return "", err
+	}
+	for _, l := range strings.Split(out, "\n") {
+		if f := strings.Fields(l); len(f) == 2 && f[1] == "refs/heads/"+b && isCommitID(f[0]) {
+			return f[0], nil
+		}
+	}
+	return "", fmt.Errorf("origin has no branch %s", b)
+}
+
+// isCommitID says whether s is a full commit id, SHA-1 or SHA-256, and not
+// a name git would look up in refs.
+func isCommitID(s string) bool {
+	if len(s) != 40 && len(s) != 64 {
+		return false
+	}
+	for _, c := range s {
+		if !('0' <= c && c <= '9' || 'a' <= c && c <= 'f') {
+			return false
+		}
+	}
+	return true
 }
 
 // FetchError is a fetch of the base branch from origin that failed, as
@@ -557,23 +618,28 @@ func fetchHint(reason string) string {
 	return ""
 }
 
-// fastForward moves the local branch b up to remote when it is behind and
-// has no commits of its own, and says why when it is left as it is.
-func fastForward(repo, b, remote string) string {
-	if !refExists(repo, "refs/heads/"+b) {
+// fastForward moves the local branch b up to the commit id when it is
+// behind and has no commits of its own, and says why when it is left as it
+// is.
+func fastForward(repo, b, id string) string {
+	old, err := git(repo, "rev-parse", "--verify", "--quiet", "refs/heads/"+b)
+	if err != nil {
 		return ""
 	}
-	if _, err := git(repo, "merge-base", "--is-ancestor", "refs/heads/"+b, remote); err != nil {
+	old = strings.TrimSpace(old)
+	if _, err := git(repo, "merge-base", "--is-ancestor", old, id); err != nil {
 		return "local " + b + " has commits that are not on origin; left as it is"
 	}
 	if wt := checkedOutAt(repo, b); wt != "" {
 		gitsafe.Trust(repo, wt)
-		if _, err := git(wt, "merge", "--ff-only", "--quiet", remote); err != nil {
+		if _, err := git(wt, "merge", "--ff-only", "--quiet", id); err != nil {
 			return "could not bring " + b + " up to date in " + wt + ": " + err.Error()
 		}
 		return ""
 	}
-	if _, err := git(repo, "fetch", "--quiet", ".", "refs/remotes/"+remote+":refs/heads/"+b); err != nil {
+	// Only from where it was checked to be: a commit that landed on it
+	// since is not lost.
+	if _, err := git(repo, "update-ref", "-m", "nerdr: fast-forward to origin", "refs/heads/"+b, id, old); err != nil {
 		return "could not bring " + b + " up to date: " + err.Error()
 	}
 	return ""
@@ -599,11 +665,27 @@ func checkedOutAt(repo, branch string) string {
 // SetupIn is the worktrees of p, by path, whose code is the base's when
 // made: new branches from the base, not an existing branch, origin's or
 // a stacked one, which hold code written on them. Prepare runs setup in
-// these alone.
+// these alone. Call it after Execute, before anything else is done in the
+// worktrees.
+//
+// A branch pinned to origin's commit (Pinned) counts only while its
+// worktree is still at that commit. One that is not pinned started from a
+// ref in the main checkout — the local main with no origin, or origin's as
+// last fetched — and counts only when the user asked for it and no
+// sandboxed agent has run in the repository: one that asked (Sandboxed),
+// or has worked there, could have moved that ref to code of its own.
 func (p Plan) SetupIn() map[string]bool {
 	out := map[string]bool{}
 	for _, it := range p.Items {
-		if it.Mode == "new" && !it.Stacked {
+		if it.Mode != "new" || it.Stacked {
+			continue
+		}
+		switch {
+		case it.Pinned != "":
+			if head, err := git(it.Path, "rev-parse", "--verify", "HEAD"); err == nil && strings.TrimSpace(head) == it.Pinned {
+				out[it.Path] = true
+			}
+		case !p.Sandboxed && !gitsafe.RepoSandboxed(it.Repo.Path):
 			out[it.Path] = true
 		}
 	}
@@ -622,7 +704,7 @@ func (p Plan) Execute() ([]Worktree, error) {
 	}
 	var made []Worktree
 	for _, it := range p.Items {
-		if err := it.add(p.Branch); err != nil {
+		if err := it.add(p.Branch, p.Sandboxed); err != nil {
 			for j, w := range made {
 				_, _ = git(w.Repo, "worktree", "remove", "--force", w.Path)
 				p.Items[j].undo(p.Branch)
@@ -632,7 +714,6 @@ func (p Plan) Execute() ([]Worktree, error) {
 			}
 			return nil, fmt.Errorf("%s: %w", it.Repo.Name, err)
 		}
-		gitsafe.Trust(it.Repo.Path, it.Path)
 		if it.Stacked {
 			_ = gitdata.SetStackedBase(it.Repo.Path, p.Branch, it.Base)
 		}
@@ -653,39 +734,109 @@ func (p Plan) Execute() ([]Worktree, error) {
 	return made, nil
 }
 
-// add makes the item's worktree on branch.
-func (it PlanItem) add(branch string) error {
+// add makes the item's worktree on branch. sandboxed is Plan.Sandboxed.
+func (it PlanItem) add(branch string, sandboxed bool) error {
+	if it.Mode == "new" && !it.Stacked {
+		return it.addFromBase(branch, sandboxed)
+	}
 	var args []string
 	switch {
 	case it.Mode == "local":
 		args = []string{"worktree", "add", it.Path, branch}
 	case it.Mode == "remote":
 		args = []string{"worktree", "add", "--track", "-b", branch, it.Path, "origin/" + branch}
-	case it.Replaces != "":
+	default:
+		args = []string{"worktree", "add", "--no-track", "-b", branch, it.Path, it.Base}
+	}
+	if _, err := git(it.Repo.Path, args...); err != nil {
+		return err
+	}
+	gitsafe.Trust(it.Repo.Path, it.Path)
+	return nil
+}
+
+// addFromBase makes the worktree of a new branch from the base, with the
+// repository's hooks run, as for a checkout of the base's code.
+//
+// git worktree add would check the branch out by its name, and a sandboxed
+// agent can move refs/heads/<branch> between git making it and checking
+// it out, so the worktree is made empty and the files are then checked out
+// from the commit itself, which no ref names. The commit is Pinned, or,
+// where there is none, what Base is at when looked at, once.
+func (it PlanItem) addFromBase(branch string, sandboxed bool) error {
+	start := it.Pinned
+	if start == "" {
+		out, err := git(it.Repo.Path, "rev-parse", "--verify", "--end-of-options", it.Base+"^{commit}")
+		if err != nil {
+			return fmt.Errorf("could not find %s: %w", it.Base, err)
+		}
+		start = strings.TrimSpace(out)
+	}
+	if it.Replaces != "" {
 		// The merged local branch is moved to the base rather than
 		// deleted and made anew, and only if it is still where it was
 		// when it was found merged: had a commit landed on it since, that
 		// would be lost. Its reflog keeps where it was.
 		if _, err := git(it.Repo.Path, "update-ref", "-m", "nerdr: new branch from "+it.Base,
-			"refs/heads/"+branch, it.Base+"^{commit}", it.Replaces); err != nil {
+			"refs/heads/"+branch, start, it.Replaces); err != nil {
 			return fmt.Errorf("could not move the merged local %s to %s: %w", branch, it.Base, err)
 		}
-		args = []string{"worktree", "add", it.Path, branch}
-	default:
-		args = []string{"worktree", "add", "--no-track", "-b", branch, it.Path, it.Base}
-	}
-	run := git
-	if it.Mode == "new" && !it.Stacked {
-		run = gitHooks
-	}
-	if _, err := run(it.Repo.Path, args...); err != nil {
-		if it.Replaces != "" {
+		_, err := git(it.Repo.Path, "worktree", "add", "--no-checkout", it.Path, branch)
+		if err != nil {
 			it.undo(branch)
+			return err
 		}
+	} else if _, err := git(it.Repo.Path, "worktree", "add", "--no-checkout", "--no-track", "-b", branch, it.Path, start); err != nil {
 		return err
+	}
+	gitsafe.Trust(it.Repo.Path, it.Path)
+	// From here a failure leaves nothing behind, as one of git worktree
+	// add does: Execute undoes only the worktrees it was given.
+	fail := func(err error) error {
+		_, _ = git(it.Repo.Path, "worktree", "remove", "--force", it.Path)
+		it.undo(branch)
+		return err
+	}
+	beforeCheckout(it.Path)
+	// reset --hard to the commit both checks out its files and puts the
+	// branch back on it, wherever it was moved to.
+	checkout := gitsafe.Env(it.Path)
+	if it.Pinned != "" && (sandboxed || gitsafe.RepoSandboxed(it.Repo.Path)) {
+		// A sandboxed agent can write the repository's objects: the files
+		// are read from a copy of the commit nerdr has checked instead
+		// (see verifiedObjects).
+		objects, done, err := verifiedObjects(it.Repo.Path, start)
+		if err != nil {
+			return fail(err)
+		}
+		defer done()
+		checkout = append(checkout, "GIT_OBJECT_DIRECTORY="+objects, "GIT_NO_REPLACE_OBJECTS=1")
+	}
+	if _, err := gitRunEnv(gitDefaultTimeout, checkout, it.Path, "reset", "--hard", "--quiet", start); err != nil {
+		return fail(fmt.Errorf("could not check out %s: %w", short(start), err))
+	}
+	// The post-checkout hook git worktree add would have run. A hook from
+	// inside the worktree (core.hooksPath = .husky/_, say) is code from
+	// the commit, which is the base's only when origin named it or the
+	// user asked for the tab.
+	env := gitsafe.Hooks(it.Path)
+	if it.Pinned == "" && (sandboxed || gitsafe.RepoSandboxed(it.Repo.Path)) {
+		env = gitsafe.SandboxedHooks(it.Path)
+	}
+	zero := strings.Repeat("0", len(start))
+	if !hasHookCommand() {
+		return nil
+	}
+	if _, err := gitRunEnv(gitDefaultTimeout, env, it.Path, "hook", "run", "--ignore-missing", "post-checkout", "--", zero, start, "1"); err != nil {
+		return fail(fmt.Errorf("post-checkout hook: %w", err))
 	}
 	return nil
 }
+
+// beforeCheckout is called by addFromBase between making the branch and
+// checking out its files: a seam for the tests to move the branch there,
+// as an agent could.
+var beforeCheckout = func(path string) {}
 
 // undo puts the branch back the way it was before add, once its worktree
 // is gone: a branch the plan created goes, so trying again does not find
@@ -1142,3 +1293,19 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 	}
 	return string(out), nil
 }
+
+// hasHookCommand reports whether git has `git hook`, which came with git
+// 2.36: an older git cannot be asked to run the post-checkout hook, and
+// the worktree is made without it rather than not at all. A version that
+// cannot be read counts as having it, so a failure is told.
+var hasHookCommand = sync.OnceValue(func() bool {
+	out, err := exec.Command("git", "version").Output()
+	if err != nil {
+		return true
+	}
+	var major, minor int
+	if n, _ := fmt.Sscanf(string(out), "git version %d.%d", &major, &minor); n != 2 {
+		return true
+	}
+	return major > 2 || major == 2 && minor >= 36
+})

@@ -165,7 +165,7 @@ func Prepare(wts []Worktree, setupIn map[string]bool, file string, progress func
 			}
 		}
 		if s := strings.TrimSpace(c.Setup); s != "" && !setupIn[w.Path] {
-			warnings = append(warnings, name+": setup not run — the branch has code that is not the base's; run "+s+" yourself once you have read it")
+			warnings = append(warnings, name+": setup not run — the worktree has code not known to be the base's; run "+s+" yourself once you have read it")
 		} else if s != "" {
 			progress(name + ": " + s)
 			if err := RunSetup(w.Path, s); err != nil {
@@ -431,11 +431,16 @@ func Commit(w Worktree, message string) error {
 	return CommitIn(w, message, true)
 }
 
-// CommitIn is Commit, with worktree-local core.hooksPath (such as .husky/_)
-// skipped when allHooks is false (a tab where a sandboxed agent ran), while
-// .git/hooks and global hooks outside the worktree still run.
+// CommitIn is Commit, with no hook run when allHooks is false (a tab where
+// a sandboxed agent ran): see gitsafe.SandboxedHooks.
 func CommitIn(w Worktree, message string, allHooks bool) error {
-	if _, err := gitRun(gitDefaultTimeout, false, w.Path, "add", "-A"); err != nil {
+	// Not git add -A itself, which runs git status inside every gitlink's
+	// folder with that folder's own config, an agent's to write: StageAll
+	// leaves the gitlinks as they are, so a submodule moved to another
+	// commit is not committed with the rest.
+	ctx, cancel := context.WithTimeout(context.Background(), gitDefaultTimeout)
+	defer cancel()
+	if err := gitdata.StageAll(ctx, w.Path); err != nil {
 		return err
 	}
 	env := gitsafe.Hooks
@@ -454,8 +459,8 @@ func Push(w Worktree) error {
 	return PushIn(w, true)
 }
 
-// PushIn is Push, with worktree-local core.hooksPath skipped when allHooks
-// is false.
+// PushIn is Push, with no hook run when allHooks is false (a tab where a
+// sandboxed agent ran): see gitsafe.SandboxedHooks.
 func PushIn(w Worktree, allHooks bool) error {
 	if err := CheckOrigin(w); err != nil {
 		return err
@@ -466,9 +471,29 @@ func PushIn(w Worktree, allHooks bool) error {
 	env := gitsafe.Hooks
 	if !allHooks {
 		env = gitsafe.SandboxedHooks
+		// No hook runs, so the files Git LFS's pre-push hook would have
+		// sent are sent here: a push of their pointers alone leaves a
+		// branch nobody can check out.
+		if usesLFS(w.Path) {
+			if _, err := gitRunEnv(fetchTimeout, env(w.Path), w.Path, "lfs", "push", "origin", w.Branch); err != nil {
+				return fmt.Errorf("git lfs push: %w", err)
+			}
+		}
 	}
 	_, err := gitRunEnv(fetchTimeout, env(w.Path), w.Path, "push", "--quiet", "-u", "origin", "HEAD")
 	return err
+}
+
+// usesLFS reports whether the repository dir is in has Git LFS's pre-push
+// hook, as git lfs install puts it in .git/hooks: the hook that sends the
+// files a push names.
+func usesLFS(dir string) bool {
+	_, common, ok := gitsafe.Dirs(dir)
+	if !ok {
+		return false
+	}
+	b, err := os.ReadFile(filepath.Join(common, "hooks", "pre-push"))
+	return err == nil && (bytes.Contains(b, []byte("git lfs")) || bytes.Contains(b, []byte("git-lfs")))
 }
 
 // DeleteBranch deletes the branch only if it still points at head, the

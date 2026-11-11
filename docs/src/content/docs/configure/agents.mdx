@@ -129,6 +129,18 @@ session bus, a VS Code or browser socket in `/run/user/$UID`, services
 on localhost, or your SSH agent: the agent gets `SSH_AUTH_SOCK` from your
 environment, and only the sandbox decides whether it can use it.
 
+nerdr runs Git in the agent's worktree outside the sandbox, so the
+sandbox must keep the agent from the files of the main checkout's `.git`
+that tell Git to run commands: `.git/config`, `.git/hooks`,
+`.git/config.worktree` and `.git/worktrees/*/config.worktree`. To commit,
+the agent needs the rest of `.git/worktrees/<name>/`, the objects and the
+refs. Git reads `config.worktree` only when the repository has
+`extensions.worktreeConfig` on, as `git sparse-checkout` turns it on.
+While it is, nerdr does not run Git in a repository where an agent has
+run in a sandbox, and tells you why, so sparse-checkout and sandboxed
+agents do not go together in nerdr: see
+[Security](../../reference/security/#what-nerdr-does-not-take-from-the-worktree).
+
 Text that an agent outside a sandbox reads from one inside, such as code
 to review, a handoff or a review, was still written by the sandboxed
 agent and can contain instructions. It is safest to run every agent in a
@@ -296,6 +308,16 @@ through `/proc`, `pidfd_getfd` and `ptrace`; on macOS that part is not
 tried. If the check gets through, nerdr does not start the agent: it
 shows a notice saying what the check reached, and writes it to the
 core's log in `~/.local/state/nerdr/`.
+
+The check also tries to write where the agent must not be able to:
+`~/.config/nerdr`, `~/.local/state/nerdr`, the `.git/config` and
+`.git/hooks` of the main checkouts of the tab's repositories, and the
+folder the other tabs' worktrees are in. An agent that can write another
+tab's worktree can change the code that tab's agent and setup command
+run, outside its own sandbox. When any of them can be written, nerdr
+starts the agent all the same and shows a notice naming them: tighten the
+sandbox so it lets the agent write its own worktree, and of the main
+checkout's `.git` only what a commit needs.
 
 A check that got through runs again at each start, so the agent starts
 once the sandbox denies what it reached. A check that reached nothing, or

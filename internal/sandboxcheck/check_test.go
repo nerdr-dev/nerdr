@@ -17,6 +17,8 @@ func TestArgsComeBackAsTheyWent(t *testing.T) {
 	for _, in := range []Target{
 		{Nonce: "n1", ClientDir: "/run/user/1/nerdr", Sock: "/run/user/1/nerdr/core-a.sock", Key: "/run/user/1/nerdr/core-a.key", PidNS: "pid:[4026531836]", Pids: []int{10, 11}},
 		{Nonce: "n2"}, // empty ones survive a wrapper that drops empty arguments
+		{Nonce: "n3", Pids: []int{7}, Writes: []string{"/home/u/.config/nerdr", "/home/u/dev/repo/.git/config"}},
+		{Nonce: "n4", Writes: []string{"/w"}},
 	} {
 		args := in.Args()
 		if slices.Contains(args, "") {
@@ -157,5 +159,45 @@ func TestProbeReachesAProcessItMayTrace(t *testing.T) {
 	}
 	if r := Probe(Target{PidNS: "pid:[1]", Pids: []int{pid}}); r.Reached() {
 		t.Errorf("tried in another pid namespace: %+v", r)
+	}
+}
+
+// The check says which of the folders and files it must not write it
+// could: a folder by making a file in it, which it leaves nothing of, a
+// file by opening it to append to. One that is not there, or is read
+// only, it could not.
+func TestProbeFindsWhatItCanWrite(t *testing.T) {
+	dir := t.TempDir()
+	open, closed := filepath.Join(dir, "open"), filepath.Join(dir, "closed")
+	file, locked := filepath.Join(dir, "config"), filepath.Join(dir, "locked")
+	for _, d := range []string{open, closed} {
+		if err := os.Mkdir(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, f := range []string{file, locked} {
+		if err := os.WriteFile(f, []byte("as it was\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if os.Getuid() == 0 {
+		t.Skip("root writes what is read only")
+	}
+	_ = os.Chmod(closed, 0o555)
+	_ = os.Chmod(locked, 0o444)
+	t.Cleanup(func() { _ = os.Chmod(closed, 0o755) })
+
+	r := Probe(Target{Nonce: "n", Writes: []string{open, closed, file, locked, filepath.Join(dir, "gone")}})
+	if !slices.Equal(r.Writes, []string{open, file}) {
+		t.Fatalf("writes = %q, want the open folder and the file", r.Writes)
+	}
+	if r.Reached() {
+		t.Fatal("what it can write is not a way to the client socket or the holder")
+	}
+	if left, _ := os.ReadDir(open); len(left) != 0 {
+		t.Fatalf("the check left %v behind", left)
+	}
+	if b, _ := os.ReadFile(file); string(b) != "as it was\n" {
+		t.Fatalf("the check changed the file: %q", b)
 	}
 }

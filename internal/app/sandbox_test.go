@@ -571,8 +571,8 @@ func TestSandboxedReviewAndHandoffWaitUntilUserApproves(t *testing.T) {
 
 // TestHasSandboxedSkipsHooksInCommit covers hasSandboxed when a sandboxed
 // reviewer or side-agent ran in the tab (even after the reviewer closes),
-// and verifies core.CommitAll skips worktree-local core.hooksPath while allowing
-// .git/hooks.
+// and verifies core.CommitAll runs no hook there, in the worktree's
+// core.hooksPath or in .git/hooks.
 func TestHasSandboxedSkipsHooksInCommit(t *testing.T) {
 	repo := testRepo(t)
 	gitRun(t, repo, "config", "commit.gpgsign", "false")
@@ -613,14 +613,14 @@ func TestHasSandboxedSkipsHooksInCommit(t *testing.T) {
 		t.Fatal("hasSandboxed forgot that a sandboxed reviewer ran in the tab")
 	}
 	note, err := core.CommitAll(tb.Name, tb.Worktrees, "test commit", !tb.HasSandboxed())
-	if err != "" || !strings.Contains(note, "worktree git hooks skipped") {
+	if err != "" || !strings.Contains(note, "git hooks not run") {
 		t.Fatalf("CommitAll: %q %q", note, err)
 	}
 	if _, err := os.Stat(huskyMarker); err == nil {
 		t.Fatal("worktree core.hooksPath hook ran in a tab where a sandboxed agent ran")
 	}
-	if _, err := os.Stat(gitHookMarker); err != nil {
-		t.Fatal(".git/hooks pre-commit did not run when redirecting worktree core.hooksPath")
+	if _, err := os.Stat(gitHookMarker); err == nil {
+		t.Fatal(".git/hooks pre-commit ran in a tab where a sandboxed agent ran")
 	}
 
 	// Reopening the same worktree in a fresh state.Tab remembers via

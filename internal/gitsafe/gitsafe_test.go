@@ -159,15 +159,16 @@ func TestHooksOnlyWhenAsked(t *testing.T) {
 		t.Fatal("the user's core.hooksPath did not run with Hooks")
 	}
 
-	// SandboxedHooks redirects a worktree-local core.hooksPath (.husky/_)
-	// to .git/hooks, so worktree hooks do not run while .git/hooks still do.
+	// SandboxedHooks runs no hook: neither one in a core.hooksPath inside
+	// the worktree (.husky/_), the agent's to write, nor one in .git/hooks,
+	// which as a rule runs what the worktree says.
 	os.Remove(huskyMarker)
 	gitHookMarker := filepath.Join(root, "GIT_HOOK")
 	if err := os.WriteFile(filepath.Join(repo2, ".git", "hooks", "pre-commit"), []byte("#!/bin/sh\ntouch "+gitHookMarker+"\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if !WorktreeHooks(wt2) {
-		t.Fatal("WorktreeHooks missed relative core.hooksPath")
+	if !HasHooks(wt2) {
+		t.Fatal("HasHooks missed the hook in a relative core.hooksPath")
 	}
 	cmd = Command(wt2, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c3")
 	cmd.Env = SandboxedHooks(wt2)
@@ -177,8 +178,25 @@ func TestHooksOnlyWhenAsked(t *testing.T) {
 	if _, err := os.Stat(huskyMarker); err == nil {
 		t.Fatal("SandboxedHooks ran worktree core.hooksPath")
 	}
+	run(t, repo2, "config", "--unset", "core.hooksPath")
+	if !HasHooks(wt2) {
+		t.Fatal("HasHooks missed the hook in .git/hooks")
+	}
+	cmd = Command(wt2, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c4")
+	cmd.Env = SandboxedHooks(wt2)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	if _, err := os.Stat(gitHookMarker); err == nil {
+		t.Fatal("SandboxedHooks ran .git/hooks")
+	}
+	cmd = Command(wt2, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "c5")
+	cmd.Env = Hooks(wt2)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
 	if _, err := os.Stat(gitHookMarker); err != nil {
-		t.Fatal("SandboxedHooks did not run .git/hooks when redirecting worktree core.hooksPath")
+		t.Fatal("Hooks did not run .git/hooks")
 	}
 
 	// If the user disabled hooks via core.hooksPath=/dev/null, Hooks does
@@ -249,5 +267,21 @@ func TestMainCheckoutByAnotherName(t *testing.T) {
 	Trust(link, repo)
 	if out, err := Command(repo, "status").CombinedOutput(); err != nil {
 		t.Fatalf("git did not run in the main checkout: %v\n%s", err, out)
+	}
+}
+
+func TestIgnoreDirtySubmodules(t *testing.T) {
+	for _, c := range []struct{ in, want []string }{
+		{[]string{"status", "--porcelain"}, []string{"status", "--ignore-submodules=dirty", "--porcelain"}},
+		{[]string{"diff", "HEAD", "--", "f"}, []string{"diff", "--ignore-submodules=dirty", "HEAD", "--", "f"}},
+		{[]string{"-c", "core.quotepath=off", "diff-files"}, []string{"-c", "core.quotepath=off", "diff-files", "--ignore-submodules=dirty"}},
+		{[]string{"diff-index", "HEAD"}, []string{"diff-index", "--ignore-submodules=dirty", "HEAD"}},
+		{[]string{"log", "--", "status"}, []string{"log", "--", "status"}},
+		{[]string{"add", "-A"}, []string{"add", "-A"}},
+		{nil, nil},
+	} {
+		if got := ignoreDirtySubmodules(c.in); strings.Join(got, " ") != strings.Join(c.want, " ") {
+			t.Errorf("ignoreDirtySubmodules(%q) = %q, want %q", c.in, got, c.want)
+		}
 	}
 }

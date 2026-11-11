@@ -23,7 +23,8 @@ about it, and what is left for your sandbox to do.
   agent.
 - **Keep nerdr's own files out of reach.** A sandbox must not let its
   agent write to `~/.config/nerdr`, `~/.local/state/nerdr`, or the main
-  checkout's `.git/config` and `.git/hooks`.
+  checkout's `.git/config`, `.git/hooks`, `.git/config.worktree` and
+  `.git/worktrees/*/config.worktree`.
   With nerdr's core running on its own, as it does unless
   `NERDR_HOLDER=0`, it must also deny the client socket's folder. nerdr refuses to start an
   agent whose sandbox check finds it can reach that folder; if it cannot
@@ -45,10 +46,41 @@ To avoid this, nerdr finds the Git directory through the main checkout's
 `GIT_WORK_TREE` explicitly. It ignores worktrees unknown to the main
 checkout. `core.fsmonitor` is always disabled. Git hooks run only when nerdr
 creates a worktree from the base branch, commits or pushes. If an agent
-in the tab ran in a sandbox, hooks inside the worktree (a
-`core.hooksPath` such as `.husky/_`) are skipped, and only those in
-`.git/hooks` run, so the agent cannot plant a hook that nerdr then runs
-outside the sandbox.
+in the tab ran in a sandbox, no hook runs when nerdr commits or pushes
+there: not those inside the worktree (a `core.hooksPath` such as
+`.husky/_`), which the agent can write, and not those in `.git/hooks` or
+a folder of your own either. Most of those run what the worktree says
+(pre-commit its `.pre-commit-config.yaml`, lefthook its `lefthook.yml`, a
+script the repository's linter or tests), which would be the agent's code
+run as you. The commit dialog says so. Git LFS's files are still sent:
+nerdr runs `git lfs push` itself before it pushes. To have your hooks
+run, commit and push in a terminal of your own once you have read the
+change.
+
+A repository whose `.git/config` has `extensions.worktreeConfig` on, as
+`git sparse-checkout` turns it on, has Git also read a `config.worktree`
+in each worktree's own Git directory: `.git/worktrees/<name>/config.worktree`,
+or `.git/config.worktree` for the main checkout. An agent must be able to
+write `.git/worktrees/<name>/` to commit, so it may be able to write that
+file too, with a `diff.external` or a filter that Git would run as you
+the next time nerdr looks at the tab. Checking the file before each call
+would not stop an agent that rewrites it between the check and Git's
+read, and the extension cannot be turned off from outside the
+repository. So once an agent has run in a sandbox in any worktree of a
+repository, nerdr does not run Git in that repository's worktrees or
+main checkout while the extension is on, and tells you so once, naming
+any setting in a `config.worktree` other than sparse-checkout's own.
+Repositories without the extension, and those where no agent has run in
+a sandbox, are not affected.
+
+This is the cost for sparse-checkout users who run agents in a sandbox:
+in such a repository nerdr shows no changes, diffs, branch or pull
+request state, cannot commit, push, open a pull request, make a new
+worktree or close one with its worktree, until you turn the extension
+off. Run `git sparse-checkout disable` in each sparse worktree, which
+makes it a full checkout again, then `git config --unset
+extensions.worktreeConfig` in the main checkout. The agents themselves
+can still use Git in their sandbox.
 
 nerdr records origin's push destination when it opens a worktree, or on
 first start for older tabs. Pushes and new pull requests fail if that
@@ -63,7 +95,8 @@ or approved there would run outside the sandbox. See
 
 The sandbox must still protect the main checkout's `.git` directory.
 Committing requires some access there, but agents should not be able to
-write `.git/config` or `.git/hooks`.
+write `.git/config`, `.git/hooks`, `.git/config.worktree` or
+`.git/worktrees/*/config.worktree`.
 
 nerdr reads `.nerdr.toml` from the main checkout. Agents working there can
 edit it. Its `setup` runs outside the sandbox, and `copy` exposes files to
@@ -72,6 +105,19 @@ change. Approvals are saved in `~/.local/state/nerdr/setup-allowed.json`.
 Copying does not follow symlinks outside the repository. `setup` runs
 only in worktrees on a new branch from the base, never on a branch's own
 code: see [Getting a new worktree ready](../../use/tabs/#getting-a-new-worktree-ready-nerdrtoml).
+
+The base is the commit origin itself names, asked for when the worktree is
+made, not the copy of `origin/main` in the main checkout, which an agent
+that can write `.git/refs` could move. An agent that commits can also
+write `.git/objects`, and so put files of its own under the ids of
+origin's commit, or name others with a ref under `refs/replace`. Where a
+sandboxed agent has run in the repository, or asked for the tab, nerdr
+therefore first copies the commit into an object store of its own, which
+fails when an object is not what its id says, and checks the new
+worktree's files out from that copy. Such a tab is not made when the check
+fails; run `git fsck` in the repository then. A repository with no origin
+has no commit to ask for: a tab a sandboxed agent asks for there gets no
+`setup`.
 
 nerdr also writes to the data folder (`data_dir`), where agents store
 their notes, review results, walkthroughs and handoffs. When it writes to

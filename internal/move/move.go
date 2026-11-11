@@ -34,6 +34,7 @@ import (
 	"strings"
 	"time"
 
+	gitdata "github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
 )
@@ -201,7 +202,10 @@ func Snapshot(path string) (Part, error) {
 	if err != nil {
 		return p, err
 	}
-	if _, err := run(path, env, "add", "-A", "--", ":/"); err != nil {
+	// Not a plain git add -A, which runs git status inside every gitlink's
+	// folder, with that folder's own config: LookAt refuses submodules,
+	// but one could be added to the index after it looked.
+	if err := gitdata.AddAll(context.Background(), path, env...); err != nil {
 		return p, err
 	}
 	full, err := run(path, env, "write-tree")

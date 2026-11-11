@@ -21,7 +21,7 @@
 // On top of that, core.fsmonitor is turned off for every call, and hooks
 // for every call but the few the user asks for (Hooks): making a worktree
 // on a new branch from the base, or committing and pushing in a tab that
-// has not run a sandboxed agent. core.askpass is pointed at /dev/null and
+// has not run a sandboxed agent (see SandboxedHooks). core.askpass is pointed at /dev/null and
 // GIT_TERMINAL_PROMPT is off, so a repository's askpass program never runs
 // and git never waits on a password nobody can type: nerdr runs git off its
 // terminal, and a credential it lacks is reported (see denied), not asked
@@ -33,6 +33,10 @@
 // does (an empty core.sshCommand makes push fail with "cannot run"), and
 // they are the user's own: a sandboxed agent can write its worktree, but
 // not the main checkout's .git/config that GIT_DIR and GIT_COMMON_DIR name.
+// A submodule's config is another matter: it is in the worktree, the
+// agent's to write, and git reads it when it runs status inside the
+// submodule. So nerdr's status and diff do not look inside submodules
+// (ignoreDirtySubmodules), and its git add leaves gitlinks out (git.AddAll).
 package gitsafe
 
 import (
@@ -90,11 +94,15 @@ func Env(dir string) []string { return env(dir, hookOff) }
 // for (Git LFS uploads its files before a push).
 func Hooks(dir string) []string { return env(dir, hookAll) }
 
-// SandboxedHooks is Hooks for a worktree where a sandboxed agent has run:
-// .git/hooks (such as Git LFS) and global hooks outside the worktree still
-// run, while a core.hooksPath that points inside the agent-writable
-// worktree (such as .husky/_) is redirected to the repository's own
-// .git/hooks directory.
+// SandboxedHooks is the environment for what the user asked nerdr to do
+// (commit, push, make a worktree) where a sandboxed agent has run: no hook
+// runs. A hook the user installed in .git/hooks, or in a folder of their
+// own, is not the agent's to write, but most of them run what the worktree
+// says: pre-commit reads .pre-commit-config.yaml, lefthook its lefthook.yml,
+// husky the scripts in .husky, a hand-written one the repository's linter
+// or tests. Run by nerdr, that is the agent's code run as the user, outside
+// its sandbox. What Git LFS does in its pre-push hook, nerdr does itself
+// before it pushes (see workspace.PushIn).
 func SandboxedHooks(dir string) []string { return env(dir, hookSandboxed) }
 
 type hookMode int
@@ -105,27 +113,23 @@ const (
 	hookSandboxed
 )
 
-// WorktreeHooks reports whether git's configured core.hooksPath for dir
-// points into the worktree itself (for example a relative path such as
-// .husky/_), rather than .git/hooks, a global folder outside the worktree,
-// or /dev/null.
-func WorktreeHooks(dir string) bool {
+// HasHooks reports whether the repository dir is in has git hooks that
+// Hooks would run: a file that is not a sample in the folder
+// core.hooksPath names, or in .git/hooks without one.
+func HasHooks(dir string) bool {
 	d, ok := dirs(dir)
 	if !ok || d.gitDir == untrustedDir {
 		return false
 	}
-	return worktreeHooks(dir, d)
-}
-
-func worktreeHooks(dir string, d gitDirs) bool {
+	hp := filepath.Join(d.common, "hooks")
 	cmd := proc.Detach(exec.Command("git", "-C", dir, "config", "--get", "core.hooksPath"))
 	cmd.Env = env(dir, hookAll)
-	out, err := cmd.Output()
-	if err != nil {
-		return false
+	if out, err := cmd.Output(); err == nil {
+		if set := strings.TrimSpace(string(out)); set != "" {
+			hp = set
+		}
 	}
-	hp := strings.TrimSpace(string(out))
-	if hp == "" || hp == os.DevNull {
+	if hp == os.DevNull {
 		return false
 	}
 	if strings.HasPrefix(hp, "~/") || hp == "~" {
@@ -134,71 +138,89 @@ func worktreeHooks(dir string, d gitDirs) bool {
 		}
 	}
 	if !filepath.IsAbs(hp) {
-		return true
+		hp = filepath.Join(d.work, hp)
 	}
-	return (withinPath(clean(hp), clean(d.work)) && !withinPath(clean(hp), clean(d.common))) ||
-		(withinPath(realClean(hp), realClean(d.work)) && !withinPath(realClean(hp), realClean(d.common)))
-}
-
-func withinPath(path, root string) bool {
-	if path == "" || root == "" {
+	entries, err := os.ReadDir(hp)
+	if err != nil {
 		return false
 	}
-	rel, err := filepath.Rel(root, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
-}
-
-func realClean(p string) string {
-	p = clean(p)
-	cur := p
-	var tail []string
-	for {
-		if resolved, err := filepath.EvalSymlinks(cur); err == nil {
-			for i := len(tail) - 1; i >= 0; i-- {
-				resolved = filepath.Join(resolved, tail[i])
-			}
-			return filepath.Clean(resolved)
+	for _, e := range entries {
+		if !e.IsDir() && !strings.HasSuffix(e.Name(), ".sample") {
+			return true
 		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			return p
-		}
-		tail = append(tail, filepath.Base(cur))
-		cur = parent
 	}
+	return false
 }
 
-// Command is `git -C dir args…` with Env.
+// Command is `git -C dir args…` with Env, and the dirty content of
+// submodules left unlooked at (see ignoreDirtySubmodules).
 func Command(dir string, args ...string) *exec.Cmd {
-	cmd := proc.Detach(exec.Command("git", append([]string{"-C", dir}, args...)...))
+	cmd := proc.Detach(exec.Command("git", append([]string{"-C", dir}, ignoreDirtySubmodules(args)...)...))
 	cmd.Env = Env(dir)
 	return cmd
 }
 
 // CommandContext is Command with a context.
 func CommandContext(ctx context.Context, dir string, args ...string) *exec.Cmd {
-	cmd := proc.Detach(exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...))
+	cmd := proc.Detach(exec.CommandContext(ctx, "git", append([]string{"-C", dir}, ignoreDirtySubmodules(args)...)...))
 	cmd.Env = Env(dir)
 	return cmd
+}
+
+// ignoreDirtySubmodules gives the git commands that compare the work tree
+// --ignore-submodules=dirty. To tell whether a submodule has changes of
+// its own, git runs `git status` inside the submodule's folder, with that
+// folder's own .git and config — and an agent can make any folder of its
+// worktree a repository of its own, with a filter driver in its config
+// for every file, and put it in the index as a gitlink. The status would
+// run the filter, as the user. The setting diff.ignoreSubmodules (in env)
+// is not enough on its own: a submodule.<name>.ignore in .gitmodules,
+// which the agent writes, overrides it; the command-line option overrides
+// both. A submodule's commit still shows when it moves.
+//
+// git add takes no such option; see git.AddAll for it.
+func ignoreDirtySubmodules(args []string) []string {
+	i := 0
+	// Options to git itself come before the subcommand.
+	for i < len(args) && strings.HasPrefix(args[i], "-") {
+		if args[i] == "-c" || args[i] == "-C" {
+			i++
+		}
+		i++
+	}
+	if i >= len(args) {
+		return args
+	}
+	switch args[i] {
+	case "status", "diff", "diff-files", "diff-index":
+		out := make([]string, 0, len(args)+1)
+		out = append(out, args[:i+1]...)
+		out = append(out, "--ignore-submodules=dirty")
+		return append(out, args[i+1:]...)
+	}
+	return args
 }
 
 func env(dir string, mode hookMode) []string {
 	e := os.Environ()
 	d, ok := dirs(dir)
+	// A repository whose config.worktree a sandboxed agent can write is
+	// given no git at all: see guardWorktreeConfig.
+	d = guardWorktreeConfig(d, ok)
 	// core.askpass is a program git runs to ask for a credential. nerdr
 	// never wants one: it runs git off its terminal, and a credential it
 	// lacks is reported rather than prompted for. Pointing it at /dev/null
 	// makes git fail the ask rather than run whatever the repository named.
 	settings := [][2]string{{"core.fsmonitor", "false"}, {"core.askpass", os.DevNull}}
+	// A diff or status looks inside each submodule by running git status
+	// there, with that folder's own config, which an agent can write (see
+	// ignoreDirtySubmodules). The command-line option nerdr gives its own
+	// commands is what holds; this is for the git that gh runs, as far as
+	// a .gitmodules without an ignore setting of its own lets it.
+	settings = append(settings, [2]string{"diff.ignoreSubmodules", "dirty"})
 	switch mode {
-	case hookOff:
+	case hookOff, hookSandboxed:
 		settings = append(settings, [2]string{"core.hooksPath", os.DevNull})
-	case hookSandboxed:
-		if !ok || d.gitDir == untrustedDir {
-			settings = append(settings, [2]string{"core.hooksPath", os.DevNull})
-		} else if worktreeHooks(dir, d) {
-			settings = append(settings, [2]string{"core.hooksPath", filepath.Join(d.common, "hooks")})
-		}
 	}
 	// GIT_CONFIG_COUNT rather than -c, so the settings reach the git that
 	// gh runs as well. Ones the user's environment already has are kept.

@@ -42,7 +42,14 @@ type Target struct {
 	Sock, Key string
 	PidNS     string
 	Pids      []int
+	// Writes are folders and files the agent must not be able to write:
+	// nerdr's config and state, the main checkouts' .git/config and
+	// .git/hooks, the folder the other tabs' worktrees are in.
+	Writes []string
 }
+
+// writesSep comes between the process ids and Writes in Args.
+const writesSep = "--"
 
 // none stands for an empty argument.
 const none = "-"
@@ -59,6 +66,9 @@ func (t Target) Args() []string {
 	for _, p := range t.Pids {
 		out = append(out, strconv.Itoa(p))
 	}
+	if len(t.Writes) > 0 {
+		out = append(append(out, writesSep), t.Writes...)
+	}
 	return out
 }
 
@@ -74,7 +84,11 @@ func ParseArgs(args []string) (Target, error) {
 		return s
 	}
 	t := Target{Nonce: args[0], ClientDir: opt(args[1]), Sock: opt(args[2]), Key: opt(args[3]), PidNS: opt(args[4])}
-	for _, a := range args[5:] {
+	for i, a := range args[5:] {
+		if a == writesSep {
+			t.Writes = append(t.Writes, args[5+i+1:]...)
+			break
+		}
 		p, err := strconv.Atoi(a)
 		if err != nil || p <= 0 {
 			return Target{}, fmt.Errorf("sandbox check: bad process id %q", a)
@@ -93,6 +107,8 @@ type Result struct {
 	// Holder: "pidfd_getfd", "ptrace" and "/proc", each with the process
 	// it reached.
 	Holder []string `json:"holder,omitempty"`
+	// Writes are those of Target's Writes the check could write.
+	Writes []string `json:"writes,omitempty"`
 }
 
 // Reached reports whether the check got to anything it must not.
@@ -134,7 +150,38 @@ func Probe(t Target) Result {
 		}
 	}
 	r.Holder = probeHolder(t)
+	for _, p := range t.Writes {
+		if canWrite(p, t.Nonce) {
+			r.Writes = append(r.Writes, p)
+		}
+	}
 	return r
+}
+
+// canWrite reports whether path can be written from here: a folder by
+// making a file in it, which is removed again, a file by opening it to
+// append to, with nothing written. One that is not there cannot.
+func canWrite(path, nonce string) bool {
+	st, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	if !st.IsDir() {
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
+		if err != nil {
+			return false
+		}
+		_ = f.Close()
+		return true
+	}
+	probe := filepath.Join(path, ".nerdr-sandbox-check-"+filepath.Base(nonce))
+	f, err := os.OpenFile(probe, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return false
+	}
+	_ = f.Close()
+	_ = os.Remove(probe)
+	return true
 }
 
 // seesInto reports whether the folder dir, the client socket's, can be

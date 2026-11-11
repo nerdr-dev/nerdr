@@ -635,6 +635,8 @@ func (m *Core) OnNewTab(r hooks.Report) Cmd {
 		return func() Event {
 			res := TabMadeMsg{From: from, Branch: branch, Kind: k, Model: model, Task: task, Confined: confined}
 			plan, err := workspace.MakePlan(wtRoot, branch, repos)
+			// An unpinned base is one the asking agent could have moved.
+			plan.Sandboxed = confined
 			if err == nil {
 				for _, it := range plan.Items {
 					if it.Mode == "local" || it.Mode == "remote" {
