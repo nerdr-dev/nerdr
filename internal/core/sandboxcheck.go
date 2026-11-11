@@ -8,14 +8,17 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/attach"
+	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
+	"github.com/nerdr-dev/nerdr/internal/state"
 )
 
 // HeldCheck is the kind of held program that is a check from inside a
@@ -93,6 +96,7 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		Key:       keyFile,
 		PidNS:     sandboxcheck.PidNS(),
 		Pids:      []int{m.Held.Client.Pid(), os.Getpid()},
+		Writes:    SandboxWrites(m, t),
 	}
 	spec := spawn.Spec{Argv: sandboxcheck.Argv(wrapper, bin, target), Dir: t.Dir, Env: env, PTY: true, W: 120, H: 24}
 	m.Hold(&spec, Label{Kind: HeldCheck, Tab: t.ID}, true, "")
@@ -186,8 +190,46 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
 			ev.Kind, strings.Join(parts, ", and "), docs)
 	default:
 		Logf("sandbox check: %s's sandbox keeps it from the client socket and the holder", ev.Kind)
-		return
 	}
-	Logf("sandbox check: %s", note)
-	m.Tell(NoticeMsg(note))
+	if note != "" {
+		Logf("sandbox check: %s", note)
+		m.Tell(NoticeMsg(note))
+	}
+	if ev.OK && !ev.Result.Reached() && len(ev.Result.Writes) > 0 {
+		// The agent is started all the same: a sandbox that was enough
+		// before nerdr looked is not turned off under the user, but they
+		// are told what it lets through. One that is not started is told
+		// of when it is.
+		w := fmt.Sprintf("%s's sandbox lets it write %s. Through nerdr's config and state it can allow itself a plugin or a setup command, "+
+			"through a main checkout's .git/config and .git/hooks have git run a command, and in the folder of the other tabs' worktrees "+
+			"change the code other agents and setup commands run: all as you, outside the sandbox. The sandbox should deny them; %s",
+			ev.Kind, strings.Join(ev.Result.Writes, ", "), docs)
+		Logf("sandbox check: %s", w)
+		m.Tell(NoticeMsg(w))
+	}
+}
+
+// SandboxWrites is what the check is to try to write; the tests keep it
+// from the user's own config folder.
+var SandboxWrites = (*Core).sandboxWrites
+
+// sandboxWrites are the folders and files t's sandbox must keep its agent
+// from writing, for the check to try: nerdr's config and state, the
+// .git/config and .git/hooks of the main checkouts of t's worktrees, and
+// the folder the tabs' worktrees are in, when t's own is in a folder of
+// its own there.
+func (m *Core) sandboxWrites(t *Tab) []string {
+	out := []string{filepath.Dir(config.Path()), filepath.Dir(state.Dir())}
+	for _, w := range t.Owner().Worktrees {
+		if w.Repo != "" {
+			out = append(out, filepath.Join(w.Repo, ".git", "config"), filepath.Join(w.Repo, ".git", "hooks"))
+		}
+	}
+	if root := m.WtRoot; root != "" && !SamePath(root, t.Dir) && !SamePath(root, filepath.Dir(root)) {
+		if rel, err := filepath.Rel(root, t.Dir); err == nil && filepath.IsLocal(rel) {
+			out = append(out, root)
+		}
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }

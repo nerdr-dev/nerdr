@@ -27,8 +27,8 @@ type commitDialog struct {
 	// files are each worktree's changes, by its path, as git status lists
 	// them; nil until they have been looked up.
 	files map[string][]string
-	// worktreeHooks is whether any of the tab's worktrees has a
-	// core.hooksPath pointing inside the worktree.
+	// worktreeHooks is whether any of the tab's repositories has git
+	// hooks.
 	worktreeHooks bool
 	// then is what follows the commit: one of commitThen.
 	then int
@@ -137,7 +137,7 @@ func (d *commitDialog) view(m *Model, w, h int) string {
 	default:
 		lines = append(lines, "Commits every change, new files too:")
 		if d.t.HasSandboxed() && d.worktreeHooks {
-			lines = append(lines, dim("Worktree git hooks (core.hooksPath) will not run: an agent in this tab ran in a sandbox."))
+			lines = append(lines, dim("Git hooks will not run: an agent in this tab ran in a sandbox. Git LFS files are still pushed."))
 		}
 		for _, wt := range d.wts {
 			fs := d.files[wt.Path]

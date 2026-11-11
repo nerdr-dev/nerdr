@@ -202,3 +202,23 @@ func TestPtraceScopeZeroIsWarnedOfUnlessTheCheckFoundItClosed(t *testing.T) {
 		}
 	}
 }
+
+// A sandbox that lets the agent write where it must not is told of, and
+// the agent started all the same: nerdr's config and state, a main
+// checkout's .git/config, the folder of the other tabs' worktrees.
+func TestASandboxThatLetsTheAgentWriteIsToldOf(t *testing.T) {
+	if err := exec.Command("bwrap", "--dev-bind", "/", "/", "--unshare-pid", "true").Run(); err != nil {
+		t.Skip("no bwrap that runs here: ", err)
+	}
+	open, denied := t.TempDir(), t.TempDir()
+	SandboxWrites = func(*Core, *Tab) []string { return []string{open, denied} }
+	t.Cleanup(func() { SandboxWrites = func(*Core, *Tab) []string { return nil } })
+	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --ro-bind "+denied+" "+denied+" --unshare-pid -- \"$@\"\n")
+	notes, started := check(t, c, tb, cl)
+	if !started {
+		t.Fatalf("not started: %s", tb.Err)
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "lets it write "+open+".") || strings.Contains(notes[0], denied) {
+		t.Fatalf("notices %q", notes)
+	}
+}

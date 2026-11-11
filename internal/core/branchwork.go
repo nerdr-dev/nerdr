@@ -24,8 +24,8 @@ type LookChanges struct {
 
 // ChangesMsg is the changes LookChanges of Job found: each worktree's, by
 // its path, as git status lists them. WorktreeHooks is whether any of the
-// worktrees has a core.hooksPath pointing inside it; Err what could not be
-// looked up.
+// worktrees' repositories has git hooks, which are not run where a
+// sandboxed agent has; Err what could not be looked up.
 type ChangesMsg struct {
 	Job           string
 	Files         map[string][]string
@@ -43,7 +43,7 @@ func (q LookChanges) Do(m *Core) Cmd {
 		msg := ChangesMsg{Job: q.Job, Files: map[string][]string{}}
 		var errs []string
 		for _, w := range wts {
-			if gitsafe.WorktreeHooks(w.Path) {
+			if gitsafe.HasHooks(w.Path) {
 				msg.WorktreeHooks = true
 			}
 			fs, err := workspace.Changes(w)
@@ -126,14 +126,14 @@ func (q BranchWork) Do(m *Core) Cmd {
 }
 
 // CommitAll commits every change in wts, of the tab called name, with
-// message; worktree git hooks only with hooks. It gives what to tell of it,
+// message; the repository's git hooks only with hooks. It gives what to tell of it,
 // or why it failed.
 func CommitAll(name string, wts []workspace.Worktree, message string, hooks bool) (note, err string) {
 	var errs, done []string
 	skipped := false
 	for _, w := range wts {
 		repo := filepath.Base(w.Repo)
-		if !hooks && gitsafe.WorktreeHooks(w.Path) {
+		if !hooks && gitsafe.HasHooks(w.Path) {
 			skipped = true
 		}
 		if err := workspace.CommitIn(w, message, hooks); err != nil {
@@ -150,7 +150,7 @@ func CommitAll(name string, wts []workspace.Worktree, message string, hooks bool
 		note += " (" + strings.Join(done, ", ") + ")"
 	}
 	if skipped {
-		note += " (worktree git hooks skipped for sandboxed tab)"
+		note += " (git hooks not run: an agent in the tab ran in a sandbox)"
 	}
 	return note, ""
 }
@@ -160,7 +160,7 @@ func PushAll(name string, wts []workspace.Worktree, hooks bool) (note, err strin
 	var errs []string
 	skipped := false
 	for _, w := range wts {
-		if !hooks && gitsafe.WorktreeHooks(w.Path) {
+		if !hooks && gitsafe.HasHooks(w.Path) {
 			skipped = true
 		}
 		if err := workspace.PushIn(w, hooks); err != nil {
@@ -172,7 +172,7 @@ func PushAll(name string, wts []workspace.Worktree, hooks bool) (note, err strin
 	}
 	note = "pushed " + name
 	if skipped {
-		note += " (worktree git hooks skipped for sandboxed tab)"
+		note += " (git hooks not run: an agent in the tab ran in a sandbox)"
 	}
 	return note, ""
 }
@@ -197,7 +197,7 @@ func CreatePRs(name string, wts []workspace.Worktree, have map[string]bool, hook
 			errs = append(errs, why)
 			continue
 		}
-		if !hooks && gitsafe.WorktreeHooks(w.Path) {
+		if !hooks && gitsafe.HasHooks(w.Path) {
 			skipped = true
 		}
 		if err := workspace.PushIn(w, hooks); err != nil {
@@ -219,7 +219,7 @@ func CreatePRs(name string, wts []workspace.Worktree, have map[string]bool, hook
 	}
 	note = "opened " + strings.Join(urls, ", ")
 	if skipped {
-		note += " (worktree git hooks skipped for sandboxed tab)"
+		note += " (git hooks not run: an agent in the tab ran in a sandbox)"
 	}
 	return note, ""
 }

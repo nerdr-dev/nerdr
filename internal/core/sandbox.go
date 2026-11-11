@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 )
@@ -159,6 +160,13 @@ func (m *Core) MarkSandboxed(t *Tab) {
 				m.SandboxedDirs[w.Path] = true
 			}
 		}
+	}
+	// git there reads config.worktree, which such an agent may have
+	// written, when the repository has extensions.worktreeConfig on; see
+	// gitsafe.Sandboxed. All of them, not only t's: those of tabs closed
+	// since, restored from the session, count as well.
+	for dir := range m.SandboxedDirs {
+		gitsafe.Sandboxed(dir)
 	}
 }
 
