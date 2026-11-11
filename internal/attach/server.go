@@ -193,6 +193,7 @@ func (s *Server) serve(c net.Conn) {
 	}
 	_ = c.SetDeadline(time.Time{})
 	cn := newConn(c)
+	cn.version = h.Version
 	s.mu.Lock()
 	old := s.cur
 	s.cur = cn

@@ -66,7 +66,9 @@ func Handshake(c net.Conn, h Hello) (*Conn, Welcome, error) {
 			return nil, Welcome{}, err
 		}
 		_ = c.SetDeadline(time.Time{})
-		return newConn(c), w, nil
+		cn := newConn(c)
+		cn.version = w.Version
+		return cn, w, nil
 	case frameRefused:
 		var r Refused
 		_ = json.Unmarshal(body, &r)

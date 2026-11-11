@@ -37,6 +37,9 @@ type Conn struct {
 	behind func()
 	// why is what the other end said as it closed, "" if it said nothing.
 	why string
+	// version is the version of nerdr the other end said it is as the
+	// two said hello; see Version.
+	version string
 
 	done chan struct{}
 }
@@ -188,6 +191,11 @@ func (c *Conn) Why() string {
 	defer c.mu.Unlock()
 	return c.why
 }
+
+// Version is the version of nerdr the other end said it is as the two
+// said hello: the core's, to a client (Welcome), the client's, to a core
+// (Hello). It is what the other end says, "" when it said none.
+func (c *Conn) Version() string { return c.version }
 
 // Done is closed once the connection is.
 func (c *Conn) Done() <-chan struct{} { return c.done }

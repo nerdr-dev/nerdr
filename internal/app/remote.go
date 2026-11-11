@@ -33,7 +33,7 @@ func NewRemote(cfg config.Config, root string, router *input.Router, conn *attac
 	m.tellFn = tell
 	mc := m.home()
 	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(tell))
-	mc.Screens = mc.Conn.Screens
+	mc.Screens, mc.Version = mc.Conn.Screens, conn.Version()
 	// The repositories are where core is, which may be another machine:
 	// that of the tab the panel shows (reviewOn).
 	m.reviewOn.Store(mc)
@@ -105,7 +105,7 @@ func (m *Model) joinMachine(mc *fleet.Machine, conn *attach.Conn) (tea.Cmd, erro
 		return nil, nil
 	}
 	mc.Conn = core.Connect(conn, &mc.Core, mc.Tell(m.tellFn))
-	mc.Screens = mc.Conn.Screens
+	mc.Screens, mc.Version = mc.Conn.Screens, conn.Version()
 	// Its copy has no tabs yet, to say it shows: they come as it is done.
 	evs, err := mc.Conn.Run(core.ClientSays{State: m.clientState(mc)})
 	if err != nil {
@@ -430,7 +430,8 @@ func (m *Model) coreBack(mc *fleet.Machine, conn *attach.Conn, try int64) tea.Cm
 	} else {
 		mc.Conn.Reconnect(conn)
 	}
-	mc.Screens = mc.Conn.Screens
+	// A core started again may be of another version: one updated.
+	mc.Screens, mc.Version = mc.Conn.Screens, conn.Version()
 	m.drawnPanes = nil
 	mc.Away, mc.Err = false, ""
 	m.syncInput()
