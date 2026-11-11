@@ -1,9 +1,11 @@
 package app
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
+	"github.com/nerdr-dev/nerdr/internal/clean"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -19,35 +21,62 @@ import (
 // askRepoSetup asks core's question q, whether the .nerdr.toml of each of
 // its repositories may be done. The dialog open, a wizard or the spinoff
 // one, is put back for what core goes on with.
+//
+// What is asked about is shown exactly, scrolled if long, and yes is taken
+// only once its end has been shown. An agent may have written it, and a
+// TOML string can hold any character: control and invisible format
+// characters are drawn as their escapes, marked, so that none reaches the
+// terminal to hide or rewrite what is shown, and so that the user sees
+// they are in what runs.
 func (m *Model) askRepoSetup(q core.Question) {
 	names, ask := q.Repos, q.Setup
-	lines := []string{
-		"The repository asks, in " + workspace.RepoConfigFile + ", for this in the new worktree.",
-		"It runs as you, outside any agent's sandbox, and an agent may",
-		"have written it: allow it only if you know what it does.", "",
+	hidden := 0
+	shown := func(s string) string {
+		t, n := clean.Marked(s, warn)
+		hidden += n
+		return t
 	}
+	bold := lipgloss.NewStyle().Bold(true)
+	var scroll []string
 	for _, r := range names {
 		c := ask[r]
-		lines = append(lines, lipgloss.NewStyle().Bold(true).Render(filepath.Join(r, workspace.RepoConfigFile)))
+		scroll = append(scroll, bold.Render(shown(filepath.Join(r, workspace.RepoConfigFile))))
 		if len(c.Copy) > 0 {
-			lines = append(lines, "  copy:  "+strings.Join(c.Copy, ", "))
+			paths := make([]string, len(c.Copy))
+			for i, p := range c.Copy {
+				paths[i] = shown(p)
+			}
+			scroll = append(scroll, "  copy:  "+strings.Join(paths, ", "))
 		}
+		// Trimmed as workspace trims it before it runs it.
 		if s := strings.TrimSpace(c.Setup); s != "" {
 			for i, l := range strings.Split(s, "\n") {
 				head := "  setup: "
 				if i > 0 {
 					head = "         "
 				}
-				lines = append(lines, head+l)
+				scroll = append(scroll, head+shown(l))
 			}
 		}
-		lines = append(lines, "")
+		scroll = append(scroll, "")
 	}
-	lines = append(lines, keyHint("y")+dim(" allows it until it changes · ")+keyHint("n")+dim(" makes the worktree without it"))
+	lines := []string{
+		"The repository asks, in " + workspace.RepoConfigFile + ", for this in the new worktree.",
+		"It runs as you, outside any agent's sandbox, and an agent may",
+		"have written it: allow it only if you know what it does.",
+	}
+	if hidden > 0 {
+		lines = append(lines, warn(fmt.Sprintf("It holds %d character%s that would not show, drawn here as escapes:", hidden, pluralS(hidden))),
+			warn("what runs has them as they are."))
+	}
+	lines = append(lines, "")
 	back, mc := m.dialog, m.tellingOn()
 	m.dialog = &confirm{
-		title: "Allow " + workspace.RepoConfigFile + "?",
-		lines: lines,
+		title:  "Allow " + workspace.RepoConfigFile + "?",
+		lines:  lines,
+		scroll: scroll,
+		after:  []string{keyHint("y") + dim(" allows it until it changes · ") + keyHint("n") + dim(" makes the worktree without it")},
+		toEnd:  true,
 		yes: func(m *Model) tea.Cmd {
 			m.dialog = back
 			return m.doOn(mc, core.Answer{ID: q.ID, Answer: core.AnswerAllowed})
