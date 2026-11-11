@@ -34,62 +34,92 @@ func TildePath(p, home string) string {
 
 // InstallProjectSkills puts the skills in the folder t's agent starts in,
 // when the setting says so, and keeps them — and a notes folder inside the
-// worktrees — out of git.
+// worktrees — out of git. Mu is held throughout; a start does the same
+// with it let go (see Prepare).
 func (m *Core) InstallProjectSkills(t *Tab) {
+	for _, why := range m.projectSkillsOf(t).install() {
+		m.Toast(why)
+	}
+}
+
+// projectSkills is what InstallProjectSkills needs of a tab and of the
+// settings, copied with Mu held, to do it with Mu let go.
+type projectSkills struct {
+	worktree bool // the install setting is "worktree"
+	enabled  config.Config
+	dir      string
+	agent    agents.Kind
+	paths    []string // the tab's worktrees
+}
+
+// projectSkillsOf is what installing the skills for t needs. Mu is held.
+func (m *Core) projectSkillsOf(t *Tab) projectSkills {
+	p := projectSkills{worktree: m.Cfg.Install == config.InstallWorktree,
+		enabled: config.Config{EnabledSkills: slices.Clone(m.Cfg.EnabledSkills)}, dir: t.Dir, agent: t.Agent}
 	for _, w := range t.Worktrees {
-		_ = store.ExcludeData(w.Path)
+		p.paths = append(p.paths, w.Path)
 	}
-	if m.Cfg.Install != config.InstallWorktree {
-		return
+	return p
+}
+
+// install does what InstallProjectSkills says, and returns what went
+// wrong, for the user to be told.
+func (p projectSkills) install() []string {
+	for _, path := range p.paths {
+		_ = store.ExcludeData(path)
 	}
-	if _, err := skills.SyncProject(skills.ProjectDir(t.Dir, t.Agent), m.Cfg.SkillEnabled); err != nil {
-		m.Toast("skills: " + err.Error())
-		return
+	if !p.worktree {
+		return nil
 	}
+	if _, err := skills.SyncProject(skills.ProjectDir(p.dir, p.agent), p.enabled.SkillEnabled); err != nil {
+		return []string{"skills: " + err.Error()}
+	}
+	var failed []string
 	excludes := skills.ExcludePatterns()
-	if t.Agent == agents.OpenCode {
-		if _, err := hooks.InstallOpenCodePluginProject(t.Dir); err != nil {
-			m.Toast("opencode plugin: " + err.Error())
+	if p.agent == agents.OpenCode {
+		if _, err := hooks.InstallOpenCodePluginProject(p.dir); err != nil {
+			failed = append(failed, "opencode plugin: "+err.Error())
 		}
 		excludes = append(excludes, hooks.OpenCodePluginExclude)
 	}
-	if t.Agent == agents.Copilot {
-		if _, err := hooks.InstallCopilotPluginProject(t.Dir); err != nil {
-			m.Toast("copilot plugin: " + err.Error())
+	if p.agent == agents.Copilot {
+		if _, err := hooks.InstallCopilotPluginProject(p.dir); err != nil {
+			failed = append(failed, "copilot plugin: "+err.Error())
 		}
 		excludes = append(excludes, hooks.CopilotPluginExclude)
 	}
-	if t.Agent == agents.Antigravity {
+	if p.agent == agents.Antigravity {
 		// In the project's own hooks file, unless the repository keeps
 		// one: that is not nerdr's to change.
-		file := hooks.AgyHooksProject(t.Dir)
-		if !Tracked(t.Dir, file) {
-			if _, made, err := hooks.InstallAgyHooksProject(t.Dir); err != nil {
-				m.Toast("agy hooks: " + err.Error())
+		file := hooks.AgyHooksProject(p.dir)
+		if !Tracked(p.dir, file) {
+			if _, made, err := hooks.InstallAgyHooksProject(p.dir); err != nil {
+				failed = append(failed, "agy hooks: "+err.Error())
 			} else if made {
 				excludes = append(excludes, hooks.AgyHooksExclude)
 			}
 		}
 	}
-	if t.Agent == agents.Grok {
+	if p.agent == agents.Grok {
 		// Unless the repository keeps a file by that name.
-		file := hooks.GrokHooksProject(t.Dir)
-		if !Tracked(t.Dir, file) {
-			if _, made, err := hooks.InstallGrokHooksProject(t.Dir); err != nil {
-				m.Toast("grok hooks: " + err.Error())
+		file := hooks.GrokHooksProject(p.dir)
+		if !Tracked(p.dir, file) {
+			if _, made, err := hooks.InstallGrokHooksProject(p.dir); err != nil {
+				failed = append(failed, "grok hooks: "+err.Error())
 			} else if made {
 				excludes = append(excludes, hooks.GrokHooksExclude)
 			}
 		}
 	}
-	for _, w := range t.Worktrees {
-		if filepath.Clean(w.Path) != filepath.Clean(t.Dir) {
+	for _, path := range p.paths {
+		if filepath.Clean(path) != filepath.Clean(p.dir) {
 			continue // a tab over several repositories starts above them
 		}
-		for _, p := range excludes {
-			_ = store.Exclude(w.Path, p)
+		for _, x := range excludes {
+			_ = store.Exclude(path, x)
 		}
 	}
+	return failed
 }
 
 // CodexConfig is where codex keeps the trust it gives hooks.

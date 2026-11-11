@@ -364,6 +364,12 @@ type SpawnPrep struct {
 	// Check is how the check from inside the agent's sandbox went, nil
 	// when there was none; see CheckSandbox.
 	Check *SandboxCheckedMsg
+	// Looked is set when the folder the agent starts in was looked at,
+	// and the skills put in it: Gone when it is not there, Failed what
+	// went wrong putting them there.
+	Looked bool
+	Gone   bool
+	Failed []string
 }
 
 // SpawnReady is a tab's agent to start, with what its CLI said first.
@@ -376,14 +382,17 @@ type SpawnReady struct {
 	Prep    SpawnPrep
 }
 
-// Prepare is how to ask what starting t's agent with l needs to ask its
-// CLI first, and to check its sandbox, with m.Mu let go; nil when there
-// is nothing to ask. One the check refuses is not asked more.
+// Prepare is how to do, with m.Mu let go, what starting t's agent with l
+// needs first: check its sandbox, ask its CLI, and see that its folder is
+// there and put the skills in it; nil when there is no more to do than
+// that last, without the skills, which Spawn then does itself at once.
+// One the check refuses is not asked more, nor its folder touched.
 func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
 	env := m.LaunchEnv(t, l)
 	check := m.CheckSandbox(t, env)
 	ask := m.prepareAgent(t, l, env)
-	if check == nil && ask == nil {
+	dir, project := t.Dir, m.projectSkillsOf(t)
+	if check == nil && ask == nil && !project.worktree {
 		return nil
 	}
 	return func() SpawnPrep {
@@ -399,6 +408,12 @@ func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
 			p = ask()
 		}
 		p.Check = c
+		p.Looked = true
+		if _, err := os.Stat(dir); err != nil {
+			p.Gone = true
+			return p
+		}
+		p.Failed = project.install()
 		return p
 	}
 }
@@ -555,12 +570,23 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 		// none, until it is found (claimSession), not the one before.
 		m.SetSession(t, l.SessionID)
 	}
-	if _, err := os.Stat(t.Dir); err != nil {
+	if !prep.Looked {
+		// Not done with Mu let go: no skills to put in the folder, only
+		// git told to leave nerdr's notes alone, which is quick.
+		_, err := os.Stat(t.Dir)
+		prep.Gone = err != nil
+		if !prep.Gone {
+			prep.Failed = m.projectSkillsOf(t).install()
+		}
+	}
+	if prep.Gone {
 		t.Err = "the worktree is gone: " + t.Dir
 		t.Light = StExited
 		return nil
 	}
-	m.InstallProjectSkills(t)
+	for _, why := range prep.Failed {
+		m.Toast(why)
+	}
 	// Before the first message can go on the command line.
 	t.InSandbox = m.SandboxedKind(t.Agent)
 	if t.InSandbox {
