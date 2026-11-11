@@ -63,6 +63,10 @@ delegates, including `core.gitProxy`, `core.alternateRefsCommand`,
 `gc.recentObjectsHook`, still cause whole-repository host Git refusal.
 The private verified-object copy uses an isolated,
 local-only transfer with executable upload hooks disabled.
+Agent-side `why`, `order`, `walkthrough` and `spinoff` commands discover
+the caller's repository in their own process, within the caller's sandbox.
+This does not enable unregistered worktree discovery in the host core,
+client or holder.
 The sandbox must still protect Git configuration and its included files.
 Branch-dependent `includeIf.onbranch` configuration is also refused: an
 agent can change HEAD between the filter check and Git's own config read.
