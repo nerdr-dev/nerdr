@@ -14,12 +14,12 @@ import (
 // commit keeps its id, and holds the agent's files.
 
 // replaceBase has the commit origin named check out the agent's files,
-// with a replace ref for its tree, once it is fetched.
-func replaceBase(t *testing.T, evil string) {
+// with a replace ref for the commit or its tree, once it is fetched.
+func replaceBase(t *testing.T, evil, kind string) {
 	t.Helper()
 	afterFetch = func(repo string) {
-		tree := revParse(t, repo, "refs/remotes/origin/main^{tree}")
-		run(t, repo, "git", "replace", "-f", tree, revParse(t, repo, evil+"^{tree}"))
+		base := revParse(t, repo, "refs/remotes/origin/main^{"+kind+"}")
+		run(t, repo, "git", "replace", "-f", base, revParse(t, repo, evil+"^{"+kind+"}"))
 	}
 	t.Cleanup(func() { afterFetch = func(string) {} })
 }
@@ -29,21 +29,25 @@ func replaceBase(t *testing.T, evil string) {
 // checked out from origin's own files all the same, and setup runs on
 // those.
 func TestReplacedBaseIsNotCheckedOutForASandboxedAgent(t *testing.T) {
-	a, newest, marks, allowed := pinRepo(t)
-	replaceBase(t, evilCommit(t, a.Path, marks))
+	for _, kind := range []string{"commit", "tree"} {
+		t.Run(kind, func(t *testing.T) {
+			a, newest, marks, allowed := pinRepo(t)
+			replaceBase(t, evilCommit(t, a.Path, marks), kind)
 
-	_, wts, warnings := makeTab(t, a, true, allowed)
-	if got := revParse(t, wts[0].Path, "HEAD"); got != newest {
-		t.Fatalf("worktree at %s, not origin's %s", got, newest)
-	}
-	if _, err := os.Stat(filepath.Join(wts[0].Path, "evil.sh")); err == nil {
-		t.Fatal("the worktree has the agent's files")
-	}
-	if marked(marks, "setup") || marked(marks, "hook") {
-		t.Fatal("the agent's code ran")
-	}
-	if !marked(marks, "ran") || len(warnings) != 0 {
-		t.Fatalf("setup did not run on origin's commit: %v", warnings)
+			_, wts, warnings := makeTab(t, a, true, allowed)
+			if got := revParse(t, wts[0].Path, "HEAD"); got != newest {
+				t.Fatalf("worktree at %s, not origin's %s", got, newest)
+			}
+			if _, err := os.Stat(filepath.Join(wts[0].Path, "evil.sh")); err == nil {
+				t.Fatal("the worktree has the agent's files")
+			}
+			if marked(marks, "setup") || marked(marks, "hook") {
+				t.Fatal("the agent's code ran")
+			}
+			if !marked(marks, "ran") || len(warnings) != 0 {
+				t.Fatalf("setup did not run on origin's commit: %v", warnings)
+			}
+		})
 	}
 }
 
@@ -52,7 +56,10 @@ func TestReplacedBaseIsNotCheckedOutForASandboxedAgent(t *testing.T) {
 // the replaced tree is what is checked out and run.
 func TestReplacedBaseWouldRun(t *testing.T) {
 	a, _, marks, allowed := pinRepo(t)
-	replaceBase(t, evilCommit(t, a.Path, marks))
+	// Git 2.56 rejects a replaced tree during reset, but still honors a
+	// replaced commit. Keep this positive control executable on both old
+	// and new Git; the protected test above covers both replacement kinds.
+	replaceBase(t, evilCommit(t, a.Path, marks), "commit")
 
 	makeTab(t, a, false, allowed)
 	if !marked(marks, "setup") {

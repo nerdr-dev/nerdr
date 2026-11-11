@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
@@ -237,6 +238,8 @@ func gitWorktrees(t *testing.T) (main, linked string) {
 	run(main, "add", ".")
 	run(main, "commit", "-q", "-m", "init")
 	run(main, "worktree", "add", "-q", "-b", "feature", linked)
+	// Production registers linked worktrees before accessing their Git metadata.
+	gitsafe.Trust(main, linked)
 	return main, linked
 }
 

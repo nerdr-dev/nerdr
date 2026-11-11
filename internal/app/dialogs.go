@@ -132,7 +132,9 @@ func (c *confirm) view(m *Model, w, h int) string {
 		}
 		// The box's border, title and buttons, and the line saying where
 		// in scroll it is.
-		c.shown = min(max(h-len(c.lines)-len(c.after)-7, 3), len(c.rows))
+		// Paths and explanatory text can wrap too (notably macOS temp paths).
+		fixedRows := wrappedRows(c.lines, boxInner(w)) + wrappedRows(c.after, boxInner(w))
+		c.shown = min(max(h-fixedRows-7, 3), len(c.rows))
 		c.scrollTo(c.top)
 		body = append(body, c.rows[c.top:c.top+c.shown]...)
 		if c.top+c.shown >= len(c.rows) {
