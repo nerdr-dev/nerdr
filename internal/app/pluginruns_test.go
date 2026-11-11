@@ -563,7 +563,11 @@ func TestPluginRunQuestionShowsWholeValues(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", cfg)
 	m := testModel(t)
 	tb := m.Cur()
-	tb.Dir = t.TempDir()
+	// Exercise wrapping independently of the platform's temporary path length.
+	tb.Dir = filepath.Join(t.TempDir(), strings.Repeat("long-directory-", 12))
+	if err := os.MkdirAll(tb.Dir, 0700); err != nil {
+		t.Fatal(err)
+	}
 	defer m.Shutdown()
 	allowedPlugin(t, cfg, "careful", "description = \"Careful.\"\nrun = [\"true\"]\nconfirm = true\n[[params]]\nname = \"target\"\n")
 	long := strings.Repeat("prod,", 2000) + "and the end"
