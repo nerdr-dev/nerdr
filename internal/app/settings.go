@@ -918,6 +918,7 @@ func (d *settings) footer(m *Model, w int) []string {
 	} else {
 		out = append(out, dim(ansi.Truncate("Saved to "+core.TildePath(config.Path(), home)+" as you go; dimmed is the default.", w, "…")))
 	}
+	out = append(out, dim(ansi.Truncate(m.versionNote(d.mc), w, "…")))
 	out = append(out, "")
 	if d.editing {
 		hint := "enter save · esc cancel"
@@ -942,6 +943,35 @@ func (d *settings) footer(m *Model, w int) []string {
 	}
 	pairs = append(pairs, "?", "about", "d", "default", "esc", "close")
 	return append(out, m.keys(pairs...))
+}
+
+// SetVersion says which version of nerdr this client is, for the
+// settings to show beside the version of each machine's.
+func (m *Model) SetVersion(v string) { m.version = v }
+
+// versionNote says which version of nerdr the core of mc is, as it said
+// when the client last connected to it, and this client's when the two
+// differ. Machines of other versions but the same protocol work together:
+// it is said here, and nowhere warned of. A machine not connected to says
+// so, with the version it had, when it had one.
+func (m *Model) versionNote(mc *fleet.Machine) string {
+	v := mc.Version
+	if mc.Conn == nil && !grey(mc) {
+		v = m.version // core in the client's process
+	}
+	on := "nerdr on " + machineLabel(mc)
+	switch {
+	case grey(mc) || mc.Away:
+		if v == "" {
+			return on + ": not connected, its version not known"
+		}
+		return on + ": not connected; it was " + v + " when last connected"
+	case v == "":
+		return on + ": its version not known"
+	case m.version != "" && v != m.version:
+		return "nerdr " + v + " on " + machineLabel(mc) + " · this client is " + m.version
+	}
+	return "nerdr " + v + " on " + machineLabel(mc)
 }
 
 // wrapWords breaks s into lines of at most w columns.

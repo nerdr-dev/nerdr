@@ -375,6 +375,7 @@ func run() error {
 
 	router := input.New(os.Stdin, prefix)
 	model := app.New(cfg, root, router, sess)
+	model.SetVersion(version())
 	// Core runs in this process, the fleet's one machine.
 	local := model.Fleet().Home()
 	if hookSrv != nil {

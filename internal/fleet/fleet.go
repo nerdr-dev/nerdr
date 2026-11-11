@@ -32,6 +32,10 @@ type Machine struct {
 	// Host is the machine the core runs on, as ssh names it, when it is
 	// not this one: "" for a core here, in this process or another.
 	Host string
+	// Version is the version of nerdr the core said it is as the client
+	// last connected to it, kept while the client is without it; "" when
+	// it never connected, or the core runs in the client's process.
+	Version string
 	// Redial connects to the core again, should the connection close; nil
 	// when there is no way to. Away is set while the client is without it.
 	Redial func() (*attach.Conn, error)

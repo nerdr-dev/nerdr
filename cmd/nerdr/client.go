@@ -129,6 +129,7 @@ func runClient(start bool, remote string) error {
 	}
 	model.SetRedial(redial)
 	model.SetCoreHost(host)
+	model.SetVersion(version())
 	model.SetDial(dialServer)
 	var later []tea.Cmd
 	for _, d := range servers {

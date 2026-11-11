@@ -76,6 +76,8 @@ type Model struct {
 	tellFn func(any)
 	// dial connects to a server's core over ssh; see SetDial.
 	dial Dialer
+	// version is this nerdr's, the client's; see SetVersion.
+	version string
 	// loggingIn is the login to a server shown, while ssh runs; see
 	// login.
 	loggingIn *loginDialog

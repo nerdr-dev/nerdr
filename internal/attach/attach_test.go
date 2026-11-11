@@ -159,6 +159,8 @@ func TestKeyFile(t *testing.T) {
 }
 
 // TestConnect: a client is let in with the key, and the two can talk.
+// The two are of other versions, of the same generation, as two machines
+// often are.
 func TestConnect(t *testing.T) {
 	var peer hooks.Peer
 	var mu sync.Mutex
@@ -182,6 +184,11 @@ func TestConnect(t *testing.T) {
 	sc := <-clients
 	if s.Current() != sc {
 		t.Error("Current is not the client let in")
+	}
+	// Of another version, of the same generation: let in, and each end
+	// knows the other's.
+	if c.Version() != "core-1" || sc.Version() != "client-1" {
+		t.Errorf("the client has the core as %q, the core the client as %q", c.Version(), sc.Version())
 	}
 	mu.Lock()
 	if peer.Known && !slices.Contains(peer.Chain, os.Getpid()) {
