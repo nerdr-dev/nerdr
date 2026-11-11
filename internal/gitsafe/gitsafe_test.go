@@ -339,3 +339,31 @@ func TestTrustedWorktreeCanonicalPath(t *testing.T) {
 		t.Fatalf("wrong common directory: %s", out)
 	}
 }
+
+func TestCallerRepositoryDiscoveryIsExplicit(t *testing.T) {
+	_, repo, wt := repoWithWorktree(t)
+	// Agent-supplied environment must not relax discovery in the host core.
+	t.Setenv("NERDR", "1")
+	t.Setenv("NERDR_SANDBOXED", "1")
+	if _, err := Command(wt, "rev-parse", "--show-toplevel").Output(); err == nil {
+		t.Fatal("unregistered host worktree accepted")
+	}
+	UseCallerRepository()
+	t.Cleanup(func() {
+		mu.Lock()
+		callerRepository = false
+		mu.Unlock()
+	})
+	out, err := Command(wt, "rev-parse", "--show-toplevel").Output()
+	if err != nil || !sameDir(strings.TrimSpace(string(out)), wt) {
+		t.Fatalf("caller cannot discover its worktree: %s: %v", out, err)
+	}
+	// Explicit registrations still take precedence over a replaced .git file.
+	Trust(repo, wt)
+	if err := os.WriteFile(filepath.Join(wt, ".git"), []byte("gitdir: /nonexistent\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Command(wt, "rev-parse", "--show-toplevel").Output(); err != nil {
+		t.Fatalf("caller mode bypassed registered directories: %v", err)
+	}
+}

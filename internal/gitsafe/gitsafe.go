@@ -58,7 +58,8 @@ import (
 var (
 	mu sync.Mutex
 	// trusted maps a worktree's path to its main checkout's.
-	trusted = map[string]string{}
+	trusted          = map[string]string{}
+	callerRepository bool
 	// admin caches the folder under .git/worktrees found for a worktree,
 	// by main checkout and worktree.
 	admin = map[[2]string]string{}
@@ -80,6 +81,17 @@ func Trust(repo, path string) {
 	if err == nil {
 		trusted[clean(canonical)] = clean(repo)
 	}
+}
+
+// UseCallerRepository enables Git's own repository discovery for a short-lived
+// agent CLI process. Such commands run with the caller's privileges and inside
+// its sandbox; they do not inherit the host core's in-memory registrations.
+// Never call this in the core, holder or client: host operations must refuse
+// unregistered .git files. This is deliberately not an environment option.
+func UseCallerRepository() {
+	mu.Lock()
+	callerRepository = true
+	mu.Unlock()
 }
 
 // Belongs reports whether path is a worktree of the main checkout repo, as
@@ -303,6 +315,7 @@ type gitDirs struct{ gitDir, common, work string }
 func dirs(dir string) (gitDirs, bool) {
 	dir = clean(dir)
 	mu.Lock()
+	caller := callerRepository
 	var repo, path string
 	for p := dir; ; p = filepath.Dir(p) {
 		if r, ok := trusted[p]; ok {
@@ -315,6 +328,9 @@ func dirs(dir string) (gitDirs, bool) {
 	}
 	mu.Unlock()
 	if path == "" {
+		if caller {
+			return gitDirs{}, false
+		}
 		for p := dir; ; p = filepath.Dir(p) {
 			g := filepath.Join(p, ".git")
 			if st, err := os.Lstat(g); err == nil {

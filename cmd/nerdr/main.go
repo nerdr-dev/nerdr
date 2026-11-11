@@ -19,6 +19,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/editor"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/input"
@@ -97,6 +98,12 @@ func main() {
 		store.SetDataDir(cfg.DataDir)
 	}
 	if len(os.Args) > 1 {
+		// These commands run in the caller's process/sandbox, not in the
+		// host core. They exit below and must discover their own worktree.
+		switch os.Args[1] {
+		case "why", "order", "walkthrough", "spinoff":
+			gitsafe.UseCallerRepository()
+		}
 		switch os.Args[1] {
 		case "why":
 			os.Exit(runWhy(os.Args[2:]))
