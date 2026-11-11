@@ -260,10 +260,10 @@ func TestPluginRunConfirmed(t *testing.T) {
 	}
 	c := askRun(m, tb, "careful", vals)
 	d, ok := m.dialog.(*confirm)
-	if !ok || !strings.Contains(ansi.Strip(strings.Join(d.lines, "\n")), "--target  prod") {
+	if !ok || !strings.Contains(ansi.Strip(d.view(m, 120, 40)), "--target  prod") {
 		t.Fatalf("confirm = true did not ask, with the values: %T", m.dialog)
 	}
-	if text := ansi.Strip(strings.Join(d.lines, "\n")); !strings.Contains(text, "in "+tb.Dir) || strings.Contains(text, "sandbox") {
+	if text := ansi.Strip(d.view(m, 200, 40)); !strings.Contains(text, "in "+tb.Dir) || strings.Contains(text, "sandbox") {
 		t.Fatalf("the question does not say where it runs, or says a sandbox:\n%s", text)
 	}
 	if a := answered(askRun(m, tb, "free", vals)); !strings.HasPrefix(a, "started ") {
@@ -278,6 +278,7 @@ func TestPluginRunConfirmed(t *testing.T) {
 		t.Fatalf("no was answered %q", a)
 	}
 	c = askRun(m, tb, "free", vals)
+	m.dialog.view(m, 120, 40)
 	m.Update(keyMsg("y"))
 	if a := answered(c); !strings.HasPrefix(a, "started ") || m.dialog != nil {
 		t.Fatalf("yes was answered %q, dialog %T", a, m.dialog)
@@ -548,7 +549,53 @@ func TestPluginRunQuestionSaysTheSandbox(t *testing.T) {
 	if !ok {
 		t.Fatalf("not asked: %T", m.dialog)
 	}
-	if text := ansi.Strip(strings.Join(d.lines, "\n")); !strings.Contains(text, "runs in a sandbox: this runs outside it") {
+	if text := ansi.Strip(d.view(m, 200, 40)); !strings.Contains(text, "runs in a sandbox: this runs outside it") {
 		t.Errorf("the question does not say the sandbox:\n%s", text)
+	}
+}
+
+// The question of a plugin run shows each value whole, scrolled if long,
+// with yes taken only once its end has been shown, and no control
+// character of a value reaches the terminal: each is drawn as its escape.
+func TestPluginRunQuestionShowsWholeValues(t *testing.T) {
+	plainStyles(t)
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	m := testModel(t)
+	tb := m.Cur()
+	tb.Dir = t.TempDir()
+	defer m.Shutdown()
+	allowedPlugin(t, cfg, "careful", "description = \"Careful.\"\nrun = [\"true\"]\nconfirm = true\n[[params]]\nname = \"target\"\n")
+	long := strings.Repeat("prod,", 2000) + "and the end"
+	c := askRun(m, tb, "careful", map[string]any{"target": long})
+	d := m.dialog.(*confirm)
+	const w, h = 100, 30
+	v := d.view(m, w, h)
+	if lines := strings.Count(v, "\n") + 1; lines > h || strings.Contains(v, "and the end") {
+		t.Fatalf("the question is %d lines in %d, or shows the end at once:\n%s", lines, h, v)
+	}
+	m.Update(keyMsg("y"))
+	if m.dialog != d {
+		t.Fatal("yes was taken before the end of the values was shown")
+	}
+	m.Update(keyMsg("end"))
+	v = d.view(m, w, h)
+	if !strings.Contains(strings.ReplaceAll(v, "\n", ""), "and the end") {
+		t.Fatalf("the end of the value is not shown:\n%s", v)
+	}
+	m.Update(keyMsg("n"))
+	if a := answered(c); a != core.RunDeclined {
+		t.Fatalf("no was answered %q", a)
+	}
+
+	for _, r := range hiddenRunes() {
+		c := askRun(m, tb, "careful", map[string]any{"target": "a" + string(r) + "[8mb"})
+		v := m.dialog.view(m, 200, 40)
+		noControl(t, v)
+		if !strings.Contains(v, "would not show") {
+			t.Fatalf("U+%04X is not said:\n%s", r, v)
+		}
+		m.Update(keyMsg("n"))
+		answered(c)
 	}
 }

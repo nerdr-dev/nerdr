@@ -10,6 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // dialog is a modal drawn over the tabs. It gets every key until it closes
@@ -37,9 +38,17 @@ type confirm struct {
 	// left, scrolled with ↑↓, pgup/pgdown, home/end and the wheel; after
 	// is below it.
 	scroll, after []string
-	// top is the first line of scroll shown; shown is how many the last
-	// drawing showed.
+	// top is the first row of scroll shown; shown is how many the last
+	// drawing showed. rows is scroll as the last drawing wrapped it to the
+	// box: a long line takes several, and the window is counted in them.
 	top, shown int
+	rows       []string
+	// toEnd takes yes only once the end of scroll has been drawn, for a
+	// question whose answer runs what scroll shows: the user must have had
+	// it all in front of them. seenEnd is whether it has been. The TUI
+	// draws the dialog before it gets the next key, so a key before any
+	// drawing comes only from a test, and is taken.
+	toEnd, seenEnd bool
 }
 
 func (c *confirm) key(m *Model, msg tea.KeyMsg) tea.Cmd {
@@ -69,12 +78,15 @@ func (c *confirm) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			c.scrollTo(0)
 			return nil
 		case "end", "G":
-			c.scrollTo(len(c.scroll))
+			c.scrollTo(len(c.scrollRows()))
 			return nil
 		}
 	}
 	switch msg.String() {
 	case "y", "Y", "enter":
+		if c.toEnd && c.rows != nil && !c.seenEnd {
+			return nil
+		}
 		m.dialog = nil
 		return c.yes(m)
 	case "n", "N", "esc", "q", "ctrl+c":
@@ -96,20 +108,43 @@ func (c *confirm) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 // scrollTo puts line i of scroll at the top, as far as there is more to
 // show below it.
 func (c *confirm) scrollTo(i int) {
-	c.top = min(max(i, 0), max(len(c.scroll)-max(c.shown, 1), 0))
+	c.top = min(max(i, 0), max(len(c.scrollRows())-max(c.shown, 1), 0))
+}
+
+// scrollRows is scroll in rows as last drawn, or as given before the
+// first drawing.
+func (c *confirm) scrollRows() []string {
+	if c.rows != nil {
+		return c.rows
+	}
+	return c.scroll
 }
 
 func (c *confirm) view(m *Model, w, h int) string {
 	body := append([]string{}, c.lines...)
 	if c.scroll != nil {
+		// Wrapped here rather than by the box, so that the window is
+		// counted in the rows it takes and its end is not cut off below
+		// the screen.
+		c.rows = c.rows[:0]
+		for _, l := range c.scroll {
+			c.rows = append(c.rows, strings.Split(ansi.Hardwrap(l, boxInner(w), true), "\n")...)
+		}
 		// The box's border, title and buttons, and the line saying where
 		// in scroll it is.
-		c.shown = min(max(h-len(c.lines)-len(c.after)-7, 3), len(c.scroll))
+		c.shown = min(max(h-len(c.lines)-len(c.after)-7, 3), len(c.rows))
 		c.scrollTo(c.top)
-		body = append(body, c.scroll[c.top:c.top+c.shown]...)
-		if c.shown < len(c.scroll) {
-			body = append(body, dim(fmt.Sprintf("lines %d–%d of %d · ↑↓ pgup pgdown scroll",
-				c.top+1, c.top+c.shown, len(c.scroll))))
+		body = append(body, c.rows[c.top:c.top+c.shown]...)
+		if c.top+c.shown >= len(c.rows) {
+			c.seenEnd = true
+		}
+		if c.shown < len(c.rows) {
+			more := ""
+			if !c.seenEnd && c.toEnd {
+				more = " · y once you have seen it to the end"
+			}
+			body = append(body, dim(fmt.Sprintf("lines %d–%d of %d · ↑↓ pgup pgdown scroll%s",
+				c.top+1, c.top+c.shown, len(c.rows), more)))
 		}
 		body = append(body, c.after...)
 	}

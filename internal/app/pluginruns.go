@@ -185,29 +185,47 @@ func (m *Model) askPluginRun(q core.Question) {
 	o := a.Owner()
 	agent := m.machineOf(o).Core.AgentLabel(o, a)
 	bold := lipgloss.NewStyle().Bold(true)
-	lines := []string{o.Name + ": " + bold.Render(agent) + " would run it, as you, with", ""}
+	lines := []string{o.Name + ": " + bold.Render(agent) + " would run it, as you, with"}
 	names := make([]string, 0, len(vals))
 	for k := range vals {
 		names = append(names, k)
 	}
 	sort.Strings(names)
+	// Each value is shown whole, scrolled if long, and with its control
+	// and invisible characters drawn as marked escapes, as askRepoSetup
+	// shows a setup: the user allows what they read, and the plugin is
+	// given the value as it is.
+	hidden := 0
+	shown := func(s string) string {
+		t, n := clean.Marked(s, warn)
+		hidden += n
+		return t
+	}
+	var scroll []string
 	for _, k := range names {
-		lines = append(lines, "  --"+clean.Line(k)+"  "+bold.Render(ansi.Truncate(clean.Line(core.ValueText(vals[k])), 200, "…")))
+		scroll = append(scroll, "  --"+shown(k)+"  "+bold.Render(shown(core.ValueText(vals[k]))))
 	}
 	if len(names) == 0 {
-		lines = append(lines, dim("  no parameters"))
+		scroll = append(scroll, dim("  no parameters"))
 	}
-	lines = append(lines, "", "in "+bold.Render(clean.Line(dir)))
+	if hidden > 0 {
+		lines = append(lines, warn(fmt.Sprintf("They hold %d character%s that would not show, drawn here as escapes.", hidden, pluralS(hidden))))
+	}
+	lines = append(lines, "")
+	after := []string{"", "in " + bold.Render(clean.Line(dir))}
 	if q.Confined {
-		lines = append(lines, warn(agent+" runs in a sandbox: this runs outside it, on what it wrote there"))
+		after = append(after, warn(agent+" runs in a sandbox: this runs outside it, on what it wrote there"))
 	}
-	lines = append(lines, "", dim(fmt.Sprintf("y runs it · n does not · unanswered in %s, it does not run", core.Duration(core.RunAskWait))))
+	after = append(after, "", dim(fmt.Sprintf("y runs it · n does not · unanswered in %s, it does not run", core.Duration(core.RunAskWait))))
 	rq := &runQuestion{q: q, mc: mc}
 	rq.dialog = &confirm{
-		title: "Run " + p.Name + "?",
-		lines: lines,
-		yes:   func(m *Model) tea.Cmd { return rq.answer(m, core.AnswerAllowed) },
-		no:    func(m *Model) tea.Cmd { return rq.answer(m, core.RunDeclined) },
+		title:  "Run " + clean.Line(p.Name) + "?",
+		lines:  lines,
+		scroll: scroll,
+		after:  after,
+		toEnd:  true,
+		yes:    func(m *Model) tea.Cmd { return rq.answer(m, core.AnswerAllowed) },
+		no:     func(m *Model) tea.Cmd { return rq.answer(m, core.RunDeclined) },
 	}
 	m.plugins.asking = rq
 	m.dialog = rq.dialog
