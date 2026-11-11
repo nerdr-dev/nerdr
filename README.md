@@ -56,7 +56,7 @@ curl -fsSL https://nerdr.app/install.sh | sh
 or with Homebrew, `brew install nerdr-dev/tap/nerdr`, or with Go 1.27 or
 newer, `go install github.com/nerdr-dev/nerdr/cmd/nerdr@latest`. The
 binaries are also on the [releases page](https://github.com/nerdr-dev/nerdr/releases).
-You need `git` and at least one coding agent on your PATH. Sign in to `gh`
+You need Git 2.31 or newer and at least one coding agent on your PATH. Sign in to `gh`
 for pull requests, CI and issues. See [install](https://nerdr.app/start/install/)
 for the details and for building from source.
 

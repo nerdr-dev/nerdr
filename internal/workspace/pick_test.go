@@ -37,6 +37,7 @@ func TestPickTakesCommitsInTheOrderTheyWereMade(t *testing.T) {
 	wt := filepath.Join(root, "wt")
 	run(t, r.Path, "git", "worktree", "add", "-q", "-b", "part", wt, "main")
 	w := Worktree{Repo: r.Path, Path: wt, Branch: "part"}
+	Trust(&w)
 
 	n, err := Pick(w, []string{second, first, "0123456789abcdef0123456789abcdef01234567"})
 	if err != nil || n != 2 {
@@ -62,6 +63,7 @@ func TestPickThatConflictsLeavesTheBranchAlone(t *testing.T) {
 
 	wt := filepath.Join(root, "wt")
 	run(t, r.Path, "git", "worktree", "add", "-q", "-b", "part", wt, "main")
+	Trust(&Worktree{Repo: r.Path, Path: wt})
 	commit(t, wt, "a.txt", "mine")
 	head := Head(Worktree{Path: wt})
 	if _, err := Pick(Worktree{Repo: r.Path, Path: wt}, []string{change}); err == nil {
@@ -112,6 +114,7 @@ func TestPickOrdersByAncestryNotTime(t *testing.T) {
 	wt := filepath.Join(root, "wt")
 	run(t, r.Path, "git", "worktree", "add", "-q", "-b", "part", wt, "main")
 	w := Worktree{Repo: r.Path, Path: wt, Branch: "part"}
+	Trust(&w)
 	for _, order := range [][]string{{first, second}, {second, first}} {
 		run(t, wt, "git", "reset", "-q", "--hard", "main")
 		if n, err := Pick(w, order); err != nil || n != 2 {

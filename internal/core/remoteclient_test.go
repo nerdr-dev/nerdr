@@ -355,3 +355,129 @@ func TestASlowClientDoesNotGrowCore(t *testing.T) {
 		t.Errorf("core grew %d MiB for a client that reads nothing", grew>>20)
 	}
 }
+
+func offlineClient() *RemoteClient {
+	rc := &RemoteClient{}
+	rc.gone.Store(true)
+	return rc
+}
+
+func TestOfflineNoticeLimits(t *testing.T) {
+	for _, size := range []int{1, 4096} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			rc := offlineClient()
+			for i := range 1000 {
+				rc.Tell(NoticeMsg(fmt.Sprintf("%d:%s", i, strings.Repeat("x", size))))
+				total := 0
+				for _, b := range rc.notices {
+					total += len(b)
+				}
+				if total != rc.noticeBytes || total > offlineNoticeBytes || len(rc.notices) > offlineNoticeCount {
+					t.Fatalf("unbounded notices: %d bytes, %d messages", total, len(rc.notices))
+				}
+			}
+			if rc.noticesOmitted != uint64(1000-len(rc.notices)) {
+				t.Fatalf("omitted %d", rc.noticesOmitted)
+			}
+			for i, b := range rc.notices {
+				ev, err := DecodeEvent(b[1:])
+				if err != nil || !strings.HasPrefix(string(ev.(NoticeMsg)), fmt.Sprintf("%d:", 1000-len(rc.notices)+i)) {
+					t.Fatal("latest notices not retained in order")
+				}
+			}
+		})
+	}
+}
+
+func TestOfflineNoticeRepeatBecomesRecent(t *testing.T) {
+	rc := offlineClient()
+	for i := range offlineNoticeCount {
+		rc.Tell(NoticeMsg(fmt.Sprint(i)))
+	}
+	rc.Tell(NoticeMsg("0"))
+	rc.Tell(NoticeMsg("new"))
+	first, _ := DecodeEvent(rc.notices[0][1:])
+	lastRepeat, _ := DecodeEvent(rc.notices[len(rc.notices)-2][1:])
+	if first != NoticeMsg("2") || lastRepeat != NoticeMsg("0") || rc.noticesOmitted != 2 {
+		t.Fatalf("recent repeat lost: first=%v, repeat=%v, omitted=%d", first, lastRepeat, rc.noticesOmitted)
+	}
+}
+
+func TestOfflineNoticeDedupOversizeAndSaturation(t *testing.T) {
+	rc := offlineClient()
+	for range 1000 {
+		rc.Tell(NoticeMsg("same"))
+	}
+	if len(rc.notices) != 1 || rc.noticesOmitted != 999 {
+		t.Fatalf("duplicates retained: %d, omitted %d", len(rc.notices), rc.noticesOmitted)
+	}
+	before := rc.noticeBytes
+	// Both a raw oversized string and one oversized only after JSON escaping.
+	for _, s := range []string{strings.Repeat("x", offlineNoticeBytes+1), strings.Repeat("\x00", offlineNoticeBytes/2)} {
+		rc.Tell(NoticeMsg(s))
+	}
+	if rc.noticeBytes != before || len(rc.notices) != 1 || rc.noticesOmitted != 1001 {
+		t.Fatal("oversized notice retained or not counted")
+	}
+	rc.noticesOmitted = ^uint64(0) - 1
+	for range 3 {
+		rc.Tell(NoticeMsg("same"))
+	}
+	if rc.noticesOmitted != ^uint64(0) {
+		t.Fatal("omitted counter wrapped")
+	}
+	rc.Tell(ToastMsg("not a notice"))
+	if len(rc.out) != 0 || len(rc.notices) != 1 {
+		t.Fatal("offline non-notice retained")
+	}
+}
+
+func TestOfflineNoticesTransferredOnceOnReconnect(t *testing.T) {
+	old := offlineClient()
+	old.Tell(NoticeMsg("first"))
+	old.Tell(NoticeMsg("first"))
+	old.Tell(NoticeMsg("second"))
+	c := &Core{Client: old}
+	cc, _ := remoteCore(t, c)
+	// A request is a barrier: all initial events precede its completion.
+	cc.C.Mu.Lock()
+	evs, err := cc.Run(noRequest{})
+	cc.C.Mu.Unlock()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var notices []string
+	for _, ev := range evs {
+		if n, ok := ev.(NoticeMsg); ok {
+			notices = append(notices, string(n))
+		}
+	}
+	if len(notices) != 3 || notices[0] != "first" || notices[1] != "second" || notices[2] != "While disconnected, 1 notices were omitted or repeated." {
+		t.Fatalf("reconnect notices: %q", notices)
+	}
+	if old.notices != nil || old.noticeBytes != 0 || old.noticesOmitted != 0 {
+		t.Fatal("old accounting not reset")
+	}
+	if len(old.takeNotices()) != 0 {
+		t.Fatal("notices replayed")
+	}
+	cc.C.Mu.Lock()
+	evs, err = cc.Run(noRequest{})
+	cc.C.Mu.Unlock()
+	if err != nil || len(evs) != 0 {
+		t.Fatalf("summary replayed: %v, %v", evs, err)
+	}
+}
+
+func TestOfflineNoticeSaturatedSummary(t *testing.T) {
+	rc := offlineClient()
+	rc.noticesOmitted = ^uint64(0)
+	out := rc.takeNotices()
+	if len(out) != 1 {
+		t.Fatalf("summary count %d", len(out))
+	}
+	ev, err := DecodeEvent(out[0][1:])
+	if err != nil || string(ev.(NoticeMsg)) != fmt.Sprintf("While disconnected, at least %d notices were omitted or repeated.", ^uint64(0)) {
+		t.Fatalf("saturated summary %v, %v", ev, err)
+	}
+}

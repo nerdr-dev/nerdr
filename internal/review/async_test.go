@@ -117,7 +117,7 @@ func (s countingSource) Imports(wt string, paths []string) map[string][]string {
 	return s.Local.Imports(wt, paths)
 }
 
-func (s countingSource) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
+func (s countingSource) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref, string) {
 	s.n.Add(1)
 	return s.Local.Relations(wt, file)
 }

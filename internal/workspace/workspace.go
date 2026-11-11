@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1286,6 +1287,9 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 			return string(out), fmt.Errorf("git %s: timed out after %s", args[0], timeout)
 		}
 		msg := gitReason(stderr.String())
+		if slices.Contains(cmd.Env, "GIT_ALLOW_PROTOCOL=") && strings.Contains(msg, "transport '") && strings.Contains(msg, "not allowed") {
+			msg += ": nerdr disables host Git transports after an agent has run in a sandbox in this repository; transport programs can execute worktree code. Use Git inside the sandbox, or inspect the work and use your own terminal"
+		}
 		if msg == "" {
 			msg = err.Error()
 		}

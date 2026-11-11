@@ -47,7 +47,7 @@ func verifiedObjects(repo, id string) (objects string, done func(), err error) {
 		defer cancel()
 		cmd := proc.Detach(exec.CommandContext(ctx, "git", args...))
 		cmd.Dir = tmp
-		cmd.Env = append(outsideRepo(os.Environ()), "GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0")
+		cmd.Env = verifiedGitEnv()
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
@@ -66,11 +66,15 @@ func verifiedObjects(repo, id string) (objects string, done func(), err error) {
 		return "", nil, err
 	}
 	// From the repository's own folder, by the commit's id: the server
-	// side is asked to give a commit that no ref of its needs to name, and reads no
-	// hooks. The settings reach it through the environment.
+	// side is asked to give a commit that no ref of its needs to name.
+	// Local transport clears command-scope configuration from the child
+	// environment, so server overrides must be in its command itself.
+	// Unlike packObjectsHook, alternateRefsCommand accepts local config.
 	err = run("-c", "uploadpack.allowAnySHA1InWant=true", "-c", "protocol.file.allow=always",
 		"-c", "core.hooksPath="+os.DevNull, "-c", "core.fsmonitor=false",
-		"fetch", "--quiet", "--depth=1", "--no-tags", filepath.Join(repo, ".git"), id)
+		"fetch", "--quiet", "--depth=1", "--no-tags",
+		"--upload-pack="+verifiedUploadPack,
+		filepath.Join(repo, ".git"), id)
 	if err != nil {
 		done()
 		return "", nil, fmt.Errorf("the repository's objects for %s are not all what origin's commit names (%v): "+
@@ -79,6 +83,12 @@ func verifiedObjects(repo, id string) (objects string, done func(), err error) {
 	}
 	return filepath.Join(tmp, "objects"), done, nil
 }
+
+// These command-scope settings are applied inside the upload-pack process,
+// after local transport has cleared the client's command-scope environment.
+// The alternate-ref no-op includes a shell metacharacter so Git invokes the
+// shell builtin instead of searching PATH for an executable named ":".
+const verifiedUploadPack = "git -c core.hooksPath=" + os.DevNull + " -c core.fsmonitor=false -c 'core.alternateRefsCommand=: #' -c uploadpack.allowAnySHA1InWant=true upload-pack"
 
 // outsideRepo is env without the variables that name a repository: the
 // git it is given to works in the folder it is run in.
@@ -93,4 +103,32 @@ func outsideRepo(env []string) []string {
 		out = append(out, kv)
 	}
 	return out
+}
+
+// verifiedGitEnv is deliberately independent of user Git configuration and
+// executable environment overrides. This private object store has exactly one
+// transport: the explicit local repository path. Local transport strips
+// GIT_CONFIG_COUNT/KEY/VALUE/PARAMETERS before upload-pack, but preserves
+// NOSYSTEM and GLOBAL. Those disable the protected config scopes that can
+// enable uploadpack.packObjectsHook (local scope is ignored by Git). Do not
+// set that hook to an empty value: Git would try to execute an empty command.
+func verifiedGitEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		key, _, _ := strings.Cut(kv, "=")
+		if strings.HasPrefix(key, "GIT_") || key == "SSH_ASKPASS" {
+			continue
+		}
+		env = append(env, kv)
+	}
+	return append(env,
+		"GIT_CONFIG_NOSYSTEM=1", "GIT_CONFIG_GLOBAL="+os.DevNull,
+		"GIT_NO_REPLACE_OBJECTS=1", "GIT_TERMINAL_PROMPT=0",
+		"GIT_ALLOW_PROTOCOL=file", "GIT_ASKPASS="+os.DevNull,
+		"GIT_CONFIG_COUNT=5",
+		"GIT_CONFIG_KEY_0=core.hooksPath", "GIT_CONFIG_VALUE_0="+os.DevNull,
+		"GIT_CONFIG_KEY_1=core.fsmonitor", "GIT_CONFIG_VALUE_1=false",
+		"GIT_CONFIG_KEY_2=maintenance.auto", "GIT_CONFIG_VALUE_2=false",
+		"GIT_CONFIG_KEY_3=gc.auto", "GIT_CONFIG_VALUE_3=0",
+		"GIT_CONFIG_KEY_4=core.alternateRefsCommand", "GIT_CONFIG_VALUE_4=: #")
 }

@@ -27,16 +27,19 @@
 // terminal, and a credential it lacks is reported (see denied), not asked
 // for.
 //
-// The remaining settings that run commands — core.sshCommand, filter and
-// diff drivers, credential helpers — are left as the pinned repository's
-// config says. They cannot be blanked without breaking what nerdr itself
-// does (an empty core.sshCommand makes push fail with "cannot run"), and
-// they are the user's own: a sandboxed agent can write its worktree, but
-// not the main checkout's .git/config that GIT_DIR and GIT_COMMON_DIR name.
-// A submodule's config is another matter: it is in the worktree, the
+// In repositories with sandbox history, authentication delegates are disabled
+// and signing programs are replaced with /dev/null. Other executable
+// delegates are refused. All transports are disabled: trusted transport
+// programs can themselves delegate to worktree code. A required signature
+// fails rather than
+// silently producing an unsigned commit. See delegates.go.
+// A submodule's config is in the worktree, the
 // agent's to write, and git reads it when it runs status inside the
 // submodule. So nerdr's status and diff do not look inside submodules
 // (ignoreDirtySubmodules), and its git add leaves gitlinks out (git.AddAll).
+// Repositories with executable filter, diff or merge drivers and sandbox
+// history are refused (LFS conversion is disabled with required=true):
+// even a trusted filter definition can execute the worktree's scripts.
 package gitsafe
 
 import (
@@ -101,8 +104,7 @@ func Hooks(dir string) []string { return env(dir, hookAll) }
 // says: pre-commit reads .pre-commit-config.yaml, lefthook its lefthook.yml,
 // husky the scripts in .husky, a hand-written one the repository's linter
 // or tests. Run by nerdr, that is the agent's code run as the user, outside
-// its sandbox. What Git LFS does in its pre-push hook, nerdr does itself
-// before it pushes (see workspace.PushIn).
+// its sandbox. LFS conversions are disabled too: see filterRefusal.
 func SandboxedHooks(dir string) []string { return env(dir, hookSandboxed) }
 
 type hookMode int
@@ -206,12 +208,27 @@ func env(dir string, mode hookMode) []string {
 	d, ok := dirs(dir)
 	// A repository whose config.worktree a sandboxed agent can write is
 	// given no git at all: see guardWorktreeConfig.
-	d = guardWorktreeConfig(d, ok)
+	sandboxed := ok && d.gitDir != untrustedDir && repoSandboxed(d.common)
+	var disabled [][2]string
+	d = guardWorktreeConfig(d, ok, &disabled)
 	// core.askpass is a program git runs to ask for a credential. nerdr
 	// never wants one: it runs git off its terminal, and a credential it
 	// lacks is reported rather than prompted for. Pointing it at /dev/null
 	// makes git fail the ask rather than run whatever the repository named.
 	settings := [][2]string{{"core.fsmonitor", "false"}, {"core.askpass", os.DevNull}}
+	if sandboxed {
+		e = delegateEnv(e)
+		settings = append(settings, delegateSettings...)
+		settings = append(settings, disabled...)
+		// Never run a PATH-resolved git-lfs or a user-defined LFS command.
+		// required=true makes Git fail on conversion instead of storing raw
+		// content. Global LFS installation then leaves non-LFS repos usable.
+		settings = append(settings,
+			[2]string{"filter.lfs.clean", ""},
+			[2]string{"filter.lfs.smudge", ""},
+			[2]string{"filter.lfs.process", ""},
+			[2]string{"filter.lfs.required", "true"})
+	}
 	// A diff or status looks inside each submodule by running git status
 	// there, with that folder's own config, which an agent can write (see
 	// ignoreDirtySubmodules). The command-line option nerdr gives its own
@@ -225,12 +242,22 @@ func env(dir string, mode hookMode) []string {
 	// GIT_CONFIG_COUNT rather than -c, so the settings reach the git that
 	// gh runs as well. Ones the user's environment already has are kept.
 	n, _ := strconv.Atoi(os.Getenv("GIT_CONFIG_COUNT"))
+	parameters := os.Getenv("GIT_CONFIG_PARAMETERS")
 	for i, s := range settings {
+		// Git applies GIT_CONFIG_PARAMETERS after GIT_CONFIG_COUNT. Append
+		// our policy there too, or inherited -c settings can undo the
+		// credential resets (and fsmonitor/hook restrictions). Git uses
+		// separately quoted keys and values (Git >= 2.31), so an equals
+		// sign inside a URL credential scope is not mistaken for the separator.
+		if parameters != "" {
+			parameters += " "
+		}
+		parameters += quoteConfigParameter(s[0]) + "=" + quoteConfigParameter(s[1])
 		e = append(e,
 			"GIT_CONFIG_KEY_"+strconv.Itoa(n+i)+"="+s[0],
 			"GIT_CONFIG_VALUE_"+strconv.Itoa(n+i)+"="+s[1])
 	}
-	e = append(e, "GIT_CONFIG_COUNT="+strconv.Itoa(n+len(settings)))
+	e = append(e, "GIT_CONFIG_COUNT="+strconv.Itoa(n+len(settings)), "GIT_CONFIG_PARAMETERS="+parameters)
 	// nerdr only looks: a status or diff of its must not write the index
 	// (refreshing it is optional), which would wake the watch on it and
 	// have it look again, and could take the lock an agent's git needs.
@@ -242,6 +269,11 @@ func env(dir string, mode hookMode) []string {
 		e = append(e, "GIT_DIR="+d.gitDir, "GIT_COMMON_DIR="+d.common, "GIT_WORK_TREE="+d.work)
 	}
 	return e
+}
+
+// quoteConfigParameter uses Git's shell-style single-quote escaping.
+func quoteConfigParameter(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
 }
 
 // Dirs is the git directory of the worktree or main checkout dir is in,
@@ -276,9 +308,21 @@ func dirs(dir string) (gitDirs, bool) {
 	}
 	mu.Unlock()
 	if path == "" {
-		if st, err := os.Lstat(filepath.Join(dir, ".git")); err == nil && st.IsDir() {
-			g := filepath.Join(dir, ".git")
-			return gitDirs{g, g, dir}, true
+		for p := dir; ; p = filepath.Dir(p) {
+			g := filepath.Join(p, ".git")
+			if st, err := os.Lstat(g); err == nil {
+				if st.IsDir() {
+					return gitDirs{g, g, p}, true
+				}
+				// Never let Git follow an unregistered worktree's .git file
+				// (or symlink), including when called from a subdirectory.
+				return gitDirs{untrustedDir, untrustedDir, p}, true
+			} else if !os.IsNotExist(err) {
+				return gitDirs{untrustedDir, untrustedDir, p}, true
+			}
+			if filepath.Dir(p) == p {
+				break
+			}
 		}
 		return gitDirs{}, false
 	}

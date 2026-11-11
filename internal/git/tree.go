@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
@@ -22,23 +25,14 @@ func WorkTree(worktreePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmp, err := os.CreateTemp("", "nerdr-index-")
+	tmp, err := os.MkdirTemp("", "nerdr-index-")
 	if denied.Err(err) != nil {
 		return "", err
 	}
-	name := tmp.Name()
-	defer os.Remove(name)
-	data, readErr := os.ReadFile(strings.TrimSpace(string(out)))
-	_, writeErr := tmp.Write(data)
-	if err := tmp.Close(); writeErr == nil {
-		writeErr = err
-	}
-	if writeErr != nil {
-		return "", writeErr
-	}
-	if readErr != nil || len(data) == 0 {
-		// No index yet: git makes one, but will not read an empty file.
-		_ = os.Remove(name)
+	defer os.RemoveAll(tmp)
+	name := filepath.Join(tmp, "index")
+	if err := copyIndex(strings.TrimSpace(string(out)), name); err != nil {
+		return "", err
 	}
 	index := "GIT_INDEX_FILE=" + filepath.Clean(name)
 	if err := AddAll(context.Background(), worktreePath, index); err != nil {
@@ -140,17 +134,13 @@ func StageAll(ctx context.Context, worktreePath string) error {
 	}
 	defer os.RemoveAll(tmp)
 	copied := filepath.Join(tmp, "index")
-	if data, err := os.ReadFile(real); err == nil && len(data) > 0 {
-		if err := os.WriteFile(copied, data, 0o600); err != nil {
-			return err
-		}
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := copyIndex(real, copied); err != nil {
 		return err
 	}
 	if err := AddAll(ctx, worktreePath, "GIT_INDEX_FILE="+copied); err != nil {
 		return err
 	}
-	data, err := os.ReadFile(copied)
+	data, stat, err := readIndex(copied)
 	if err != nil {
 		return err
 	}
@@ -167,10 +157,76 @@ func StageAll(ctx context.Context, worktreePath string) error {
 		err = cerr
 	}
 	if err == nil {
+		err = os.Chtimes(lock, stat.ModTime(), stat.ModTime())
+	}
+	if err == nil {
 		err = os.Rename(lock, real)
 	}
 	if err != nil {
 		os.Remove(lock)
 	}
 	return err
+}
+
+// maxIndexSize allows large indexes (roughly a million ordinary entries),
+// while bounding memory consumed by an agent-controlled index. Larger
+// repositories must reduce their index size before snapshotting or staging.
+const maxIndexSize int64 = 128 << 20
+
+// readIndex obtains bytes and their timestamp from the same open file, even
+// if another Git process replaces the index in the meantime.
+func readIndex(path string) ([]byte, os.FileInfo, error) {
+	// Nonblocking open prevents an agent's FIFO from hanging before Stat.
+	// NOFOLLOW rejects a symlink at the index itself without a check/open race.
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !stat.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("index %q is not a regular file", path)
+	}
+	if stat.Size() > maxIndexSize {
+		return nil, nil, fmt.Errorf("index %q exceeds the %d-byte limit", path, maxIndexSize)
+	}
+	data, err := readIndexData(f, maxIndexSize)
+	return data, stat, err
+}
+
+func readIndexData(r io.Reader, limit int64) ([]byte, error) {
+	// Stat is only an early rejection: the file can grow after it was checked.
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("index exceeds the %d-byte limit", limit)
+	}
+	return data, nil
+}
+
+// Git uses the index mtime to detect racy-clean entries: cached file stats
+// matching the index's timestamp still need their content checked. Giving a
+// copy a newer timestamp can silently hide same-size edits. Preserve it on
+// every copy, including StageAll's final replacement of the real index.
+func copyIndex(src, dst string) error {
+	data, stat, err := readIndex(src)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	// Git creates a missing index but rejects an empty one.
+	if len(data) == 0 {
+		return nil
+	}
+	if err := os.WriteFile(dst, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chtimes(dst, stat.ModTime(), stat.ModTime())
 }

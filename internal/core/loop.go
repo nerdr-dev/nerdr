@@ -431,6 +431,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 			ev.T.Messages = append([]state.Message{{Text: ev.Handoff, Auto: true, Sandboxed: ev.Sandboxed}}, ev.T.Messages...)
 			m.SaveSession()
 		}
+		if !m.launchStillCurrent(ev.T, ev.SpecKey) {
+			return nil, true
+		}
 		cmd := m.Spawn(ev.T, ev.L, ev.Resume)
 		if ev.T.ReviewOf != nil && ev.T.Pane == nil && ev.T.Light == StExited {
 			m.ReviewerNotStarted(ev.T)

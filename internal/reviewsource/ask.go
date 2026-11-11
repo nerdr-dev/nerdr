@@ -74,14 +74,15 @@ type Answer struct {
 	Msg       string                   `json:",omitempty"`
 	Err       string                   `json:",omitempty"`
 
-	Notes   why.Index               `json:",omitzero"`
-	Order   order.Index             `json:",omitzero"`
-	Walk    walkthrough.Walkthrough `json:",omitzero"`
-	Older   bool                    `json:",omitempty"`
-	Version int                     `json:",omitempty"`
-	Imports map[string][]string     `json:",omitempty"`
-	Symbols []analysis.Symbol       `json:",omitempty"`
-	Refs    [][]analysis.Ref        `json:",omitempty"`
+	Notes      why.Index               `json:",omitzero"`
+	Order      order.Index             `json:",omitzero"`
+	Walk       walkthrough.Walkthrough `json:",omitzero"`
+	Older      bool                    `json:",omitempty"`
+	Version    int                     `json:",omitempty"`
+	Imports    map[string][]string     `json:",omitempty"`
+	Symbols    []analysis.Symbol       `json:",omitempty"`
+	Incomplete string                  `json:",omitempty"`
+	Refs       [][]analysis.Ref        `json:",omitempty"`
 }
 
 // Run makes q's call of s.
@@ -130,7 +131,7 @@ func (q Query) Run(s Source) Answer {
 	case OpImports:
 		a.Imports = s.Imports(q.Wt, q.Paths)
 	case OpRelations:
-		a.Symbols, a.Refs = s.Relations(q.Wt, q.File)
+		a.Symbols, a.Refs, a.Incomplete = s.Relations(q.Wt, q.File)
 	default:
 		err = fmt.Errorf("no such read: %q", q.Op)
 	}
@@ -323,7 +324,10 @@ func (k *Asker) Imports(wt string, paths []string) map[string][]string {
 	return k.ask(Query{Op: OpImports, Wt: wt, Paths: paths}).Imports
 }
 
-func (k *Asker) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
+func (k *Asker) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref, string) {
 	a := k.ask(Query{Op: OpRelations, Wt: wt, File: file})
-	return a.Symbols, a.Refs
+	if a.Err != "" {
+		return nil, nil, a.Err
+	}
+	return a.Symbols, a.Refs, a.Incomplete
 }

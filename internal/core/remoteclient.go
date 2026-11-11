@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -117,6 +118,15 @@ func (StartWaiting) Do(m *Core) Cmd {
 	return r.Do(m)
 }
 
+// Offline notices keep the most recent unique messages, evicting older ones
+// once either limit is reached. Repeats move to the end. Compare only retained
+// messages so deduplication storage is bounded too. Reconnect adds one short
+// summary outside this budget.
+const (
+	offlineNoticeCount = 64
+	offlineNoticeBytes = 64 << 10
+)
+
 // RemoteClient is a client in a process of its own, as core sees it: what
 // it shows, as it last said, and the connection to tell it on. Once the
 // connection has closed it is still what core goes by of what the client
@@ -136,7 +146,9 @@ type RemoteClient struct {
 	behind atomic.Bool
 	// notices are what core had to show with no client there, kept for
 	// the next to connect.
-	notices [][]byte
+	notices        [][]byte
+	noticeBytes    int
+	noticesOmitted uint64
 	// lastDone is the id of the last request asked with an id that core
 	// has done.
 	lastDone int64
@@ -161,7 +173,7 @@ func (m *Core) AttachClient(conn *attach.Conn, post func(RequestEv)) *RemoteClie
 	if old, ok := m.Client.(*RemoteClient); ok {
 		rc.state = old.state // what the last showed, until this one says
 		old.gone.Store(true)
-		rc.out, old.notices = old.notices, nil
+		rc.out = old.takeNotices()
 	}
 	parts := &clientParts{
 		behind: func() { rc.behind.Store(true) },
@@ -293,9 +305,16 @@ func (rc *RemoteClient) There() bool { return !rc.gone.Load() }
 // Tell sends ev after the next parts; nothing comes back of it to do here.
 // A notice told with no client there waits for the next.
 func (rc *RemoteClient) Tell(ev Event) Cmd {
-	_, notice := ev.(NoticeMsg)
-	if rc.gone.Load() && !notice {
-		return nil
+	n, notice := ev.(NoticeMsg)
+	if rc.gone.Load() {
+		if !notice {
+			return nil
+		}
+		// Bound encoding allocations too; JSON escaping is checked below.
+		if len(n) > offlineNoticeBytes {
+			rc.omitNotice()
+			return nil
+		}
 	}
 	b, err := EncodeEvent(ev)
 	if err != nil {
@@ -304,11 +323,62 @@ func (rc *RemoteClient) Tell(ev Event) Cmd {
 	}
 	b = append([]byte{wireEvent}, b...)
 	if rc.gone.Load() {
-		rc.notices = append(rc.notices, b)
+		// The connection may have closed while the event was encoded.
+		if notice {
+			rc.keepNotice(b)
+		}
 		return nil
 	}
 	rc.out = append(rc.out, b)
 	return nil
+}
+
+// omitNotice counts both duplicates and capacity drops without wrapping.
+func (rc *RemoteClient) omitNotice() {
+	if rc.noticesOmitted < ^uint64(0) {
+		rc.noticesOmitted++
+	}
+}
+
+func (rc *RemoteClient) keepNotice(b []byte) {
+	if len(b) > offlineNoticeBytes {
+		rc.omitNotice()
+		return
+	}
+	for i, old := range rc.notices {
+		if bytes.Equal(old, b) {
+			// A repeat is recent too: keep it when older notices expire.
+			copy(rc.notices[i:], rc.notices[i+1:])
+			rc.notices[len(rc.notices)-1] = old
+			rc.omitNotice()
+			return
+		}
+	}
+	for len(rc.notices) >= offlineNoticeCount || len(b) > offlineNoticeBytes-rc.noticeBytes {
+		rc.noticeBytes -= len(rc.notices[0])
+		copy(rc.notices, rc.notices[1:])
+		rc.notices[len(rc.notices)-1] = nil
+		rc.notices = rc.notices[:len(rc.notices)-1]
+		rc.omitNotice()
+	}
+	rc.notices = append(rc.notices, b)
+	rc.noticeBytes += len(b)
+}
+
+// takeNotices transfers ownership at reconnect and resets all accounting.
+// A repeated call cannot replay notices or their summary.
+func (rc *RemoteClient) takeNotices() [][]byte {
+	out := rc.notices
+	if rc.noticesOmitted > 0 {
+		qualifier := ""
+		if rc.noticesOmitted == ^uint64(0) {
+			qualifier = "at least "
+		}
+		b, _ := EncodeEvent(NoticeMsg(fmt.Sprintf("While disconnected, %s%d notices were omitted or repeated.", qualifier, rc.noticesOmitted)))
+		out = append(out, append([]byte{wireEvent}, b...))
+	}
+	rc.notices, rc.noticeBytes, rc.noticesOmitted = nil, 0, 0
+	return out
 }
 
 // Forward sends ev, which the loop hands the client, as it comes. Called

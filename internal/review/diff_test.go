@@ -128,3 +128,35 @@ func TestBuildDiffLinesShowsControlCharactersInsteadOfSendingThem(t *testing.T) 
 		t.Fatalf("lines = %q, want %q", got, want)
 	}
 }
+
+func TestIncompleteReferencesShownInDiff(t *testing.T) {
+	m := Model{
+		symbols:            []analysis.Symbol{{Name: "helper", Kind: "function"}},
+		symbolRefs:         [][]analysis.Ref{nil},
+		analysisIncomplete: "directory entry limit reached",
+	}
+	lines := m.displayLines("a.ts", "@@ -0,0 +1 @@\n+export function helper() {}\n", "", false)
+	var text string
+	for _, line := range lines {
+		text += line.text + "\n"
+	}
+	if !strings.Contains(text, "Reference analysis incomplete: directory entry limit reached") ||
+		!strings.Contains(text, "no references found (analysis incomplete)") ||
+		strings.Contains(text, "no other references") {
+		t.Fatalf("misleading incomplete diff:\n%s", text)
+	}
+	m.symbolRefs = [][]analysis.Ref{{{File: "caller.ts", Line: 1}}}
+	lines = m.displayLines("a.ts", "@@ -0,0 +1 @@\n+export function helper() {}\n", "", false)
+	text = ""
+	for _, line := range lines {
+		text += line.text + "\n"
+	}
+	if !strings.Contains(text, "at least 1; analysis incomplete") {
+		t.Fatalf("unqualified count: %s", text)
+	}
+	m.symbols = nil
+	lines = m.displayLines("a.ts", "", "", false)
+	if len(lines) == 0 || !strings.Contains(lines[0].text, "Reference analysis incomplete") {
+		t.Fatal("warning hidden without symbols")
+	}
+}

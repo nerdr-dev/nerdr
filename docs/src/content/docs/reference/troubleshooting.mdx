@@ -26,6 +26,10 @@ Terminal.app lack it: install `xclip`, `xsel` or `wl-clipboard` on
 Linux; macOS has `pbcopy`. If the agent uses the mouse itself, hold
 `shift` while selecting.
 
+Copy commands inside an agent or editor that use OSC 52 are not forwarded.
+Select the displayed text through nerdr instead; hold `shift` if the
+program captures the mouse.
+
 ## My agent's key combination does nothing
 
 nerdr takes its prefix, `ctrl+q`, before the agent sees it. Press
@@ -51,6 +55,24 @@ The sandbox must pass the `NERDR_*` variables through, allow running
 `$NERDR_BIN`, and allow connecting to `~/.local/state/nerdr/nerdr.sock`.
 The command's error says which is missing. See
 [What a sandbox must allow](../../configure/agents/#what-a-sandbox-must-allow).
+
+## Git says a transport is not allowed
+
+After a sandboxed agent has worked in a repository, nerdr refuses host
+Git fetch and push, including SSH, HTTPS and local remotes. Transport
+and authentication helpers can run scripts from the agent's worktree.
+Creating a new worktree may also fail when it needs to fetch a base.
+Run the operation inside the sandbox, or inspect the work and use your
+own terminal. Local status and diffs remain available unless another
+unsafe Git setting blocks them. See [Security](../security/).
+
+If a notice names an executable Git setting, nerdr may refuse all Git in
+that repository, including status. This applies to custom proxy, remote
+transport, alternate-reference and object hooks; the full list is on the
+security page. Remove the named setting only if it is no longer needed,
+or use Git inside the sandbox or your own terminal after inspecting the
+work. Global GPG/1Password signing programs and credential helpers are
+suppressed instead, so they do not cause this whole-repository refusal.
 
 ## The agent does not resume its conversation
 

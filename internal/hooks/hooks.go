@@ -233,6 +233,9 @@ const PluginAskWait = 100 * time.Second
 // with, in bytes.
 const MaxPluginOutput = 32 << 10
 
+// MaxSource bounds an integration identifier retained by the core.
+const MaxSource = 128
+
 // MaxStatus is the longest status line an agent can set.
 const MaxStatus = 300
 
@@ -726,6 +729,9 @@ func handleUsage(c *client, id string, p params) []byte {
 // on (presentation only; nerdr draws its own).
 func handleReport(method string) handler {
 	return func(c *client, id string, p params) []byte {
+		if len(p.Source) > MaxSource {
+			return invalid(id, "source is too long")
+		}
 		if method == ReportAgent {
 			switch p.State {
 			case "idle", "working", "blocked", "unknown":

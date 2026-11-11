@@ -3,7 +3,6 @@ package app
 import (
 	"encoding/base64"
 	"os"
-	"slices"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -552,29 +551,10 @@ func (m *Model) copyText(text string) {
 	m.toast("sent " + n + " to the terminal's clipboard; if it is not there, install xclip, xsel or wl-clipboard")
 }
 
-// copyWindow is how soon after the user last typed, clicked or moved the
-// mouse a program's OSC 52 is put on the clipboard.
-const copyWindow = 5 * time.Second
-
-// checkCopied puts on the clipboard what a program has copied with OSC 52,
-// as one that takes the mouse does with what is chosen in it. Only from
-// the program the user is in, just after they did something there: a copy
-// is theirs to make. Any program can print OSC 52 — an agent, one in a
-// sandbox among them, or a file it shows — and what is put on the
-// clipboard unasked is what the user pastes next, into a shell perhaps.
-// The rest is let go.
+// checkCopied drains program OSC 52 requests without forwarding them.
+// Focus and recent input are not consent to replace the clipboard. Only
+// nerdr's explicit user selection/copy actions call copyText.
 func (m *Model) checkCopied() {
-	var from []core.Program
-	if m.editor != nil {
-		from = append(from, m.editor)
-	} else {
-		for _, t := range []*core.Tab{m.Cur(), m.splitTab()} {
-			if t != nil {
-				from = append(from, m.screen(t))
-			}
-		}
-	}
-	recent := m.router != nil && time.Since(m.router.LastInput()) < copyWindow
 	var panes []core.Program
 	if m.editor != nil {
 		panes = append(panes, m.editor)
@@ -588,13 +568,8 @@ func (m *Model) checkCopied() {
 		if p == nil {
 			continue
 		}
-		text := p.TakeCopied()
-		switch {
-		case text == "":
-		case recent && slices.Contains(from, p):
-			m.copyText(text)
-		default:
-			core.Debugf("osc 52: %d bytes from a program not in use, not put on the clipboard", len(text))
+		if text := p.TakeCopied(); text != "" {
+			core.Debugf("osc 52: %d bytes from a program, not put on the clipboard", len(text))
 		}
 	}
 }

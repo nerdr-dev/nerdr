@@ -168,6 +168,16 @@ func CheckNoLinks(root *os.Root, rel string) error {
 // file of at most maxFileBytes. O_NONBLOCK prevents blocking if rel is
 // replaced with a FIFO.
 func ReadRegular(root *os.Root, rel string) ([]byte, error) {
+	return ReadRegularLimit(root, rel, maxFileBytes)
+}
+
+// ReadRegularLimit is ReadRegular with a caller's byte limit. The limit
+// applies to the descriptor read as well as its initial size, so a file
+// growing while read cannot bypass it.
+func ReadRegularLimit(root *os.Root, rel string, limit int64) ([]byte, error) {
+	if limit < 0 {
+		return nil, fmt.Errorf("invalid file limit")
+	}
 	if err := CheckNoLinks(root, rel); err != nil {
 		return nil, err
 	}
@@ -190,14 +200,14 @@ func ReadRegular(root *os.Root, rel string) ([]byte, error) {
 	if !st.Mode().IsRegular() || !os.SameFile(info, st) {
 		return nil, fmt.Errorf("%s is not a regular file", rel)
 	}
-	if st.Size() > maxFileBytes {
+	if st.Size() > limit {
 		return nil, fmt.Errorf("%s is too large (%d bytes)", rel, st.Size())
 	}
-	b, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	b, err := io.ReadAll(io.LimitReader(f, limit+1))
 	if err != nil {
 		return nil, err
 	}
-	if len(b) > maxFileBytes {
+	if int64(len(b)) > limit {
 		return nil, fmt.Errorf("%s is too large", rel)
 	}
 	return b, nil

@@ -2,12 +2,16 @@ package analysis
 
 import (
 	"encoding/json"
-	"io/fs"
+	"io"
 	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"syscall"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // Alias maps an import prefix to a directory, e.g. "@/" -> "src/".
@@ -27,6 +31,7 @@ type Project struct {
 	wordIndex    map[string][]refEntry
 	wordBuilt    bool
 	stamps       map[string]sourceStamp
+	incomplete   string
 }
 
 type sourceStamp struct {
@@ -43,32 +48,86 @@ var skipDirs = map[string]bool{
 	"build": true, "out": true, ".turbo": true, ".cache": true, "coverage": true,
 }
 
+const (
+	maxSourceBytes  = 512 << 10
+	maxProjectFiles = 10000
+	maxWalkEntries  = 100000
+	maxIndexBytes   = 32 << 20
+	maxIndexRefs    = 2000000
+	maxIndexWords   = 250000 // bound map overhead for adversarial unique identifiers
+)
+
+// readSource never follows a worktree link or opens a special file. All
+// analysis entry points use it, including reads after the initial walk.
+func (p *Project) readSource(file string) ([]byte, error) {
+	r, err := os.OpenRoot(p.Root)
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	return safefile.ReadRegularLimit(r, filepath.FromSlash(file), maxSourceBytes)
+}
+
 // LoadProject walks the worktree collecting source files and reading tsconfig
 // path aliases. It never fails hard; an unreadable tree yields an empty file set.
 func LoadProject(root string) *Project {
+	return loadProject(root, maxProjectFiles, maxWalkEntries)
+}
+
+func loadProject(root string, fileLimit, entryLimit int) *Project {
 	p := &Project{Root: root}
-	p.loadTsconfig(filepath.Join(root, "tsconfig.json"))
-	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	p.loadTsconfig()
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		p.markIncomplete("source tree unreadable")
+		return p
+	}
+	defer r.Close()
+	// Read directories in bounded batches: WalkDir reads and sorts a whole
+	// directory before invoking its callback, before any entry cap applies.
+	entries := 0
+	pending := []string{"."}
+	for len(pending) > 0 && entries < entryLimit && len(p.files) < fileLimit {
+		dir := pending[len(pending)-1]
+		pending = pending[:len(pending)-1]
+		f, err := r.OpenFile(dir, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
 		if err != nil {
-			return nil
+			p.markIncomplete("source directories unreadable")
+			continue
 		}
-		if d.IsDir() {
-			if path != root && skipDirs[d.Name()] {
-				return filepath.SkipDir
+		for entries < entryLimit && len(p.files) < fileLimit {
+			batch, err := f.ReadDir(128)
+			for _, d := range batch {
+				if entries >= entryLimit || len(p.files) >= fileLimit {
+					break
+				}
+				entries++
+				path := filepath.Join(dir, d.Name())
+				if d.IsDir() && !skipDirs[d.Name()] {
+					pending = append(pending, path)
+				} else if d.Type().IsRegular() && sourceExts[filepath.Ext(d.Name())] {
+					p.files = append(p.files, filepath.ToSlash(path))
+				}
 			}
-			return nil
-		}
-		if sourceExts[filepath.Ext(d.Name())] {
-			rel, err := filepath.Rel(root, path)
-			if err == nil {
-				p.files = append(p.files, filepath.ToSlash(rel))
+			if err != nil {
+				if err != io.EOF {
+					p.markIncomplete("source directories unreadable")
+				}
+				break
 			}
 		}
-		return nil
-	})
+		f.Close()
+	}
+	if entries >= entryLimit {
+		p.markIncomplete("directory entry limit reached")
+	}
+	if len(p.files) >= fileLimit {
+		p.markIncomplete("source file limit reached")
+	}
+	slices.Sort(p.files)
 	p.stamps = make(map[string]sourceStamp, len(p.files)+1)
 	for _, file := range append(append([]string(nil), p.files...), "tsconfig.json") {
-		if info, err := os.Stat(filepath.Join(root, filepath.FromSlash(file))); err == nil {
+		if info, err := r.Lstat(filepath.FromSlash(file)); err == nil && info.Mode().IsRegular() {
 			p.stamps[file] = sourceStamp{size: info.Size(), modified: info.ModTime()}
 		}
 	}
@@ -78,7 +137,7 @@ func LoadProject(root string) *Project {
 // Same reports whether q was loaded from the same source files as p, none
 // of them changed since.
 func (p *Project) Same(q *Project) bool {
-	return maps.Equal(p.stamps, q.stamps)
+	return p.incomplete == q.incomplete && slices.Equal(p.files, q.files) && maps.Equal(p.stamps, q.stamps)
 }
 
 // Index reads every source file into the index References looks names up
@@ -87,8 +146,8 @@ func (p *Project) Same(q *Project) bool {
 // that has not been indexed.
 func (p *Project) Index() { p.buildWordIndex() }
 
-func (p *Project) loadTsconfig(path string) {
-	data, err := os.ReadFile(path)
+func (p *Project) loadTsconfig() {
+	data, err := p.readSource("tsconfig.json")
 	if err != nil {
 		return
 	}
@@ -147,4 +206,16 @@ func (p *Project) fileSet() map[string]bool {
 		}
 	}
 	return p.fileSetCache
+}
+
+// Incomplete describes why analysis may omit files or references; empty means complete.
+func (p *Project) Incomplete() string { return p.incomplete }
+
+func (p *Project) markIncomplete(reason string) {
+	if !strings.Contains(p.incomplete, reason) {
+		if p.incomplete != "" {
+			p.incomplete += "; "
+		}
+		p.incomplete += reason
+	}
 }

@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -85,8 +86,8 @@ func check(t *testing.T, c *Core, tb *Tab, cl *toldClient) (notes []string, star
 	if started != !ev.Prep.Check.Refused() {
 		t.Errorf("started %v, the check refused %v: %s", started, ev.Prep.Check.Refused(), tb.Err)
 	}
-	// Once a kind and command, while the core runs, unless refused.
-	if again := c.CheckSandbox(tb, nil) != nil; again == started {
+	// Every launch is checked: policy can vary with folder or environment.
+	if again := c.CheckSandbox(tb, nil) != nil; !again {
 		t.Errorf("started %v, checked again %v", started, again)
 	}
 	return cl.notices, started
@@ -124,11 +125,14 @@ func TestASandboxThatDeniesTheClientSocketIsNotWarnedOf(t *testing.T) {
 
 // A sandbox in which nerdr does not run, or whose command names no
 // agent to put the check in place of, is said to be unchecked; the agent
-// starts.
+// is refused.
 func TestASandboxNerdrCannotCheckIsSaidSo(t *testing.T) {
 	c, tb, cl := checkedCore(t, runsCodex+"echo no nerdr in here\n")
-	notes, _ := check(t, c, tb, cl)
-	if len(notes) != 1 || !strings.Contains(notes[0], "nerdr could not check from inside codex's sandbox") ||
+	notes, started := check(t, c, tb, cl)
+	if started {
+		t.Fatal("an unchecked sandboxed agent started")
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "nerdr did not start codex: it could not check") ||
 		!strings.Contains(notes[0], "the check did not answer") {
 		t.Errorf("notices %q", notes)
 	}
@@ -137,7 +141,10 @@ func TestASandboxNerdrCannotCheckIsSaidSo(t *testing.T) {
 	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{filepath.Join(c.Root, "agent.sh")}, Sandboxed: true}
 	askedHelp(c.Cfg.Agents)
 	tb.Agent = agents.Codex
-	notes, _ = check(t, c, tb, cl)
+	notes, started = check(t, c, tb, cl)
+	if started {
+		t.Fatal("an opaque sandbox wrapper started without verification")
+	}
 	if len(notes) != 1 || !strings.Contains(notes[0], "names no codex") {
 		t.Errorf("notices %q", notes)
 	}
@@ -150,7 +157,10 @@ func TestACheckThatHangsIsEnded(t *testing.T) {
 	t.Cleanup(func() { SandboxCheckWait = old })
 	c, tb, cl := checkedCore(t, runsCodex+"exec sleep 30\n")
 	start := time.Now()
-	notes, _ := check(t, c, tb, cl)
+	notes, started := check(t, c, tb, cl)
+	if started {
+		t.Fatal("an unchecked sandboxed agent started")
+	}
 	if time.Since(start) > 5*time.Second {
 		t.Errorf("took %v", time.Since(start))
 	}
@@ -159,8 +169,8 @@ func TestACheckThatHangsIsEnded(t *testing.T) {
 	}
 }
 
-// An agent outside a sandbox, or a core with no holder, is not checked.
-func TestOnlyASandboxedAgentOverAHolderIsChecked(t *testing.T) {
+// Only sandboxed agents are checked, with or without a holder.
+func TestOnlyASandboxedAgentIsChecked(t *testing.T) {
 	c, tb, _ := checkedCore(t, runsCodex+"exec \"$@\"\n")
 	sandboxed := c.Cfg.Agents[agents.Codex]
 	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: sandboxed.Command}
@@ -170,8 +180,8 @@ func TestOnlyASandboxedAgentOverAHolderIsChecked(t *testing.T) {
 	}
 	c.Cfg.Agents[agents.Codex] = sandboxed
 	c.Held = nil
-	if c.CheckSandbox(tb, nil) != nil {
-		t.Error("checked with no holder")
+	if c.CheckSandbox(tb, nil) == nil {
+		t.Error("not checked with no holder")
 	}
 }
 
@@ -203,10 +213,8 @@ func TestPtraceScopeZeroIsWarnedOfUnlessTheCheckFoundItClosed(t *testing.T) {
 	}
 }
 
-// A sandbox that lets the agent write where it must not is told of, and
-// the agent started all the same: nerdr's config and state, a main
-// checkout's .git/config, the folder of the other tabs' worktrees.
-func TestASandboxThatLetsTheAgentWriteIsToldOf(t *testing.T) {
+// A sandbox exposing critical writable paths refuses the agent.
+func TestASandboxThatLetsTheAgentWriteIsRefused(t *testing.T) {
 	if err := exec.Command("bwrap", "--dev-bind", "/", "/", "--unshare-pid", "true").Run(); err != nil {
 		t.Skip("no bwrap that runs here: ", err)
 	}
@@ -215,10 +223,69 @@ func TestASandboxThatLetsTheAgentWriteIsToldOf(t *testing.T) {
 	t.Cleanup(func() { SandboxWrites = func(*Core, *Tab) []string { return nil } })
 	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --ro-bind "+denied+" "+denied+" --unshare-pid -- \"$@\"\n")
 	notes, started := check(t, c, tb, cl)
-	if !started {
-		t.Fatalf("not started: %s", tb.Err)
+	if started {
+		t.Fatal("started with a critical writable path")
 	}
-	if len(notes) != 1 || !strings.Contains(notes[0], "lets it write "+open+".") || strings.Contains(notes[0], denied) {
+	if len(notes) != 1 || !strings.Contains(notes[0], "critical writable paths ("+open+")") || strings.Contains(notes[0], denied) {
 		t.Fatalf("notices %q", notes)
+	}
+}
+
+// Policy coverage is deterministic even on hosts without bwrap.
+func TestSandboxRefusalPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		ev      SandboxCheckedMsg
+		refused bool
+	}{
+		{"unknown", SandboxCheckedMsg{}, true},
+		{"clear", SandboxCheckedMsg{OK: true}, false},
+		{"client", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Client: []string{"socket"}}}, true},
+		{"holder", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Holder: []string{"ptrace"}}}, true},
+		{"writes", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Writes: []string{"/fixture/config"}}}, true},
+		{"writes and client", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Client: []string{"socket"}, Writes: []string{"/fixture/config"}}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			tc.ev.Kind = agents.Codex
+			if got := tc.ev.Refused(); got != tc.refused {
+				t.Fatalf("refused %v, want %v", got, tc.refused)
+			}
+			cl := &toldClient{}
+			m := &Core{Client: cl, Root: t.TempDir()}
+			m.OnSandboxChecked(tc.ev)
+			if !tc.refused {
+				if len(cl.notices) != 0 {
+					t.Fatalf("clear check warned: %q", cl.notices)
+				}
+				return
+			}
+			if len(cl.notices) != 1 || !strings.Contains(cl.notices[0], "nerdr did not start codex") {
+				t.Fatalf("missing refusal: %q", cl.notices)
+			}
+			if len(tc.ev.Result.Writes) > 0 && !strings.Contains(cl.notices[0], "critical writable paths (/fixture/config)") {
+				t.Fatalf("missing writable path: %q", cl.notices)
+			}
+			tb := &Tab{}
+			if cmd := m.SpawnPrepared(tb, agents.Launch{}, false, SpawnPrep{Check: &tc.ev}); cmd != nil || tb.Pane != nil || tb.Light != StExited || !strings.Contains(tb.Err, "writes to critical paths") {
+				t.Fatalf("refused check did not stop launch: pane %v, state %v, error %q", tb.Pane, tb.Light, tb.Err)
+			}
+		})
+	}
+}
+
+func TestSandboxWritesAreCheckedWithoutHolder(t *testing.T) {
+	c, tb, _ := checkedCore(t, runsCodex+"exec \"$@\"\n")
+	c.Held = nil
+	open := t.TempDir()
+	old := SandboxWrites
+	SandboxWrites = func(*Core, *Tab) []string { return []string{open} }
+	t.Cleanup(func() { SandboxWrites = old })
+	check := c.CheckSandbox(tb, os.Environ())
+	if check == nil {
+		t.Fatal("no check without holder")
+	}
+	ev := check()
+	if !ev.OK || !ev.Refused() || !slices.Contains(ev.Result.Writes, open) {
+		t.Fatalf("writable path not checked: %+v", ev)
 	}
 }

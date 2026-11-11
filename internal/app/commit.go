@@ -137,7 +137,7 @@ func (d *commitDialog) view(m *Model, w, h int) string {
 	default:
 		lines = append(lines, "Commits every change, new files too:")
 		if d.t.HasSandboxed() && d.worktreeHooks {
-			lines = append(lines, dim("Git hooks will not run: an agent in this tab ran in a sandbox. Git LFS files are still pushed."))
+			lines = append(lines, dim("Git hooks will not run: an agent in this tab ran in a sandbox."))
 		}
 		for _, wt := range d.wts {
 			fs := d.files[wt.Path]

@@ -98,10 +98,17 @@ func readWorktree(worktreePath, file string) (data string, link bool, err error)
 		return "", false, err
 	}
 	defer f.Close()
-	if st, err := f.Stat(); err != nil || !os.SameFile(st, info) {
+	if st, err := f.Stat(); err != nil || !st.Mode().IsRegular() || !os.SameFile(st, info) {
 		return "", false, fmt.Errorf("%s changed while it was read", file)
 	}
-	b, err := io.ReadAll(f)
+	const maxContentBytes = 16 << 20
+	if info.Size() > maxContentBytes {
+		return "", false, fmt.Errorf("%s is too large to display", file)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, maxContentBytes+1))
+	if len(b) > maxContentBytes {
+		return "", false, fmt.Errorf("%s is too large to display", file)
+	}
 	return string(b), false, err
 }
 

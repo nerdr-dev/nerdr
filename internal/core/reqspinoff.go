@@ -26,6 +26,9 @@ type AddTab struct {
 	Kind                 agents.Kind
 	Model, Task, Goal    string
 	Sandboxed, CarryOn   bool
+	// ImportedSandboxed is provenance of files already in Wts, rather
+	// than only of the task text. It must survive a failed agent start.
+	ImportedSandboxed bool
 }
 
 func (q AddTab) Do(m *Core) Cmd {
@@ -37,6 +40,8 @@ func (q AddTab) Do(m *Core) Cmd {
 func (m *Core) addTab(q AddTab) (*Tab, Cmd) {
 	group := m.RememberGroup(q.Dir, q.Group, q.Wts)
 	t := &Tab{AgentState: Agent{Tab: newSessionTab(q.ID, q.Name, q.Dir, q.Kind, q.Model, group, q.Wts)}}
+	t.Sandboxed = q.ImportedSandboxed
+	m.MarkSandboxed(t)
 	TrustWorktrees(t)
 	m.Tabs = append(m.Tabs, t)
 	m.AddMessageFrom(t, q.Task, true, q.Sandboxed) // before the start, which may take it
@@ -76,6 +81,13 @@ func (q SpinoffCreate) Do(m *Core) Cmd {
 	for _, r := range q.Repos {
 		paths = append(paths, r.Path)
 	}
+	if q.Part.Sandboxed && q.Reuse {
+		var imported []workspace.Worktree
+		for _, r := range q.Repos {
+			imported = append(imported, workspace.Worktree{Repo: r.Path})
+		}
+		m.ImportSandboxed(imported)
+	}
 	return m.AskSetup(paths, func() Cmd {
 		return m.SpinoffCreate(t, q.Part, q.Kind, q.Name, q.Reuse, q.Elsewhere, q.Group, q.Repos, q.Own)
 	})
@@ -114,6 +126,9 @@ type SpinoffNextMsg struct {
 // beside its parent, the part is done, and the client asks about the next.
 func (m *Core) SpinoffMade(msg SpinoffMsg) Cmd {
 	t := msg.T
+	if msg.Outcome.Part.Sandboxed && msg.Outcome.Reused {
+		m.ImportSandboxed(msg.Wts)
+	}
 	t.SpinoffBusy = ""
 	if msg.Err != nil {
 		return m.Tell(SpinoffFailedMsg{T: m.Ref(t), Branch: msg.Outcome.Branch, Err: msg.Err.Error()})
@@ -132,7 +147,7 @@ func (m *Core) SpinoffMade(msg SpinoffMsg) Cmd {
 	if m.TabIndex(t) >= 0 {
 		nt, cmd := m.addTab(AddTab{ID: NewTabID(), Name: msg.Plan.Branch, Dir: msg.Plan.Dir, Group: msg.Group, Wts: msg.Wts,
 			Kind: msg.Kind, Task: spinoff.Prompt(msg.Outcome.Part, parent, msg.Outcome), Goal: msg.Outcome.Part.Summary,
-			Sandboxed: msg.Outcome.Part.Sandboxed})
+			Sandboxed: msg.Outcome.Part.Sandboxed, ImportedSandboxed: msg.Outcome.Part.Sandboxed && msg.Outcome.Reused})
 		msg.Outcome.Tab = nt.ID
 		cmds = append(cmds, cmd, m.Tell(PanesMsg{}))
 	}

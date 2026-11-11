@@ -22,6 +22,49 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
+// startSandboxFixture completes asynchronous launch preparation with an explicit
+// successful probe. These tests exercise confinement after launch, not the
+// sandbox wrapper (covered in core); their fake agents are plain cat processes.
+func startSandboxFixture(t *testing.T, m *Model, cmd core.Cmd) {
+	t.Helper()
+	ready := make(chan core.Event, 1)
+	var run func(core.Cmd)
+	run = func(c core.Cmd) {
+		if c == nil {
+			return
+		}
+		go func() {
+			switch ev := c().(type) {
+			case core.BatchEvent:
+				for _, next := range ev {
+					run(next)
+				}
+			case core.SpawnReady, core.SpawnLooked, core.LaunchMsg:
+				ready <- ev
+			}
+		}()
+	}
+	run(cmd)
+	select {
+	case ev := <-ready:
+		if spawn, ok := ev.(core.SpawnReady); ok {
+			if spawn.Prep.Check == nil {
+				t.Fatal("sandbox fixture launch did not request a probe")
+			}
+			spawn.Prep.Check = &core.SandboxCheckedMsg{Kind: spawn.Kind, OK: true}
+			m.home().Core.OnSpawnReady(spawn)
+			if spawn.T.Pane == nil {
+				t.Fatalf("sandbox fixture did not start: %s", spawn.T.Err)
+			}
+			return
+		}
+		next, _ := m.home().Core.Handle(ev)
+		startSandboxFixture(t, m, next)
+	case <-time.After(2 * time.Second):
+		t.Fatal("sandbox fixture launch preparation did not finish")
+	}
+}
+
 func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {
 	for _, auto := range []bool{false, true} {
 		t.Run(strconv.FormatBool(auto), func(t *testing.T) {
@@ -30,7 +73,7 @@ func TestSandboxedReadyUsesSandboxedReviewer(t *testing.T) {
 			tb.Light = core.StIdle
 			focus := "text from inside the sandbox"
 			m.Update(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Focus: focus, Peer: hooks.Peer{Known: true}})
-			m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"})
+			startSandboxFixture(t, m, m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"}))
 			if tb.Review == nil || len(tb.Review.Seats) != 1 {
 				t.Fatal("a sandboxed reviewer should start")
 			}
@@ -245,7 +288,7 @@ func TestConfigTurnedOnDoesNotSandboxARunningAgent(t *testing.T) {
 
 	// Started again sandboxed, it takes the message; started outside
 	// again, the message waits for the user.
-	m.home().Core.Start(codex, false)
+	startSandboxFixture(t, m, m.home().Core.Start(codex, false))
 	if !codex.InSandbox {
 		t.Fatal("codex restarted sandboxed")
 	}
@@ -269,7 +312,7 @@ func TestSandboxedAgentClosesOnlySandboxedPanes(t *testing.T) {
 	m, tb := sandboxModel(t)
 	m.home().Core.NewAgent(tb, agents.Codex)
 	codex := tb.ExtraAgents()[0]
-	m.home().Core.NewAgent(tb, agents.Claude)
+	startSandboxFixture(t, m, m.home().Core.NewAgent(tb, agents.Claude))
 	claude := tb.ExtraAgents()[1]
 	m.home().Core.NewShellIn(tb, true)
 	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Close, To: codex.Num}); !strings.Contains(a.Err, "cannot close") {
@@ -335,7 +378,7 @@ func TestSpinoffReportGoesToItsSender(t *testing.T) {
 	s = m.home().Core.Cfg.Agents[agents.Codex]
 	s.Sandboxed = true
 	m.home().Core.Cfg.Agents[agents.Codex] = s
-	m.home().Core.NewAgent(tb, agents.Codex)
+	startSandboxFixture(t, m, m.home().Core.NewAgent(tb, agents.Codex))
 	codex := tb.ExtraAgents()[0]
 	if !codex.InSandbox {
 		t.Fatal("codex started sandboxed")
@@ -435,7 +478,7 @@ func TestCutOffReviewerSaysWhy(t *testing.T) {
 	m.home().Core.Cfg.Review = config.Review{Agent: "claude"}
 	tb.Light = core.StIdle
 	m.Update(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Peer: hooks.Peer{Known: true}})
-	m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"})
+	startSandboxFixture(t, m, m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "changed"}))
 	if tb.Review == nil {
 		t.Fatal("no review started")
 	}
@@ -480,7 +523,7 @@ func TestConfinedResumeArgvAndSessionID(t *testing.T) {
 	if len(tb.ResumeArgv) != 0 {
 		t.Fatalf("start of sandboxed agent kept stale ResumeArgv: %v", tb.ResumeArgv)
 	}
-	m.home().Core.Start(tb, false)
+	startSandboxFixture(t, m, m.home().Core.Start(tb, false))
 	m.Update(hooks.Report{Method: hooks.ReportAgentSession, Pane: tb.HookKey(), SessionID: "s1", ResumeArgv: []string{"claude", "--evil"}})
 	if len(tb.ResumeArgv) != 0 || tb.SessionID != "s1" {
 		t.Fatalf("confined report: SessionID=%q ResumeArgv=%v", tb.SessionID, tb.ResumeArgv)
@@ -691,7 +734,7 @@ func TestVouchPlacesTheProcess(t *testing.T) {
 	m, tb := sandboxModel(t)
 	m.home().Core.NewAgent(tb, agents.Codex)
 	codex := tb.ExtraAgents()[0]
-	m.home().Core.Start(tb, false)
+	startSandboxFixture(t, m, m.home().Core.Start(tb, false))
 	if tb.Pane == nil || codex.Pane == nil {
 		t.Fatal("the agents did not start")
 	}

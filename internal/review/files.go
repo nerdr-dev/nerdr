@@ -180,6 +180,7 @@ func (m *Model) resetFilesPane() {
 	m.diffLines, m.diffSel = nil, lineSpan{}
 	m.diffCursor, m.diffViewTop = 0, 0
 	m.symbols, m.symbolRefs = nil, nil
+	m.analysisIncomplete = ""
 }
 
 // setFiles updates the changed-file list, rebuilding the tree and analysis

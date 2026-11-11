@@ -33,43 +33,34 @@ var SandboxCheckWait = 30 * time.Second
 var ptraceOpen = sandboxcheck.PtraceOpen
 
 // SandboxCheckedMsg is how the check from inside kind's sandbox went:
-// what it reached, or, when OK is false, why it could not tell. Key is
-// the kind and command checked.
+// what it reached, or, when OK is false, why it could not tell.
 type SandboxCheckedMsg struct {
 	Kind   agents.Kind
-	Key    string
 	Result sandboxcheck.Result
 	OK     bool
 	Why    string
 }
 
 // Refused reports whether the agent is not to start: the check found its
-// sandbox lets it reach the client socket or the holder.
-func (ev SandboxCheckedMsg) Refused() bool { return ev.OK && ev.Result.Reached() }
+// sandbox exposes the client socket, holder or critical writable paths, or could not be checked.
+func (ev SandboxCheckedMsg) Refused() bool {
+	return !ev.OK || ev.Result.Reached() || len(ev.Result.Writes) > 0
+}
 
-// CheckSandbox is how nerdr looks from inside t's sandbox, before t starts
-// in one, at whether it reaches the client socket or the holder: it runs
-// the check through t's command, with nerdr in place of the agent, the
-// environment env and in t's folder, as the agent runs. nil when there is
-// nothing to check: t is not sandboxed, there is no holder, and so no
-// client socket, or its kind and command were checked since the core
-// started and reached nothing. One that reached either is checked again
-// at each start, so a sandbox put right is found so at once. An agent the
-// check finds can reach them is not started; one nerdr could not check
-// starts, with a warning (see OnSandboxChecked). m.Mu is held; the check
-// runs away from it.
+// CheckSandbox checks access to the client socket and holder before every
+// sandboxed launch. The wrapper runs nerdr in place of the agent. Unknown
+// results refuse the launch too: native tool sandboxes cannot be verified
+// by running a probe outside them. Results are not cached because the
+// wrapper's policy can depend on the folder, environment or mutable files.
+// m.Mu is held; the returned check runs away from it.
 func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
-	if m.Held == nil || !m.SandboxedKind(t.Agent) {
+	if !m.SandboxedKind(t.Agent) {
 		return nil
 	}
 	kind := t.Agent
 	command, _ := agents.Command(m.SpecsFor(t), kind)
-	key := string(kind) + "\x00" + strings.Join(command, "\x00")
-	if m.SandboxChecks[key] {
-		return nil
-	}
 	unknown := func(why string) func() SandboxCheckedMsg {
-		return func() SandboxCheckedMsg { return SandboxCheckedMsg{Kind: kind, Key: key, Why: why} }
+		return func() SandboxCheckedMsg { return SandboxCheckedMsg{Kind: kind, Why: why} }
 	}
 	names := []string{string(kind)}
 	if d := agents.DefaultSpec(kind).Command; len(d) > 0 {
@@ -95,8 +86,11 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		Sock:      sock,
 		Key:       keyFile,
 		PidNS:     sandboxcheck.PidNS(),
-		Pids:      []int{m.Held.Client.Pid(), os.Getpid()},
+		Pids:      []int{os.Getpid()},
 		Writes:    SandboxWrites(m, t),
+	}
+	if m.Held != nil {
+		target.Pids = append(target.Pids, m.Held.Client.Pid())
 	}
 	spec := spawn.Spec{Argv: sandboxcheck.Argv(wrapper, bin, target), Dir: t.Dir, Env: env, PTY: true, W: 120, H: 24}
 	m.Hold(&spec, Label{Kind: HeldCheck, Tab: t.ID}, true, "")
@@ -104,13 +98,13 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 	return func() SandboxCheckedMsg {
 		out, err := RunCheck(progs, spec, SandboxCheckWait)
 		if err != nil {
-			return SandboxCheckedMsg{Kind: kind, Key: key, Why: "it could not start: " + err.Error()}
+			return SandboxCheckedMsg{Kind: kind, Why: "it could not start: " + err.Error()}
 		}
 		r, ok := sandboxcheck.Parse(out, target.Nonce)
 		if !ok {
-			return SandboxCheckedMsg{Kind: kind, Key: key, Why: "the check did not answer: the sandbox may not let it run " + bin}
+			return SandboxCheckedMsg{Kind: kind, Why: "the check did not answer: the sandbox may not let it run " + bin}
 		}
-		return SandboxCheckedMsg{Kind: kind, Key: key, Result: r, OK: true}
+		return SandboxCheckedMsg{Kind: kind, Result: r, OK: true}
 	}
 }
 
@@ -148,19 +142,10 @@ func RunCheck(progs spawn.Spawner, s spawn.Spec, wait time.Duration) ([]byte, er
 	return out.Bytes(), nil
 }
 
-// OnSandboxChecked warns the user, by a notice and in the log, when
-// the check from inside kind's sandbox reached the client socket or the
-// holder, and the agent is not started, or could not tell. A check that
-// reached neither is not run again for the kind and command. With Yama's ptrace_scope at 0 the kernel
-// does not stop a process of the user's from tracing the holder, and only
-// the sandbox can: that is said too, unless the check found it does.
+// OnSandboxChecked explains why a sandboxed launch was refused, and reports
+// writable sensitive paths. Every launch is checked again, including after
+// an unknown result, so fixing the sandbox needs no core restart.
 func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
-	if !ev.Refused() && ev.Key != "" {
-		if m.SandboxChecks == nil {
-			m.SandboxChecks = map[string]bool{}
-		}
-		m.SandboxChecks[ev.Key] = true
-	}
 	sock, _, _ := attach.Paths(m.Root)
 	dir := filepath.Dir(sock)
 	const docs = `see "Agents in a sandbox" in nerdr's docs`
@@ -168,12 +153,12 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
 	var note string
 	switch {
 	case !ev.OK:
-		note = fmt.Sprintf("nerdr could not check from inside %s's sandbox that it keeps the agent from nerdr's client socket, in %s: %s. Check it yourself; %s",
+		note = fmt.Sprintf("nerdr did not start %s: it could not check that its sandbox denies nerdr's client socket, in %s: %s. Configure a sandbox wrapper that can run the check; %s",
 			ev.Kind, dir, ev.Why, docs)
 		if ptraceOpen() {
 			note += "; also, " + scope
 		}
-	case ev.Result.Reached():
+	case ev.Result.Reached() || len(ev.Result.Writes) > 0:
 		var parts []string
 		if len(ev.Result.Client) > 0 {
 			parts = append(parts, fmt.Sprintf("nerdr's client socket, which can do anything you can (%s, in %s)",
@@ -186,6 +171,9 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
 			}
 			parts = append(parts, h)
 		}
+		if len(ev.Result.Writes) > 0 {
+			parts = append(parts, "critical writable paths ("+strings.Join(ev.Result.Writes, ", ")+")")
+		}
 		note = fmt.Sprintf("nerdr did not start %s: its sandbox lets it reach %s. The sandbox must deny them; %s",
 			ev.Kind, strings.Join(parts, ", and "), docs)
 	default:
@@ -195,18 +183,7 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
 		Logf("sandbox check: %s", note)
 		m.Tell(NoticeMsg(note))
 	}
-	if ev.OK && !ev.Result.Reached() && len(ev.Result.Writes) > 0 {
-		// The agent is started all the same: a sandbox that was enough
-		// before nerdr looked is not turned off under the user, but they
-		// are told what it lets through. One that is not started is told
-		// of when it is.
-		w := fmt.Sprintf("%s's sandbox lets it write %s. Through nerdr's config and state it can allow itself a plugin or a setup command, "+
-			"through a main checkout's .git/config and .git/hooks have git run a command, and in the folder of the other tabs' worktrees "+
-			"change the code other agents and setup commands run: all as you, outside the sandbox. The sandbox should deny them; %s",
-			ev.Kind, strings.Join(ev.Result.Writes, ", "), docs)
-		Logf("sandbox check: %s", w)
-		m.Tell(NoticeMsg(w))
-	}
+
 }
 
 // SandboxWrites is what the check is to try to write; the tests keep it

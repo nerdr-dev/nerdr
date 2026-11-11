@@ -430,9 +430,11 @@ func TestTheSandboxMarkOutlivesACrash(t *testing.T) {
 	a, tabA := heldCore(t, clA, script)
 	a.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{script}, Sandboxed: true}
 	askedHelp(a.Cfg.Agents)
-	// Its sandbox is checked first, which says it cannot be: it starts.
+	// Supply a successful probe result: this test exercises the holder
+	// retaining the sandbox mark, not an actual sandbox wrapper.
 	if cmd := a.Start(tabA, false); cmd != nil {
 		if ev, ok := cmd().(SpawnReady); ok {
+			ev.Prep.Check = &SandboxCheckedMsg{OK: true}
 			a.OnSpawnReady(ev)
 		}
 	}

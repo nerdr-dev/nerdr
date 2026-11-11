@@ -48,6 +48,7 @@ func resetWorktreeConfig(t *testing.T) {
 		wcMu.Lock()
 		defer wcMu.Unlock()
 		sandboxedPaths = map[string]bool{}
+		sandboxedRepositories = map[string]bool{}
 		refusals = map[string]string{}
 		reported = map[string]string{}
 	})
@@ -151,5 +152,34 @@ func TestSparseOnlyWorktreeConfigIsNamed(t *testing.T) {
 	why := Refusals()[repo]
 	if why == "" || strings.Contains(why, " sets ") {
 		t.Fatalf("refusal = %q: sparse-checkout's own settings were named as suspect", why)
+	}
+}
+
+func TestSandboxedRepositoryRetainsCanonicalIdentity(t *testing.T) {
+	resetWorktreeConfig(t)
+	root, repo, wt := repoWithWorktree(t)
+	alias := filepath.Join(root, "alias")
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Fatal(err)
+	}
+	Trust(alias, wt)
+	Sandboxed(wt)
+	if err := os.Remove(alias); err != nil {
+		t.Fatal(err)
+	}
+	if !RepoSandboxed(repo) {
+		t.Fatal("lost taint after original repository alias disappeared")
+	}
+	wcMu.Lock()
+	unresolved := len(sandboxedPaths)
+	wcMu.Unlock()
+	if unresolved != 0 {
+		t.Fatal("known repository retained worktree fallback entry")
+	}
+	if err := os.Symlink(repo, alias); err != nil {
+		t.Fatal(err)
+	}
+	if !RepoSandboxed(alias) {
+		t.Fatal("alias did not retain taint")
 	}
 }

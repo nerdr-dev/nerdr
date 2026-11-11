@@ -8,6 +8,22 @@ import (
 	"testing"
 )
 
+func TestWorktreeContentRejectsOversizedFile(t *testing.T) {
+	dir := t.TempDir()
+	f, err := os.Create(filepath.Join(dir, "large"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = f.Truncate(17 << 20)
+	f.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ReadWorktreeFile(dir, "large"); err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("large file accepted: %v", err)
+	}
+}
+
 func TestChangedNewLines(t *testing.T) {
 	diff := `diff --git a/f.ts b/f.ts
 index 0000000..1111111 100644
