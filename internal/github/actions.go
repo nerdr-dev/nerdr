@@ -38,6 +38,11 @@ func gh(dir string, args ...string) ([]byte, error) {
 
 // ghWithin is gh with a time limit of its own, for what takes longer.
 func ghWithin(timeout time.Duration, dir string, args ...string) ([]byte, error) {
+	return ghEnv(timeout, dir, nil, args...)
+}
+
+// ghEnv is ghWithin with env added to gh's environment.
+func ghEnv(timeout time.Duration, dir string, env []string, args ...string) ([]byte, error) {
 	if !Available() {
 		return nil, errors.New("the gh CLI is not installed")
 	}
@@ -46,6 +51,7 @@ func ghWithin(timeout time.Duration, dir string, args ...string) ([]byte, error)
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = dir
 	cmd.Env = append(gitsafe.Env(dir), "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
+	cmd.Env = append(cmd.Env, env...)
 	proc.Detach(cmd)
 	out, err := proc.Output(cmd)
 	if err != nil {
@@ -212,7 +218,19 @@ func CreatePR(dir, origin string) (string, error) {
 		// one is merged.
 		args = append(args, "--base", b)
 	}
-	out, err := gh(dir, args...)
+	// gh pr create counts the uncommitted changes with a git status of
+	// its own, which nerdr cannot give --ignore-submodules: it would run
+	// git inside every gitlink's folder, with that folder's config, an
+	// agent's to write (see gitsafe's ignoreDirtySubmodules), and a
+	// .gitmodules there overrides the setting in the environment. gh
+	// needs the commits alone, so it is given an index that is not there:
+	// with no gitlink in it, the status looks into no folder's repository.
+	tmp, err := os.MkdirTemp("", "nerdr-index-")
+	if err != nil {
+		return "", err
+	}
+	defer os.RemoveAll(tmp)
+	out, err := ghEnv(ghTimeout, dir, []string{"GIT_INDEX_FILE=" + filepath.Join(tmp, "index")}, args...)
 	if err != nil {
 		return "", err
 	}
