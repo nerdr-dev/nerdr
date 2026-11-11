@@ -186,7 +186,8 @@ func (m *Core) ReportSpinoff(t *Tab, done []spinoff.Outcome, branch string) {
 		if to == nil {
 			continue // the agent is gone
 		}
-		m.AddMessageFrom(to, spinoff.Report(by[from], branch), true, by[from][0].Part.Sandboxed)
+		sandboxed := slices.ContainsFunc(by[from], func(o spinoff.Outcome) bool { return o.Part.Sandboxed })
+		m.AddMessageFrom(to, spinoff.Report(by[from], branch), true, sandboxed)
 	}
 }
 

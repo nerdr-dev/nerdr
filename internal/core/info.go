@@ -384,7 +384,7 @@ func (m *Core) RefreshInfo() Cmd {
 }
 
 // RepoOf is the main checkout of the repository dir is in, "" when it is
-// in none.
+// in none or its linked worktree has not been registered with gitsafe.
 func RepoOf(dir string) string {
 	if _, common, ok := gitsafe.Dirs(dir); ok {
 		return filepath.Dir(common)

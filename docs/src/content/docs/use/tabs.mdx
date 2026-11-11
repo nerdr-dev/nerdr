@@ -144,6 +144,11 @@ the worktree without copying files or running setup.
   but leaves `setup` for you to run once you have read the code.
 - Copying never overwrites files already on the branch, nor follows
   symlinks outside the repository.
+- If a sandboxed agent has worked in the repository and `copy` contains
+  any patterns, nerdr copies the files but skips automatic `setup`, even
+  on a verified base commit or when no pattern currently matches. Copied
+  files may contain agent-written code. Run setup inside the sandbox, or
+  inspect the copied files and run it in your own terminal.
 - If setup fails, nerdr says so and opens the tab anyway.
 - For a long setup, press `esc` to hide the dialog. The tab opens beside
   the one you are in when ready, without taking the keyboard.

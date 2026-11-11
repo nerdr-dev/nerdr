@@ -70,8 +70,8 @@ func (echo) LoadProject(wt string) int { return 5 }
 func (echo) Imports(wt string, paths []string) map[string][]string {
 	return map[string][]string{paths[0]: {wt}}
 }
-func (echo) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
-	return []analysis.Symbol{{Name: file, Kind: "function"}}, [][]analysis.Ref{{{File: wt, Line: 2}}}
+func (echo) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref, string) {
+	return []analysis.Symbol{{Name: file, Kind: "function"}}, [][]analysis.Ref{{{File: wt, Line: 2}}}, "reference limit reached"
 }
 
 // loopback is an Asker whose queries and answers go as JSON, as they do
@@ -148,8 +148,11 @@ func TestAskerAsks(t *testing.T) {
 	same("WalkthroughPage", []any{p1, ok1, err1}, []any{p2, ok2, err2})
 	same("LoadProject", k.LoadProject("/wt"), 5)
 	same("Imports", k.Imports("/wt", []string{"a"}), e.Imports("/wt", []string{"a"}))
-	sy1, r1 := k.Relations("/wt", "a")
-	sy2, r2 := e.Relations("/wt", "a")
+	sy1, r1, incomplete1 := k.Relations("/wt", "a")
+	sy2, r2, incomplete2 := e.Relations("/wt", "a")
+	if incomplete1 != incomplete2 {
+		t.Fatalf("lost incomplete status: %q", incomplete1)
+	}
 	same("Relations", []any{sy1, r1}, []any{sy2, r2})
 	if len(k.jobs) != 0 {
 		t.Errorf("jobs left waiting: %v", k.jobs)

@@ -141,6 +141,31 @@ run in a sandbox, and tells you why, so sparse-checkout and sandboxed
 agents do not go together in nerdr: see
 [Security](../../reference/security/#what-nerdr-does-not-take-from-the-worktree).
 
+nerdr also refuses host Git in repositories with sandbox history and
+executable filter, textconv, external diff or merge drivers. Protected
+configuration can still run a script from the agent's worktree. Globally
+installed Git LFS does not block ordinary repositories, but operations
+that need LFS conversion and automatic LFS uploads are refused. Use Git
+inside the sandbox, or inspect the work and use your own terminal.
+Protect any files included by Git configuration too. This includes files
+selected by `include.path` and `includeIf.gitdir`: they must not live in an
+agent-writable worktree or be replaceable by the agent. The on-branch include
+refusal does not make other included files safe to leave writable.
+
+Host Git fetch and push are also refused in repositories with sandbox
+history, including SSH, HTTPS and local remotes. Authentication and signing
+commands cannot be used to execute worktree scripts. Required signing
+fails instead of producing an unsigned commit. Run these operations inside
+the sandbox or in your own terminal after inspecting the work. Creating a
+new worktree can fail when it requires a fetch; see
+[Security](../../reference/security/#what-nerdr-does-not-take-from-the-worktree).
+
+Sandbox history survives closing tabs, deleting worktrees and restarting
+nerdr. Imported sandboxed work keeps that history even if the destination
+agent never starts. If agent settings change while a launch is being
+prepared, nerdr refuses that pending launch; restart the agent to use the
+new settings.
+
 Text that an agent outside a sandbox reads from one inside, such as code
 to review, a handoff or a review, was still written by the sandboxed
 agent and can contain instructions. It is safest to run every agent in a
@@ -268,8 +293,8 @@ This adds two things a sandboxed agent must not reach. Everything above
 still applies. A sandbox that was enough for nerdr before the core, one
 that lets the agent read and connect to anything in your home folder or
 in `$XDG_RUNTIME_DIR`, is not: it must now deny them too. When the check
-below finds the agent can reach them, nerdr does not start it; when it
-cannot tell, it warns and starts it.
+below finds the agent can reach them, or cannot establish whether it can,
+nerdr does not start it.
 
 - **The client socket's folder.** A client can do anything you can,
   approvals included. Its socket and the key to it are in
@@ -315,23 +340,30 @@ The check also tries to write where the agent must not be able to:
 folder the other tabs' worktrees are in. An agent that can write another
 tab's worktree can change the code that tab's agent and setup command
 run, outside its own sandbox. When any of them can be written, nerdr
-starts the agent all the same and shows a notice naming them: tighten the
+refuses to start the agent and shows a notice naming them: tighten the
 sandbox so it lets the agent write its own worktree, and of the main
 checkout's `.git` only what a commit needs.
 
-A check that got through runs again at each start, so the agent starts
-once the sandbox denies what it reached. A check that reached nothing, or
-could not tell, is not run again for that agent and `command` until the
-core starts again: nerdr does not see changes inside a wrapper script,
-the sandbox's own config or the environment. After changing your
-sandbox, quit nerdr and start it again to have it checked.
+The check runs before every sandboxed launch, including with
+`NERDR_HOLDER=0`, using that launch's folder and environment. Results are not cached: a wrapper's policy can change
+with its files, configuration, environment or working directory. After
+correcting the sandbox, restart the agent to have it checked again.
 
 nerdr puts the check where the agent's program is in `command`: the last
 word named as the agent is (`claude`, `codex`, `cursor-agent`, …, or the
 section's name for an agent nerdr does not know). If none is, as with a
 single script that starts the sandbox and the agent, or the sandbox
-cannot run `$NERDR_BIN`, nerdr says it could not check and starts the
-agent; check it yourself then. The check catches a sandbox set up wrong.
+cannot run `$NERDR_BIN`, nerdr says it could not check and refuses to start
+the agent. Configure a wrapper that can run both the agent and the check
+inside the same sandbox.
+
+An agent's built-in sandbox for tool commands alone cannot be verified
+by this external check. Marking a plain `codex` command as `sandboxed`
+does not put the check inside Codex's tool sandbox: the probe runs outside
+it and is refused if it can reach the client socket. Use an external
+sandbox wrapper that also confines the probe.
+
+The check catches a sandbox set up wrong.
 It does not stop an agent that gets out some other way, and it says
 nothing about D-Bus, sockets in `/run/user/$UID`, services on localhost,
 your SSH agent or other credentials.

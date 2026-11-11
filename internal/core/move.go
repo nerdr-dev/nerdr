@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/handoff"
 	"github.com/nerdr-dev/nerdr/internal/move"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -713,6 +714,13 @@ func (q MoveLand) Do(m *Core) Cmd {
 	if why := m.landRefusal(q); why != "" {
 		return m.Tell(MoveLandedMsg{Job: q.Job, Err: why})
 	}
+	if q.Sandboxed {
+		var imported []workspace.Worktree
+		for _, repo := range q.Repos {
+			imported = append(imported, workspace.Worktree{Repo: repo})
+		}
+		m.ImportSandboxed(imported)
+	}
 	wtRoot, sandboxedThere := m.WtRoot, m.SandboxedKind(q.Kind)
 	return func() Event {
 		return landMove(q, dir, wtRoot, sandboxedThere)
@@ -775,6 +783,11 @@ func landMove(q MoveLand, dir, wtRoot string, sandboxedThere bool) moveLanded {
 	if weakerSandbox(q, man, sandboxedThere) {
 		ev.err = errors.New(string(q.Kind) + " is not set to run in a sandbox there, and the tab's agent was in one")
 		return ev
+	}
+	if q.Sandboxed || man.Sandboxed {
+		for _, repo := range q.Repos {
+			gitsafe.SandboxedRepo(repo)
+		}
 	}
 	var repos []workspace.Repo
 	for i, p := range man.Parts {
@@ -933,6 +946,13 @@ func (m *Core) tabByID(id string) *Tab {
 // onMoveLanded makes the tab of a move whose work has landed.
 func (m *Core) onMoveLanded(ev moveLanded) Cmd {
 	q := ev.q
+	if q.Sandboxed || ev.man.Sandboxed {
+		imported := slices.Clone(ev.wts)
+		for _, repo := range q.Repos {
+			imported = append(imported, workspace.Worktree{Repo: repo})
+		}
+		m.ImportSandboxed(imported)
+	}
 	if dir := m.movesIn[q.Job]; dir != "" {
 		delete(m.movesIn, q.Job)
 		go os.RemoveAll(dir)
@@ -951,7 +971,7 @@ func (m *Core) onMoveLanded(ev moveLanded) Cmd {
 		return m.Tell(MoveLandedMsg{Job: q.Job, Err: string(q.Kind) + " is no longer set to run in a sandbox there, and the tab's agent was in one"})
 	}
 	t, cmd := m.addTab(AddTab{ID: q.ID, Name: man.Name, Dir: ev.dir, Group: man.Group, Wts: ev.wts, Kind: q.Kind,
-		Task: ev.prompt, Goal: man.Goal, Sandboxed: man.Sandboxed})
+		Task: ev.prompt, Goal: man.Goal, Sandboxed: man.Sandboxed, ImportedSandboxed: q.Sandboxed || man.Sandboxed})
 	t.Note = man.Note
 	for _, msg := range man.Messages {
 		msg.Text = clip(msg.Text, 64<<10)

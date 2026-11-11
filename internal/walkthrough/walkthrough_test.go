@@ -9,8 +9,39 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/git"
 )
+
+func TestAnchorRejectsSpecialAndOversizedFiles(t *testing.T) {
+	for _, kind := range []string{"fifo", "large"} {
+		t.Run(kind, func(t *testing.T) {
+			root := t.TempDir()
+			path := filepath.Join(root, "source.go")
+			if kind == "fifo" {
+				if err := syscall.Mkfifo(path, 0600); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				f, err := os.Create(path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = f.Truncate(17 << 20)
+				f.Close()
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			ref := Ref{File: "source.go", Anchor: "secret"}
+			if err := checkRef(root, root, git.Comparison{}, &ref); err == nil {
+				t.Fatal("unsafe anchor file accepted")
+			}
+		})
+	}
+}
 
 func run(t *testing.T, dir string, args ...string) {
 	t.Helper()

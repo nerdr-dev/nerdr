@@ -30,6 +30,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
 	"github.com/nerdr-dev/nerdr/internal/git"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 	"github.com/nerdr-dev/nerdr/internal/store"
 )
 
@@ -335,7 +336,12 @@ func checkRef(root, dir string, cmp git.Comparison, r *Ref) error {
 		return nil
 	}
 	if !gone {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		rt, err := os.OpenRoot(root)
+		if err != nil {
+			return fmt.Errorf("cannot read %s: %v", rel, err)
+		}
+		src, err := safefile.ReadRegularLimit(rt, filepath.FromSlash(rel), 16<<20)
+		rt.Close()
 		if err != nil {
 			return fmt.Errorf("cannot read %s: %v", rel, err)
 		}

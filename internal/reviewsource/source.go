@@ -85,7 +85,8 @@ type Source interface {
 	Imports(wt string, paths []string) map[string][]string
 	// Relations are the symbols file in wt declares, and where each is
 	// used in the others, from wt's code as LoadProject last read it.
-	Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref)
+	// The final result describes incomplete analysis, or is empty.
+	Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref, string)
 }
 
 // Local is the Source that reads the repositories on this machine.
@@ -202,8 +203,16 @@ func (Local) LoadProject(wt string) int {
 		delete(projects.byWt, projects.used[0])
 		projects.used = projects.used[1:]
 	}
-	if was := projects.byWt[wt]; was != nil && was.p.Same(p) {
-		return was.version
+	if was := projects.byWt[wt]; was != nil {
+		// Same also reads analysis status, which Relations can update.
+		// Lock order is projects then loaded.mu; users of loaded.mu never
+		// acquire projects while holding it.
+		was.mu.Lock()
+		same := was.p.Same(p)
+		was.mu.Unlock()
+		if same {
+			return was.version
+		}
 	}
 	projects.next++
 	projects.byWt[wt] = &loaded{p: p, version: projects.next}
@@ -234,10 +243,10 @@ func (Local) Imports(wt string, paths []string) map[string][]string {
 	return l.p.Imports(paths)
 }
 
-func (Local) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
+func (Local) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref, string) {
 	l := project(wt)
 	if l == nil {
-		return nil, nil
+		return nil, nil, "project not loaded"
 	}
 	defer l.mu.Unlock()
 	p := l.p
@@ -246,5 +255,5 @@ func (Local) Relations(wt, file string) ([]analysis.Symbol, [][]analysis.Ref) {
 	for i, s := range syms {
 		refs[i] = p.References(s.Name, file)
 	}
-	return syms, refs
+	return syms, refs, p.Incomplete()
 }

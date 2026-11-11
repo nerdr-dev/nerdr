@@ -2,6 +2,7 @@ package workspace
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -29,10 +30,8 @@ func TestUnpinnedBaseIsNotTrustedWhereASandboxedAgentRan(t *testing.T) {
 	}
 }
 
-// TestSandboxedPushRunsNoHookAndSendsLFS: a push from a tab where a
-// sandboxed agent ran runs no pre-push hook, and what Git LFS's hook
-// would have done is done by nerdr: git lfs push, before the push.
-func TestSandboxedPushRunsNoHookAndSendsLFS(t *testing.T) {
+// LFS must not be invoked explicitly as a substitute for a disabled hook.
+func TestSandboxedPushRefusesLFSWithoutRunningHostCode(t *testing.T) {
 	root := t.TempDir()
 	a, _ := cloneWithOrigin(t, root, "a")
 	marks := t.TempDir()
@@ -54,18 +53,14 @@ func TestSandboxedPushRunsNoHookAndSendsLFS(t *testing.T) {
 	w := Worktree{Repo: a.Path, Path: wt, Branch: "feat"}
 	Trust(&w)
 
-	if err := PushIn(w, false); err != nil {
-		t.Fatal(err)
+	if err := PushIn(w, false); err == nil || !strings.Contains(err.Error(), "Git LFS") {
+		t.Fatalf("expected LFS refusal, got %v", err)
 	}
-	if marked(marks, "hook") {
-		t.Fatal("the pre-push hook ran in a tab where a sandboxed agent ran")
+	if marked(marks, "hook") || marked(marks, "lfs") {
+		t.Fatal("a hook or git-lfs ran with hooks disabled")
 	}
-	asked, _ := os.ReadFile(filepath.Join(marks, "lfs"))
-	if strings.TrimSpace(string(asked)) != "push origin feat" {
-		t.Fatalf("git lfs was asked %q, not to push the branch's files", asked)
-	}
-	if got, want := revParse(t, a.Path, "refs/remotes/origin/feat"), revParse(t, wt, "HEAD"); got != want {
-		t.Fatalf("origin has %s, not %s", got, want)
+	if out, err := exec.Command("git", "-C", a.Path, "ls-remote", "origin", "refs/heads/feat").CombinedOutput(); err != nil || strings.TrimSpace(string(out)) != "" {
+		t.Fatalf("refused branch was pushed: %v %s", err, out)
 	}
 
 	// Outside a sandbox the hook is what runs, as before.
@@ -76,5 +71,34 @@ func TestSandboxedPushRunsNoHookAndSendsLFS(t *testing.T) {
 	}
 	if !marked(marks, "hook") {
 		t.Fatal("the pre-push hook did not run for a tab with no sandboxed agent")
+	}
+	if err := os.Remove(filepath.Join(marks, "hook")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(filepath.Join(marks, "lfs")); err != nil {
+		t.Fatal(err)
+	}
+	gitsafe.Sandboxed(wt)
+	if err := PushIn(w, true); err == nil || !strings.Contains(err.Error(), "Git LFS") {
+		t.Fatalf("caller preference bypassed repository taint: %v", err)
+	}
+	if marked(marks, "hook") || marked(marks, "lfs") {
+		t.Fatal("repository taint allowed host LFS execution")
+	}
+	// Transport is refused across the repository, including an untouched
+	// tab with an ordinary hook.
+	if err := os.WriteFile(filepath.Join(a.Path, ".git", "hooks", "pre-push"), []byte("#!/bin/sh\ntouch "+filepath.Join(marks, "hook")+"\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	untouched := filepath.Join(root, "untouched")
+	run(t, a.Path, "git", "worktree", "add", "-q", "-b", "untouched", untouched)
+	commit(t, untouched, "h", "h\n")
+	other := Worktree{Repo: a.Path, Path: untouched, Branch: "untouched"}
+	Trust(&other)
+	if err := PushIn(other, true); err == nil || !strings.Contains(err.Error(), "transport") {
+		t.Fatalf("expected transport refusal: %v", err)
+	}
+	if marked(marks, "hook") {
+		t.Fatal("refused push ran its hook")
 	}
 }

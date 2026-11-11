@@ -217,7 +217,11 @@ const maxShownRefAnnotations = 6
 // own line (not one line listing several) so every one of them is
 // individually selectable and jumpable — a symbol can be used from more
 // than one place.
-func annotateDiffLines(lines []diffLine, symbols []analysis.Symbol, refs [][]analysis.Ref) []diffLine {
+func annotateDiffLines(lines []diffLine, symbols []analysis.Symbol, refs [][]analysis.Ref, incomplete ...string) []diffLine {
+	partial := len(incomplete) > 0 && incomplete[0] != ""
+	if partial {
+		lines = append([]diffLine{{kind: 'a', text: "    ↳ Reference analysis incomplete: " + incomplete[0]}}, lines...)
+	}
 	if len(symbols) == 0 {
 		return lines
 	}
@@ -242,18 +246,24 @@ func annotateDiffLines(lines []diffLine, symbols []analysis.Symbol, refs [][]ana
 			continue
 		}
 		seen[name] = true
-		out = append(out, refAnnotationLines(name, rs)...)
+		out = append(out, refAnnotationLines(name, rs, partial)...)
 	}
 	return out
 }
 
 // refAnnotationLines builds one jumpable diffLine per reference (up to
 // maxShownRefAnnotations), each carrying its own refFile/refLine target.
-func refAnnotationLines(name string, refs []analysis.Ref) []diffLine {
+func refAnnotationLines(name string, refs []analysis.Ref, partial bool) []diffLine {
 	if len(refs) == 0 {
+		if partial {
+			return []diffLine{{kind: 'a', text: "    ↳ " + name + ": no references found (analysis incomplete)"}}
+		}
 		return []diffLine{{kind: 'a', text: "    ↳ " + name + ": no other references"}}
 	}
 	header := fmt.Sprintf("    ↳ %s used (%d):", name, len(refs))
+	if partial {
+		header = fmt.Sprintf("    ↳ %s used (at least %d; analysis incomplete):", name, len(refs))
+	}
 	out := []diffLine{{kind: 'a', text: header}}
 
 	shown := refs

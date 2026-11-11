@@ -1,8 +1,6 @@
 package analysis
 
 import (
-	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -48,9 +46,9 @@ func ParseSymbolDecl(line string) (name, kind string, ok bool) {
 // relative to Root). Exported symbols are the ones with meaningful
 // cross-file references.
 func (p *Project) Symbols(targetRel string) []Symbol {
-	abs := filepath.Join(p.Root, filepath.FromSlash(targetRel))
-	data, err := os.ReadFile(abs)
+	data, err := p.readSource(targetRel)
 	if err != nil {
+		p.markIncomplete("source files unreadable or over size limit")
 		return nil
 	}
 	src := string(data)
@@ -88,22 +86,42 @@ func (p *Project) References(name, exceptRel string) []Ref {
 }
 
 func (p *Project) buildWordIndex() {
+	p.buildWordIndexLimited(maxIndexBytes, maxIndexRefs, maxIndexWords)
+}
+
+func (p *Project) buildWordIndexLimited(byteLimit, refLimit, wordLimit int) {
 	if p.wordBuilt {
 		return
 	}
 	p.wordBuilt = true
 	p.wordIndex = map[string][]refEntry{}
+	bytesRead, refs := 0, 0
 	for i, file := range p.files {
-		data, err := os.ReadFile(filepath.Join(p.Root, filepath.FromSlash(file)))
+		data, err := p.readSource(file)
 		if err != nil {
+			p.markIncomplete("source files unreadable or over size limit")
 			continue
 		}
-		if len(data) > 512*1024 {
-			continue
+		bytesRead += len(data)
+		if bytesRead > byteLimit {
+			p.markIncomplete("index byte limit reached")
+			return
 		}
 		lines := strings.Split(string(data), "\n")
 		for ln, line := range lines {
 			for _, m := range identRe.FindAllString(line, -1) {
+				if refs >= refLimit {
+					p.markIncomplete("reference limit reached")
+					return
+				}
+				if _, exists := p.wordIndex[m]; !exists {
+					if len(p.wordIndex) >= wordLimit {
+						p.markIncomplete("identifier limit reached")
+						return
+					}
+					m = strings.Clone(m)
+				}
+				refs++
 				p.wordIndex[m] = append(p.wordIndex[m], refEntry{file: int32(i), line: int32(ln + 1)})
 			}
 		}

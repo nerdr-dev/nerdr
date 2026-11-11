@@ -1,7 +1,6 @@
 package analysis
 
 import (
-	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -21,8 +20,7 @@ func (p *Project) ImportsOf(targetRel string) []string {
 	if !sourceExts[filepath.Ext(targetRel)] {
 		return nil
 	}
-	abs := filepath.Join(p.Root, filepath.FromSlash(targetRel))
-	data, err := os.ReadFile(abs)
+	data, err := p.readSource(targetRel)
 	if err != nil {
 		return nil
 	}

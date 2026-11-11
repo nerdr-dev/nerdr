@@ -397,3 +397,242 @@ func TestMoveLandFailingLateLeavesNothing(t *testing.T) {
 		t.Fatalf("the second try: %v", err)
 	}
 }
+
+func TestSandboxedMoveImportsBundleWithoutTransport(t *testing.T) {
+	_, src, dst := machines(t)
+	wt := work(t, src)
+	p, err := Snapshot(wt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := filepath.Join(t.TempDir(), "work.bundle")
+	if err := Bundle(wt, &p, Have(dst, p.Branch), bundle); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(t.TempDir(), "transport-ran")
+	script := filepath.Join(t.TempDir(), "transport")
+	write(t, script, "#!/bin/sh\ntouch '"+marker+"'\nexit 1\n")
+	if err := os.Chmod(script, 0755); err != nil {
+		t.Fatal(err)
+	}
+	// A local-path fetch would select an executable helper after this
+	// rewrite. Bundle import must not consult transport configuration.
+	git(t, dst, "config", "url.ext::"+script+" .insteadOf", "/")
+	git(t, dst, "config", "protocol.ext.allow", "always")
+	gitsafe.SandboxedRepo(dst)
+	dstWt := filepath.Join(filepath.Dir(dst), "worktrees", "feat-proj")
+	if err := Land(dst, dstWt, p, bundle); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.TrimSpace(git(t, dstWt, "rev-parse", "HEAD")); got != p.Head {
+		t.Fatalf("HEAD = %s, want %s", got, p.Head)
+	}
+	if got, err := os.ReadFile(filepath.Join(dstWt, "b.txt")); err != nil || string(got) != "staged, then changed again\n" {
+		t.Fatalf("work was not restored: %q %v", got, err)
+	}
+	if _, err := os.Stat(marker); !os.IsNotExist(err) {
+		t.Fatalf("transport executed: %v", err)
+	}
+	if out, err := gitsafe.Command(dst, "ls-remote", src).CombinedOutput(); err == nil || !strings.Contains(string(out), "not allowed") {
+		t.Fatalf("bundle import weakened transport policy: %v %s", err, out)
+	}
+}
+
+func TestMoveRejectsIncompleteBundleBeforeBranchMutation(t *testing.T) {
+	for _, missing := range []string{"head-tree", "head-blob", "ancestor", "staged-tree", "wip-tree"} {
+		t.Run(missing, func(t *testing.T) {
+			_, src, dst := machines(t)
+			wt := work(t, src)
+			ancestor := strings.TrimSpace(git(t, wt, "rev-parse", "HEAD"))
+			// A second commit leaves an ancestor the target does not have.
+			git(t, wt, "commit", "--allow-empty", "-qm", "second")
+			p, err := Snapshot(wt)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var omitted string
+			switch missing {
+			case "head-tree":
+				omitted = strings.TrimSpace(git(t, wt, "rev-parse", p.Head+"^{tree}"))
+			case "head-blob":
+				omitted = strings.TrimSpace(git(t, wt, "rev-parse", p.Head+":a.txt"))
+			case "ancestor":
+				omitted = ancestor
+			case "staged-tree":
+				omitted = strings.TrimSpace(git(t, wt, "rev-parse", p.Staged+"^{tree}"))
+			case "wip-tree":
+				omitted = strings.TrimSpace(git(t, wt, "rev-parse", p.Wip+"^{tree}"))
+			}
+			var objects strings.Builder
+			for _, line := range strings.Split(git(t, wt, "rev-list", "--objects", p.Wip), "\n") {
+				fields := strings.Fields(line)
+				if len(fields) != 0 && fields[0] != omitted {
+					objects.WriteString(fields[0] + "\n")
+				}
+			}
+			cmd := exec.Command("git", "-C", wt, "pack-objects", "--stdout", "--window=0", "--no-reuse-delta")
+			cmd.Stdin = strings.NewReader(objects.String())
+			pack, err := cmd.Output()
+			if err != nil {
+				t.Fatal(err)
+			}
+			bundle := filepath.Join(t.TempDir(), "incomplete.bundle")
+			p.Bundle = filepath.Base(bundle)
+			header := "# v2 git bundle\n" + p.Head + " refs/heads/" + p.Branch + "\n" + p.Wip + " refs/nerdr-move/test\n\n"
+			if err := os.WriteFile(bundle, append([]byte(header), pack...), 0600); err != nil {
+				t.Fatal(err)
+			}
+			// Both commands accept this incomplete graph; commit presence alone
+			// also passes. Landing must independently reject it before mutation.
+			git(t, dst, "bundle", "verify", bundle)
+			git(t, dst, "bundle", "unbundle", bundle)
+			for _, id := range []string{p.Head, p.Staged, p.Wip} {
+				git(t, dst, "cat-file", "-e", id+"^{commit}")
+			}
+			gitsafe.SandboxedRepo(dst)
+			dstWt := filepath.Join(filepath.Dir(dst), "worktrees", "feat-proj")
+			if err := Land(dst, dstWt, p, bundle); err == nil || !strings.Contains(err.Error(), "incomplete or invalid") {
+				t.Fatalf("Land accepted incomplete graph or failed before connectivity check: %v", err)
+			}
+			if Tip(dst, p.Branch) != "" {
+				t.Fatal("branch was created")
+			}
+			if _, err := os.Stat(dstWt); !os.IsNotExist(err) {
+				t.Fatalf("worktree was created: %v", err)
+			}
+		})
+	}
+}
+
+func TestMoveChecksObjectValidityAndFetchFsckPolicy(t *testing.T) {
+	for _, tc := range []struct {
+		name, fetch, transfer, severity string
+		accept                          bool
+	}{
+		{"default", "", "", "error", true},
+		{"fetch-error", "true", "", "error", false},
+		{"fetch-ignore", "true", "", "ignore", true},
+		{"transfer-error", "", "true", "error", false},
+		{"fetch-false-overrides-transfer", "false", "true", "error", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, src, dst := machines(t)
+			treeID := strings.TrimSpace(git(t, src, "rev-parse", "HEAD^{tree}"))
+			parent := strings.TrimSpace(git(t, src, "rev-parse", "HEAD"))
+			// Hash-valid and connected, but structurally malformed: an author
+			// identity without an email. Unbundle alone does not reject it.
+			commit := "tree " + treeID + "\nparent " + parent + "\nauthor Name 1 +0000\ncommitter Name <a@b> 1 +0000\n\nmalformed\n"
+			cmd := exec.Command("git", "-C", src, "hash-object", "--literally", "-w", "-t", "commit", "--stdin")
+			cmd.Stdin = strings.NewReader(commit)
+			out, err := cmd.CombinedOutput()
+			if err != nil {
+				t.Fatalf("make malformed commit: %v %s", err, out)
+			}
+			p := Part{Branch: "incoming", Head: strings.TrimSpace(string(out))}
+			git(t, src, "update-ref", "refs/heads/"+p.Branch, p.Head)
+			bundle := filepath.Join(t.TempDir(), "malformed.bundle")
+			if err := Bundle(src, &p, nil, bundle); err != nil {
+				t.Fatal(err)
+			}
+			git(t, dst, "bundle", "unbundle", bundle)
+			if tc.fetch != "" {
+				git(t, dst, "config", "fetch.fsckObjects", tc.fetch)
+			}
+			if tc.transfer != "" {
+				git(t, dst, "config", "transfer.fsckObjects", tc.transfer)
+			}
+			git(t, dst, "config", "fetch.fsck.missingEmail", tc.severity)
+			gitsafe.SandboxedRepo(dst)
+			wt := filepath.Join(t.TempDir(), "landed")
+			err = Land(dst, wt, p, bundle)
+			if tc.accept {
+				if err != nil {
+					t.Fatalf("fetch fsck policy was ignored: %v", err)
+				}
+			} else {
+				if err == nil || !strings.Contains(err.Error(), "incomplete or invalid") {
+					t.Fatalf("malformed object was accepted: %v", err)
+				}
+				if Tip(dst, p.Branch) != "" {
+					t.Fatal("branch was created")
+				}
+				if _, err := os.Stat(wt); !os.IsNotExist(err) {
+					t.Fatalf("worktree was created: %v", err)
+				}
+			}
+		})
+	}
+}
+
+func TestMoveDefaultIgnoresUnrelatedCorruptObject(t *testing.T) {
+	_, _, dst := machines(t)
+	cmd := exec.Command("git", "-C", dst, "hash-object", "--literally", "-w", "-t", "commit", "--stdin")
+	cmd.Stdin = strings.NewReader("not a commit\n")
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("store corrupt unrelated commit: %v %s", err, out)
+	}
+	if err := exec.Command("git", "-C", dst, "fsck", "--no-dangling").Run(); err == nil {
+		t.Fatal("baseline fsck accepted corrupt object")
+	}
+	p := Part{Head: strings.TrimSpace(git(t, dst, "rev-parse", "HEAD")), Branch: "incoming"}
+	if err := Land(dst, filepath.Join(t.TempDir(), "landed"), p, ""); err != nil {
+		t.Fatalf("unrelated object blocked default move: %v", err)
+	}
+}
+
+func TestMoveFailsClosedWhenFsckPolicyCannotBeRead(t *testing.T) {
+	for _, query := range []string{"boolean", "severity"} {
+		for _, status := range []string{"1", "2"} {
+			t.Run(query+"-exit-"+status, func(t *testing.T) {
+				_, _, dst := machines(t)
+				git(t, dst, "config", "fetch.fsckObjects", "true")
+				p := Part{Head: strings.TrimSpace(git(t, dst, "rev-parse", "HEAD")), Branch: "incoming"}
+				realGit, err := exec.LookPath("git")
+				if err != nil {
+					t.Fatal(err)
+				}
+				match := "*'config --type=bool --get fetch.fsckObjects'"
+				if query == "severity" {
+					match = "*'config --null --get-regexp '*"
+				}
+				bin := t.TempDir()
+				script := "#!/bin/sh\ncase \"$*\" in\n" + match + ") echo 'cannot read fsck policy' >&2; exit " + status + ";;\nesac\nexec '" + realGit + "' \"$@\"\n"
+				if err := os.WriteFile(filepath.Join(bin, "git"), []byte(script), 0755); err != nil {
+					t.Fatal(err)
+				}
+				t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+				wt := filepath.Join(t.TempDir(), "landed")
+				if err := Land(dst, wt, p, ""); err == nil || !strings.Contains(err.Error(), "cannot read fsck policy") {
+					t.Fatalf("policy error was ignored: %v", err)
+				}
+				if Tip(dst, p.Branch) != "" {
+					t.Fatal("branch was created")
+				}
+				if _, err := os.Stat(wt); !os.IsNotExist(err) {
+					t.Fatalf("worktree was created: %v", err)
+				}
+			})
+		}
+	}
+}
+
+func TestMoveRejectsInvalidFsckBoolean(t *testing.T) {
+	_, _, dst := machines(t)
+	git(t, dst, "config", "fetch.fsckObjects", "invalid")
+	p := Part{Head: strings.TrimSpace(git(t, dst, "rev-parse", "HEAD")), Branch: "incoming"}
+	if err := checkMovedObjects(dst, p); err == nil || !strings.Contains(err.Error(), "boolean") {
+		t.Fatalf("invalid fsck boolean was ignored: %v", err)
+	}
+}
+
+func TestValidationStderrIsBounded(t *testing.T) {
+	var b validationStderr
+	large := bytes.Repeat([]byte("x"), 100<<10)
+	if n, err := b.Write(large); n != len(large) || err != nil {
+		t.Fatalf("write = %d, %v", n, err)
+	}
+	b.Write([]byte("final diagnostic"))
+	if len(b) != 8<<10 || !strings.HasSuffix(string(b), "final diagnostic") {
+		t.Fatalf("diagnostics not bounded or tail lost: %d bytes", len(b))
+	}
+}

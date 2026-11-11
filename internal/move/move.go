@@ -9,14 +9,14 @@
 // worktree and its index are never touched. The bundle leaves out what the
 // target says it has (Have), so it carries only the new.
 //
-// On the target the bundle is fetched into the repository with the same
+// On the target the bundle is unpacked into the repository with the same
 // origin, the branch is made or moved forward, a worktree is added on it,
 // and the two commits are put back as changes not committed: Staged into
 // the index, Wip into the files. Files .gitignore keeps out (.env,
 // node_modules) are not moved. Submodules and git-lfs are refused (Look).
 //
-// A bundle from another machine is data. git fetch from it runs no hooks,
-// and every git here runs as gitsafe says.
+// A bundle from another machine is data. git bundle unbundle reads it
+// without a transport or remote helper, and every git here runs as gitsafe says.
 package move
 
 import (
@@ -34,6 +34,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/denied"
 	gitdata "github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
@@ -338,12 +339,6 @@ func Land(repo, wt string, p Part, bundle string) error {
 	if why := CanLand(repo, p); why != "" {
 		return errors.New(why)
 	}
-	tmp := "refs/nerdr-move/" + token()
-	defer func() {
-		for _, r := range []string{tmp + "/head", tmp + "/wip"} {
-			_, _ = run(repo, nil, "update-ref", "-d", r)
-		}
-	}()
 	if p.Bundle != "" {
 		if _, err := run(repo, nil, "bundle", "verify", "--quiet", bundle); err != nil {
 			return fmt.Errorf("the bundle does not fit this repository: %w", err)
@@ -354,23 +349,28 @@ func Land(repo, wt string, p Part, bundle string) error {
 		if err != nil {
 			return err
 		}
-		var specs []string
+		matched := false
 		for _, l := range strings.Split(heads, "\n") {
 			f := strings.Fields(l)
 			switch {
 			case len(f) != 2:
 			case f[1] == "refs/heads/"+p.Branch && f[0] == p.Head:
-				specs = append(specs, f[1]+":"+tmp+"/head")
+				matched = true
 			case p.Wip != "" && f[0] == p.Wip && strings.HasPrefix(f[1], "refs/nerdr-move/"):
-				specs = append(specs, f[1]+":"+tmp+"/wip")
+				matched = true
 			}
 		}
-		if len(specs) == 0 {
+		if !matched {
 			return errors.New("the bundle has nothing of " + p.Branch)
 		}
-		args := append([]string{"fetch", "--quiet", "--no-tags", "--no-write-fetch-head", bundle}, specs...)
-		if _, err := run(repo, nil, args...); err != nil {
-			return fmt.Errorf("git fetch from the bundle: %w", err)
+		// Import pack data directly. A fetch, even from this local file,
+		// passes through transport selection and URL rewriting. Unbundle
+		// invokes index-pack without a remote, upload-pack or helper, so
+		// normal transport denial remains intact for sandbox-history repos.
+		// The advertised heads above and required commits below are still
+		// checked; no temporary refs are needed to import the objects.
+		if _, err := run(repo, nil, "bundle", "unbundle", bundle); err != nil {
+			return fmt.Errorf("git unpack from the bundle: %w", err)
 		}
 	}
 	for _, c := range []string{p.Head, p.Staged, p.Wip} {
@@ -380,6 +380,12 @@ func Land(repo, wt string, p Part, bundle string) error {
 		if _, err := run(repo, nil, "cat-file", "-e", c+"^{commit}"); err != nil {
 			return fmt.Errorf("commit %s did not come with the bundle", short(c))
 		}
+	}
+	// Unbundle does not perform fetch's connectivity checks. Traverse every
+	// object reachable from all three commits before changing a branch.
+	// Existing refs are not excluded: their reachable objects may be missing.
+	if err := checkMovedObjects(repo, p); err != nil {
+		return fmt.Errorf("the moved commits are incomplete or invalid: %w", err)
 	}
 	old, err := run(repo, nil, "rev-parse", "-q", "--verify", "refs/heads/"+p.Branch)
 	old = strings.TrimSpace(old)
@@ -422,6 +428,103 @@ func Land(repo, wt string, p Part, bundle string) error {
 		return err
 	}
 	return nil
+}
+
+// checkMovedObjects keeps ordinary moves proportional to their reachable
+// history, without inspecting unrelated objects. Full fsck is opt-in through
+// fetch.fsckObjects, falling back to transfer.fsckObjects just as fetch does.
+func checkMovedObjects(repo string, p Part) error {
+	var roots []string
+	for _, c := range []string{p.Head, p.Staged, p.Wip} {
+		if c != "" {
+			roots = append(roots, c)
+		}
+	}
+	validate := func(args ...string) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		cmd := gitsafe.CommandContext(ctx, repo, args...)
+		// Discard stdout and retain only the tail of stderr, including when
+		// a corrupt repository produces many validation diagnostics.
+		var stderr validationStderr
+		cmd.Stderr = &stderr
+		if err := proc.Run(cmd); err != nil {
+			if why, ok := denied.Line(string(stderr)); ok {
+				denied.Note("git object validation in "+repo, why)
+			}
+			return gitErr(args[0], string(stderr), err)
+		}
+		return nil
+	}
+	if err := validate(append([]string{"rev-list", "--objects", "--quiet", "--missing=error"}, roots...)...); err != nil {
+		return err
+	}
+	// Read once with Git's own boolean parser. Only a silent exit 1 means no key;
+	// invalid values, timeouts and configuration refusals must stop the move.
+	configRead := func(args ...string) (string, error) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cancel()
+		cmd := gitsafe.CommandContext(ctx, repo, append([]string{"config"}, args...)...)
+		out, err := proc.Output(cmd)
+		if err == nil {
+			return string(out), nil
+		}
+		var ee *exec.ExitError
+		if errors.As(err, &ee) {
+			if ee.ExitCode() == 1 && len(ee.Stderr) == 0 && ctx.Err() == nil {
+				return "", nil
+			}
+			// Cmd.Output bounds captured stderr when none is supplied.
+			return "", gitErr("config", string(ee.Stderr), err)
+		}
+		return "", gitErr("config", "", err)
+	}
+	fsck := false
+	for _, key := range []string{"fetch.fsckObjects", "transfer.fsckObjects"} {
+		value, err := configRead("--type=bool", "--get", key)
+		if err != nil {
+			return err
+		}
+		if value == "" {
+			continue
+		}
+		fsck = strings.TrimSpace(value) == "true"
+		break
+	}
+	if !fsck {
+		return nil
+	}
+	// Apply fetch's severity/skip-list policy to the explicit fsck command.
+	var check []string
+	config, err := configRead("--null", "--get-regexp", `^fetch\.fsck\.`)
+	if err != nil {
+		return err
+	}
+	for _, entry := range strings.Split(config, "\x00") {
+		key, value, ok := strings.Cut(entry, "\n")
+		if ok {
+			check = append(check, "-c", strings.TrimPrefix(key, "fetch.")+"="+value)
+		}
+	}
+	check = append(check, "fsck", "--no-reflogs", "--no-dangling")
+	return validate(append(check, roots...)...)
+}
+
+// validationStderr stores at most 8 KiB regardless of Git's diagnostic volume.
+type validationStderr []byte
+
+func (b *validationStderr) Write(p []byte) (int, error) {
+	n := len(p)
+	const limit = 8 << 10
+	if len(p) >= limit {
+		*b = append((*b)[:0], p[len(p)-limit:]...)
+	} else {
+		if len(*b)+len(p) > limit {
+			*b = (*b)[len(*b)+len(p)-limit:]
+		}
+		*b = append(*b, p...)
+	}
+	return n, nil
 }
 
 // afterAdd, when set, fails the landing after the worktree is added: for

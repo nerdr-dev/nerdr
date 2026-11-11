@@ -2,9 +2,11 @@ package core
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strings"
@@ -122,7 +124,34 @@ func WithUserEnv(env, user []string) []string {
 // SpecsFor is how the agents are started for t: the config's, with t's
 // own model when it was started with one.
 func (m *Core) SpecsFor(t *Tab) map[agents.Kind]agents.Spec {
-	return agents.WithModel(m.Cfg.Agents, t.Agent, t.Model)
+	specs := maps.Clone(agents.WithModel(m.Cfg.Agents, t.Agent, t.Model))
+	for k, spec := range specs {
+		spec.Command, spec.Args, spec.ResumeArgs = slices.Clone(spec.Command), slices.Clone(spec.Args), slices.Clone(spec.ResumeArgs)
+		spec.Env = maps.Clone(spec.Env)
+		specs[k] = spec
+	}
+	return specs
+}
+
+// launchKey binds an asynchronous launch to the configuration that made
+// its argv and sandbox check. A config reload must never relabel old argv.
+func launchKey(specs map[agents.Kind]agents.Spec, kind agents.Kind) string {
+	b, _ := json.Marshal(specs[kind])
+	sum := sha256.Sum256(b)
+	return hex.EncodeToString(sum[:])
+}
+
+func (m *Core) launchStillCurrent(t *Tab, key string) bool {
+	if key == "" || key == launchKey(m.SpecsFor(t), t.Agent) {
+		return true
+	}
+	t.Err = "not started: agent configuration changed during preparation; restart the agent to use the new settings"
+	t.Light = StExited
+	m.Toast(m.AgentName(t) + ": " + t.Err)
+	if t.ReviewOf != nil {
+		m.ReviewerNotStarted(t)
+	}
+	return false
 }
 
 // OthersSessions are the conversations had in t's worktree that are not
@@ -173,9 +202,9 @@ func (m *Core) CarryOn(t *Tab) Cmd {
 		skip := codereview.Sessions(dir, string(kind))
 		if agents.HasConversation(specs, kind, dir, skip) {
 			l := agents.Resume(specs, kind, "", dir, skip)
-			return LaunchMsg{T: t, Kind: kind, L: l, Resume: !l.New}
+			return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: l, Resume: !l.New}
 		}
-		return LaunchMsg{T: t, Kind: kind, L: agents.NewSessionIn(specs, kind, dir)}
+		return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: agents.NewSessionIn(specs, kind, dir)}
 	}
 }
 
@@ -190,10 +219,11 @@ func TrustWorktrees(t *Tab) {
 
 // LaunchMsg carries a resolved command line for a tab.
 type LaunchMsg struct {
-	T      *Tab
-	Kind   agents.Kind // the agent it is for; the tab may have switched since
-	L      agents.Launch
-	Resume bool
+	SpecKey string // immutable configuration used to resolve L
+	T       *Tab
+	Kind    agents.Kind // the agent it is for; the tab may have switched since
+	L       agents.Launch
+	Resume  bool
 	// Handoff is the first message for an agent switched to: what the
 	// one before it did; sandboxed is whether that agent was in a sandbox.
 	Handoff   string
@@ -261,7 +291,9 @@ func (m *Core) Start(t *Tab, resume bool) Cmd {
 		if t.Agent == agents.Cursor {
 			// Its chat is made first, by running it.
 			specs, kind, dir := m.SpecsFor(t), t.Agent, t.Dir
-			return func() Event { return LaunchMsg{T: t, Kind: kind, L: agents.NewSessionIn(specs, kind, dir)} }
+			return func() Event {
+				return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: agents.NewSessionIn(specs, kind, dir)}
+			}
 		}
 		return m.SpawnNew(t, m.SpecsFor(t), nil)
 	}
@@ -269,14 +301,14 @@ func (m *Core) Start(t *Tab, resume bool) Cmd {
 	reported := t.ResumeArgv
 	return func() Event {
 		if l, ok := agents.ResumeReported(specs, kind, reported); ok {
-			return LaunchMsg{T: t, Kind: kind, L: l, Resume: true}
+			return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: l, Resume: true}
 		}
 		l := agents.Resume(specs, kind, id, dir, skip)
 		if beside && l.SessionID != id {
 			// Its own conversation is gone: never another one in its place.
-			return LaunchMsg{T: t, Kind: kind, L: agents.NewSessionIn(specs, kind, dir)}
+			return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: agents.NewSessionIn(specs, kind, dir)}
 		}
-		return LaunchMsg{T: t, Kind: kind, L: l, Resume: !l.New}
+		return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: l, Resume: !l.New}
 	}
 }
 
@@ -290,7 +322,9 @@ func (m *Core) SpawnNew(t *Tab, specs map[agents.Kind]agents.Spec, add func(agen
 		add = func(l agents.Launch) agents.Launch { return l }
 	}
 	if !agents.NewSessionKnown(specs, kind) {
-		return func() Event { return LaunchMsg{T: t, Kind: kind, L: add(agents.NewSession(specs, kind))} }
+		return func() Event {
+			return LaunchMsg{T: t, Kind: kind, SpecKey: launchKey(specs, kind), L: add(agents.NewSession(specs, kind))}
+		}
 	}
 	return m.Spawn(t, add(agents.NewSession(specs, kind)), false)
 }
@@ -334,11 +368,12 @@ type SpawnPrep struct {
 
 // SpawnReady is a tab's agent to start, with what its CLI said first.
 type SpawnReady struct {
-	T      *Tab
-	Kind   agents.Kind
-	L      agents.Launch
-	Resume bool
-	Prep   SpawnPrep
+	SpecKey string
+	T       *Tab
+	Kind    agents.Kind
+	L       agents.Launch
+	Resume  bool
+	Prep    SpawnPrep
 }
 
 // Prepare is how to ask what starting t's agent with l needs to ask its
@@ -435,25 +470,29 @@ func (m *Core) prepareAgent(t *Tab, l agents.Launch, env []string) func() SpawnP
 // SpawnReady. m.Mu is held.
 func (m *Core) Spawn(t *Tab, l agents.Launch, resume bool) Cmd {
 	if read := m.skillsBeforeStart(t); read != nil {
-		kind := t.Agent
-		return func() Event { return SpawnLooked{T: t, Kind: kind, L: l, Resume: resume, Look: read()} }
+		kind, key := t.Agent, launchKey(m.SpecsFor(t), t.Agent)
+		return func() Event { return SpawnLooked{T: t, Kind: kind, SpecKey: key, L: l, Resume: resume, Look: read()} }
 	}
 	return m.spawnLooked(t, l, resume)
 }
 
 // SpawnLooked is a tab's agent to start, with where it has the skills.
 type SpawnLooked struct {
-	T      *Tab
-	Kind   agents.Kind
-	L      agents.Launch
-	Resume bool
-	Look   SkillLook
+	SpecKey string
+	T       *Tab
+	Kind    agents.Kind
+	L       agents.Launch
+	Resume  bool
+	Look    SkillLook
 }
 
 // OnSpawnLooked keeps where ev's agent has the skills, and starts it,
 // unless its tab closed or switched agent meanwhile.
 func (m *Core) OnSpawnLooked(ev SpawnLooked) Cmd {
 	if !m.Live(ev.T) || ev.Kind != ev.T.Agent {
+		return nil
+	}
+	if !m.launchStillCurrent(ev.T, ev.SpecKey) {
 		return nil
 	}
 	m.keepSkillLook(ev.T.ID, ev.Look)
@@ -472,8 +511,8 @@ func (m *Core) OnSpawnLooked(ev SpawnLooked) Cmd {
 // spawnLooked is Spawn once where the agent has the skills is known.
 func (m *Core) spawnLooked(t *Tab, l agents.Launch, resume bool) Cmd {
 	if ask := m.Prepare(t, l); ask != nil {
-		kind := t.Agent
-		return func() Event { return SpawnReady{T: t, Kind: kind, L: l, Resume: resume, Prep: ask()} }
+		kind, key := t.Agent, launchKey(m.SpecsFor(t), t.Agent)
+		return func() Event { return SpawnReady{T: t, Kind: kind, SpecKey: key, L: l, Resume: resume, Prep: ask()} }
 	}
 	return m.SpawnPrepared(t, l, resume, SpawnPrep{})
 }
@@ -482,6 +521,9 @@ func (m *Core) spawnLooked(t *Tab, l agents.Launch, resume bool) Cmd {
 // switched agent while its CLI was asked.
 func (m *Core) OnSpawnReady(ev SpawnReady) Cmd {
 	if !m.Live(ev.T) || ev.Kind != ev.T.Agent {
+		return nil
+	}
+	if !m.launchStillCurrent(ev.T, ev.SpecKey) {
 		return nil
 	}
 	cmd := m.SpawnPrepared(ev.T, ev.L, ev.Resume, ev.Prep)
@@ -500,7 +542,7 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 	if prep.Check != nil {
 		m.OnSandboxChecked(*prep.Check)
 		if prep.Check.Refused() {
-			t.Err = "not started: its sandbox lets it reach nerdr's client socket or holder, which it must deny"
+			t.Err = "not started: its sandbox could not be verified to deny nerdr's client socket, holder and writes to critical paths"
 			t.Light = StExited
 			return nil
 		}

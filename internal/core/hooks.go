@@ -261,12 +261,18 @@ func (m *Core) OnHook(r hooks.Report) Cmd {
 	return nil
 }
 
+// maxHookSources bounds sequence bookkeeping even for short, unique sources.
+const maxHookSources = 32
+
 // hookSession takes the conversation report r says its agent is in, and
 // returns the agent, or nil when the report is not one to take: for no
 // agent running, another agent than it, or older than one taken. It is
 // all of a report that counts while nerdr quits: the conversation to
 // resume next time.
 func (m *Core) HookSession(r hooks.Report) *Tab {
+	if len(r.Source) > hooks.MaxSource {
+		return nil
+	}
 	t := m.AgentByHook(r.Pane)
 	if t == nil || t.Pane == nil {
 		return nil
@@ -280,7 +286,11 @@ func (m *Core) HookSession(r hooks.Report) *Tab {
 		t.Hook.Seq = map[string]int64{}
 	}
 	if r.Seq > 0 {
-		if r.Seq <= t.Hook.Seq[r.Source] {
+		last, known := t.Hook.Seq[r.Source]
+		if !known && len(t.Hook.Seq) >= maxHookSources {
+			return nil
+		}
+		if r.Seq <= last {
 			return nil // out of order: an older report arriving late
 		}
 		t.Hook.Seq[r.Source] = r.Seq

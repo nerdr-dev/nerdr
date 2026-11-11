@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-func run(t *testing.T, dir string, args ...string) string {
+func run(t testing.TB, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
 	out, err := cmd.CombinedOutput()
@@ -19,7 +19,7 @@ func run(t *testing.T, dir string, args ...string) string {
 }
 
 // repoWithWorktree makes a main checkout and a linked worktree of it.
-func repoWithWorktree(t *testing.T) (root, repo, wt string) {
+func repoWithWorktree(t testing.TB) (root, repo, wt string) {
 	t.Helper()
 	root = t.TempDir()
 	repo, wt = filepath.Join(root, "main"), filepath.Join(root, "wt")
@@ -283,5 +283,31 @@ func TestIgnoreDirtySubmodules(t *testing.T) {
 		if got := ignoreDirtySubmodules(c.in); strings.Join(got, " ") != strings.Join(c.want, " ") {
 			t.Errorf("ignoreDirtySubmodules(%q) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestUnregisteredWorktreeDoesNotFallThrough(t *testing.T) {
+	root, repo, wt := repoWithWorktree(t)
+	redirect(t, root, repo, wt)
+	child := filepath.Join(wt, "nested")
+	if err := os.Mkdir(child, 0755); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{wt, child} {
+		d, ok := dirs(dir)
+		if !ok || d.gitDir != untrustedDir {
+			t.Fatalf("unregistered .git file was not pinned to refusal: %+v %v", d, ok)
+		}
+		if _, _, ok := Dirs(dir); ok {
+			t.Fatal("Dirs exposed unregistered worktree")
+		}
+		// Reading even a harmless setting proves Git cannot fall through
+		// into the attacker's repository (fsmonitor is separately disabled).
+		if out, err := Command(dir, "config", "--local", "--get", "core.worktree").CombinedOutput(); err == nil {
+			t.Fatalf("read attacker config: %s", out)
+		}
+	}
+	if d, ok := dirs(root); ok {
+		t.Fatalf("nonrepository should have no directories to pin: %+v", d)
 	}
 }

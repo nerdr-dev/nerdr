@@ -135,10 +135,9 @@ type Core struct {
 	// SandboxedDirs are the worktree folders where a sandboxed agent has
 	// run, kept across tab close and reopen.
 	SandboxedDirs map[string]bool
-	// SandboxChecks are the agents' commands checked from inside their
-	// sandbox since the core started, by kind and command; see
-	// CheckSandbox.
-	SandboxChecks map[string]bool `json:"-"`
+	// SandboxedRepos keeps repository provenance even after all its
+	// worktrees have been removed.
+	SandboxedRepos map[string]bool
 	// Copy is set in a client's copy of core's state (see Mirror): what
 	// core reads from disk, the copy has only as core sent it.
 	Copy bool `json:"-"`

@@ -188,7 +188,11 @@ type Session struct {
 	// SandboxedDirs are the worktree folders where an agent has run in a
 	// sandbox, kept when a tab is closed so reopening the worktree still
 	// skips git hooks on its files.
-	SandboxedDirs map[string]bool `json:"sandboxed_dirs,omitempty"`
+	// SandboxHistoryVersion distinguishes legacy directory-only history from
+	// sessions that explicitly track repository history, even when empty.
+	SandboxHistoryVersion int             `json:"sandbox_history_version,omitempty"`
+	SandboxedDirs         map[string]bool `json:"sandboxed_dirs,omitempty"`
+	SandboxedRepos        map[string]bool `json:"sandboxed_repos,omitempty"`
 	// SideWidth is the columns the sidebar was dragged to, its frames
 	// included; 0 leaves it as wide as its names need.
 	SideWidth int `json:"side_width,omitempty"`

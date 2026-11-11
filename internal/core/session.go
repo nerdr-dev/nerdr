@@ -1,7 +1,6 @@
 package core
 
 import (
-	"os"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/move"
@@ -63,7 +62,9 @@ func (m *Core) SaveSession() {
 	}
 	s.Issues = m.SavedIssueWatch()
 	s.GroupNames = m.GroupNames
+	s.SandboxHistoryVersion = 1
 	s.SandboxedDirs = m.SandboxedDirs
+	s.SandboxedRepos = m.SandboxedRepos
 	if err := state.Save(s); err != nil {
 		m.Toast("could not save session: " + err.Error())
 	}
@@ -78,10 +79,14 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 		m.WtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
 	}
 	m.Scan.NewRepoDir = workspace.NewRepoDir(m.Root, m.Cfg.RepoDirs)
+	// Restore repository provenance before TrustWorktrees reads origins
+	// or any other host Git operation can inspect these repositories.
+	m.restoreSandboxed(sess)
 	// What a move left when its core ended in the middle of it.
 	go move.Sweep(6 * time.Hour)
 	for _, st := range sess.Tabs {
 		t := &Tab{AgentState: Agent{Tab: st, Light: StStarting}}
+		m.MarkSandboxed(t)
 		TrustWorktrees(t)
 		t.TakeQueue()
 		m.RestoreAgents(t)
@@ -96,18 +101,8 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 	m.LoadPRWatch(sess.PRs)
 	m.LoadIssueWatch(sess.Issues)
 	m.GroupNames = sess.GroupNames
-	m.SandboxedDirs = sess.SandboxedDirs
 	if m.GroupNames == nil {
 		m.GroupNames = map[string]string{}
-	}
-	if m.SandboxedDirs == nil {
-		m.SandboxedDirs = map[string]bool{}
-	} else {
-		for dir := range m.SandboxedDirs {
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				delete(m.SandboxedDirs, dir)
-			}
-		}
 	}
 	for _, t := range m.Tabs {
 		m.MarkSandboxed(t)

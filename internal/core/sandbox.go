@@ -2,6 +2,8 @@ package core
 
 import (
 	"fmt"
+	"maps"
+	"os"
 	"slices"
 	"strings"
 
@@ -9,6 +11,8 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
 // Confined reports whether report r, from agent a, is from an agent in a
@@ -153,19 +157,95 @@ func (m *Core) MarkSandboxed(t *Tab) {
 			m.SandboxedDirs = map[string]bool{}
 		}
 		if o.Dir != "" {
-			m.SandboxedDirs[o.Dir] = true
+			m.markSandboxedDir(o.Dir)
 		}
 		for _, w := range o.Worktrees {
 			if w.Path != "" {
-				m.SandboxedDirs[w.Path] = true
+				m.markSandboxedDir(w.Path)
+			}
+			if w.Repo != "" {
+				if m.SandboxedRepos == nil {
+					m.SandboxedRepos = map[string]bool{}
+				}
+				m.SandboxedRepos[w.Repo] = true
+				gitsafe.SandboxedRepo(w.Repo)
 			}
 		}
 	}
-	// git there reads config.worktree, which such an agent may have
-	// written, when the repository has extensions.worktreeConfig on; see
-	// gitsafe.Sandboxed. All of them, not only t's: those of tabs closed
-	// since, restored from the session, count as well.
+}
+
+// Register only newly recorded paths. Restored paths are registered once in
+// restoreSandboxed, rather than rescanning all historical paths per tab.
+func (m *Core) markSandboxedDir(dir string) {
+	if !m.SandboxedDirs[dir] {
+		m.SandboxedDirs[dir] = true
+		gitsafe.Sandboxed(dir)
+	}
+}
+
+// ImportSandboxed records provenance before imported code or objects are
+// inspected, even if the import or the destination agent later fails.
+func (m *Core) ImportSandboxed(wts []workspace.Worktree) {
+	if m.SandboxedDirs == nil {
+		m.SandboxedDirs = map[string]bool{}
+	}
+	if m.SandboxedRepos == nil {
+		m.SandboxedRepos = map[string]bool{}
+	}
+	for _, w := range wts {
+		if w.Path != "" {
+			m.markSandboxedDir(w.Path)
+		}
+		if w.Repo != "" {
+			m.SandboxedRepos[w.Repo] = true
+			gitsafe.SandboxedRepo(w.Repo)
+		}
+	}
+	m.SaveSession()
+}
+
+// Old sessions kept only worktree names. A deleted worktree cannot be
+// associated with its repository safely, so migrate conservatively: every
+// known repository is tainted. ScanAll only inspects directory metadata.
+func (m *Core) restoreSandboxed(sess state.Session) {
+	m.SandboxedDirs = maps.Clone(sess.SandboxedDirs)
+	if m.SandboxedDirs == nil {
+		m.SandboxedDirs = map[string]bool{}
+	}
+	m.SandboxedRepos = maps.Clone(sess.SandboxedRepos)
+	if m.SandboxedRepos == nil {
+		m.SandboxedRepos = map[string]bool{}
+	}
+	if sess.SandboxHistoryVersion == 0 && len(sess.SandboxedDirs) > 0 {
+		repos, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
+		for _, r := range repos {
+			m.SandboxedRepos[r.Path] = true
+		}
+		for _, t := range sess.Tabs {
+			for _, w := range t.Worktrees {
+				if w.Repo != "" {
+					m.SandboxedRepos[w.Repo] = true
+				}
+			}
+		}
+	}
+	// Recover known associations before dropping missing worktree paths.
+	// Repo paths come from the saved session, never a worktree's .git file.
+	for _, t := range sess.Tabs {
+		for _, w := range t.Worktrees {
+			if w.Repo != "" && (t.Sandboxed || m.SandboxedDirs[t.Dir] || m.SandboxedDirs[w.Path]) {
+				m.SandboxedRepos[w.Repo] = true
+			}
+		}
+	}
+	for repo := range m.SandboxedRepos {
+		gitsafe.SandboxedRepo(repo)
+	}
 	for dir := range m.SandboxedDirs {
+		if _, err := os.Stat(dir); os.IsNotExist(err) {
+			delete(m.SandboxedDirs, dir)
+			continue
+		}
 		gitsafe.Sandboxed(dir)
 	}
 }

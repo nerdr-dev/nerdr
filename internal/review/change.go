@@ -85,6 +85,7 @@ func (m *Model) loadDiff() tea.Cmd {
 		m.diffAim = nil
 		m.diffPending, m.diffSlow = false, false
 		m.symbols, m.symbolRefs = nil, nil
+		m.analysisIncomplete = ""
 		return nil
 	}
 	r := diffReq{
@@ -134,7 +135,7 @@ type diffReq struct {
 func (r diffReq) read() diffMsg {
 	msg := diffMsg{wt: r.wt, path: r.path, token: r.token, peek: r.peek}
 	if r.relations {
-		msg.symbols, msg.refs = r.src.Relations(r.wt, r.path)
+		msg.symbols, msg.refs, msg.incomplete = r.src.Relations(r.wt, r.path)
 	}
 	if r.peek {
 		msg.diff, msg.err = r.src.ReadFile(r.wt, r.path)
@@ -177,14 +178,15 @@ func (r diffReq) fileDiff() (string, error) {
 
 // diffMsg is the diff of path, and its source, read in the background.
 type diffMsg struct {
-	wt, path  string
-	token     int
-	peek      bool
-	diff, src string
-	srcOK     bool
-	symbols   []analysis.Symbol // what path declares, and where each is used
-	refs      [][]analysis.Ref
-	err       error
+	wt, path   string
+	token      int
+	peek       bool
+	diff, src  string
+	srcOK      bool
+	symbols    []analysis.Symbol // what path declares, and where each is used
+	refs       [][]analysis.Ref
+	incomplete string
+	err        error
 }
 
 // onDiff puts a diff read in the background in place, if it is still the
@@ -208,6 +210,7 @@ func (m *Model) onDiff(msg diffMsg) {
 	m.diff = msg.diff
 	// First: displayLines annotates the lines with them.
 	m.symbols, m.symbolRefs = msg.symbols, msg.refs
+	m.analysisIncomplete = msg.incomplete
 	if msg.peek {
 		m.diffLines = annotateWhyLines(plainSourceLines(path, msg.diff), path, m.whyIndex)
 	} else {
@@ -237,6 +240,6 @@ func (m *Model) displayLines(path, diff, src string, srcOK bool) []diffLine {
 	if srcOK {
 		lines = highlightContextLines(lines, path, src)
 	}
-	lines = annotateDiffLines(lines, m.symbols, m.symbolRefs)
+	lines = annotateDiffLines(lines, m.symbols, m.symbolRefs, m.analysisIncomplete)
 	return annotateWhyLines(lines, path, m.whyIndex)
 }

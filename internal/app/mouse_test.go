@@ -449,46 +449,53 @@ func TestTerminalBesideTheAgentScrollsAndCopies(t *testing.T) {
 	}
 }
 
-// A program's OSC 52 reaches the clipboard only from the pane the user is
-// in, just after they did something: a program elsewhere, or one copying
-// unasked, does not put what the user pastes next there.
-func TestOSC52OnlyFromThePaneInUse(t *testing.T) {
+// Neither focus, visibility nor recent input authorizes program clipboard writes.
+func TestOSC52NeverForwarded(t *testing.T) {
 	m := testModel(t)
 	var copied []string
 	was := toClipboard
 	toClipboard = func(s string) bool { copied = append(copied, s); return true }
 	defer func() { toClipboard = was }()
-	copying := func(text string) *term.Pane {
-		p, err := term.Start([]string{"sh", "-c", `printf '\033]52;c;` + base64.StdEncoding.EncodeToString([]byte(text)) + `\007'; sleep 5`},
-			t.TempDir(), os.Environ(), 40, 5, func() {})
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() { p.Stop(time.Second) })
-		return p
+	panes := make([]*term.Pane, 5)
+	for i := range panes {
+		panes[i] = &term.Pane{Screen: term.NewScreen(40, 5)}
 	}
-	m.home().Core.Tabs[0].Pane, m.home().Core.Tabs[1].Pane = copying("here"), copying("elsewhere")
-	time.Sleep(300 * time.Millisecond)
-
-	// Nobody has typed: nothing is taken, from the pane in use either.
-	m.router = input.New(strings.NewReader(""), 0x11)
-	m.checkCopied()
-	// Typed just now: the pane in use's next copy is taken, the other's
-	// not.
+	tabs := m.home().Core.Tabs
+	tabs[0].Pane, tabs[1].Pane, tabs[2].Pane = panes[0], panes[1], panes[2]
+	tabs[0].PaneList = append(tabs[0].Panes(), &core.PaneTab{Kind: core.PaneShell, Shell: panes[3]})
+	m.split = tabs[1]
+	// Run actual router input, then wait for it to finish: no timing window.
 	m.router = input.New(strings.NewReader("x"), 0x11)
-	go func() { _, _ = io.Copy(io.Discard, m.router.Reader()) }()
-	go m.router.Run()
-	for m.router.LastInput().IsZero() {
-		time.Sleep(5 * time.Millisecond)
+	read := make(chan struct{})
+	go func() { _, _ = io.Copy(io.Discard, m.router.Reader()); close(read) }()
+	m.router.Run()
+	<-read
+	if m.router.LastInput().IsZero() {
+		t.Fatal("input was not recorded")
+	}
+	for _, focused := range []string{"agent", "terminal", "editor"} {
+		if focused == "terminal" {
+			m.tl(tabs[0]).on = tabs[0].PaneList[1]
+		}
+		if focused == "editor" {
+			m.editor = panes[4]
+		}
+		for i, p := range panes {
+			if i == 4 && focused != "editor" {
+				continue
+			}
+			p.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("unasked")) + "\x07"))
+		}
+		m.checkCopied()
+		for i, p := range panes {
+			if got := p.TakeCopied(); got != "" {
+				t.Errorf("pane %d retained %q for replay", i, got)
+			}
+		}
+		m.checkCopied()
 	}
 	if len(copied) != 0 {
-		t.Fatalf("copied unasked: %q", copied)
-	}
-	m.home().Core.Tabs[0].Pane, m.home().Core.Tabs[1].Pane = copying("here"), copying("elsewhere")
-	time.Sleep(300 * time.Millisecond)
-	m.checkCopied()
-	if len(copied) != 1 || copied[0] != "here" {
-		t.Errorf("copied %q, want only the pane in use's", copied)
+		t.Fatalf("forwarded program clipboard writes: %q", copied)
 	}
 }
 

@@ -42,6 +42,9 @@ var (
 	// sandboxedPaths are the worktrees and main checkouts where a sandboxed
 	// agent has run.
 	sandboxedPaths = map[string]bool{}
+	// Repository identity outlives any individual worktree or its trust
+	// mapping. Objects and refs survive removal of the worktree.
+	sandboxedRepositories = map[string]bool{}
 	// extensionSeen caches whether a common config file turns the
 	// extension on, by its path, while its size and time are as they were.
 	extensionSeen = map[string]extensionLook{}
@@ -71,16 +74,46 @@ func Sandboxed(path string) {
 	if path == "" {
 		return
 	}
+	common := commonOf(path)
+	if common != "" {
+		rememberSandboxedRepository(common)
+		return
+	}
+	// Keep only unresolved paths for the fallback: once repository
+	// provenance is known it does not depend on a surviving worktree.
+	wcMu.Lock()
+	sandboxedPaths[clean(path)] = true
+	wcMu.Unlock()
+}
+
+// SandboxedRepo restores repository provenance without requiring a live
+// worktree or looking at an agent-controlled .git file.
+func SandboxedRepo(repo string) {
+	if repo == "" {
+		return
+	}
+	rememberSandboxedRepository(filepath.Join(clean(repo), ".git"))
+}
+
+// rememberSandboxedRepository retains both the original spelling and its
+// resolved path. Positive taint never expires, even if a symlink disappears
+// or a worktree closes. This is not a cache of permission to run host code.
+func rememberSandboxedRepository(common string) {
+	canonical, err := filepath.EvalSymlinks(common)
 	wcMu.Lock()
 	defer wcMu.Unlock()
-	sandboxedPaths[clean(path)] = true
+	sandboxedRepositories[common] = true
+	if err == nil {
+		sandboxedRepositories[canonical] = true
+	}
 }
 
 // Refusals hands out the repositories nerdr refused to run git in because
-// of extensions.worktreeConfig since it was last called, by main checkout,
+// of unsafe configuration since it was last called, by main checkout,
 // each with why, to show the user. One notice per repository is enough:
 // the reason, and what to do, is the same for all its worktrees. A
-// repository is handed out again only after git has run in it again.
+// repository is handed out again when the reason changes, or after Git
+// has run in it again.
 func Refusals() map[string]string {
 	wcMu.Lock()
 	defer wcMu.Unlock()
@@ -96,24 +129,39 @@ func Refusals() map[string]string {
 
 // guardWorktreeConfig is d, or a GIT_DIR that does not exist when git must
 // not run there: d is in a repository where a sandboxed agent has run, and
-// that repository has extensions.worktreeConfig on. ok is dirs' ok: with
+// that repository has extensions.worktreeConfig or executable filters. ok is dirs' ok: with
 // nothing pinned, there is nothing to guard.
-func guardWorktreeConfig(d gitDirs, ok bool) gitDirs {
+func guardWorktreeConfig(d gitDirs, ok bool, disabled *[][2]string) gitDirs {
 	if !ok || d.gitDir == untrustedDir {
 		return d
 	}
-	if !repoSandboxed(d.common) || !extensionOn(d.common) {
+	if !repoSandboxed(d.common) {
 		wcMu.Lock()
 		delete(refusals, d.common)
 		delete(reported, d.common)
 		wcMu.Unlock()
 		return d
 	}
+	if !extensionOn(d.common) {
+		why := filterRefusal(d, disabled)
+		wcMu.Lock()
+		if why == "" {
+			delete(refusals, d.common)
+			delete(reported, d.common)
+		} else {
+			refusals[d.common] = why
+		}
+		wcMu.Unlock()
+		if why == "" {
+			return d
+		}
+		return gitDirs{untrustedDir, untrustedDir, d.work}
+	}
 	// The reason is found once, not on every call: it reads the
 	// config.worktree files with git, and only says what is in them for the
 	// user.
 	wcMu.Lock()
-	known := refusals[d.common] != ""
+	known := strings.Contains(refusals[d.common], "extensions.worktreeConfig")
 	wcMu.Unlock()
 	if !known {
 		why := refusal(d.common)
@@ -136,14 +184,47 @@ func RepoSandboxed(repo string) bool {
 // checkout.
 func repoSandboxed(common string) bool {
 	wcMu.Lock()
+	if sandboxedRepositories[common] {
+		wcMu.Unlock()
+		return true
+	}
+	wcMu.Unlock()
+	// Resolve only the queried path for the usual symlink-alias case,
+	// instead of statting every historical repository and worktree.
+	if canonical, err := filepath.EvalSymlinks(common); err == nil {
+		wcMu.Lock()
+		known := sandboxedRepositories[canonical]
+		if known {
+			sandboxedRepositories[common] = true
+		}
+		wcMu.Unlock()
+		if known {
+			return true
+		}
+	}
+	wcMu.Lock()
+	repos := make([]string, 0, len(sandboxedRepositories))
+	for repo := range sandboxedRepositories {
+		repos = append(repos, repo)
+	}
 	paths := make([]string, 0, len(sandboxedPaths))
 	for p := range sandboxedPaths {
 		paths = append(paths, p)
 	}
 	wcMu.Unlock()
+	for _, repo := range repos {
+		if sameDir(repo, common) {
+			rememberSandboxedRepository(common)
+			return true
+		}
+	}
 	for _, p := range paths {
 		c := commonOf(p)
 		if c != "" && (c == common || sameDir(c, common)) {
+			rememberSandboxedRepository(common)
+			wcMu.Lock()
+			delete(sandboxedPaths, p)
+			wcMu.Unlock()
 			return true
 		}
 	}

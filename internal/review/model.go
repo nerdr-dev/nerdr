@@ -223,8 +223,9 @@ type Model struct {
 
 	// symbols and their references drive the diff pane's "↳ used in"
 	// annotations, and the jump those rows offer.
-	symbols    []analysis.Symbol
-	symbolRefs [][]analysis.Ref
+	symbols            []analysis.Symbol
+	symbolRefs         [][]analysis.Ref
+	analysisIncomplete string
 
 	// peek, when set, shows an arbitrary file's current content in the diff
 	// pane instead of the tree-selected file — used when jumping to a

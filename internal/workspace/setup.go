@@ -142,6 +142,9 @@ func ToAllow(file string, repos []string) map[string]RepoConfig {
 // postinstall an agent wrote on its branch, or a fork's pull request
 // put there — as the user, outside any sandbox. Elsewhere it is left for
 // the user to run once they have read the code.
+// Copying from a repository where a sandboxed agent has worked also
+// invalidates that assurance: ignored local files are not covered by the
+// verified base commit, and setup may source them or load their code.
 func Prepare(wts []Worktree, setupIn map[string]bool, file string, progress func(string)) []string {
 	var warnings []string
 	for _, w := range wts {
@@ -164,7 +167,9 @@ func Prepare(wts []Worktree, setupIn map[string]bool, file string, progress func
 				warnings = append(warnings, name+": "+err.Error())
 			}
 		}
-		if s := strings.TrimSpace(c.Setup); s != "" && !setupIn[w.Path] {
+		if s := strings.TrimSpace(c.Setup); s != "" && len(c.Copy) > 0 && gitsafe.RepoSandboxed(w.Repo) {
+			warnings = append(warnings, name+": setup not run — copied files may contain code from a sandboxed agent; inspect them and run "+s+" yourself")
+		} else if s != "" && !setupIn[w.Path] {
 			warnings = append(warnings, name+": setup not run — the worktree has code not known to be the base's; run "+s+" yourself once you have read it")
 		} else if s != "" {
 			progress(name + ": " + s)
@@ -468,17 +473,16 @@ func PushIn(w Worktree, allHooks bool) error {
 	if n := ForkPRNumber(w.Path, w.Branch); n > 0 {
 		return fmt.Errorf("%s is pull request #%d from a fork: nerdr does not push it to origin; push to the fork yourself if you may", w.Branch, n)
 	}
+	// LFS may execute transfer commands over objects from any tab. Do not
+	// run it in a repository with sandbox history, including via a hook in
+	// an untouched tab. Nor replace a disabled hook with host git lfs push
+	// or push pointers without uploading their objects.
+	if (!allHooks || gitsafe.RepoSandboxed(w.Repo)) && usesLFS(w.Path) {
+		return fmt.Errorf("nerdr cannot push this repository: its pre-push hook uses Git LFS and hooks are disabled or a sandboxed agent has run in the repository. LFS can execute worktree-controlled commands outside the sandbox. Push from inside the sandbox, or inspect the work and push in your own terminal")
+	}
 	env := gitsafe.Hooks
 	if !allHooks {
 		env = gitsafe.SandboxedHooks
-		// No hook runs, so the files Git LFS's pre-push hook would have
-		// sent are sent here: a push of their pointers alone leaves a
-		// branch nobody can check out.
-		if usesLFS(w.Path) {
-			if _, err := gitRunEnv(fetchTimeout, env(w.Path), w.Path, "lfs", "push", "origin", w.Branch); err != nil {
-				return fmt.Errorf("git lfs push: %w", err)
-			}
-		}
 	}
 	_, err := gitRunEnv(fetchTimeout, env(w.Path), w.Path, "push", "--quiet", "-u", "origin", "HEAD")
 	return err

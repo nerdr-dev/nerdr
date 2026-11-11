@@ -123,17 +123,17 @@ func (m *Core) SwitchAgent(t *Tab, k agents.Kind, summary string) Cmd {
 		if k == agents.Codex && (!visited || shared && id == "") {
 			// Its --last could be the other codex's: only one known by
 			// its id is carried on.
-			return LaunchMsg{T: t, Kind: k, L: agents.NewSessionIn(specs, k, dir), Handoff: handoff.Prompt(in), Sandboxed: wasSandboxed}
+			return LaunchMsg{T: t, Kind: k, SpecKey: launchKey(specs, k), L: agents.NewSessionIn(specs, k, dir), Handoff: handoff.Prompt(in), Sandboxed: wasSandboxed}
 		}
 		l := agents.Resume(specs, k, id, dir, skip)
 		if l.New || l.SessionID == "" && k != agents.Codex {
 			// Nothing of k's to continue here; its own "continue the
 			// latest" could pick up another worktree's conversation, or
 			// a reviewer's in this one.
-			return LaunchMsg{T: t, Kind: k, L: agents.NewSessionIn(specs, k, dir), Handoff: handoff.Prompt(in), Sandboxed: wasSandboxed}
+			return LaunchMsg{T: t, Kind: k, SpecKey: launchKey(specs, k), L: agents.NewSessionIn(specs, k, dir), Handoff: handoff.Prompt(in), Sandboxed: wasSandboxed}
 		}
 		in.Resumed = true
-		return LaunchMsg{T: t, Kind: k, L: l, Resume: true, Handoff: handoff.Prompt(in), Sandboxed: wasSandboxed}
+		return LaunchMsg{T: t, Kind: k, SpecKey: launchKey(specs, k), L: l, Resume: true, Handoff: handoff.Prompt(in), Sandboxed: wasSandboxed}
 	}
 }
 
