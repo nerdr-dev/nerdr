@@ -209,3 +209,49 @@ func TestAddReviewerAsksTheHelpAwayFromMu(t *testing.T) {
 		t.Error("started without the --session-id copilot said it takes")
 	}
 }
+
+// TestSpawnPutsTheSkillsAwayFromMu: with the skills put in each worktree,
+// Spawn, which has Mu held, leaves the folder alone; the Cmd it returns
+// puts them there, and the agent starts after. A folder gone meanwhile is
+// said so, and nothing started.
+func TestSpawnPutsTheSkillsAwayFromMu(t *testing.T) {
+	rec := &recorder{}
+	m := &Core{Client: NoClient{}, Spawner: rec}
+	m.Cfg.Install = config.InstallWorktree
+	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Claude: {Command: []string{"cat"}}}
+	tab := &Tab{}
+	tab.Dir, tab.Agent = t.TempDir(), agents.Claude
+	m.Tabs = []*Tab{tab}
+	put := filepath.Join(tab.Dir, ".claude", "skills")
+
+	cmd := m.Spawn(tab, agents.Launch{Argv: []string{"cat"}}, false)
+	if cmd == nil {
+		t.Fatal("started at once, the skills put in place with Mu held")
+	}
+	if _, err := os.Stat(put); err == nil || len(rec.specs) != 0 {
+		t.Fatalf("Spawn put the skills in place, or started the agent (%d)", len(rec.specs))
+	}
+	ev, ok := cmd().(SpawnReady)
+	if !ok || !ev.Prep.Looked || ev.Prep.Gone {
+		t.Fatalf("the Cmd gave %+v", ev)
+	}
+	if _, err := os.Stat(put); err != nil {
+		t.Fatalf("the Cmd did not put the skills in place: %v", err)
+	}
+	m.OnSpawnReady(ev)
+	if tab.Pane == nil || len(rec.specs) != 1 {
+		t.Fatalf("the agent did not start: %q", tab.Err)
+	}
+	defer tab.Pane.Close()
+
+	gone := &Tab{}
+	gone.Dir, gone.Agent = filepath.Join(t.TempDir(), "gone"), agents.Claude
+	m.Tabs = append(m.Tabs, gone)
+	m.OnSpawnReady(m.Spawn(gone, agents.Launch{Argv: []string{"cat"}}, false)().(SpawnReady))
+	if gone.Pane != nil || !strings.Contains(gone.Err, "the worktree is gone") {
+		t.Fatalf("a folder gone: started %v, %q", gone.Pane != nil, gone.Err)
+	}
+	if _, err := os.Stat(gone.Dir); err == nil {
+		t.Fatal("the folder gone was made again")
+	}
+}
