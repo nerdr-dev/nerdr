@@ -70,9 +70,16 @@ func Trust(repo, path string) {
 	if repo == "" || path == "" {
 		return
 	}
+	// Git reports canonical paths (for example /private/var on macOS),
+	// even when the registered path used an alias. Remember that identity
+	// at registration; never discover trust from a worktree's .git file.
+	canonical, err := filepath.EvalSymlinks(path)
 	mu.Lock()
 	defer mu.Unlock()
 	trusted[clean(path)] = clean(repo)
+	if err == nil {
+		trusted[clean(canonical)] = clean(repo)
+	}
 }
 
 // Belongs reports whether path is a worktree of the main checkout repo, as

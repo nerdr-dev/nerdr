@@ -311,3 +311,31 @@ func TestUnregisteredWorktreeDoesNotFallThrough(t *testing.T) {
 		t.Fatalf("nonrepository should have no directories to pin: %+v", d)
 	}
 }
+
+// Git returns the physical worktree path even when it was registered through
+// a symlink, as happens with /var and /private/var on macOS.
+func TestTrustedWorktreeCanonicalPath(t *testing.T) {
+	root, repo, wt := repoWithWorktree(t)
+	alias := filepath.Join(t.TempDir(), "alias")
+	if err := os.Symlink(root, alias); err != nil {
+		t.Fatal(err)
+	}
+	aliasedRepo := filepath.Join(alias, filepath.Base(repo))
+	aliasedWT := filepath.Join(alias, filepath.Base(wt))
+	Trust(aliasedRepo, aliasedWT)
+	out, err := Command(aliasedWT, "rev-parse", "--show-toplevel").Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	physical := strings.TrimSpace(string(out))
+	if _, _, ok := Dirs(physical); !ok {
+		t.Fatalf("lost trust for Git's canonical path %q", physical)
+	}
+	out, err = Command(physical, "rev-parse", "--git-common-dir").Output()
+	if err != nil {
+		t.Fatalf("canonical lookup: %v: %s", err, out)
+	}
+	if !sameDir(strings.TrimSpace(string(out)), filepath.Join(repo, ".git")) {
+		t.Fatalf("wrong common directory: %s", out)
+	}
+}
