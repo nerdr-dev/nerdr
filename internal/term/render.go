@@ -18,6 +18,17 @@ var frame atomic.Uint64
 // Its exit still does.
 func NextFrame() { frame.Add(1) }
 
+// drawnElsewhere is set in a process that draws no screen itself; see
+// DrawnElsewhere.
+var drawnElsewhere atomic.Bool
+
+// DrawnElsewhere says this process draws no screen itself: a core of its
+// own, whose client draws them in another process. No frame is ever
+// started here, so no pane counts as drawn on the last one: only a pane
+// a client is sent (Watch) wakes the process when its program draws, and a
+// busy agent out of the client's sight does not.
+func DrawnElsewhere() { drawnElsewhere.Store(true) }
+
 // ScrollbackLen is how many lines there are to scroll back through.
 func (s *Screen) ScrollbackLen() int {
 	s.mu.Lock()

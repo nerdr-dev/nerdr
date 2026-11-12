@@ -32,9 +32,11 @@ type Part struct {
 	Body json.RawMessage
 }
 
-// The keys of the parts: the rest of core, and the tab of an id.
+// The keys of the parts: the rest of core, the looks at the agents'
+// skills, and the tab of an id.
 const (
 	PartCore   = "core"
+	PartSkills = "skills"
 	partTabPre = "tab:"
 )
 
@@ -68,6 +70,28 @@ type corePart struct {
 	// (config.ScopeCore), and keeps the client's, which are the client's
 	// to read where it runs.
 	Config *config.Config `json:"$config,omitempty"`
+	// SkillLooks are read from a core older than the part of their own
+	// (skillsPart), which sent them here; never written.
+	SkillLooks map[string]SkillLook `json:"SkillLooks,omitempty"`
+}
+
+// skillsPart is the looks at where the agents have the skills: large, and
+// seldom changed, so in a part of their own, which is not made again while
+// they are as they were (skillsSum).
+type skillsPart struct {
+	Looks map[string]SkillLook `json:"looks"`
+}
+
+// skillsSum tells one state of SkillLooks from another without writing
+// them out: a look is only ever replaced by one for another key or of
+// another time. Mu is held.
+func (m *Core) skillsSum() [32]byte {
+	h := sha256.New()
+	for _, id := range slices.Sorted(maps.Keys(m.SkillLooks)) {
+		v := m.SkillLooks[id]
+		fmt.Fprintf(h, "%q %q %d %d %d %d\n", id, v.Key, v.At.UnixNano(), len(v.Found), len(v.States), len(v.Others))
+	}
+	return [32]byte(h.Sum(nil))
 }
 
 // ProgramState is a program core runs, as a copy of its state knows it:
@@ -130,10 +154,13 @@ func (t *Tab) UnmarshalJSON(b []byte) error {
 // what changed. The zero Sent has been sent nothing.
 type Sent struct {
 	sums map[string][32]byte
+	// skills is the skillsSum the looks at the skills were sent at, nil
+	// when they were not.
+	skills *[32]byte
 }
 
 // Reset forgets what was sent: the next Parts are all of it.
-func (s *Sent) Reset() { s.sums = nil }
+func (s *Sent) Reset() { s.sums, s.skills = nil, nil }
 
 // Parts are the parts of core's state that changed since s, and s marked
 // as sent them. A part that cannot be encoded is left out, and its error
@@ -177,6 +204,14 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 		errs = append(errs, add(PartTab(t.ID), p))
 	}
 	errs = append(errs, add(PartCore, corePart{coreFields: (*coreFields)(m), Order: order, Agents: ids, Programs: m.programStates(), Config: &m.Cfg}))
+	if sum := m.skillsSum(); s.skills == nil || *s.skills != sum {
+		if b, err := json.Marshal(skillsPart{Looks: m.SkillLooks}); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", PartSkills, err))
+		} else {
+			s.skills = &sum
+			out = append(out, Part{Key: PartSkills, Body: b})
+		}
+	}
 	for k := range s.sums {
 		if !live[k] {
 			delete(s.sums, k) // closed: should it be back, it goes again
@@ -232,6 +267,12 @@ func (r *Mirror) Apply(p Part) error {
 		if err := r.applyCore(p.Body); err != nil {
 			return err
 		}
+	case p.Key == PartSkills:
+		var sp skillsPart
+		if err := json.Unmarshal(p.Body, &sp); err != nil {
+			return err
+		}
+		r.C.SkillLooks = sp.Looks
 	case strings.HasPrefix(p.Key, partTabPre):
 		if err := r.applyTab(strings.TrimPrefix(p.Key, partTabPre), p.Body); err != nil {
 			return err
@@ -326,6 +367,9 @@ func (r *Mirror) applyCore(body []byte) error {
 	renameRefs(reflect.ValueOf(fresh).Elem(), "", r.C.ID)
 	renameRefs(reflect.ValueOf(&p.Programs).Elem(), "", r.C.ID)
 	copyWire(reflect.ValueOf(r.C).Elem(), reflect.ValueOf(fresh).Elem())
+	if p.SkillLooks != nil {
+		r.C.SkillLooks = p.SkillLooks
+	}
 	if p.Config != nil {
 		r.C.Cfg = config.Merge(*p.Config, r.C.Cfg)
 	}

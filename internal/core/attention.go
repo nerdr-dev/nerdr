@@ -152,6 +152,18 @@ func (l TabList) Waiting() []*Tab {
 	return out
 }
 
+// activeEvery is how far LastActive may lag behind an agent at work. It is
+// saved, and sent to a client: kept to the moment, the tab of every agent
+// at work would be sent again at each look at the agents.
+const activeEvery = 15 * time.Second
+
+// active notes that t's agent works at now.
+func (t *Tab) active(now time.Time) {
+	if now.Sub(t.LastActive) >= activeEvery {
+		t.LastActive = now
+	}
+}
+
 // cold reports whether t has gone cold: neither its agent nor you have
 // done anything in it for cold_days.
 func (m *Core) Cold(t *Tab, now time.Time) bool {

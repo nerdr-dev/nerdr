@@ -57,8 +57,9 @@ type Core struct {
 	// skilluse.go.
 	SkillUse SkillUse
 	// SkillLooks are the last looks at where each agent has the skills,
-	// by its tab's id; see skillon.go.
-	SkillLooks map[string]SkillLook
+	// by its tab's id; see skillon.go. A client is sent them in a part
+	// of their own (PartSkills), not with the rest of core.
+	SkillLooks map[string]SkillLook `json:"-"`
 	// hookSockErr is why there is no hookSock, when there is not.
 	HookSockErr string
 
@@ -95,7 +96,9 @@ type Core struct {
 	Awake     Keeper `json:"-"`
 	KeptAwake bool
 	AwakeErr  string
-	LastBusy  time.Time
+	// Core's alone, and not sent: it changes at every look at the agents
+	// while one works.
+	LastBusy time.Time `json:"-"`
 	// PRWatch is the watching of your pull requests; see prwatch.go.
 	PRWatch PRWatchState
 	// PRAll is everyone's pull requests, while a client shows them; see

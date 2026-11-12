@@ -176,7 +176,7 @@ func (p *Pane) readLoop() {
 			if len(b) > 0 {
 				p.Feed(b)
 			}
-			if p.drawnOn.Load() == frame.Load() || p.watched.Load() {
+			if p.watched.Load() || !drawnElsewhere.Load() && p.drawnOn.Load() == frame.Load() {
 				p.notify()
 			}
 		}

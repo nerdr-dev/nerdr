@@ -3,6 +3,7 @@ package term
 import (
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -201,5 +202,38 @@ func TestStopStopsWhatIsLeftOfTheGroup(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if after, _ := os.ReadFile(beat); string(after) != string(before) {
 		t.Error("the child still writes after Stop returned")
+	}
+}
+
+// TestPaneOutOfSightDoesNotWake: in a process that draws no screen itself,
+// a core of its own, a program's output wakes it only while a client is
+// sent the pane's screen. An agent at work in a tab out of sight would
+// otherwise have core, and its client, go round sixty times a second.
+func TestPaneOutOfSightDoesNotWake(t *testing.T) {
+	drawnElsewhere.Store(true)
+	defer drawnElsewhere.Store(false)
+	var woken atomic.Int64
+	p, err := Start([]string{"sh", "-c", `while :; do echo x; sleep 0.02; done`}, t.TempDir(), os.Environ(), 40, 5, func() { woken.Add(1) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(p.Snapshot().Screen, "x") {
+		if time.Now().After(deadline) {
+			t.Fatal("the program never drew")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	time.Sleep(200 * time.Millisecond)
+	if n := woken.Load(); n != 0 {
+		t.Fatalf("woken %d times by a program out of sight", n)
+	}
+	p.Watch(true)
+	for woken.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("never woken by a program a client is sent")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

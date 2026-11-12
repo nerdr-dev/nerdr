@@ -101,15 +101,17 @@ func (m Model) View() string {
 		diffTitle = m.spinner.View() + " " + diffTitle
 	}
 	if m.zoomed {
-		return lipgloss.JoinVertical(lipgloss.Left, append(m.menuPart(W), m.zoomedView(W, H, filesTitle, diffTitle))...)
+		return stack(append(m.menuPart(W), m.zoomedView(W, H, filesTitle, diffTitle))...)
 	}
 
 	diffPane := renderTitledDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h,
 		m.hasFocus(focusDiff), diffTitle, m.diffHint(), m.diffSel)
 
-	top := lipgloss.JoinVertical(lipgloss.Left, filesPane, diffPane)
+	var top string
 	if m.sideBySide(W) {
 		top = lipgloss.JoinHorizontal(lipgloss.Top, filesPane, diffPane)
+	} else {
+		top = stack(filesPane, diffPane)
 	}
 	return m.withStatus(W, append(m.menuPart(W), top)...)
 }
@@ -123,7 +125,7 @@ func (m Model) withStatus(W int, parts ...string) string {
 	case m.statusRows() > 0:
 		parts = append(parts, m.statusBar(W))
 	}
-	return lipgloss.JoinVertical(lipgloss.Left, parts...)
+	return stack(parts...)
 }
 
 // zoomedView renders just the focused pane, filling everything above the
@@ -397,10 +399,6 @@ func renderScrollList(items []string, cursor, viewTop, width, height int, active
 	for len(rows) < innerH {
 		rows = append(rows, strings.Repeat(" ", innerW))
 	}
-	style := borderInactive
-	if active {
-		style = borderActive
-	}
 	rows = append(rows, hintRow(hint, innerW, active))
 	// The column header names what the rows' columns are — in particular
 	// which of the two glyphs is the review verdict and which is CI, which
@@ -408,7 +406,7 @@ func renderScrollList(items []string, cursor, viewTop, width, height int, active
 	if header != "" {
 		rows = append([]string{dimStyle.Render(fit(header, innerW))}, rows...)
 	}
-	return scrollbar(style.Render(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n")),
+	return scrollbar(framed(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n"), active),
 		len(items), viewTop, innerH, 2+headerRows(header), active)
 }
 
@@ -748,12 +746,8 @@ func renderPane(items []string, idx, width, height int, active bool, title, hint
 		rows = append(rows, strings.Repeat(" ", innerW))
 	}
 
-	style := borderInactive
-	if active {
-		style = borderActive
-	}
 	rows = append(rows, hintRow(hint, innerW, active))
-	return scrollbar(style.Render(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n")),
+	return scrollbar(framed(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n"), active),
 		len(items), start, innerH, 2, active)
 }
 
@@ -775,14 +769,10 @@ func renderDiff(lines []diffLine, cursor, viewTop, width, height int, active boo
 		innerH = 1
 	}
 
-	style := borderInactive
-	if active {
-		style = borderActive
-	}
 	if len(lines) == 0 {
 		content := plainText("", innerW, innerH)
-		return style.Render(headingRow(title, innerW, active) + "\n" + content +
-			"\n" + hintRow(hint, innerW, active))
+		return framed(headingRow(title, innerW, active)+"\n"+content+
+			"\n"+hintRow(hint, innerW, active), active)
 	}
 
 	cursor = clamp(cursor, 0, max(0, len(lines)-1))
@@ -806,7 +796,7 @@ func renderDiff(lines []diffLine, cursor, viewTop, width, height int, active boo
 		rows = append(rows, strings.Repeat(" ", innerW))
 	}
 	rows = append(rows, hintRow(hint, innerW, active))
-	return scrollbar(style.Render(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n")),
+	return scrollbar(framed(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n"), active),
 		v.rowOf(len(lines)), start, innerH, 2, active)
 }
 
@@ -829,6 +819,42 @@ func plainText(s string, w, h int) string {
 var ansiSeq = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func stripANSI(s string) string { return ansiSeq.ReplaceAllString(s, "") }
+
+// stack puts parts under each other. It is lipgloss.JoinVertical on the
+// left but for the spaces that would make every line as wide as the
+// widest: they show nothing, and finding how many measures every line of
+// the panel each time it is drawn.
+func stack(parts ...string) string { return strings.Join(parts, "\n") }
+
+var (
+	frameActive   = lipgloss.NewStyle().Foreground(lipgloss.Color("110"))
+	frameInactive = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+)
+
+// framed draws block in a pane's border, as borderActive and
+// borderInactive render it, measuring each line once: lipgloss measures
+// them several times over, which was most of what drawing the panel took.
+func framed(block string, active bool) string {
+	st := frameInactive
+	if active {
+		st = frameActive
+	}
+	lines := strings.Split(strings.ReplaceAll(block, "\t", "    "), "\n") // tabs as lipgloss has them
+	widths := make([]int, len(lines))
+	w := 0
+	for i, l := range lines {
+		widths[i] = ansi.StringWidth(l)
+		w = max(w, widths[i])
+	}
+	side := st.Render("│")
+	var b strings.Builder
+	b.WriteString(st.Render("╭" + strings.Repeat("─", w) + "╮"))
+	for i, l := range lines {
+		b.WriteString("\n" + side + l + strings.Repeat(" ", w-widths[i]) + side)
+	}
+	b.WriteString("\n" + st.Render("╰"+strings.Repeat("─", w)+"╯"))
+	return b.String()
+}
 
 func fit(s string, w int) string {
 	if w <= 0 {

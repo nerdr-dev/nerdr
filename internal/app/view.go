@@ -134,6 +134,7 @@ func (m *Model) View() string {
 		return m.frame
 	}
 	m.sameFrame = false
+	m.sideMemoOK = false
 	m.frameGen = m.fleet.Gen()
 	term.NextFrame()
 	m.zoneFns, m.zoneTips = m.zoneFns[:0], m.zoneTips[:0]

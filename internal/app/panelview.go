@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -64,6 +65,12 @@ func (m *Model) reviewSet(r review.Model, w int) review.Model {
 	return r
 }
 
+// reviewFitKey is what reviewFit was fitted from and to.
+type reviewFitKey struct {
+	seq  uint64
+	w, h int
+}
+
 // panelBody is what the review panel shows, w×h: the screen chosen, below
 // the menu row when it has one.
 func (m *Model) panelBody(w, h int) []string {
@@ -74,12 +81,18 @@ func (m *Model) panelBody(w, h int) []string {
 		m.review = m.reviewSet(m.review, w)
 		m.reviewView = m.review.View()
 		m.reviewGen = m.fleet.Gen()
+		m.reviewSeq++
 	} else if reuseCheck {
 		if v := m.reviewSet(m.review, w).View(); v != m.reviewView {
 			panic(fmt.Sprintf("review panel reused, but it has changed:\n--- reused\n%s\n--- now\n%s", ansi.Strip(m.reviewView), ansi.Strip(v)))
 		}
 	}
-	lines := fitLines(strings.Split(m.reviewView, "\n"), w, h)
+	// Fitted once for each drawing: it measures every line, and the panel
+	// is the same from one frame to the next while only programs draw.
+	if key := (reviewFitKey{m.reviewSeq, w, h}); m.reviewFit == nil || key != m.reviewFitOf {
+		m.reviewFit, m.reviewFitOf = fitLines(strings.Split(m.reviewView, "\n"), w, h), key
+	}
+	lines := slices.Clone(m.reviewFit) // what is drawn over it changes its lines
 	if h < 3 || w < 3 {
 		return lines
 	}

@@ -679,8 +679,9 @@ type Tab struct {
 	InfoAsks, PrAsks int
 
 	// ShownAt is when the tab was last on screen, alone or in a split;
-	// see sleep.go.
-	ShownAt time.Time
+	// see sleep.go. Core's alone, and not sent: it changes at every look
+	// at the agents while the tab is shown.
+	ShownAt time.Time `json:"-"`
 
 	// Resumed is set when the agent was started to continue an earlier
 	// conversation; fallbackTried when that failed and it was started

@@ -19,6 +19,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/term"
 )
 
 // errStarting is a core that could not start: starting it again would not
@@ -64,6 +65,9 @@ func runCore(h *core.Held) error {
 	}
 	core.Logf("started for %s, %d tabs from the saved session", root, len(sess.Tabs))
 
+	// The screens are drawn by the client: only those it shows wake the
+	// loop as their programs draw.
+	term.DrawnElsewhere()
 	c := &core.Core{
 		Cfg:  cfg,
 		Root: root,

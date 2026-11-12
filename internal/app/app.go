@@ -229,8 +229,34 @@ type Model struct {
 	sameFrame bool
 	// frameGen is core's Gen when the frame was drawn.
 	frameGen uint64
-	mouse    mouseMode
-	drag     dragKind
+	// quiet is set while Update handles a message that changed nothing the
+	// TUI shows or says: a frame of a core in another process, whose
+	// screens come by themselves (core.ScreensMsg), and what such a core
+	// sent that is only passed on. An agent at work has them come many
+	// times a second; the frame is then the last one drawn, and what
+	// Update does every time is left until something has changed.
+	quiet bool
+	// keepFrame is set while Update handles what a core in another
+	// process sent that leaves the frame to a message that follows it; see
+	// InboxMsg.
+	keepFrame bool
+	// fromCore is set while Update handles what a machine's core told the
+	// TUI (fleet.Told), not a message of the TUI's own.
+	fromCore bool
+	// sideMemo is the wide sidebar's width as last worked out, for
+	// sideMemoKey: within one Update or View, where it is asked for many
+	// times over. See wideW.
+	sideMemo    int
+	sideMemoKey sideKey
+	sideMemoOK  bool
+	// reviewFit is reviewView fitted to the panel's area, for reviewFitOf:
+	// the drawing it was fitted from, by reviewSeq, which counts them, and
+	// the area. See panelBody.
+	reviewSeq   uint64
+	reviewFit   []string
+	reviewFitOf reviewFitKey
+	mouse       mouseMode
+	drag        dragKind
 	// dragTab and dragDiv are, while a divider between panes is dragged,
 	// its tab and which divider: the one after its dragDiv'th pane shown.
 	dragTab *core.Tab
@@ -437,6 +463,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.fleet.Lock()
 	defer m.fleet.Unlock()
+	_, m.fromCore = msg.(fleet.Told)
 	mc, msg := m.machineMsg(msg)
 	if mc == nil {
 		// Of a machine no longer the fleet's: a connection made for it
@@ -446,6 +473,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	}
+	m.sideMemoOK = false
 	msgs := m.panelMessages()
 	if !m.laidOut {
 		m.laidRows, m.laidSide, m.laidOut = m.barRows(), m.sideW(), true
@@ -456,8 +484,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		m.reviewReuse = false
 	}
-	m.sameFrame = false
+	m.sameFrame, m.quiet, m.keepFrame = false, false, false
 	cmd := m.updateOn(mc, msg)
+	if m.quiet {
+		// Nothing changed: the frame is the last one, if core has not
+		// changed it meanwhile (see View).
+		m.sameFrame = true
+		return m, cmd
+	}
 	if m.dialog == nil {
 		m.chosen = nil // a dialog opened next starts on the active tab's
 	}
@@ -498,6 +532,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.review = m.review.SetAlone(m.reviewZoom)
 	m.syncInput()
 	m.sayStates()
+	if m.keepFrame {
+		m.sameFrame = true
+	}
 	return m, tea.Batch(cmd, shown, m.syncMouse())
 }
 
@@ -532,14 +569,24 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 	}
 	switch msg := msg.(type) {
 	case core.InboxMsg:
+		gen := m.fleet.Gen()
 		evs := mc.Conn.Take()
 		// What core sent leaves the review panel as it was when it is only
 		// what is passed on, each drawn by its own rules, and no part:
 		// a part moves Gen on. A program drawing sends a frame many
 		// times a second, and the panel is the costly part to draw.
-		m.reviewReuse = m.fleet.Gen() == m.reviewGen && !slices.ContainsFunc(evs, func(ev core.Event) bool { return !passedOn(ev) })
+		onlyPassed := !slices.ContainsFunc(evs, func(ev core.Event) bool { return !passedOn(ev) })
+		leaves := !slices.ContainsFunc(evs, func(ev core.Event) bool { return !leavesPanel(ev) })
+		m.reviewReuse = m.fleet.Gen() == m.reviewGen && leaves
 		cmd := m.told(mc, evs)
+		// Nothing to draw or do for it here: what is passed on comes to
+		// Update by itself.
+		m.quiet = onlyPassed && m.fleet.Gen() == gen
+		// The start and end of core's look at the agents are followed by
+		// its RedrawMsg, which draws what they left to draw.
+		m.keepFrame = leaves && m.fleet.Gen() == gen
 		if mc.Conn.Started() {
+			m.quiet, m.keepFrame = false, false
 			// A program core started at the size the TUI last said: it
 			// gets the size it is shown at now.
 			m.reviewReuse = false
@@ -601,6 +648,11 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		if mc.Screens != nil {
 			mc.Screens.Drop(mc.Core.Runs)
 		}
+		// A program of a core in another process has drawn: its screen,
+		// when the TUI shows it, comes by itself (core.ScreensMsg), and
+		// there is nothing here to draw. The TUI's own program, the
+		// editor, says so with a frame of the TUI's own.
+		m.quiet = m.fromCore && mc.Conn != nil && m.editor == nil
 		m.checkEditor()
 		if mc.Conn == nil { // core looks at its programs itself
 			m.doOn(mc, core.CheckPrograms{})

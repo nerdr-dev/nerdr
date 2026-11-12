@@ -118,6 +118,9 @@ type shownScreen struct {
 
 	mu  sync.Mutex
 	snd term.RowsSender
+	// last is the message last written, wrote whether one was; see build.
+	last  term.ScreenMsg
+	wrote bool
 }
 
 // NewScreenServer serves conn the screens it asks for, posting the
@@ -376,7 +379,16 @@ func (s *ScreenServer) build(sc *shownScreen) func() []byte {
 			sc.snd.Reset()
 		}
 		sc.pane.ViewInto(sc.snd.View(), int(sc.scroll.Load()))
-		return wire(wireScreen, screenWire{Ref: sc.ref, ScreenMsg: sc.snd.Msg()})
+		msg := sc.snd.Msg()
+		// Every screen shown is looked at with each look at the agents,
+		// for what changes with nothing drawn: one that says nothing new
+		// is not written, for the client to draw again.
+		if sc.wrote && msg.Unchanged(&sc.last) {
+			return nil
+		}
+		sc.last, sc.wrote = msg, true
+		sc.last.Rows, sc.last.Styles = nil, nil
+		return wire(wireScreen, screenWire{Ref: sc.ref, ScreenMsg: msg})
 	}
 }
 

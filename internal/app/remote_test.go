@@ -213,6 +213,35 @@ func TestRemoteTUIQuiet(t *testing.T) {
 	}
 }
 
+// TestRemoteTUIFrames: a frame of a core in another process, which comes
+// many times a second while a program there draws, and what core sent
+// that only passes such on, change nothing the TUI shows: the frame drawn
+// last is used again. A frame of the TUI's own, its editor's, is drawn.
+func TestRemoteTUIFrames(t *testing.T) {
+	m, _, _, told := remoteTUI(t, "sh", "-c", `echo ready; sleep 30`)
+	pump(t, m, told, "the agent", func(v string) bool { return strings.Contains(v, "ready") })
+	drawn := m.View()
+	m.Update(fleet.Told{Machine: m.home().Name, Msg: core.FrameMsg{}})
+	if !m.sameFrame {
+		t.Error("a frame of core's has the screen drawn again")
+	}
+	if v := m.View(); v != drawn {
+		t.Errorf("a frame of core's changed the screen:\n%s", ansi.Strip(v))
+	}
+	m.Update(fleet.Told{Machine: m.home().Name, Msg: core.InboxMsg{}})
+	if !m.sameFrame {
+		t.Error("nothing new from core has the screen drawn again")
+	}
+	m.Update(core.FrameMsg{})
+	if m.sameFrame {
+		t.Error("a frame of the TUI's own is not drawn")
+	}
+	m.Update(fleet.Told{Machine: m.home().Name, Msg: core.RedrawMsg{}})
+	if m.sameFrame {
+		t.Error("core's look at the agents is not drawn")
+	}
+}
+
 // TestRemoteTUITakenOver: a TUI another nerdr took over from ends, and
 // does not take core back, which the other would do in its turn.
 func TestRemoteTUITakenOver(t *testing.T) {
