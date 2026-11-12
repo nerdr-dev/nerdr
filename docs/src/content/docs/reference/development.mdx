@@ -43,11 +43,15 @@ on. The core and the holder take the variable only when they start, so
 quit nerdr first (Quit, not Close). Send the signal only to the
 processes named in the folder: a nerdr that is not profiling ends on it.
 
+The folder must exist, or nothing is written; use a new one each time,
+so the signals go only to this run's processes:
+
 ```sh
-NERDR_PROFILE=/tmp/nerdr-prof nerdr
-# later, from another terminal:
-for f in /tmp/nerdr-prof/*.cpu; do p=${f##*-}; kill -USR2 "${p%.cpu}"; done
-go tool pprof -top /tmp/nerdr-prof/client-*.cpu
+PROF=$(mktemp -d); echo "$PROF"
+NERDR_PROFILE=$PROF nerdr
+# later, in another terminal, with PROF set to the folder printed above:
+for f in "$PROF"/*.cpu; do p=${f##*-}; kill -USR2 "${p%.cpu}"; done
+go tool pprof -top "$PROF"/client-*.cpu
 ```
 
 ## The docs
