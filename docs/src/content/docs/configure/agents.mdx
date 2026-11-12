@@ -173,6 +173,123 @@ to review, a handoff or a review, was still written by the sandboxed
 agent and can contain instructions. It is safest to run every agent in a
 sandbox, or nerdr itself in one.
 
+## Setting nerdr up for a sandbox
+
+This section gathers what to set in nerdr and what to weigh. It holds for
+any sandbox; the sections after it say what the sandbox itself must allow
+and deny.
+
+### What to set
+
+| Setting | Set it to | Why |
+|---|---|---|
+| `sandboxed` | `true` for every agent whose `command` is a sandbox | nerdr then holds the agent back on the hook socket, and checks its sandbox before each start. |
+| `command` | The sandbox, then the agent's own program as a word of its own | The check runs nerdr where that word is. A wrapper that picks the agent some other way, by an option or a name of its own, needs a small script in front that runs what it is given; see [the check](#what-a-sandbox-must-deny-when-the-core-runs-on-its-own). |
+| `install` | `"worktree"` | nerdr's skills and plugins go in each tab's folder, where only that tab's agent can change them. See [below](#where-nerdr-installs-install). |
+| `data_dir` | A folder in the worktree, such as `".nerdr"` | Each tab's agent writes only its own notes, reviews and handoffs. See [below](#where-the-records-are-kept-data_dir). |
+
+```toml
+install = "worktree"
+data_dir = ".nerdr"
+
+[agents.copilot]
+command = ["my-sandbox", "--", "copilot"]
+sandboxed = true
+```
+
+### Every agent in a sandbox, or only some
+
+Run every agent in a sandbox if you can. What nerdr does for a sandboxed
+agent holds either way, but an agent outside a sandbox still reads what
+one inside wrote: the code it reviews, a handoff it takes over, a message
+you approve in F3, files in folders both can write. Text there can hold
+instructions, and the agent outside can do anything you can. With every
+agent in a sandbox, there is no such agent to steer.
+
+Terminal panes and your editor always run as you, with no wrapper, in a
+worktree the agent has written. What your shell or editor loads from a
+folder by itself, such as an environment file or workspace settings, is
+then the agent's to write.
+
+### Letting the agent reach nerdr
+
+The agent reaches nerdr through the hook socket. You choose whether its
+sandbox lets it.
+
+| | Sandbox allows the socket | Sandbox denies it |
+|---|---|---|
+| Status of the agent | From its hooks: exact | Read off the screen: can be wrong between steps |
+| Code review by another agent, spinoff, handoff, messages between agents, plugins | Work, held back as [above](#agents-in-a-sandbox-sandboxed) | Do not work. nerdr warns you once that no reports arrive |
+| Explanations and walkthroughs | Work | Work, when the sandbox can run `$NERDR_BIN` or the agent writes the files in `data_dir` itself |
+| What the agent can ask of nerdr | What a sandboxed agent may | Nothing |
+
+With the socket allowed, two things are yours to see to:
+
+- **Allow connecting, and no more.** A rule that also lets the agent
+  remove the socket's file, or listen at its path, lets it put a socket of
+  its own there. The nerdr commands of every other agent would then talk
+  to that one. nerdr does not notice this.
+- **Read what you say yes to.** A plugin runs outside the sandbox, as
+  you, with the parameters the agent gave it. nerdr asks before each run
+  a sandboxed agent starts, and that question is the guard.
+
+### Where nerdr installs: `install`
+
+| | `"worktree"` | `"home"` |
+|---|---|---|
+| Skills are found | In nerdr's tabs | By the agents outside nerdr too |
+| Who can change them | The tab's own agent, for itself | Any agent whose sandbox lets it write the agent's folder in your home folder, for every agent |
+| Files in the worktree | Yes, kept out of git | Only Copilot's plugin, for a copilot in a sandbox |
+
+Neither setting keeps an agent from writing the agents' folders in your
+home folder: with `"worktree"` nerdr only puts nothing of its own there.
+The agents load what is in them all the same, so the sandbox should deny
+writing them. With `"home"`, nerdr's check tells you when it does not.
+See [Where skills are installed](../../panel/skills/#where-skills-are-installed).
+
+### Where the records are kept: `data_dir`
+
+| | In the worktree (`".nerdr"`) | Empty: the repository's `.git/nerdr` |
+|---|---|---|
+| Who can write a tab's records | Its own agent | Every agent with a worktree of the repository |
+| When the worktree is deleted | Deleted with it | Kept |
+| Shared between the repository's tabs | No | Yes |
+
+With the shared folder, an agent in one tab can write a handoff or a
+review that an agent in another tab reads as its own.
+
+### What nerdr no longer does in the repository
+
+Once an agent has run in a sandbox in a repository, nerdr treats what is
+in it as the agent's, and stops doing as you what the agent could turn
+into running its code. This stays so after the tab is closed, until you
+have nerdr forget it. The Git hooks and the code review follow the tab
+the agent ran in; the rest holds for the whole repository.
+
+| nerdr | Where an agent has run in a sandbox |
+|---|---|
+| Fetch and push | Refused, but for the fetch a new tab needs. Push from inside the sandbox, which then needs the network and your credentials, or from your own terminal once you have read the change |
+| Git hooks on commit and push | Not run. Commit in your own terminal to have them |
+| `.nerdr.toml` setup | Skipped when `copy` has any pattern. Run it in the sandbox, or yourself |
+| Signed commits | Fail when signing is required, instead of being made unsigned |
+| Git LFS | Operations that need conversion fail |
+| Filter, diff and merge drivers that run a program | All host Git is refused while one is configured |
+| `git sparse-checkout` | All host Git is refused while `extensions.worktreeConfig` is on |
+| Code review of the agent's work | Runs only in agents that are themselves sandboxed |
+
+See [Security](../../reference/security/#what-nerdr-does-not-take-from-the-worktree)
+for each, and for how to have nerdr forget a repository's sandbox history.
+
+### What nerdr does not see to
+
+- **Other ways out of the sandbox.** nerdr checks its own socket, files
+  and folders. The D-Bus session bus, sockets of other programs, services
+  on localhost and your credentials are the sandbox's to deny.
+- **Your SSH keys and SSH agent**, which reach nerdr on your
+  [servers](#with-servers-ssh-keys-and-the-ssh-agent).
+- **What the sandbox gives the agent on purpose**, such as a token to
+  push with. The agent can use it for anything the token allows.
+
 ## Other agents
 
 Add a named section with `command` to offer another agent in the picker:
@@ -229,7 +346,9 @@ The sandbox must:
 - allow connecting to the socket at `$NERDR_SOCKET`. It is always
   `~/.local/state/nerdr/nerdr.sock` (`$XDG_STATE_HOME/nerdr/nerdr.sock`
   when that is set), whatever folder nerdr starts in, so the rule can
-  name that one path.
+  name that one path. Connecting is all it needs: do not let the agent
+  remove the file or listen at the path (see
+  [Letting the agent reach nerdr](#letting-the-agent-reach-nerdr)).
 
 One nerdr has that socket at a time. A second instance started in
 another folder notifies you and listens on its own socket in the same
