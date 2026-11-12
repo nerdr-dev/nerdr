@@ -43,7 +43,7 @@ connected.
 
 | Setting | Default | |
 |---|---|---|
-| `prefix` | `"ctrl+q"` | The key before every nerdr command: any `ctrl+<letter>`. Avoid keys your agents use; herdr uses `ctrl+b`. |
+| `prefix` | `"ctrl+q"` | The key before every nerdr command: any `ctrl+<letter>`. Avoid keys your agents use. |
 | `mouse` | `true` | Clicks, menus, the wheel and selecting text. Off, the terminal keeps its own selection. |
 | `function_keys` | `true` | Label the panel's screens F1–F5. Off, label them with `ctrl+q e 1`…`e 5`, for keyboards where the F-keys are hard to reach. |
 
@@ -115,7 +115,6 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 | `pr_notify` | `true` | Tell you about failed checks and new reviews on your pull requests. Off, GitHub is not asked. |
 | `issue_notify` | `true` | Tell you about issues newly assigned to you. Off, GitHub is not asked. |
 | `github_refresh` | `90` | Seconds between GitHub checks of the tab on screen, 15–3600; other checks scale with it. |
-| `herdr_focus_jump` | `true` | Inside herdr, go to the tab that needs you when herdr focuses nerdr. |
 | `claude_status_line` | `true` | Start claude with nerdr's status line, which reports the rate limits and then shows yours. See [Usage](../../use/progress/#usage-and-rate-limits). |
 
 ## Programs
@@ -222,7 +221,7 @@ nerdr:
 `prefix`, `mouse`, `function_keys`, `layout`, `tab_bar`, `tab_details`,
 `panel_width`, `panel_labels`, `pane_min_width`, `diff_colors`,
 `status_lights`, `fps`, `notify`, `pr_notify`, `issue_notify`,
-`herdr_focus_jump`, `editor`, `worktree_editor`, `browser`,
+`editor`, `worktree_editor`, `browser`,
 `keep_screen_on`, `keep_screen_max` and `[[servers]]`.
 
 The rest are read by the machine the agents run on, from

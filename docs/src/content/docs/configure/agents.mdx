@@ -18,7 +18,7 @@ with `[agents.<name>]`:
 |---|---|
 | `command` | Replaces the command. Can include a wrapper and fixed arguments. The first word must be on your PATH. |
 | `args` | Added after `command` on every launch. |
-| `env` | Overrides inherited environment variables. `NERDR_*` and `HERDR_*` are reserved. Agents and terminals do not inherit variables naming the agent or terminal nerdr was started from, such as `CLAUDECODE`, `TMUX` or `KITTY_WINDOW_ID`, and get `TERM_PROGRAM=nerdr`. |
+| `env` | Overrides inherited environment variables. nerdr's own variables, `NERDR_*` among them, are reserved. Agents and terminals do not inherit variables naming the agent or terminal nerdr was started from, such as `CLAUDECODE`, `TMUX` or `KITTY_WINDOW_ID`, and get `TERM_PROGRAM=nerdr`. |
 | `config_model` | opencode only: its model as `provider/model`. opencode 2 dropped `--model`, so nerdr merges it into the `OPENCODE_CONFIG_CONTENT` variable, which only opencode's own server (`--standalone`, which nerdr always uses) reads. |
 
 Without `command`, the default command is used. For example,
@@ -184,21 +184,14 @@ resume_args = ["--continue"]  # used on resume; omitted means a new conversation
 detect = "amp"                # screen rules to use; defaults to the agent's name
 ```
 
-`detect` selects herdr's screen rules. nerdr has them for amp, cline,
+`detect` selects the screen rules. nerdr has them for amp, cline,
 devin, droid, hermes, kilo, kimi, kiro, letta, maki, muse, pi,
-qodercli and qwen besides its own agents, and herdr does not need to be
-installed. Without matching rules, the status is unknown, but the tab
+qodercli and qwen besides its own agents. Without matching rules, the status is unknown, but the tab
 still works. `detect` also works for built-in agents, such as one behind
 a wrapper that changes its screen.
 
-nerdr does not know where custom agents store conversations. An agent
-that supports herdr reports the command that resumes its conversation,
-as in herdr's [guide for agent authors](https://herdr.dev/docs/add-herdr-support/):
-`pane report-agent … -- my-agent --resume ID`. nerdr then resumes it with
-that command's arguments, after the agent's own `command` and `args`, so a
-wrapper or sandbox stays in place. The reported command must be one of the
-words of `command`, and is ignored when the agent is `sandboxed`. Without
-such a report, nerdr resumes with `resume_args`. When you switch away from
+nerdr does not know where custom agents store conversations, so it
+resumes one with `resume_args`. When you switch away from
 such an agent, nerdr cannot read its conversation, so it relies on a
 handoff the agent writes.
 
@@ -262,8 +255,7 @@ For read access:
 - `nerdr search` reads conversation logs in `~/.claude/projects` and
   `~/.codex/sessions`.
 
-The `HERDR_*` variables are only for herdr's integrations; leave them
-out if the sandbox does not run those. When something is missing, the
+When something is missing, the
 command says which of these it is, and the skills tell the agent to show
 the user that message rather than try another nerdr.
 

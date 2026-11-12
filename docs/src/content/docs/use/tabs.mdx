@@ -142,7 +142,10 @@ setup = "npm ci"                      # run in the new worktree
 The file can be committed or kept only in the main checkout. nerdr asks
 for approval the first time it uses it and whenever it changes, since
 `setup` runs as you, outside any sandbox. If you decline, nerdr creates
-the worktree without copying files or running setup.
+the worktree without copying files or running setup. A command with
+terminal escapes or invisible characters in it shows them as escapes,
+and the dialog says so; one too long for the screen scrolls, and yes
+counts only once you have seen its end.
 
 - `setup` runs only in a worktree on a new branch from the base. An
   existing branch, a pull request from a fork or a stacked branch holds
