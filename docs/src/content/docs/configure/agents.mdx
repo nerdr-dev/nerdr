@@ -184,7 +184,8 @@ and deny.
 | Setting | Set it to | Why |
 |---|---|---|
 | `sandboxed` | `true` for every agent whose `command` is a sandbox | nerdr then holds the agent back on the hook socket, and checks its sandbox before each start. |
-| `command` | The sandbox, then the agent's own program as a word of its own | The check runs nerdr where that word is. A wrapper that picks the agent some other way, by an option or a name of its own, needs a small script in front that runs what it is given; see [the check](#what-a-sandbox-must-deny-when-the-core-runs-on-its-own). |
+| `command` | The sandbox, then the agent's own program as a word of its own | The check runs nerdr where that word is. For a wrapper that picks the agent some other way, by an option or by default, set `check_command`. |
+| `check_command` | Only for such a wrapper: a command that runs the program after it in the agent's sandbox | The check runs through it instead. See [the check](#checking-a-wrapper-that-picks-the-agent-itself). |
 | `install` | `"worktree"` | nerdr's skills and plugins go in each tab's folder, where only that tab's agent can change them. See [below](#where-nerdr-installs-install). |
 | `data_dir` | A folder in the worktree, such as `".nerdr"` | Each tab's agent writes only its own notes, reviews and handoffs. See [below](#where-the-records-are-kept-data_dir). |
 
@@ -503,7 +504,7 @@ section's name for an agent nerdr does not know). If none is, as with a
 single script that starts the sandbox and the agent, or the sandbox
 cannot run `$NERDR_BIN`, nerdr says it could not check and refuses to start
 the agent. Configure a wrapper that can run both the agent and the check
-inside the same sandbox.
+inside the same sandbox, or set `check_command` (below).
 
 An agent's built-in sandbox for tool commands alone cannot be verified
 by this external check. Marking a plain `codex` command as `sandboxed`
@@ -515,6 +516,34 @@ The check catches a sandbox set up wrong.
 It does not stop an agent that gets out some other way, and it says
 nothing about D-Bus, sockets in `/run/user/$UID`, services on localhost,
 your SSH agent or other credentials.
+
+### Checking a wrapper that picks the agent itself
+
+Some wrappers do not take the agent's program as a word of its own: they
+start an agent by default, or pick it with an option such as
+`--agent opencode`. nerdr then finds no place for the check in
+`command`, or puts itself where the wrapper expects an agent's name, and
+refuses to start the agent. If the wrapper can run any program in a
+sandbox, give that command as `check_command`. nerdr adds its own program
+and the check's arguments at the end and runs that in place of `command`,
+with the agent's folder and environment:
+
+```toml
+[agents.opencode]
+command = ["my-sandbox", "--agent", "opencode", "--"]
+check_command = ["my-sandbox", "exec", "--"]
+sandboxed = true
+```
+
+The check then tries the sandbox `check_command` gives, not necessarily
+the one the agent gets. If the wrapper gives other programs a policy of
+their own, wider or narrower than the agent's, the check says nothing
+certain about the agent's: the agent may reach what the check could
+not, or nerdr may refuse an agent whose own sandbox is tight enough.
+Use `check_command` only with a command whose sandbox is the agent's, or
+denies the same as it at least, and test that yourself. Everything else
+holds as without it: if the check does not answer, or reaches what it
+must not, nerdr does not start the agent.
 
 ## With servers: SSH keys and the SSH agent
 

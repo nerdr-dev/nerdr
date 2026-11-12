@@ -195,7 +195,17 @@ env = { MAX_THINKING_TOKENS = "16000" }
 command = ["my-sandbox", "--", "copilot"]
 args = ["--allow-all"]
 sandboxed = true
+
+[agents.opencode]
+command = ["my-sandbox", "--agent", "opencode", "--"]
+check_command = ["my-sandbox", "exec", "--"]  # what the sandbox check runs through
+sandboxed = true
 ```
+
+`check_command` is only for a sandbox wrapper that picks the agent with
+an option or by default, so that nerdr cannot put its sandbox check in
+the agent's place in `command`. See
+[Checking a wrapper that picks the agent itself](../agents/#checking-a-wrapper-that-picks-the-agent-itself).
 
 ## Servers
 
