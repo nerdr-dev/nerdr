@@ -65,6 +65,7 @@ func (m *Core) SaveSession() {
 	s.SandboxHistoryVersion = 1
 	s.SandboxedDirs = m.SandboxedDirs
 	s.SandboxedRepos = m.SandboxedRepos
+	s.SandboxSources = m.SandboxSources
 	if err := state.Save(s); err != nil {
 		m.Toast("could not save session: " + err.Error())
 	}

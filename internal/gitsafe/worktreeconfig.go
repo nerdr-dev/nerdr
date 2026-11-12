@@ -45,6 +45,9 @@ var (
 	// Repository identity outlives any individual worktree or its trust
 	// mapping. Objects and refs survive removal of the worktree.
 	sandboxedRepositories = map[string]bool{}
+	// sandboxedFrom is where a repository's history is from, by main
+	// checkout, for the user; see SandboxedRepoFrom.
+	sandboxedFrom = map[string]string{}
 	// extensionSeen caches whether a common config file turns the
 	// extension on, by its path, while its size and time are as they were.
 	extensionSeen = map[string]extensionLook{}
@@ -95,9 +98,91 @@ func SandboxedRepo(repo string) {
 	rememberSandboxedRepository(filepath.Join(clean(repo), ".git"))
 }
 
+// SandboxedRepoFrom is SandboxedRepo, with where the history is from, for
+// the user: the tab or folder an agent ran in a sandbox in. The first one
+// told is kept.
+func SandboxedRepoFrom(repo, from string) {
+	if repo == "" {
+		return
+	}
+	SandboxedRepo(repo)
+	if from == "" {
+		return
+	}
+	wcMu.Lock()
+	if sandboxedFrom[clean(repo)] == "" {
+		sandboxedFrom[clean(repo)] = from
+	}
+	wcMu.Unlock()
+}
+
+// SandboxSource is the main checkout of the repository dir is in, when a
+// sandboxed agent has run in that repository, and where that history is
+// from, "" when nerdr was not told; ok is false when none has.
+func SandboxSource(dir string) (repo, from string, ok bool) {
+	d, known := dirs(dir)
+	if !known || d.gitDir == untrustedDir || !repoSandboxed(d.common) {
+		return "", "", false
+	}
+	repo = filepath.Dir(d.common)
+	wcMu.Lock()
+	defer wcMu.Unlock()
+	from = sandboxedFrom[repo]
+	if from == "" {
+		for r, f := range sandboxedFrom {
+			if sameDir(r, repo) {
+				from = f
+				break
+			}
+		}
+	}
+	return repo, from, true
+}
+
+// ForgetSandboxed drops the sandbox history of the main checkout repo: the
+// user has said they trust what is in the repository now. Host Git runs
+// there again as in one no sandboxed agent has worked in, until one does.
+func ForgetSandboxed(repo string) {
+	if repo == "" {
+		return
+	}
+	common := filepath.Join(clean(repo), ".git")
+	wcMu.Lock()
+	var paths []string
+	for p := range sandboxedPaths {
+		paths = append(paths, p)
+	}
+	wcMu.Unlock()
+	// commonOf takes mu, which is never taken with wcMu held.
+	var gone []string
+	for _, p := range paths {
+		if c := commonOf(p); c != "" && (c == common || sameDir(c, common)) {
+			gone = append(gone, p)
+		}
+	}
+	wcMu.Lock()
+	defer wcMu.Unlock()
+	for _, p := range gone {
+		delete(sandboxedPaths, p)
+	}
+	for c := range sandboxedRepositories {
+		if c == common || sameDir(c, common) {
+			delete(sandboxedRepositories, c)
+			delete(refusals, c)
+			delete(reported, c)
+		}
+	}
+	for r := range sandboxedFrom {
+		if r == clean(repo) || sameDir(r, repo) {
+			delete(sandboxedFrom, r)
+		}
+	}
+}
+
 // rememberSandboxedRepository retains both the original spelling and its
-// resolved path. Positive taint never expires, even if a symlink disappears
-// or a worktree closes. This is not a cache of permission to run host code.
+// resolved path. Positive taint does not expire by itself, even if a symlink
+// disappears or a worktree closes: only the user takes it away
+// (ForgetSandboxed). This is not a cache of permission to run host code.
 func rememberSandboxedRepository(common string) {
 	canonical, err := filepath.EvalSymlinks(common)
 	wcMu.Lock()

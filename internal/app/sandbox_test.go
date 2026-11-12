@@ -863,3 +863,48 @@ func TestQueueHoldsWhatASandboxWroteForAnAgentOutside(t *testing.T) {
 		t.Fatal("the message was typed in")
 	}
 }
+
+// TestForgetSandboxHistoryFromTheTabMenu: a tab in a repository an agent
+// has run in a sandbox in has Forget sandbox history in its menu, which
+// asks, saying where the history is from, and has nerdr forget it. A tab
+// in a repository without any does not have it.
+func TestForgetSandboxHistoryFromTheTabMenu(t *testing.T) {
+	m := testModel(t)
+	c := &m.home().Core
+	c.SandboxedRepos = map[string]bool{"/r/app": true}
+	c.SandboxSources = map[string]string{"/r/app": "tab old, /w/old"}
+	c.SandboxedDirs = map[string]bool{"/w/login": true}
+	gitsafe.SandboxedRepoFrom("/r/app", "tab old, /w/old")
+	const label = "Forget sandbox history…"
+	item := func() *menuItem {
+		for _, it := range m.tabItems() {
+			if it.label == label {
+				return &it
+			}
+		}
+		return nil
+	}
+	m.selectTab(2)
+	if item() != nil {
+		t.Fatal("offered in a repository with no sandbox history")
+	}
+	m.selectTab(0)
+	it := item()
+	if it == nil {
+		t.Fatal("not offered where an agent has run in a sandbox")
+	}
+	it.run(m)
+	q, ok := m.dialog.(*confirm)
+	if !ok || !q.defaultNo || !strings.Contains(strings.Join(q.lines, "\n"), "tab old, /w/old") {
+		t.Fatalf("asked %#v", m.dialog)
+	}
+	if cmd := q.yes(m); cmd != nil {
+		cmd()
+	}
+	if c.SandboxedRepos["/r/app"] || c.SandboxedDirs["/w/login"] || gitsafe.RepoSandboxed("/r/app") {
+		t.Fatalf("history left: %v, %v", c.SandboxedRepos, c.SandboxedDirs)
+	}
+	if item() != nil {
+		t.Fatal("still offered once forgotten")
+	}
+}

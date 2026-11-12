@@ -1,6 +1,7 @@
 package core
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -97,7 +98,7 @@ func (m *Core) OnFocusFiles(msg FocusFilesMsg) Cmd {
 	return m.Tell(UnseenMsg{T: m.Ref(t)})
 }
 
-func init() { registerRequests(StartRestored{}, Restart{}, MarkSandboxed{}) }
+func init() { registerRequests(StartRestored{}, Restart{}, MarkSandboxed{}, ForgetSandboxed{}) }
 
 // StartRestored starts the agents of the tabs restored at start, spaced
 // StartSpacing apart, tab Front first; those of tabs gone cold, but for
@@ -162,5 +163,20 @@ type MarkSandboxed struct{ T TabRef }
 
 func (q MarkSandboxed) Do(m *Core) Cmd {
 	m.MarkSandboxed(m.ByRef(q.T))
+	return nil
+}
+
+// ForgetSandboxed drops the sandbox history of the repositories whose main
+// checkouts are Repos, as the user asked; see Core.ForgetSandboxed.
+type ForgetSandboxed struct{ Repos []string }
+
+func (q ForgetSandboxed) Do(m *Core) Cmd {
+	for _, repo := range q.Repos {
+		if why := m.ForgetSandboxed(repo); why != "" {
+			m.Toast(filepath.Base(repo) + " keeps its sandbox history: " + why)
+			continue
+		}
+		m.Toast(filepath.Base(repo) + ": sandbox history forgotten; nerdr fetches, pushes and runs hooks there again")
+	}
 	return nil
 }

@@ -61,10 +61,20 @@ The command's error says which is missing. See
 After a sandboxed agent has worked in a repository, nerdr refuses host
 Git fetch and push, including SSH, HTTPS and local remotes. Transport
 and authentication helpers can run scripts from the agent's worktree.
-Creating a new worktree may also fail when it needs to fetch a base.
-Run the operation inside the sandbox, or inspect the work and use your
-own terminal. Local status and diffs remain available unless another
-unsafe Git setting blocks them. See [Security](../security/).
+The message names the repository and the tab or folder its sandbox
+history is from. Run the operation inside the sandbox, or inspect the
+work and use your own terminal. Local status and diffs remain available
+unless another unsafe Git setting blocks them.
+
+A new tab is still made in such a repository. nerdr does not fetch the
+base there, so the branch starts from the base as it was last fetched,
+and nerdr says so; fetch in your own terminal first to start from the
+newest.
+
+If you never run agents in a sandbox, or trust what is in the repository
+now, have nerdr forget its sandbox history: **Forget sandbox history…**
+in the tab's menu, or `nerdr sandbox clear REPO` in the folder you start
+nerdr in, with nerdr not running. See [Security](../security/).
 
 If a notice names an executable Git setting, nerdr may refuse all Git in
 that repository, including status. This applies to custom proxy, remote

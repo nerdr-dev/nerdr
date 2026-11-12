@@ -40,6 +40,8 @@ usage:
   nerdr connect HOST:FOLDER
                      the tabs of FOLDER on HOST, over ssh (nerdr installed
                      there too); FOLDER is ~ when not given
+  nerdr sandbox      the repositories nerdr holds back in, an agent having
+                     run in a sandbox there; clear forgets it (takes -h)
   nerdr help         this text
   nerdr version      which nerdr this is
 
@@ -146,6 +148,8 @@ func main() {
 			os.Exit(runUsage(os.Args[2:]))
 		case "plugin", "plugins":
 			os.Exit(runPlugin(os.Args[2:]))
+		case "sandbox":
+			os.Exit(runSandbox(os.Args[2:]))
 		case "hook":
 			// nerdr's own hooks in claude; see hooks.ClaudeSettings.
 			if len(os.Args) > 2 && os.Args[2] == "claude" {
