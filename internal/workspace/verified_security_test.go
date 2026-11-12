@@ -143,3 +143,29 @@ func TestVerifiedObjectsSuppressesServerDelegates(t *testing.T) {
 		t.Fatalf("server delegate ran: %v", err)
 	}
 }
+
+// TestVerifiedObjectsAreInTheStateFolder: the verified store is made in
+// the state folder's temporary folder, which a sandbox must keep its
+// agent from writing, not in os.TempDir, which sandboxes tend to allow.
+func TestVerifiedObjectsAreInTheStateFolder(t *testing.T) {
+	a, _, _, _ := pinRepo(t)
+	id := revParse(t, a.Path, "HEAD")
+	tmp, state := t.TempDir(), t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Setenv("XDG_STATE_HOME", state)
+	objects, done, err := verifiedObjects(a.Path, id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := filepath.Dir(objects)
+	if filepath.Dir(store) != filepath.Join(state, "nerdr", "tmp") || !strings.HasPrefix(filepath.Base(store), "nerdr-objects-") {
+		t.Fatalf("store made at %s", store)
+	}
+	if strings.HasPrefix(store, tmp) {
+		t.Fatalf("store %s is in os.TempDir", store)
+	}
+	done()
+	if _, err := os.Stat(store); !os.IsNotExist(err) {
+		t.Fatalf("store left: %v", err)
+	}
+}

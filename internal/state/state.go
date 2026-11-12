@@ -20,6 +20,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -264,12 +265,7 @@ type IssueNews struct {
 
 // Dir is where session files are kept.
 func Dir() string {
-	d := os.Getenv("XDG_STATE_HOME")
-	if d == "" {
-		home, _ := os.UserHomeDir()
-		d = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(d, "nerdr", "sessions")
+	return filepath.Join(statedir.Dir(), "sessions")
 }
 
 // Path is the session file for a start folder. Each folder has its own, so

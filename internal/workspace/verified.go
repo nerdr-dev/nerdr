@@ -12,6 +12,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // A commit id says what a commit holds only as far as the objects under
@@ -26,7 +27,10 @@ import (
 // So where a sandboxed agent has run in the repository, or asked for the
 // worktree, the files of a new branch are not checked out from the
 // repository's objects. The commit is first fetched into a store of
-// nerdr's own, where the agent cannot write. git names every object it
+// nerdr's own, where the agent cannot write: in the state folder's
+// temporary folder (see statedir), not in os.TempDir, which on macOS is
+// $TMPDIR and which sandboxes tend to let their agent write, between the
+// fetch and the checkout. git names every object it
 // receives by hashing it, so an object whose content is not its name's
 // does not arrive under that name, and the fetch fails for the want of
 // it; replace refs are not looked at. The checkout then reads that store
@@ -37,7 +41,7 @@ import (
 // and gives the store's folder and what removes it. It fails when the
 // repository's objects for the commit are not what their ids say.
 func verifiedObjects(repo, id string) (objects string, done func(), err error) {
-	tmp, err := os.MkdirTemp("", "nerdr-objects-")
+	tmp, err := statedir.MkdirTemp("nerdr-objects-")
 	if denied.Err(err) != nil {
 		return "", nil, err
 	}

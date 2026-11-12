@@ -19,6 +19,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // HeldCheck is the kind of held program that is a check from inside a
@@ -195,8 +196,16 @@ var SandboxWrites = (*Core).sandboxWrites
 // .git/config and .git/hooks of the main checkouts of t's worktrees, and
 // the folder the tabs' worktrees are in, when t's own is in a folder of
 // its own there.
+//
+// The state folder's temporary folder is tried by itself, and made first,
+// the check passing by what is not there: a sandbox may deny the state
+// folder and still allow a folder in it, and nerdr checks a new worktree's
+// files out from a store in that one (see statedir).
 func (m *Core) sandboxWrites(t *Tab) []string {
 	out := []string{filepath.Dir(config.Path()), filepath.Dir(state.Dir())}
+	if tmp, err := statedir.EnsureTempDir(); err == nil {
+		out = append(out, tmp)
+	}
 	for _, w := range t.Owner().Worktrees {
 		if w.Repo != "" {
 			out = append(out, filepath.Join(w.Repo, ".git", "config"), filepath.Join(w.Repo, ".git", "hooks"))

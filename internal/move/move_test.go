@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -342,23 +343,62 @@ func mapsEqual(a, b map[string]string) bool {
 
 func TestSweepTakesOnlyOldMoves(t *testing.T) {
 	t.Setenv("TMPDIR", t.TempDir())
-	old, err := os.MkdirTemp("", "nerdr-move-out-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	young, _ := os.MkdirTemp("", "nerdr-move-in-")
-	other, _ := os.MkdirTemp("", "something-")
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	past := time.Now().Add(-7 * time.Hour)
-	os.Chtimes(old, past, past)
-	os.Chtimes(other, past, past)
-	Sweep(6 * time.Hour)
-	if _, err := os.Stat(old); err == nil {
-		t.Error("an old move's folder was left")
+	var gone, kept []string
+	// In the state folder's temporary folder, where they are made now,
+	// and in os.TempDir, where older versions made them.
+	for _, mk := range []func(string) (string, error){
+		statedir.MkdirTemp,
+		func(p string) (string, error) { return os.MkdirTemp("", p) },
+	} {
+		for _, p := range []string{"nerdr-move-out-", "nerdr-objects-", "nerdr-index-"} {
+			d, err := mk(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			os.Chtimes(d, past, past)
+			gone = append(gone, d)
+		}
+		young, err := mk("nerdr-move-in-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		other, err := mk("something-")
+		if err != nil {
+			t.Fatal(err)
+		}
+		os.Chtimes(other, past, past)
+		kept = append(kept, young, other)
 	}
-	for _, d := range []string{young, other} {
+	Sweep(6 * time.Hour)
+	for _, d := range gone {
+		if _, err := os.Stat(d); err == nil {
+			t.Errorf("old %s was left", d)
+		}
+	}
+	for _, d := range kept {
 		if _, err := os.Stat(d); err != nil {
 			t.Errorf("%s removed", d)
 		}
+	}
+}
+
+func TestSweepWithoutTheStateTempFolder(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	old, err := os.MkdirTemp("", "nerdr-objects-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-7 * time.Hour)
+	os.Chtimes(old, past, past)
+	Sweep(6 * time.Hour)
+	if _, err := os.Stat(old); err == nil {
+		t.Error("an old folder in os.TempDir was left")
+	}
+	if _, err := os.Stat(statedir.TempDir()); err == nil {
+		t.Error("Sweep made the state folder's temporary folder")
 	}
 }
 

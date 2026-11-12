@@ -13,6 +13,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // The check from inside a sandbox runs this test binary as nerdr.
@@ -287,5 +288,24 @@ func TestSandboxWritesAreCheckedWithoutHolder(t *testing.T) {
 	ev := check()
 	if !ev.OK || !ev.Refused() || !slices.Contains(ev.Result.Writes, open) {
 		t.Fatalf("writable path not checked: %+v", ev)
+	}
+}
+
+// A sandbox may deny the state folder and still allow a folder in it: the
+// temporary folder, where a new worktree's files are checked out from, is
+// tried by itself, and is there to be tried.
+func TestSandboxWritesTryTheStateTemporaryFolder(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	tmp := statedir.TempDir()
+	c := &Core{}
+	writes := c.sandboxWrites(&Tab{})
+	if !slices.Contains(writes, tmp) {
+		t.Fatalf("%s is not among what the check tries to write: %v", tmp, writes)
+	}
+	if st, err := os.Stat(tmp); err != nil || !st.IsDir() {
+		t.Fatalf("%s is not there for the check to try: %v", tmp, err)
+	}
+	if r := sandboxcheck.Probe(sandboxcheck.Target{Nonce: "n", Writes: writes}); !slices.Contains(r.Writes, tmp) {
+		t.Fatalf("a writable %s is not found: %v", tmp, r.Writes)
 	}
 }

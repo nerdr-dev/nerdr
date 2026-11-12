@@ -82,6 +82,11 @@ delegates, including `core.gitProxy`, `core.alternateRefsCommand`,
 `gc.recentObjectsHook`, still cause whole-repository host Git refusal.
 The private verified-object copy uses an isolated,
 local-only transfer with executable upload hooks disabled.
+It, and the other temporary Git folders nerdr's host side makes (indexes,
+the packs of a move between machines), are in `tmp` in nerdr's state folder
+(`~/.local/state/nerdr/tmp`), which the sandbox must deny writes to, not in
+the system temporary folder, which sandboxes often let agents write
+(on macOS, `$TMPDIR`).
 Agent-side `why`, `order`, `walkthrough` and `spinoff` commands discover
 the caller's repository in their own process, within the caller's sandbox.
 This does not enable unregistered worktree discovery in the host core,
