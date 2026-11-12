@@ -91,12 +91,24 @@ using LFS, so it does not publish pointers without their objects. This
 hook check does not identify every custom LFS integration. Use Git inside
 the sandbox, or inspect the work and run LFS in your own terminal.
 
-In repositories with sandbox history, nerdr disables host Git transports.
-Fetch and push are refused, including local remotes, SSH and HTTPS;
-URL rewrites and custom remote helpers cannot enable another transport.
-Run those operations inside the sandbox, or inspect the work and use
-your own terminal. New worktrees that require a fetch can consequently
-fail too. The private object-verification step has a separate restricted
+In repositories with sandbox history, nerdr disables host Git transports,
+with one exception. Push is refused, and so is fetch in a worktree,
+including local remotes, SSH and HTTPS; URL rewrites and custom remote
+helpers cannot enable another transport. Run those operations inside the
+sandbox, or inspect the work and use your own terminal.
+
+The exception is the fetch a new tab needs: nerdr asks `origin` for the
+base branch, and for a branch of the tab's name, from the main checkout,
+over SSH or HTTPS only. There Git takes the remote, its URL, the SSH
+command and the credential helpers from `.git/config` and your own
+configuration, which the sandbox must keep the agent from writing; the
+objects and refs an agent may have written are read as data. nerdr does
+not fetch when `origin`'s URL is missing from the configuration, when the
+URL, after rewrites, is anything but SSH or HTTPS, or when
+`core.sshCommand` or a credential helper names a file in the repository
+or one of its worktrees. Submodules are not fetched, and hooks do not
+run. The new tab is then made from the base as it was last fetched, with
+a warning saying why, and without setup. The private object-verification step has a separate restricted
 local transfer, with isolated configuration and executable upload hooks
 disabled. Moving an existing tab imports its Git bundle directly as data;
 it does not enable a transport or apply remote URL rewrites. Before changing
@@ -147,10 +159,7 @@ use; the current agent configuration is not proof of where an agent ran in
 the past.
 
 Where nerdr holds back, it says which repository, which tab or folder the
-history is from, and how to have nerdr forget it. A new tab in such a
-repository is still made: nerdr does not fetch there, so the branch starts
-from the base as it was last fetched, with a warning, and setup does not
-run in it.
+history is from, and how to have nerdr forget it.
 
 Have nerdr forget a repository's sandbox history only when you trust what
 is in the repository and its worktrees now: **Forget sandbox history…** in

@@ -17,9 +17,10 @@ const sandboxUsage = `usage: nerdr sandbox
        nerdr sandbox clear --all
 
 Where an agent has run in a sandbox, nerdr does not run what it wrote as
-you, outside the sandbox: in that repository nerdr does not fetch or push,
-and runs no Git hooks or setup on that code. nerdr sandbox lists the
-repositories it holds back in, and where each one's history is from.
+you, outside the sandbox: in that repository nerdr does not push, fetches
+only a new tab's base from origin, and runs no Git hooks or setup on that
+code. nerdr sandbox lists the repositories it holds back in, and where
+each one's history is from.
 
 clear has nerdr forget it for REPO, a repository's main checkout, or for
 all of them: do that only when you trust what is in the repository and its

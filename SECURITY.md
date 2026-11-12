@@ -61,13 +61,21 @@ operations requiring LFS conversion fail, and automatic LFS uploads are
 refused. Run LFS inside the sandbox, or inspect the work and use your own
 terminal. nerdr does not silently commit unfiltered content.
 Host Git transports are disabled in repositories with sandbox history,
-including SSH, HTTPS, local remotes and custom helpers. Executable
+including SSH, HTTPS, local remotes and custom helpers, but for the fetch
+a new tab needs: of the base branch, and of a branch of the tab's name,
+from `origin`, run in the main checkout over SSH or HTTPS only. It reads
+the remote, the SSH command and the credential helpers from Git
+configuration the sandbox must protect, and is not run when `origin`'s
+URL is not in that configuration, is not SSH or HTTPS after rewrites, or
+when `core.sshCommand` or a credential helper names a file in the
+repository or its worktrees. Submodules are not fetched. Executable
 authentication/signing delegates and environment overrides are blocked
 or suppressed. Required signing fails rather than silently producing an
-unsigned commit. Fetch and push must run inside the sandbox or in the
-user's terminal. A new tab is still made there: its branch starts from
-the base as it was last fetched, with a warning, and without the setup and
-hooks that a base origin named would get. Global GPG/SSH signing program settings and credential
+unsigned commit. Push, and any other fetch, must run inside the sandbox
+or in the user's terminal. Where that fetch cannot run, a new tab is still
+made: its branch starts from the base as it was last fetched, with a
+warning, and without the setup and hooks that a base origin named would
+get. Global GPG/SSH signing program settings and credential
 helpers do not themselves block ordinary local Git. Other executable
 delegates, including `core.gitProxy`, `core.alternateRefsCommand`,
 `remote.*.uploadpack`/`receivepack`/`vcs`, `uploadpack.packObjectsHook` and

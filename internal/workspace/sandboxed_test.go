@@ -103,11 +103,13 @@ func TestSandboxedPushRefusesLFSWithoutRunningHostCode(t *testing.T) {
 	}
 }
 
-// TestWorktreeIsMadeWhereASandboxedAgentRan: nerdr runs no fetch in a
-// repository an agent has run in a sandbox in, and a new tab there is made
-// all the same: from the base as it was last fetched, with a warning that
-// names the repository, where its history is from and how to have nerdr
-// forget it. Once it is forgotten, the base is fetched and pinned again.
+// TestWorktreeIsMadeWhereASandboxedAgentRan: where an agent has run in a
+// sandbox and nerdr cannot fetch from origin safely (here it is a local
+// path, which could be a repository of the agent's making), a new tab is
+// made all the same: from the base as it was last fetched, with a warning
+// that names the repository, where its history is from and how to have
+// nerdr forget it. Once it is forgotten, the base is fetched and pinned
+// again.
 func TestWorktreeIsMadeWhereASandboxedAgentRan(t *testing.T) {
 	root := t.TempDir()
 	a, push := cloneWithOrigin(t, root, "a")
@@ -126,7 +128,7 @@ func TestWorktreeIsMadeWhereASandboxedAgentRan(t *testing.T) {
 	if len(warnings) != 1 {
 		t.Fatalf("warnings = %v", warnings)
 	}
-	for _, want := range []string{"as it was last fetched", a.Path, "tab old, /somewhere/old-a", "nerdr sandbox clear " + a.Path, "Forget sandbox history"} {
+	for _, want := range []string{"as it was last fetched", "a local path", a.Path, "tab old, /somewhere/old-a", "nerdr sandbox clear " + a.Path, "Forget sandbox history"} {
 		if !strings.Contains(warnings[0], want) {
 			t.Errorf("warning lacks %q: %s", want, warnings[0])
 		}
@@ -142,7 +144,7 @@ func TestWorktreeIsMadeWhereASandboxedAgentRan(t *testing.T) {
 		t.Fatal("a base nobody fetched counts as origin's")
 	}
 
-	// A fetch asked for outright says the same, rather than only git's
+	// A fetch of something else says the same, rather than only git's
 	// "transport not allowed".
 	err = FetchForkPR(a.Path, 1, "pr-1")
 	if err == nil || !strings.Contains(err.Error(), "nerdr sandbox clear "+a.Path) || !strings.Contains(err.Error(), "tab old") {
@@ -159,5 +161,71 @@ func TestWorktreeIsMadeWhereASandboxedAgentRan(t *testing.T) {
 	}
 	if plan.Items[0].Pinned != newest {
 		t.Fatalf("pinned %q, origin has %s", plan.Items[0].Pinned, newest)
+	}
+}
+
+// fakeSSH has git reach ssh:// URLs by a script that runs the command
+// asked for here, as a host that is this machine would, and leaves a file
+// at the path it gives each time it ran.
+func fakeSSH(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	ran := filepath.Join(dir, "ran")
+	script := filepath.Join(dir, "ssh")
+	body := "#!/bin/sh\ntouch " + ran + "\nfor a; do last=$a; done\neval \"$last\"\n"
+	if err := os.WriteFile(script, []byte(body), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("GIT_SSH_COMMAND", script)
+	return ran
+}
+
+// TestBaseIsFetchedOverSSHWhereASandboxedAgentRan: with origin reached
+// over ssh, a new tab in a repository an agent has run in a sandbox in
+// starts from origin's base as it is now, pinned to the commit origin
+// named, and gets its setup, as in any other repository. A push there
+// stays refused, and so does the fetch once the ssh command or the URL
+// could be the agent's.
+func TestBaseIsFetchedOverSSHWhereASandboxedAgentRan(t *testing.T) {
+	a, _, marks, allowed := pinRepo(t)
+	ran := fakeSSH(t)
+	origin := filepath.Join(filepath.Dir(a.Path), "origins", "a.git")
+	run(t, a.Path, "git", "remote", "set-url", "origin", "ssh://elsewhere"+origin)
+	other := filepath.Join(filepath.Dir(a.Path), "others", "a")
+	run(t, other, "git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "newest")
+	run(t, other, "git", "push", "-q", "origin", "HEAD:main")
+	newest := revParse(t, other, "HEAD")
+	gitsafe.SandboxedRepoFrom(a.Path, "tab old, /somewhere/old-a")
+
+	plan, wts, warnings := makeTab(t, a, false, allowed)
+	if len(warnings) != 0 {
+		t.Fatalf("warnings = %v", warnings)
+	}
+	if !marked(filepath.Dir(ran), "ran") {
+		t.Fatal("origin was not asked")
+	}
+	if plan.Items[0].Pinned != newest || revParse(t, wts[0].Path, "HEAD") != newest {
+		t.Fatalf("pinned %q, origin has %s", plan.Items[0].Pinned, newest)
+	}
+	if !marked(marks, "ran") {
+		t.Fatal("no setup on the base origin named")
+	}
+
+	// A push runs in the worktree, on what the agent wrote: still refused.
+	commit(t, wts[0].Path, "f", "f\n")
+	if err := PushIn(wts[0], true); err == nil || !strings.Contains(err.Error(), "nerdr sandbox clear") {
+		t.Fatalf("push = %v", err)
+	}
+
+	// An ssh command from inside the repository could be the agent's.
+	run(t, a.Path, "git", "config", "core.sshCommand", filepath.Join(a.Path, "ssh.sh"))
+	if _, why := gitsafe.OriginEnv(a.Path); !strings.Contains(why, "core.sshcommand") {
+		t.Fatalf("ssh command in the repository: %q", why)
+	}
+	run(t, a.Path, "git", "config", "--unset", "core.sshCommand")
+	// So could a transport a URL rewrite brings in.
+	run(t, a.Path, "git", "config", "url.ext::sh -c true .insteadOf", "ssh://elsewhere")
+	if _, why := gitsafe.OriginEnv(a.Path); !strings.Contains(why, "the helper ext") {
+		t.Fatalf("rewritten to ext: %q", why)
 	}
 }

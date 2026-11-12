@@ -29,9 +29,11 @@
 //
 // In repositories with sandbox history, authentication delegates are disabled
 // and signing programs are replaced with /dev/null. Other executable
-// delegates are refused. All transports are disabled: trusted transport
-// programs can themselves delegate to worktree code. A required signature
-// fails rather than
+// delegates are refused. Transports are disabled: trusted transport
+// programs can themselves delegate to worktree code. The one exception is
+// a fetch from origin over ssh or https run in the main checkout, which
+// reads nothing a sandboxed agent may write but objects and refs (see
+// OriginEnv). A required signature fails rather than
 // silently producing an unsigned commit. See delegates.go.
 // A submodule's config is in the worktree, the
 // agent's to write, and git reads it when it runs status inside the
@@ -222,7 +224,11 @@ func ignoreDirtySubmodules(args []string) []string {
 	return args
 }
 
-func env(dir string, mode hookMode) []string {
+func env(dir string, mode hookMode) []string { return envFor(dir, mode, false) }
+
+// envFor is env; with origin, for a fetch from origin in a main checkout
+// with sandbox history, with ssh and https left open (see OriginEnv).
+func envFor(dir string, mode hookMode, origin bool) []string {
 	e := os.Environ()
 	d, ok := dirs(dir)
 	// A repository whose config.worktree a sandboxed agent can write is
@@ -236,9 +242,14 @@ func env(dir string, mode hookMode) []string {
 	// makes git fail the ask rather than run whatever the repository named.
 	settings := [][2]string{{"core.fsmonitor", "false"}, {"core.askpass", os.DevNull}}
 	if sandboxed {
-		e = delegateEnv(e)
-		settings = append(settings, delegateSettings...)
-		settings = append(settings, disabled...)
+		if origin {
+			e = originEnv(e)
+			settings = append(settings, originSettings()...)
+		} else {
+			e = delegateEnv(e)
+			settings = append(settings, delegateSettings...)
+			settings = append(settings, disabled...)
+		}
 		// Never run a PATH-resolved git-lfs or a user-defined LFS command.
 		// required=true makes Git fail on conversion instead of storing raw
 		// content. Global LFS installation then leaves non-LFS repos usable.
