@@ -73,6 +73,7 @@ config: %s
 `
 
 func main() {
+	profile()
 	// A nerdr that runs its programs itself, as it runs; see localExec.
 	local := len(os.Args) == 2 && os.Args[1] == spawn.LocalArg
 	if local {
