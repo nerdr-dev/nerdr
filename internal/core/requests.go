@@ -70,3 +70,8 @@ func (KeepAwake) Do(m *Core) Cmd {
 	m.KeepAwake(time.Now())
 	return nil
 }
+
+// A client asks it after every look at the agents: it is not a change for
+// the client to draw. Whether the machine is kept awake comes with the
+// parts, which are looked at within PartsEvery all the same.
+func (KeepAwake) quiet() {}

@@ -107,8 +107,8 @@ func (m *Core) DetectAgent(t *Tab, shown bool, now time.Time) Cmd {
 		}
 	}
 	if t.Light == StWorking {
-		t.LastActive = now
-		t.Owner().LastActive = now
+		t.active(now)
+		t.Owner().active(now)
 	}
 	if t.Light.AtWork() && !was.AtWork() {
 		cmds = append(cmds, m.LookUpGoal(t), m.PromptLater(t)) // it has been asked something

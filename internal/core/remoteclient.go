@@ -161,6 +161,10 @@ type RemoteClient struct {
 	partsAt  time.Time
 	partsGen uint64
 	later    bool
+	// partsWait is how long the parts wait to be looked at again with
+	// nothing said to have changed: PartsEvery, and twice as long after
+	// each such look that found them as they were, up to PartsEveryMax.
+	partsWait time.Duration
 }
 
 var _ Client = (*RemoteClient)(nil)
@@ -245,15 +249,27 @@ func (rc *RemoteClient) flush(m *Core) {
 	// client is told something, or every PartsEvery: a program drawing
 	// changes little else, and looking at every part each frame costs.
 	now := time.Now()
-	if !behind && m.Gen == rc.partsGen && len(rc.out) == 0 && now.Sub(rc.partsAt) < PartsEvery {
+	wait := max(rc.partsWait, PartsEvery)
+	unasked := !behind && m.Gen == rc.partsGen && len(rc.out) == 0
+	if unasked && now.Sub(rc.partsAt) < wait {
 		if !rc.later && rc.post != nil {
 			rc.later = true
-			time.AfterFunc(PartsEvery-now.Sub(rc.partsAt), func() { rc.post(RequestEv{R: flushParts{rc: rc}}) })
+			time.AfterFunc(wait-now.Sub(rc.partsAt), func() { rc.post(RequestEv{R: flushParts{rc: rc}}) })
 		}
 		return
 	}
 	rc.partsAt, rc.partsGen = now, m.Gen
 	parts, err := m.Parts(&rc.sent)
+	// Looking writes every tab out: a look nothing asked for that found
+	// nothing has the next wait longer. What changes with nothing said,
+	// as a program draws, is then seen later, but no later than the next
+	// look at the agents, which is always said.
+	switch {
+	case len(parts) > 0:
+		rc.partsWait = PartsEvery
+	case unasked:
+		rc.partsWait = min(2*wait, max(PartsEveryMax, PartsEvery))
+	}
 	if why := fmt.Sprint(err); err != nil && why != rc.partsErr {
 		Logf("client: parts left out: %s", why)
 		rc.partsErr = why
@@ -276,6 +292,10 @@ func (rc *RemoteClient) flush(m *Core) {
 // PartsEvery is how long the parts of core's state may wait to be looked
 // at again while only programs drew.
 var PartsEvery = 100 * time.Millisecond
+
+// PartsEveryMax is the longest they wait when look after look found
+// nothing changed.
+var PartsEveryMax = time.Second
 
 // flushParts is a client's parts due to be looked at again. Core's own,
 // never sent.

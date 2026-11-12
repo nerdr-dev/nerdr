@@ -54,6 +54,26 @@ func (m *Model) wideW() int {
 	if m.sideWidth > 0 {
 		return min(max(m.sideWidth, sideMin), m.width/2) + 1
 	}
+	// Asked for by everything that lays the body out, many times in one
+	// Update or View, and it measures every tab: worked out once in each,
+	// while what it goes by is the same.
+	key := sideKey{gen: m.fleet.Gen(), width: m.width, active: m.Active, details: m.showDetails}
+	if m.sideMemoOK && key == m.sideMemoKey {
+		return m.sideMemo
+	}
+	m.sideMemo, m.sideMemoKey, m.sideMemoOK = m.measureWideW(), key, true
+	return m.sideMemo
+}
+
+// sideKey is what the wide sidebar's width was worked out for; see wideW.
+type sideKey struct {
+	gen           uint64
+	width, active int
+	details       bool
+}
+
+// measureWideW is wideW of a sidebar left alone, worked out.
+func (m *Model) measureWideW() int {
 	w := 0
 	for _, g := range m.fleet.Groups() {
 		// its machine's badge, light, name, (n)

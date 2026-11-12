@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image/color"
+	"reflect"
 	"strconv"
 	"time"
 	"unicode/utf8"
@@ -173,6 +174,20 @@ func (s *RowsSender) Msg() ScreenMsg {
 	s.sent = true
 	s.cur, s.prev = s.prev, s.cur
 	return msg
+}
+
+// Unchanged reports whether msg says nothing that last, the message sent
+// before it, did not: it has no row, and all else is the same. How long
+// the program has run is not counted: it says when it started, which does
+// not change.
+func (msg *ScreenMsg) Unchanged(last *ScreenMsg) bool {
+	if msg.Full || msg.Shift != 0 || len(msg.Rows) != 0 || msg.Copied != "" {
+		return false
+	}
+	a, b := *msg, *last
+	a.Styles, a.Rows, a.ExitAfter = nil, nil, 0
+	b.Styles, b.Rows, b.ExitAfter, b.Full, b.Shift, b.Copied = nil, nil, 0, false, 0, ""
+	return reflect.DeepEqual(a, b)
 }
 
 // shiftOf is how many rows up the rows of p are best moved to make c: by

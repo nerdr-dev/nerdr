@@ -81,8 +81,9 @@ type Agent struct {
 	// idle debounce; IdleSince is when it last turned idle.
 	Raw       detect.State
 	IdleSince time.Time
-	// Why is what the last check went by, for the debug log.
-	Why string
+	// Why is what the last check went by, for the debug log: core's
+	// alone, and not sent, as it changes at every check.
+	Why string `json:"-"`
 	// Changed is when Light last changed, to pick the most recent of
 	// several agents that need attention.
 	Changed time.Time

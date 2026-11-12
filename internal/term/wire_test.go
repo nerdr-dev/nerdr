@@ -273,3 +273,32 @@ func BenchmarkRowsFull(b *testing.B) {
 	}
 	b.ReportMetric(float64(bytes)/float64(b.N), "bytes/msg")
 }
+
+// TestScreenMsgUnchanged: a message with no row and nothing else new says
+// nothing the one before it did not, however long the program has run; a
+// row, a cursor moved or a shell gone busy does.
+func TestScreenMsgUnchanged(t *testing.T) {
+	last := ScreenMsg{W: 80, H: 24, CursorX: 3, Cursor: true, Title: "sh", Mouse: -1, ExitAfter: 1000, Full: true,
+		Rows: []WireRow{{Y: 0, Runs: []WireRun{{T: "hi"}}}}}
+	same := ScreenMsg{W: 80, H: 24, CursorX: 3, Cursor: true, Title: "sh", Mouse: -1, ExitAfter: 1300}
+	if !same.Unchanged(&last) {
+		t.Error("a message with nothing new counts as changed")
+	}
+	for name, change := range map[string]func(*ScreenMsg){
+		"a row":       func(m *ScreenMsg) { m.Rows = []WireRow{{Y: 1}} },
+		"every row":   func(m *ScreenMsg) { m.Full = true },
+		"rows moved":  func(m *ScreenMsg) { m.Shift = 1 },
+		"the cursor":  func(m *ScreenMsg) { m.CursorX = 4 },
+		"busy":        func(m *ScreenMsg) { m.Busy = true },
+		"the title":   func(m *ScreenMsg) { m.Title = "vim" },
+		"exited":      func(m *ScreenMsg) { m.Exited = true },
+		"what copied": func(m *ScreenMsg) { m.Copied = "x" },
+		"scrolled":    func(m *ScreenMsg) { m.Scroll = 2 },
+	} {
+		msg := same
+		change(&msg)
+		if msg.Unchanged(&last) {
+			t.Errorf("%s changed, and the message counts as unchanged", name)
+		}
+	}
+}

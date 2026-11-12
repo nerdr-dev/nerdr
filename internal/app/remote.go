@@ -204,6 +204,18 @@ func passedOn(ev core.Event) bool {
 	return false
 }
 
+// leavesPanel reports whether ev, of a core in another process, leaves the
+// review panel as it was drawn: what is passed on, drawn by its own rules,
+// and the start and end of core's look at the agents, which come three
+// times a second.
+func leavesPanel(ev core.Event) bool {
+	switch ev.(type) {
+	case core.DetectStartMsg, core.DetectDoneMsg:
+		return true
+	}
+	return passedOn(ev)
+}
+
 // clientState is what the TUI shows of mc's tabs, as its core asks it; see
 // core.Client.
 func (m *Model) clientState(mc *fleet.Machine) core.ClientState {

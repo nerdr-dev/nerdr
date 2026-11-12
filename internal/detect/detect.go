@@ -385,21 +385,20 @@ func (m *Manifest) Classify(in Input) Result {
 	}
 	var best *compiledRule
 	// Most rules read one of the same few regions: each is cut out of the
-	// screen, and lowered, once.
-	type cut struct{ text, lower string }
-	cuts := map[string]cut{}
+	// screen once, and lowered and split into lines once, when a rule
+	// asks for that.
+	cuts := map[string]*cut{}
 	for i := range m.rules {
 		r := &m.rules[i]
-		c, ok := cuts[r.region]
-		if !ok {
-			text := region(in, r.region)
-			c = cut{text, strings.ToLower(text)}
+		if best != nil && r.priority <= best.priority {
+			continue // it would not decide, whether it matches or not
+		}
+		c := cuts[r.region]
+		if c == nil {
+			c = &cut{text: region(in, r.region)}
 			cuts[r.region] = c
 		}
-		if !r.gate.matches(c.text, c.lower) {
-			continue
-		}
-		if best == nil || r.priority > best.priority {
+		if r.gate.matches(c) {
 			best = r
 		}
 	}
@@ -424,19 +423,42 @@ func (m *Manifest) KnowsIdle() bool {
 	return false
 }
 
-func (g *compiledGate) matches(text, lower string) bool {
+// cut is a region of the screen as the gates read it: its text, and that
+// lowered and in lines, each made the first time a gate asks for it.
+type cut struct {
+	text    string
+	low     string
+	lowered bool
+	rows    []string
+}
+
+func (c *cut) lower() string {
+	if !c.lowered {
+		c.low, c.lowered = strings.ToLower(c.text), true
+	}
+	return c.low
+}
+
+func (c *cut) lines() []string {
+	if c.rows == nil {
+		c.rows = strings.Split(c.text, "\n")
+	}
+	return c.rows
+}
+
+func (g *compiledGate) matches(c *cut) bool {
 	for _, n := range g.contains {
-		if !strings.Contains(lower, n) {
+		if !strings.Contains(c.lower(), n) {
 			return false
 		}
 	}
 	for _, re := range g.regex {
-		if !re.MatchString(text) {
+		if !re.MatchString(c.text) {
 			return false
 		}
 	}
 	if len(g.lineRegex) > 0 {
-		lines := strings.Split(text, "\n")
+		lines := c.lines()
 		for _, re := range g.lineRegex {
 			found := false
 			for _, l := range lines {
@@ -451,14 +473,14 @@ func (g *compiledGate) matches(text, lower string) bool {
 		}
 	}
 	for i := range g.all {
-		if !g.all[i].matches(text, lower) {
+		if !g.all[i].matches(c) {
 			return false
 		}
 	}
 	if len(g.any) > 0 {
 		ok := false
 		for i := range g.any {
-			if g.any[i].matches(text, lower) {
+			if g.any[i].matches(c) {
 				ok = true
 				break
 			}
@@ -468,7 +490,7 @@ func (g *compiledGate) matches(text, lower string) bool {
 		}
 	}
 	for i := range g.not {
-		if g.not[i].matches(text, lower) {
+		if g.not[i].matches(c) {
 			return false
 		}
 	}

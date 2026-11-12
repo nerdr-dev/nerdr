@@ -67,7 +67,8 @@ func TestMirror(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(parts) != 3 {
+	// The two tabs, core, and the looks at the skills.
+	if len(parts) != 4 {
 		t.Fatalf("%d parts", len(parts))
 	}
 	r := NewMirror(&Core{})
@@ -186,8 +187,69 @@ func TestMirrorChanges(t *testing.T) {
 
 	// One fallen behind is sent all.
 	sent.Reset()
-	if parts, _ := m.Parts(&sent); len(parts) != 3 {
+	if parts, _ := m.Parts(&sent); len(parts) != 4 {
 		t.Errorf("%d parts after Reset", len(parts))
+	}
+}
+
+// TestMirrorSkills: the looks at the agents' skills go in a part of their
+// own, sent again only when a look has changed; and those of a core older
+// than that, which sent them with the rest, are taken from there.
+func TestMirrorSkills(t *testing.T) {
+	m, _, _ := mirrored()
+	at := time.Date(2026, 11, 7, 10, 0, 0, 0, time.UTC)
+	m.SkillLooks = map[string]SkillLook{"a": {Key: "a/claude/", At: at, Found: []string{"~/x"}}}
+	var sent Sent
+	parts, err := m.Parts(&sent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := NewMirror(&Core{})
+	applyAll(t, r, parts)
+	if got := r.C.SkillLooks["a"]; got.Key != "a/claude/" || !got.At.Equal(at) || !slices.Equal(got.Found, []string{"~/x"}) {
+		t.Fatalf("the copy's looks: %+v", r.C.SkillLooks)
+	}
+	for _, p := range parts {
+		if p.Key == PartCore && bytes.Contains(p.Body, []byte("SkillLooks")) {
+			t.Error("the looks went with core's part too")
+		}
+	}
+
+	// Core's part sent again leaves the copy's looks as they are.
+	m.Root = "/elsewhere"
+	parts, _ = m.Parts(&sent)
+	if len(parts) != 1 || parts[0].Key != PartCore {
+		t.Fatalf("parts for a change to core: %d", len(parts))
+	}
+	applyAll(t, r, parts)
+	if len(r.C.SkillLooks) != 1 || r.C.Root != "/elsewhere" {
+		t.Errorf("after core's part: %d looks, root %s", len(r.C.SkillLooks), r.C.Root)
+	}
+
+	// A newer look is sent, alone; one gone, too.
+	m.keepSkillLook("a", SkillLook{Key: "a/claude/", At: at.Add(time.Second)})
+	parts, _ = m.Parts(&sent)
+	if len(parts) != 1 || parts[0].Key != PartSkills {
+		t.Fatalf("parts for a newer look: %d", len(parts))
+	}
+	applyAll(t, r, parts)
+	if got := r.C.SkillLooks["a"]; !got.At.Equal(at.Add(time.Second)) || len(got.Found) != 0 {
+		t.Errorf("the newer look: %+v", got)
+	}
+	m.onSkillsLooked(skillsLooked{looks: map[string]SkillLook{}, all: true})
+	parts, _ = m.Parts(&sent)
+	applyAll(t, r, parts)
+	if len(parts) != 1 || len(r.C.SkillLooks) != 0 {
+		t.Errorf("after the looks went: %d parts, %d looks", len(parts), len(r.C.SkillLooks))
+	}
+
+	// An older core sent them in its own part.
+	old := NewMirror(&Core{})
+	if err := old.Apply(Part{Key: PartCore, Body: []byte(`{"Root":"/repos","SkillLooks":{"a":{"Key":"k"}}}`)}); err != nil {
+		t.Fatal(err)
+	}
+	if old.C.SkillLooks["a"].Key != "k" {
+		t.Errorf("an older core's looks: %+v", old.C.SkillLooks)
 	}
 }
 
