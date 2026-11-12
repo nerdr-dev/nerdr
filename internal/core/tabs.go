@@ -433,7 +433,8 @@ func (m *Core) prepareAgent(t *Tab, l agents.Launch, env []string) func() SpawnP
 	switch t.Agent {
 	case agents.Codex:
 		var ask func() (bool, bool, error)
-		hooked := m.HookSock != "" && slices.Contains(l.Argv, "--no-daemon")
+		sock, _ := m.socketFor(m.SandboxedKind(t.Agent))
+		hooked := sock != "" && slices.Contains(l.Argv, "--no-daemon")
 		if hooked && !m.CodexAsked {
 			ask = m.AskCodexTrust(false)
 		}
@@ -470,7 +471,7 @@ func (m *Core) prepareAgent(t *Tab, l agents.Launch, env []string) func() SpawnP
 		// Whether there is a plugin to give is known only once its folder
 		// is seen to (see CopilotPlugin), after this: asked unless the
 		// setting gives none.
-		if m.HookSock == "" || !m.CopilotPlugins() || agents.FlagKnown(specs, agents.Copilot, "--plugin-dir") {
+		if sock, _ := m.socketFor(m.SandboxedKind(t.Agent)); sock == "" || !m.CopilotPlugins() || agents.FlagKnown(specs, agents.Copilot, "--plugin-dir") {
 			return nil
 		}
 		return func() SpawnPrep {
@@ -600,13 +601,14 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 		m.HoldSandboxed(t)
 	}
 	reports := false
-	if t.Agent == agents.Claude && m.HookSock != "" {
+	sock, _ := m.Socket(t)
+	if t.Agent == agents.Claude && sock != "" {
 		// Claude says itself when it is working and when it is done; see
 		// hooks.ClaudeSettings.
 		l.Argv = append(l.Argv, "--settings", hooks.ClaudeSettings(IsOn(m.Cfg.ClaudeStatusLine)))
 		reports = true
 	}
-	if t.Agent == agents.Codex && m.HookSock != "" && slices.Contains(l.Argv, "--no-daemon") {
+	if t.Agent == agents.Codex && sock != "" && slices.Contains(l.Argv, "--no-daemon") {
 		// So does codex, once it trusts nerdr's hooks; see
 		// hooks.CodexArgs. Only in a codex of its own: one with the
 		// shared server runs hooks with another tab's variables.
@@ -615,7 +617,7 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 		l.Argv = BeforePrompt(l.Argv, args, len(command))
 		reports = len(args) > 0
 	}
-	if t.Agent == agents.Copilot && m.HookSock != "" {
+	if t.Agent == agents.Copilot && sock != "" {
 		// And copilot, with nerdr's plugin; see hooks.InstallCopilotPlugin.
 		if dir := m.CopilotPlugin(t); dir != "" && agents.HasFlag(m.Cfg.Agents, agents.Copilot, "--plugin-dir") {
 			l.Argv = append(l.Argv, "--plugin-dir", dir)

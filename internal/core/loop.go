@@ -385,6 +385,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return nil, true
 	case hooks.Report:
 		return m.OnReport(ev), true
+	case SocketReplacedMsg:
+		m.OnSocketReplaced(ev)
+		return nil, true
 	case TabMadeMsg:
 		return m.TabMade(ev), true
 	case TreeMsg:

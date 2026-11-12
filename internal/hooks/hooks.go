@@ -8,10 +8,11 @@
 // names, in herdr's protocol: one JSON request per line, answered by one
 // JSON line.
 //
-// nerdr listens on a socket of its own and gives its agents
-// HERDR_SOCKET_PATH pointing at it, with HERDR_PANE_ID a secret standing
-// for the tab (see app's hookKey). The
-// reports come to nerdr, not to herdr (whose pane is nerdr's as a whole),
+// nerdr listens on sockets of its own, one for the agents it starts in a
+// sandbox and one for the rest (see SocketPath and HostSocketPath), and
+// gives each agent HERDR_SOCKET_PATH pointing at its own, with
+// HERDR_PANE_ID a secret standing for the tab (see app's hookKey). Both
+// pass on what they get alike. The reports come to nerdr, not to herdr (whose pane is nerdr's as a whole),
 // and are passed on as Reports. The integrations that report through the
 // herdr CLI instead find nerdr as HERDR_BIN_PATH: see Command.
 package hooks
@@ -19,6 +20,7 @@ package hooks
 import (
 	"bufio"
 	"crypto/sha1"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -38,6 +40,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/handoff"
+	"github.com/nerdr-dev/nerdr/internal/rundir"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/statedir"
 	"github.com/nerdr-dev/nerdr/internal/usage"
@@ -303,23 +306,46 @@ type params struct {
 
 // Server is nerdr's end of the socket.
 type Server struct {
-	ln   net.Listener
 	lock *os.File // held while the socket is this nerdr's
 	path string
 	send func(Report)
 
 	wg   sync.WaitGroup
 	mu   sync.Mutex
+	ln   net.Listener
+	made os.FileInfo // the socket file ln listens on, as made
 	conn map[net.Conn]bool
+	shut bool
+	stop chan struct{}
 }
 
-// SocketPath is the socket nerdr listens on: nerdr.sock in
-// $XDG_STATE_HOME/nerdr, or ~/.local/state/nerdr without it. It is the
-// same whatever folder nerdr starts in and whatever the temporary folder
-// is, so a sandbox around an agent can be told once to allow connecting
-// to it. One nerdr has it at a time: see Listen.
+// SocketPath is the socket nerdr listens on for agents in a sandbox:
+// nerdr.sock in $XDG_STATE_HOME/nerdr, or ~/.local/state/nerdr without
+// it. It is the same whatever folder nerdr starts in and whatever the
+// temporary folder is, so a sandbox around an agent can be told once to
+// allow connecting to it. One nerdr has it at a time: see Listen. Agents
+// outside a sandbox get HostSocketPath's instead.
 func SocketPath() string {
 	return filepath.Join(statedir.Dir(), "nerdr.sock")
+}
+
+// HostSocketPath is the socket the agents nerdr starts outside a sandbox
+// report to: one for the folder root, in the folder of the client
+// sockets (see rundir), which a sandbox must deny and the sandbox check
+// tries. An agent in a sandbox may be let replace SocketPath's socket
+// with one of its own (a sandbox that allows connecting to a socket may
+// allow writing it too); it would then answer the nerdr commands of
+// every agent that connects there. Kept apart, those are only other
+// agents in a sandbox, never one that can do all the user can. Its name
+// is as short as the client socket's, for macOS's limit on a socket's
+// path.
+func HostSocketPath(root string) (string, error) {
+	dir, err := rundir.Dir()
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256([]byte(root))
+	return filepath.Join(dir, "hooks-"+hex.EncodeToString(sum[:8])+".sock"), nil
 }
 
 // ForRoot is socket path made the folder root's own, for a nerdr that
@@ -363,22 +389,54 @@ func Listen(path string, send func(Report)) (*Server, error) {
 		_, _ = lock.WriteAt([]byte(cwd+"\n"), 0)
 	}
 	_ = os.Remove(path)
-	ln, err := net.Listen("unix", path)
-	if denied.Err(err) != nil {
+	ln, made, err := listenAt(path)
+	if err != nil {
 		_ = lock.Close()
 		return nil, err
+	}
+	s := &Server{ln: ln, made: made, lock: lock, path: path, send: send, conn: map[net.Conn]bool{}, stop: make(chan struct{})}
+	s.wg.Add(1)
+	go s.accept(ln)
+	return s, nil
+}
+
+// ListenHost is Listen at HostSocketPath(root), its folder made and
+// checked as the client sockets' is first.
+func ListenHost(root string, send func(Report)) (*Server, error) {
+	path, err := HostSocketPath(root)
+	if err != nil {
+		return nil, err
+	}
+	if err := rundir.Ensure(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
+	return Listen(path, send)
+}
+
+// listenAt listens on a new socket at path, which only the user may
+// connect to, and is the file it made. Closing the listener leaves the
+// path alone: by then it may be another socket's (see Reclaim).
+func listenAt(path string) (net.Listener, os.FileInfo, error) {
+	ln, err := net.Listen("unix", path)
+	if denied.Err(err) != nil {
+		return nil, nil, err
+	}
+	if u, ok := ln.(*net.UnixListener); ok {
+		u.SetUnlinkOnClose(false)
 	}
 	// Only the user may connect: a report can change which conversation a
 	// tab resumes.
 	if err := denied.Err(os.Chmod(path, 0o600)); err != nil {
 		_ = ln.Close()
-		_ = lock.Close()
-		return nil, err
+		_ = os.Remove(path)
+		return nil, nil, err
 	}
-	s := &Server{ln: ln, lock: lock, path: path, send: send, conn: map[net.Conn]bool{}}
-	s.wg.Add(1)
-	go s.accept()
-	return s, nil
+	fi, err := os.Lstat(path)
+	if err != nil {
+		_ = ln.Close()
+		return nil, nil, err
+	}
+	return ln, fi, nil
 }
 
 // Path is the socket's path, for NERDR_SOCKET and HERDR_SOCKET_PATH.
@@ -386,8 +444,14 @@ func (s *Server) Path() string { return s.path }
 
 // Close stops listening, drops open connections and removes the socket.
 func (s *Server) Close() {
-	_ = s.ln.Close()
 	s.mu.Lock()
+	if s.shut {
+		s.mu.Unlock()
+		return
+	}
+	s.shut = true
+	close(s.stop)
+	_ = s.ln.Close()
 	for c := range s.conn {
 		_ = c.Close()
 	}
@@ -397,14 +461,69 @@ func (s *Server) Close() {
 	_ = s.lock.Close()
 }
 
-func (s *Server) accept() {
+// Reclaim listens at the path again when what is there is no longer the
+// socket this server made: it was removed, or replaced, perhaps by an
+// agent its sandbox lets write the path, to answer other agents in
+// nerdr's place. replaced says that was so; err that listening again
+// failed. Connections already made are kept.
+func (s *Server) Reclaim() (replaced bool, err error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.shut {
+		return false, nil
+	}
+	if fi, err := os.Lstat(s.path); err == nil && os.SameFile(fi, s.made) {
+		return false, nil
+	}
+	_ = os.Remove(s.path)
+	ln, made, err := listenAt(s.path)
+	if err != nil {
+		return true, err
+	}
+	old := s.ln
+	s.ln, s.made = ln, made
+	s.wg.Add(1)
+	go s.accept(ln)
+	_ = old.Close()
+	return true, nil
+}
+
+// Guard has Reclaim look every interval until Close, telling told when it
+// found the socket replaced, with why it could not listen again, if so.
+// It does not keep one agent in a sandbox from answering another between
+// two looks; it keeps that short, and tells the user.
+func (s *Server) Guard(every time.Duration, told func(err error)) {
+	s.wg.Add(1)
+	go func() {
+		defer s.wg.Done()
+		tick := time.NewTicker(every)
+		defer tick.Stop()
+		for {
+			select {
+			case <-s.stop:
+				return
+			case <-tick.C:
+				if replaced, err := s.Reclaim(); replaced {
+					told(err)
+				}
+			}
+		}
+	}()
+}
+
+func (s *Server) accept(ln net.Listener) {
 	defer s.wg.Done()
 	for {
-		c, err := s.ln.Accept()
+		c, err := ln.Accept()
 		if err != nil {
 			return
 		}
 		s.mu.Lock()
+		if s.shut {
+			s.mu.Unlock()
+			_ = c.Close()
+			return
+		}
 		s.conn[c] = true
 		s.mu.Unlock()
 		s.wg.Add(1)

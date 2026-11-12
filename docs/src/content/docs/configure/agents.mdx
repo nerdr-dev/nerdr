@@ -227,8 +227,13 @@ With the socket allowed, two things are yours to see to:
 
 - **Allow connecting, and no more.** A rule that also lets the agent
   remove the socket's file, or listen at its path, lets it put a socket of
-  its own there. The nerdr commands of every other agent would then talk
-  to that one. nerdr does not notice this.
+  its own there. The nerdr commands of the other agents in a sandbox
+  would then talk to that one, which could answer them in nerdr's place
+  and see what they send. Agents outside a sandbox use a socket of their
+  own that a sandbox cannot reach, so they are not among them. nerdr
+  looks at the socket every two seconds: when it is gone or replaced,
+  nerdr listens there again and tells you, but what was asked in
+  between went to the other socket.
 - **Read what you say yes to.** A plugin runs outside the sandbox, as
   you, with the parameters the agent gave it. nerdr asks before each run
   a sandboxed agent starts, and that question is the guard.
@@ -343,21 +348,31 @@ The sandbox must:
   among them;
 - allow running `$NERDR_BIN`, and the file it links to when it is a
   link, as Homebrew's is;
-- allow connecting to the socket at `$NERDR_SOCKET`. It is always
-  `~/.local/state/nerdr/nerdr.sock` (`$XDG_STATE_HOME/nerdr/nerdr.sock`
-  when that is set), whatever folder nerdr starts in, so the rule can
-  name that one path. Connecting is all it needs: do not let the agent
-  remove the file or listen at the path (see
-  [Letting the agent reach nerdr](#letting-the-agent-reach-nerdr)).
+- allow connecting to the socket at `$NERDR_SOCKET`. For an agent in a
+  sandbox it is always `~/.local/state/nerdr/nerdr.sock`
+  (`$XDG_STATE_HOME/nerdr/nerdr.sock` when that is set), whatever folder
+  nerdr starts in, so the rule can name that one path. Connecting is all
+  it needs: do not let the agent remove the file or listen at the path
+  (see [Letting the agent reach nerdr](#letting-the-agent-reach-nerdr)).
+
+nerdr listens on two hook sockets. That one is for the agents it starts
+in a sandbox, those whose kind is `sandboxed`. The agents it starts
+outside one get another, in the client socket's folder (see
+[below](#what-a-sandbox-must-deny-when-the-core-runs-on-its-own)),
+which a sandbox must deny anyway: an agent in a sandbox that may replace
+its socket then reaches only other agents in a sandbox, never one that
+can do anything you can. Each agent is given its socket when it starts;
+one that was running when nerdr was updated keeps the one it was given.
 
 One nerdr has that socket at a time. A second instance started in
 another folder notifies you and listens on its own socket in the same
 directory, `nerdr-<id>.sock`. If a sandbox only allows access to
 `nerdr.sock`, allow it to connect to all sockets in that directory so
 both instances work. The sockets nerdr makes in that directory are all
-hook sockets: the client socket is elsewhere and the holder's has no
+hook sockets for agents in a sandbox: the client socket and the hook
+socket for agents outside one are elsewhere, and the holder's has no
 path (see [below](#what-a-sandbox-must-deny-when-the-core-runs-on-its-own)),
-so allowing connections to them reaches neither.
+so allowing connections to them reaches none of those.
 
 Agent commands never write to `~/.local/state/nerdr`: connecting to the
 socket is all the sandbox needs there. Never let a sandbox write to
@@ -391,8 +406,9 @@ nerdr runs the agents in a process of its own, the core, under a holder
 that starts each program (see
 [How it works](../../reference/how-it-works/#the-core-and-the-holder)),
 and the nerdr you see connects to it. With `NERDR_HOLDER=0` nerdr runs
-them itself, the way it did before the core, they end with it, and this
-section does not apply.
+them itself, the way it did before the core, they end with it, and of
+this section only the client socket's folder applies: the hook socket of
+the agents outside a sandbox is there too.
 Closing the window, or choosing **Close** when you leave nerdr, leaves
 the agents, terminals and plugin runs working with no one watching; start
 nerdr in the same folder to connect again. **Quit** stops them. While no
@@ -410,7 +426,8 @@ below finds the agent can reach them, or cannot establish whether it can,
 nerdr does not start it.
 
 - **The client socket's folder.** A client can do anything you can,
-  approvals included. Its socket and the key to it are in
+  approvals included. Its socket and the key to it, and the hook socket
+  of the agents outside a sandbox, are in
   `$XDG_RUNTIME_DIR/nerdr` when `XDG_RUNTIME_DIR` is set; without it, in
   `~/.cache/nerdr/run` on Linux and `~/Library/Application Support/nerdr/run`
   on macOS; never under `~/.local/state/nerdr`. The sandbox must deny

@@ -351,18 +351,8 @@ func run() error {
 			s(r)
 		}
 	}
-	// One nerdr has the socket a sandbox is told of; another, started in
-	// another folder, gets one of its own beside it.
-	hookSrv, err := hooks.Listen(hooks.SocketPath(), pass)
-	var taken error
-	if errors.Is(err, hooks.ErrTaken) {
-		taken = err
-		hookSrv, err = hooks.Listen(hooks.ForRoot(hooks.SocketPath(), root), pass)
-	}
-	sockErr := err
-	if err == nil {
-		defer hookSrv.Close()
-	}
+	socks := listenHooks(root, pass)
+	defer socks.close()
 	// Wake gpg-agent before any agent commits: a signed commit from a tab
 	// otherwise waits on a pinentry nobody can see.
 	if _, err := exec.LookPath("gpg-connect-agent"); err == nil {
@@ -383,14 +373,14 @@ func run() error {
 	model.SetVersion(version())
 	// Core runs in this process, the fleet's one machine.
 	local := model.Fleet().Home()
-	if hookSrv != nil {
-		local.Core.SetHookSocket(hookSrv.Path())
-	} else {
-		local.Core.SetHookSocketError(sockErr)
-	}
-	if taken != nil && hookSrv != nil {
-		local.Core.SetSocketShared(taken)
-	}
+	socks.give(&local.Core, func(ev core.Event) {
+		sendMu.Lock()
+		s := send
+		sendMu.Unlock()
+		if s != nil {
+			s(ev)
+		}
+	})
 	if loadErr != nil {
 		model.Notice("could not read the saved session, started fresh: " + loadErr.Error() +
 			" — earlier copies are in " + state.SnapshotDir())
