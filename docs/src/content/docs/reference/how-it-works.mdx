@@ -168,12 +168,13 @@ started with `--no-daemon`, since a codex on the shared server runs hooks
 with another tab's environment. Subagent events are ignored, apart from
 their permission requests.
 
-Copilot reports through nerdr's plugin, which nerdr writes along with
-the skills: `~/.copilot/nerdr-plugin/` with `install = "home"`, or the
-tab's `.copilot/nerdr-plugin/` (kept out of git) with
-`install = "worktree"`. nerdr gives it to the copilot it starts with
-`--plugin-dir`, so a copilot the agent runs itself has none, and nothing
-is added to `~/.copilot/hooks/`. Its hooks report the prompt, tool calls,
+Copilot reports through nerdr's plugin, which nerdr gives the copilot it
+starts with `--plugin-dir`, so a copilot the agent runs itself has none,
+and nothing is added to `~/.copilot/hooks/`. With `install = "home"` or
+`"worktree"`, a copilot in a sandbox gets the tab's
+`.copilot/nerdr-plugin/` (kept out of git), and one outside a sandbox
+nerdr's own copy in `~/.local/state/nerdr/copilot-plugin/`: never one an
+agent in a sandbox can write, and never one in the home folder. Its hooks report the prompt, tool calls,
 permission prompts (`Notification`; `PermissionRequest` also comes for
 tools allowed anyway) and `Stop` through `"$NERDR_BIN" hook copilot`.
 A subagent has a `Stop` of its own, which is ignored with the rest of its

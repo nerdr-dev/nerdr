@@ -338,12 +338,14 @@ func TestCodexGetsNerdrsHooksOnceTrusted(t *testing.T) {
 	}
 }
 
-// TestCopilotPluginGoesWithTheSkills covers nerdr's copilot plugin: put in
-// the home folder or the tab's, as the skills are, kept out of git there,
-// given to copilot with --plugin-dir, and neither with the skills off.
+// TestCopilotPluginGoesWithTheSkills covers nerdr's copilot plugin: in
+// nerdr's state folder for a copilot outside a sandbox, never the home
+// folder, the tab's for one in a sandbox, kept out of git there, given to
+// copilot with --plugin-dir, and neither with the skills off.
 func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	dir := t.TempDir()
 	started := filepath.Join(dir, "started")
 	cmd := filepath.Join(dir, "copilot")
@@ -369,20 +371,16 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 	askedHelp(m.home().Core.Cfg.Agents)
 	m.home().Core.SetHookSocket("/run/nerdr.sock")
 	m.home().Core.Cfg.Install = config.InstallHome
-	note := m.home().Core.ApplySkills()
-	if !hooks.HasCopilotPlugin(hooks.CopilotPluginHome(home)) {
-		t.Fatal("no plugin in the home folder")
+	if note := m.home().Core.ApplySkills(); strings.Contains(note, "nerdr-plugin") {
+		t.Errorf("the plugin is not to go in the home folder: %q", note)
 	}
-	if !strings.Contains(note, "~/.copilot/nerdr-plugin") {
-		t.Errorf("the toast should say where: %q", note)
-	}
-	if note := m.home().Core.ApplySkills(); note != "" {
-		t.Errorf("a second start should write nothing, said %q", note)
+	if hooks.HasCopilotPlugin(hooks.CopilotPluginHome(home)) {
+		t.Fatal("a plugin in the home folder")
 	}
 	tb := m.Cur()
 	startAsked(t, m, m.home().Core.NewAgent(tb, agents.Copilot))
-	if args := startedWith(); !strings.Contains(args, "--plugin-dir\n"+hooks.CopilotPluginHome(home)+"\n") {
-		t.Fatalf("not given the plugin: %q", args)
+	if args := startedWith(); !strings.Contains(args, "--plugin-dir\n"+core.CopilotPluginState()+"\n") {
+		t.Fatalf("not given the plugin in the state folder: %q", args)
 	}
 
 	m.home().Core.Cfg.Install = config.InstallOff

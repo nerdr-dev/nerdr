@@ -19,6 +19,8 @@ func TestArgsComeBackAsTheyWent(t *testing.T) {
 		{Nonce: "n2"}, // empty ones survive a wrapper that drops empty arguments
 		{Nonce: "n3", Pids: []int{7}, Writes: []string{"/home/u/.config/nerdr", "/home/u/dev/repo/.git/config"}},
 		{Nonce: "n4", Writes: []string{"/w"}},
+		{Nonce: "n5", Pids: []int{7}, Warns: []string{"/home/u/.claude/skills"}},
+		{Nonce: "n6", Writes: []string{"/w"}, Warns: []string{"/home/u/.agents/skills", "/home/u/.grok/hooks"}},
 	} {
 		args := in.Args()
 		if slices.Contains(args, "") {
@@ -55,6 +57,13 @@ func TestParseFindsTheAnswerWithItsNonce(t *testing.T) {
 	}
 	if r, ok := Parse([]byte("NERDR-SANDBOX-CHECK abc {}\r\n"), "abc"); !ok || r.Reached() {
 		t.Errorf("nothing reached: got %+v, %v", r, ok)
+	}
+	// A check of a nerdr from before Warns answers without them.
+	if r, ok := Parse([]byte("NERDR-SANDBOX-CHECK abc {\"writes\":[\"/w\"]}\r\n"), "abc"); !ok || !slices.Equal(r.Writes, []string{"/w"}) || r.Warns != nil {
+		t.Errorf("an answer without warns: got %+v, %v", r, ok)
+	}
+	if r, ok := Parse([]byte("NERDR-SANDBOX-CHECK abc {\"warns\":[\"/h\"]}\r\n"), "abc"); !ok || !slices.Equal(r.Warns, []string{"/h"}) || r.Reached() || r.Writes != nil {
+		t.Errorf("an answer with warns: got %+v, %v", r, ok)
 	}
 }
 
@@ -190,6 +199,16 @@ func TestProbeFindsWhatItCanWrite(t *testing.T) {
 	r := Probe(Target{Nonce: "n", Writes: []string{open, closed, file, locked, filepath.Join(dir, "gone")}})
 	if !slices.Equal(r.Writes, []string{open, file}) {
 		t.Fatalf("writes = %q, want the open folder and the file", r.Writes)
+	}
+	if r.Warns != nil {
+		t.Fatalf("warns = %q, with none asked", r.Warns)
+	}
+	gone := filepath.Join(dir, "gone")
+	if w := Probe(Target{Nonce: "n", Warns: []string{open, closed, file, locked, gone}}); w.Writes != nil || !slices.Equal(w.Warns, []string{open, file}) {
+		t.Fatalf("warns = %q, writes = %q: want the open folder and the file as warns", w.Warns, w.Writes)
+	}
+	if _, err := os.Stat(gone); !os.IsNotExist(err) {
+		t.Fatalf("the check made %s: %v", gone, err)
 	}
 	if r.Reached() {
 		t.Fatal("what it can write is not a way to the client socket or the holder")

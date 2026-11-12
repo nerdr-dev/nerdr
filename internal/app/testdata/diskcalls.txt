@@ -27,7 +27,6 @@ settings.go: os.Stat 1
 settings.go: os.UserHomeDir 1
 setup.go: core.CodexConfig 1
 setup.go: hooks.AgyHooksHome 1
-setup.go: hooks.CopilotPluginHome 1
 setup.go: hooks.GrokHooksHome 1
 setup.go: hooks.OpenCodePluginHome 1
 setup.go: os.UserHomeDir 1

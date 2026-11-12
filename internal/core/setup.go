@@ -50,11 +50,16 @@ type projectSkills struct {
 	dir      string
 	agent    agents.Kind
 	paths    []string // the tab's worktrees
+	// copilot is set when, with the setting "home", the agent is a
+	// copilot that starts in a sandbox: it gets nerdr's plugin in its
+	// worktree all the same (see CopilotPlugin).
+	copilot bool
 }
 
 // projectSkillsOf is what installing the skills for t needs. Mu is held.
 func (m *Core) projectSkillsOf(t *Tab) projectSkills {
 	p := projectSkills{worktree: m.Cfg.Install == config.InstallWorktree,
+		copilot: m.Cfg.Install == config.InstallHome && t.Agent == agents.Copilot && m.SandboxedKind(t.Agent),
 		enabled: config.Config{EnabledSkills: slices.Clone(m.Cfg.EnabledSkills)}, dir: t.Dir, agent: t.Agent}
 	for _, w := range t.Worktrees {
 		p.paths = append(p.paths, w.Path)
@@ -67,6 +72,14 @@ func (m *Core) projectSkillsOf(t *Tab) projectSkills {
 func (p projectSkills) install() []string {
 	for _, path := range p.paths {
 		_ = store.ExcludeData(path)
+	}
+	if p.copilot {
+		var failed []string
+		if _, err := hooks.InstallCopilotPluginProject(p.dir); err != nil {
+			failed = append(failed, "copilot plugin: "+err.Error())
+		}
+		p.exclude([]string{hooks.CopilotPluginExclude})
+		return failed
 	}
 	if !p.worktree {
 		return nil
@@ -111,6 +124,13 @@ func (p projectSkills) install() []string {
 			}
 		}
 	}
+	p.exclude(excludes)
+	return failed
+}
+
+// exclude keeps the paths excludes, from the worktree root, out of git,
+// in the worktree the agent starts in.
+func (p projectSkills) exclude(excludes []string) {
 	for _, path := range p.paths {
 		if filepath.Clean(path) != filepath.Clean(p.dir) {
 			continue // a tab over several repositories starts above them
@@ -119,7 +139,6 @@ func (p projectSkills) install() []string {
 			_ = store.Exclude(path, x)
 		}
 	}
-	return failed
 }
 
 // CodexConfig is where codex keeps the trust it gives hooks.
@@ -206,16 +225,10 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 				wrote = append(wrote, TildePath(file, home))
 			}
 		}
-		if slices.Contains(m.Available(), agents.Copilot) {
-			// And nerdr's plugin, whose hooks tell nerdr what copilot is
-			// doing.
-			dir := hooks.CopilotPluginHome(home)
-			if ok, err := hooks.InstallCopilotPlugin(dir); err != nil {
-				return "copilot plugin: " + err.Error()
-			} else if ok {
-				wrote = append(wrote, TildePath(dir, home))
-			}
-		}
+		// Not copilot's plugin: each copilot is given one by nerdr, in
+		// the state folder or its worktree, never one in the home
+		// folder, which a sandboxed copilot may write (see
+		// CopilotPlugin). One nerdr wrote there before is left alone.
 		if slices.Contains(m.Available(), agents.Antigravity) {
 			// And nerdr's hooks in agy's hooks file, beside any others.
 			file := hooks.AgyHooksHome(home)

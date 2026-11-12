@@ -341,6 +341,21 @@ refuses to start the agent and shows a notice naming them: tighten the
 sandbox so it lets the agent write its own worktree, and of the main
 checkout's `.git` only what a commit needs.
 
+With `install = "home"`, the check also tries to write where nerdr puts
+its skills, plugins and hooks for every agent: the skills folders in your
+home folder (`~/.claude/skills`, `~/.agents/skills`, …), opencode's
+`~/.config/opencode/plugins`, agy's `~/.gemini/config/hooks.json` and
+grok's `~/.grok/hooks/nerdr.json`, each file with its folder. A folder
+that is not there is not tried, nor made. Many sandboxes let their agent
+write its own folders in the home folder, so this does not stop the
+agent: nerdr starts it and shows a notice naming them, since a sandboxed
+agent that can write them can change what agents outside a sandbox load
+from there. The notice comes once for each kind of agent, and again
+when what it can write has changed, not at every start. Set
+`install = "worktree"`, or have the sandbox deny writing
+them. Copilot's plugin is not among them: nerdr gives each copilot its
+own (see [Where skills are installed](../../panel/skills/#where-skills-are-installed)).
+
 The check runs before every sandboxed launch, including with
 `NERDR_HOLDER=0`, using that launch's folder and environment. Results are not cached: a wrapper's policy can change
 with its files, configuration, environment or working directory. After

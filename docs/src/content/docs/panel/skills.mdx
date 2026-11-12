@@ -131,6 +131,20 @@ PATH:
 
 The agents then find the skills outside nerdr too.
 
+Copilot's plugin, which tells nerdr what copilot is doing, is not put in
+the home folder, where a sandbox may let its copilot change it for every
+copilot (cplt gives copilot `~/.copilot`). nerdr gives each copilot it
+starts one with `--plugin-dir`: a copilot in a sandbox gets one in its
+tab's `.copilot/nerdr-plugin/`, kept out of git, and one outside a
+sandbox nerdr's own in `~/.local/state/nerdr/copilot-plugin/`, which a
+sandbox must not let its agent write. A `~/.copilot/nerdr-plugin/` an
+earlier nerdr wrote is no longer used; nerdr leaves it, and you can
+remove it.
+
+A sandbox that lets its agent write these home folders lets it change
+what agents outside a sandbox load from them. nerdr's sandbox check warns
+of that; see [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
+
 With **`install = "worktree"`**, skills go in the folder each agent starts
 in: `.claude/skills/` for Claude, opencode, Copilot and Cursor, and
 `.agents/skills/` for Codex, Gemini, Antigravity and Grok, kept out of git

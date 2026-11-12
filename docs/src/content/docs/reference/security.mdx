@@ -33,6 +33,14 @@ about it, and what is left for your sandbox to do.
   The check runs before every
   sandboxed launch, including when `NERDR_HOLDER=0`. See
   [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
+- **Keep the agents' home folders in mind.** With `install = "home"`,
+  nerdr puts its skills, plugins and hooks in the agents' own folders in
+  your home folder, which every agent loads, outside a sandbox too. Many
+  sandboxes let their agent write those, so nerdr does not refuse such
+  an agent, but its sandbox check warns of it. Use `install = "worktree"`
+  with agents in a sandbox, or have the sandbox deny writing them. The
+  plugin nerdr gives copilot is never one in the home folder; see
+  [Where skills are installed](../../panel/skills/#where-skills-are-installed).
 - **Servers widen what your SSH keys reach.** With
   [agents on other machines](../../use/remote/), a sandboxed agent on
   your laptop must not reach `~/.ssh` or `SSH_AUTH_SOCK`, or it could

@@ -392,7 +392,7 @@ func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
 	check := m.CheckSandbox(t, env)
 	ask := m.prepareAgent(t, l, env)
 	dir, project := t.Dir, m.projectSkillsOf(t)
-	if check == nil && ask == nil && !project.worktree {
+	if check == nil && ask == nil && !project.worktree && !project.copilot {
 		return nil
 	}
 	return func() SpawnPrep {
@@ -467,7 +467,10 @@ func (m *Core) prepareAgent(t *Tab, l agents.Launch, env []string) func() SpawnP
 		}
 	case agents.Copilot:
 		specs := m.Cfg.Agents
-		if m.HookSock == "" || m.CopilotPlugin(t) == "" || agents.FlagKnown(specs, agents.Copilot, "--plugin-dir") {
+		// Whether there is a plugin to give is known only once its folder
+		// is seen to (see CopilotPlugin), after this: asked unless the
+		// setting gives none.
+		if m.HookSock == "" || !m.CopilotPlugins() || agents.FlagKnown(specs, agents.Copilot, "--plugin-dir") {
 			return nil
 		}
 		return func() SpawnPrep {

@@ -11,6 +11,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/attach"
+	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/statedir"
@@ -232,6 +233,66 @@ func TestASandboxThatLetsTheAgentWriteIsRefused(t *testing.T) {
 	}
 }
 
+// A sandbox that lets the agent write where install = "home" puts nerdr's
+// skills, plugins and hooks is warned of; the agent starts.
+func TestASandboxThatLetsTheAgentWriteTheHomeInstallIsWarnedOf(t *testing.T) {
+	if err := exec.Command("bwrap", "--dev-bind", "/", "/", "--unshare-pid", "true").Run(); err != nil {
+		t.Skip("no bwrap that runs here: ", err)
+	}
+	open, denied := t.TempDir(), t.TempDir()
+	SandboxWarns = func(*Core, *Tab) []string { return []string{open, denied} }
+	t.Cleanup(func() { SandboxWarns = func(*Core, *Tab) []string { return nil } })
+	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --ro-bind "+denied+" "+denied+" --unshare-pid -- \"$@\"\n")
+	notes, started := check(t, c, tb, cl)
+	if !started {
+		t.Fatalf("not started: %s, notices %q", tb.Err, notes)
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "("+open+")") || strings.Contains(notes[0], denied) ||
+		!strings.Contains(notes[0], `install = "worktree"`) {
+		t.Fatalf("notices %q", notes)
+	}
+}
+
+// The folders install = "home" writes for the agents are tried only with
+// that setting, and only those that are there are found; none is made.
+func TestSandboxWarnsAreTheHomeInstall(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", t.TempDir())
+	c := &Core{}
+	c.Cfg.Agents = map[agents.Kind]agents.Spec{
+		agents.Claude:      {Command: []string{"/bin/true"}},
+		agents.OpenCode:    {Command: []string{"/bin/true"}},
+		agents.Antigravity: {Command: []string{"/bin/true"}},
+	}
+	c.Cfg.Install = config.InstallWorktree
+	if w := c.sandboxWarns(&Tab{}); w != nil {
+		t.Fatalf("warns with install = worktree: %q", w)
+	}
+	c.Cfg.Install = config.InstallHome
+	warns := c.sandboxWarns(&Tab{})
+	skillsDir := filepath.Join(home, ".claude", "skills")
+	plugin := hooks.OpenCodePluginHome(home)
+	for _, want := range []string{skillsDir, plugin, filepath.Dir(plugin), hooks.AgyHooksHome(home)} {
+		if !slices.Contains(warns, want) {
+			t.Errorf("%s is not among the warns: %q", want, warns)
+		}
+	}
+	if slices.Contains(warns, hooks.CopilotPluginHome(home)) {
+		t.Errorf("copilot's old home plugin is among the warns: %q", warns)
+	}
+	if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	r := sandboxcheck.Probe(sandboxcheck.Target{Nonce: "n", Warns: warns})
+	if !slices.Equal(r.Warns, []string{skillsDir}) || r.Writes != nil {
+		t.Fatalf("found %q, writes %q: want only %s, which is there", r.Warns, r.Writes, skillsDir)
+	}
+	if _, err := os.Stat(filepath.Dir(plugin)); !os.IsNotExist(err) {
+		t.Fatalf("the check made %s: %v", filepath.Dir(plugin), err)
+	}
+}
+
 // Policy coverage is deterministic even on hosts without bwrap.
 func TestSandboxRefusalPolicy(t *testing.T) {
 	for _, tc := range []struct {
@@ -245,6 +306,7 @@ func TestSandboxRefusalPolicy(t *testing.T) {
 		{"holder", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Holder: []string{"ptrace"}}}, true},
 		{"writes", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Writes: []string{"/fixture/config"}}}, true},
 		{"writes and client", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Client: []string{"socket"}, Writes: []string{"/fixture/config"}}}, true},
+		{"warns", SandboxCheckedMsg{OK: true, Result: sandboxcheck.Result{Warns: []string{"/fixture/skills"}}}, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			tc.ev.Kind = agents.Codex
@@ -255,7 +317,13 @@ func TestSandboxRefusalPolicy(t *testing.T) {
 			m := &Core{Client: cl, Root: t.TempDir()}
 			m.OnSandboxChecked(tc.ev)
 			if !tc.refused {
-				if len(cl.notices) != 0 {
+				switch {
+				case len(tc.ev.Result.Warns) > 0:
+					if len(cl.notices) != 1 || !strings.Contains(cl.notices[0], "codex's sandbox lets it write where nerdr installs") ||
+						!strings.Contains(cl.notices[0], "(/fixture/skills)") || !strings.Contains(cl.notices[0], `install = "worktree"`) {
+						t.Fatalf("no warning of the home install: %q", cl.notices)
+					}
+				case len(cl.notices) != 0:
 					t.Fatalf("clear check warned: %q", cl.notices)
 				}
 				return
@@ -307,5 +375,33 @@ func TestSandboxWritesTryTheStateTemporaryFolder(t *testing.T) {
 	}
 	if r := sandboxcheck.Probe(sandboxcheck.Target{Nonce: "n", Writes: writes}); !slices.Contains(r.Writes, tmp) {
 		t.Fatalf("a writable %s is not found: %v", tmp, r.Writes)
+	}
+}
+
+// An agent that starts often does not say the same at each start: the
+// warning comes once for each kind of agent, and again when what its
+// sandbox lets it write has changed.
+func TestTheHomeInstallIsWarnedOfOnceUntilItChanges(t *testing.T) {
+	cl := &toldClient{}
+	m := &Core{Client: cl, Root: t.TempDir()}
+	warns := func(k agents.Kind, paths ...string) {
+		m.OnSandboxChecked(SandboxCheckedMsg{Kind: k, OK: true, Result: sandboxcheck.Result{Warns: paths}})
+	}
+	for _, step := range []struct {
+		what  string
+		do    func()
+		total int
+	}{
+		{"the first start", func() { warns(agents.Copilot, "/fixture/skills") }, 1},
+		{"the same again", func() { warns(agents.Copilot, "/fixture/skills") }, 1},
+		{"another kind", func() { warns(agents.OpenCode, "/fixture/skills") }, 2},
+		{"more to write", func() { warns(agents.Copilot, "/fixture/skills", "/fixture/hooks") }, 3},
+		{"nothing to write", func() { warns(agents.Copilot) }, 3},
+		{"writable once more", func() { warns(agents.Copilot, "/fixture/skills") }, 4},
+	} {
+		step.do()
+		if len(cl.notices) != step.total {
+			t.Fatalf("%s: %d notices, want %d: %q", step.what, len(cl.notices), step.total, cl.notices)
+		}
 	}
 }
