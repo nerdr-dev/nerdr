@@ -170,9 +170,12 @@ func (m *Core) OnExit(t *Tab) Cmd {
 		}
 		return cmd
 	}
+	how := "has stopped"
 	if err != nil {
 		t.Err = err.Error()
+		how += " (" + t.Err + ")"
 	}
+	m.TellStarter(t, how, nil)
 	return nil
 }
 

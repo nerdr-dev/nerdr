@@ -81,6 +81,9 @@ When the user asks for several agents, you coordinate:
 - When they are done, read what they did (`git diff`), put it together,
   and tell the user what each did.
 
+If the user closes an agent you started, or it stops, nerdr tells you in
+a message: stop waiting for it, and see what it left before you go on.
+
 If an agent you started is no longer needed, ask the user whether to close
 its pane. Close it with `nerdr close N` only when they say so, or asked
 for it themselves ("close agent 2", "close the other panes").

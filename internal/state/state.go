@@ -109,6 +109,10 @@ type Tab struct {
 	// Num is the agent's number among the tab's agents, which names it in
 	// the row of panes and to the others: `nerdr send 2` reaches number 2.
 	Num int `json:"num,omitempty"`
+	// StartedBy is the ID of the agent that started this one beside it
+	// (`nerdr agent`), told when it is closed or stops; "" for one the
+	// user started.
+	StartedBy string `json:"started_by,omitempty"`
 	// Sandboxed is set once any agent in the tab's worktree has run in a
 	// sandbox, so git commit and push know not to run hooks on its files.
 	Sandboxed bool `json:"sandboxed,omitempty"`
