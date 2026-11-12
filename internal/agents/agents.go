@@ -51,7 +51,10 @@ var All = []Kind{Claude, OpenCode, Copilot, Codex, Cursor, Gemini, Antigravity, 
 // Env is set in the agent's environment. ConfigModel is opencode's model,
 // which it takes only through its config (see configModelEnv). Sandboxed
 // says the command runs the agent in a sandbox, so nerdr does nothing
-// outside it for the agent: see app's confined.
+// outside it for the agent: see app's confined. CheckCommand, when set,
+// is what nerdr's check of that sandbox runs through, with nerdr's own
+// command line added, in place of what Command has before the agent's
+// program: for a wrapper that picks the agent some other way.
 //
 // A kind nerdr does not know (`[agents.amp]` in the config) is run from its
 // Command as well, with ResumeArgs added when its tab is resumed, and its
@@ -64,6 +67,9 @@ type Spec struct {
 	Env         map[string]string `toml:"env"`
 	ConfigModel string            `toml:"config_model"`
 	Sandboxed   bool              `toml:"sandboxed"`
+	// CheckCommand is set for a wrapper that does not take the agent's
+	// program as a word of its own; see core's CheckSandbox.
+	CheckCommand []string `toml:"check_command"`
 }
 
 // openCodeConfigEnv is the variable opencode reads inline config from.

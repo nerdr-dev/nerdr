@@ -152,6 +152,49 @@ func TestASandboxNerdrCannotCheckIsSaidSo(t *testing.T) {
 	}
 }
 
+// pickingWrapper is a wrapper that starts codex by default, with no word
+// for it in the command, and runs another program only as
+// `wrapper exec -- program`, in sandbox, a command to put before it.
+func pickingWrapper(sandbox string) string {
+	return "case \"$1\" in\n" +
+		"exec) shift 2; exec " + sandbox + " \"$@\";;\n" +
+		"*) case \"$*\" in *--help*) exit 0;; esac; exec sleep 30;;\n" +
+		"esac\n"
+}
+
+// A wrapper that picks the agent itself is checked through the agent's
+// check_command: the check runs, and what it finds counts as it does
+// through command.
+func TestACheckCommandRunsTheCheck(t *testing.T) {
+	c, tb, cl := checkedCore(t, pickingWrapper(""))
+	wrap := filepath.Join(c.Root, "agent.sh")
+	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{wrap}, Sandboxed: true}
+	askedHelp(c.Cfg.Agents)
+	notes, started := check(t, c, tb, cl)
+	if started || len(notes) != 1 || !strings.Contains(notes[0], "names no codex") || !strings.Contains(notes[0], "check_command") {
+		t.Fatalf("without check_command: started %v, notices %q", started, notes)
+	}
+
+	cl.notices = nil
+	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{wrap}, Sandboxed: true, CheckCommand: []string{wrap, "exec", "--"}}
+	askedHelp(c.Cfg.Agents)
+	notes, started = check(t, c, tb, cl)
+	if started || len(notes) != 1 || !strings.Contains(notes[0], "client socket") {
+		t.Fatalf("a check_command that is no sandbox: started %v, notices %q", started, notes)
+	}
+
+	if err := exec.Command("bwrap", "--dev-bind", "/", "/", "--unshare-pid", "true").Run(); err != nil {
+		t.Skip("no bwrap that runs here: ", err)
+	}
+	c, tb, cl = checkedCore(t, pickingWrapper("bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --unshare-pid --"))
+	wrap = filepath.Join(c.Root, "agent.sh")
+	c.Cfg.Agents[agents.Codex] = agents.Spec{Command: []string{wrap}, Sandboxed: true, CheckCommand: []string{wrap, "exec", "--"}}
+	askedHelp(c.Cfg.Agents)
+	if notes, started := check(t, c, tb, cl); len(notes) != 0 || !started {
+		t.Errorf("a check_command that is a sandbox: started %v, notices %q", started, notes)
+	}
+}
+
 // A check that never ends is ended, and said not to have answered.
 func TestACheckThatHangsIsEnded(t *testing.T) {
 	old := SandboxCheckWait

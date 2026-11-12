@@ -349,6 +349,12 @@ func (m *Model) settingRows() []settingRow {
 					"Reviews of its work also run only in sandboxed agents.\n" +
 					"It takes effect when the agent next starts. It does not make a sandbox: command must.",
 				example: `sandboxed = true`},
+			settingRow{table: table, key: "check_command", kind: sList,
+				desc: "With sandboxed on: what nerdr's check of the sandbox runs through, for a wrapper that does not take the agent's program as a word of its own in command, but picks the agent with an option, or by default. " +
+					"nerdr adds its own program and arguments at the end; the command must run them in the same sandbox as the agent.\n" +
+					"Empty: the check runs through command, with nerdr in place of the agent's program.\n" +
+					"If this command gives nerdr another sandbox policy than the agent's, the check does not try the sandbox the agent gets.",
+				example: `check_command = ["my-sandbox", "exec", "--"]`},
 			settingRow{table: "review.args", key: string(k), label: "review args", kind: sList,
 				desc:    "Arguments added when this agent reviews another's work, after its args. Reviewers are told not to change files; this is where you make sure they cannot, with the agent's own read-only mode.",
 				example: reviewArgsExample(k)},

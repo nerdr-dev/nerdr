@@ -51,7 +51,11 @@ func (ev SandboxCheckedMsg) Refused() bool {
 }
 
 // CheckSandbox checks access to the client socket and holder before every
-// sandboxed launch. The wrapper runs nerdr in place of the agent. Unknown
+// sandboxed launch. The wrapper runs nerdr in place of the agent: what of
+// the agent's command comes before its program, or the agent's
+// check_command, for a wrapper that picks the agent some other way (an
+// option, or the agent by default). That one may run nerdr under another
+// policy than the agent's; it is the user's to say it does not. Unknown
 // results refuse the launch too: native tool sandboxes cannot be verified
 // by running a probe outside them. Results are not cached because the
 // wrapper's policy can depend on the folder, environment or mutable files.
@@ -61,17 +65,24 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		return nil
 	}
 	kind := t.Agent
-	command, _ := agents.Command(m.SpecsFor(t), kind)
+	specs := m.SpecsFor(t)
+	command, _ := agents.Command(specs, kind)
 	unknown := func(why string) func() SandboxCheckedMsg {
 		return func() SandboxCheckedMsg { return SandboxCheckedMsg{Kind: kind, Why: why} }
 	}
-	names := []string{string(kind)}
-	if d := agents.DefaultSpec(kind).Command; len(d) > 0 {
-		names = append(names, filepath.Base(d[0]))
-	}
-	wrapper, ok := sandboxcheck.Wrapper(command, names...)
-	if !ok {
-		return unknown(fmt.Sprintf("its command (%s) names no %s to run the check in place of", strings.Join(command, " "), strings.Join(names, " or ")))
+	wrapper := slices.Clone(specs[kind].CheckCommand)
+	if len(wrapper) == 0 {
+		names := []string{string(kind)}
+		if d := agents.DefaultSpec(kind).Command; len(d) > 0 {
+			names = append(names, filepath.Base(d[0]))
+		}
+		var ok bool
+		wrapper, ok = sandboxcheck.Wrapper(command, names...)
+		if !ok {
+			return unknown(fmt.Sprintf("its command (%s) names no %s to run the check in place of; "+
+				"set check_command to a command that runs the program after it in the same sandbox",
+				strings.Join(command, " "), strings.Join(names, " or ")))
+		}
 	}
 	bin, err := spawn.Bin()
 	if err != nil {
@@ -93,6 +104,10 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		Writes:    SandboxWrites(m, t),
 		Warns:     SandboxWarns(m, t),
 	}
+	noAnswer := "the check did not answer: the sandbox may not let it run " + bin
+	if len(specs[kind].CheckCommand) > 0 {
+		noAnswer += ", or check_command does not run the program it is given"
+	}
 	if m.Held != nil {
 		target.Pids = append(target.Pids, m.Held.Client.Pid())
 	}
@@ -106,7 +121,7 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		}
 		r, ok := sandboxcheck.Parse(out, target.Nonce)
 		if !ok {
-			return SandboxCheckedMsg{Kind: kind, Why: "the check did not answer: the sandbox may not let it run " + bin}
+			return SandboxCheckedMsg{Kind: kind, Why: noAnswer}
 		}
 		return SandboxCheckedMsg{Kind: kind, Result: r, OK: true}
 	}
