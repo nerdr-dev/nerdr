@@ -243,19 +243,23 @@ func (m *Core) CheckShells() {
 // newAgent starts kind k in a new conversation in t's worktree, in a pane
 // of its own, last.
 func (m *Core) NewAgent(t *Tab, k agents.Kind) Cmd {
-	_, cmd := m.NewAgentWith(t, k, "", "", false, false)
+	_, cmd := m.NewAgentWith(t, k, "", "", false, false, nil)
 	return cmd
 }
 
 // newAgentWith is newAgent, the agent started with model in place of the
 // config's, if any, and given task as its first message, if any; quiet
 // leaves the keyboard where it is, and sandboxed marks task as from an
-// agent in a sandbox. It returns the agent, nil when t is gone.
-func (m *Core) NewAgentWith(t *Tab, k agents.Kind, model, task string, quiet, sandboxed bool) (*Tab, Cmd) {
+// agent in a sandbox, and by is the agent starting it, nil for the user.
+// It returns the agent, nil when t is gone.
+func (m *Core) NewAgentWith(t *Tab, k agents.Kind, model, task string, quiet, sandboxed bool, by *Tab) (*Tab, Cmd) {
 	if m.TabIndex(t) < 0 || m.ReposHold(t) {
 		return nil, nil
 	}
 	a := &Tab{AgentState: Agent{Tab: state.Tab{ID: NewTabID(), Name: t.Name, Dir: t.Dir, Agent: k, Model: model, Worktrees: t.Worktrees, Num: t.NextNum()}, Light: StStarting}, PartOf: t}
+	if by != nil {
+		a.StartedBy = by.ID
+	}
 	p := &PaneTab{Kind: PaneAgent, A: a}
 	cmd := m.AddPane(t, p, quiet)
 	if task != "" {
@@ -384,7 +388,7 @@ func (m *Core) OnNewAgent(r hooks.Report) Cmd {
 		"You have none of its conversation. When you are done, or need something from it, tell it with the nerdr-send skill: "+
 		"nerdr send %d \"…\". It waits for your answer.",
 		from.Num, from.Agent, num, r.Text, from.Num)
-	a, cmd := m.NewAgentWith(o, k, r.Model, task, true, m.Confined(r, from))
+	a, cmd := m.NewAgentWith(o, k, r.Model, task, true, m.Confined(r, from), from)
 	if a == nil {
 		reply(hooks.Answer{Err: "the tab is gone"})
 		return nil
@@ -619,7 +623,9 @@ func (t *Tab) NoteSaid(s string) {
 // closePane stops what runs in p and takes it out of the row: its
 // terminal, its agent or its reviewer. The tab's first agent goes only
 // with the tab: it is always there to carry on the tab's conversation.
-func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
+// by is the agent closing it (nerdr close), nil for the user: an agent
+// another started is closed with that one told, unless it closed it.
+func (m *Core) ClosePane(t *Tab, p *PaneTab, by *Tab) Cmd {
 	switch {
 	case p == t.OwnPane():
 		m.Toast(m.AgentLabel(t, t) + " is the tab's first agent: it stays as long as the tab · " + KeyRef("x") + " closes the tab")
@@ -634,6 +640,7 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 		}
 	case p.Kind == PaneAgent && p.A != nil:
 		a := p.A
+		m.TellStarter(a, "was closed by the user", by)
 		if a.Review != nil {
 			m.EndReview(a, "stopped", false)
 		}
@@ -658,6 +665,24 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab) Cmd {
 	}
 	m.DropPane(t, p)
 	return m.Tell(LayoutMsg{})
+}
+
+// TellStarter tells the agent that started a (nerdr agent) that a is no
+// longer there to answer it, how saying what happened to it: once, and
+// not when by, the agent that did it, is the one that started it.
+func (m *Core) TellStarter(a *Tab, how string, by *Tab) {
+	if a.StartedBy == "" || a.StarterTold || m.Quitting {
+		return
+	}
+	s := m.AgentByID(a.StartedBy)
+	if s == nil || s == a || s == by || !m.Live(s) {
+		return
+	}
+	a.StarterTold = true
+	m.AddMessage(s, fmt.Sprintf("Agent %d (%s), which you started in this nerdr tab, %s: it does not answer you any more. "+
+		"If it had not sent you its work, see what it left in the worktree (git status, git diff), "+
+		"and do the rest of its task yourself, or ask the user.", a.Num, a.Agent, how), true)
+	m.Tell(PanesMsg{})
 }
 
 // PaneName is what p is called in its frame and in the row.

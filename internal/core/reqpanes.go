@@ -42,7 +42,7 @@ func (q ClosePane) Do(m *Core) Cmd {
 	if p == nil {
 		return nil
 	}
-	return m.ClosePane(t, p)
+	return m.ClosePane(t, p, nil)
 }
 
 // DropPane takes pane P out of its tab, with nothing running in it: a

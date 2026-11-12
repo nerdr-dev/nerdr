@@ -574,7 +574,7 @@ func (m *Core) OnClose(r hooks.Report) Cmd {
 	}
 	m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " closed " + name)
 	reply(hooks.Answer{Text: "Closed " + name + "."})
-	return m.ClosePane(o, p)
+	return m.ClosePane(o, p, from)
 }
 
 // onNewTab makes the tab an agent asked for (`nerdr tab new`): a branch

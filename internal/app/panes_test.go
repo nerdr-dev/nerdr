@@ -217,7 +217,7 @@ func TestAgentBesideTheTab(t *testing.T) {
 		t.Fatal("a restart should put the agent back in its pane")
 	}
 
-	m.home().Core.ClosePane(tb, a.PaneOf())
+	m.home().Core.ClosePane(tb, a.PaneOf(), nil)
 	if len(tb.Panes()) != 1 || m.home().Core.Live(a) {
 		t.Fatal("closing its pane should stop the agent")
 	}
@@ -291,7 +291,7 @@ func TestAgentsAreNumbered(t *testing.T) {
 	if v := ansi.Strip(m.View()); !strings.Contains(v, "1:claude") || !strings.Contains(v, "3:codex") {
 		t.Fatalf("the row should number the agents:\n%s", v)
 	}
-	m.home().Core.ClosePane(tb, two.PaneOf())
+	m.home().Core.ClosePane(tb, two.PaneOf(), nil)
 	m.home().Core.NewAgent(tb, agents.Codex)
 	if three.Num != 3 || tb.ExtraAgents()[1].Num != 2 {
 		t.Fatal("numbers stay; a new agent gets the lowest free one")
@@ -679,6 +679,74 @@ func TestAgentStartsAnotherWithAModel(t *testing.T) {
 	}
 }
 
+// TestStarterToldOfClose: the agent that started another (nerdr agent)
+// is told, once, when the user closes it or it stops, and not when it
+// closes it itself; an agent the user started tells no one.
+func TestStarterToldOfClose(t *testing.T) {
+	m := paneModel(t)
+	fakeAgent(m, agents.Codex)
+	tb := m.Cur()
+	c := m.home().Core
+	start := func(text string) *core.Tab {
+		t.Helper()
+		if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.NewAgent, Kind: "codex", Text: text}); a.Err != "" {
+			t.Fatalf("answer %+v", a)
+		}
+		ex := tb.ExtraAgents()
+		return ex[len(ex)-1]
+	}
+	told := func() []string {
+		var out []string
+		for _, msg := range tb.Messages {
+			if strings.Contains(msg.Text, "which you started") {
+				out = append(out, msg.Text)
+			}
+		}
+		return out
+	}
+
+	two := start("write the tests")
+	if two.StartedBy != tb.ID {
+		t.Fatalf("started by %q, want %q", two.StartedBy, tb.ID)
+	}
+	c.ClosePane(tb, two.PaneOf(), nil)
+	if got := told(); len(got) != 1 || !strings.Contains(got[0], "Agent 2 (codex)") || !strings.Contains(got[0], "closed by the user") {
+		t.Fatalf("closed by the user: %q", got)
+	}
+	tb.Messages = nil
+
+	three := start("look around")
+	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Close, To: three.Num}); a.Err != "" {
+		t.Fatalf("close: %+v", a)
+	}
+	if got := told(); len(got) != 0 {
+		t.Fatalf("closed by its starter, who knows: %q", got)
+	}
+
+	four := start("and this")
+	four.Pane.Close()
+	deadline := time.Now().Add(5 * time.Second)
+	for exited, _, _ := four.Pane.Exited(); !exited; exited, _, _ = four.Pane.Exited() {
+		if time.Now().After(deadline) {
+			t.Fatal("the agent did not stop")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	c.OnExit(four)
+	c.ClosePane(tb, four.PaneOf(), nil)
+	if got := told(); len(got) != 1 || !strings.Contains(got[0], "has stopped") {
+		t.Fatalf("stopped, then closed: told once, of the stop: %q", got)
+	}
+	tb.Messages = nil
+
+	c.NewAgent(tb, agents.Codex)
+	mine := tb.ExtraAgents()[len(tb.ExtraAgents())-1]
+	c.ClosePane(tb, mine.PaneOf(), nil)
+	if got := told(); len(got) != 0 {
+		t.Fatalf("one the user started: %q", got)
+	}
+}
+
 // TestTerminalLeavesAColumn: a terminal pane's program is a column
 // narrower than the pane, so the cursor at the end of a long line is not
 // against the frame.
@@ -772,7 +840,7 @@ func TestTasksForTheTabsAgents(t *testing.T) {
 		t.Fatalf("alt+2 picks agent 2: %+v", two.Messages)
 	}
 
-	m.home().Core.ClosePane(tb, two.PaneOf())
+	m.home().Core.ClosePane(tb, two.PaneOf(), nil)
 	if len(tb.Inactive) != 2 || tb.Inactive[1].Gone != 2 || tb.Inactive[1].Text != "only for two" {
 		t.Fatalf("its tasks should stay, for agent 2: %+v", tb.Inactive)
 	}

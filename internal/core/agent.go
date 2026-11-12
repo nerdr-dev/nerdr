@@ -130,6 +130,9 @@ type Agent struct {
 	// DetectAs is the agent the screen is read as, and the one its
 	// integration reports as; see AgentID.
 	DetectAs string
+	// StarterTold is set once the agent that started this one has been
+	// told it was closed or stopped, for it to be told only once.
+	StarterTold bool `json:"-"`
 }
 
 // HookAuthority is what an integration has said about an agent.

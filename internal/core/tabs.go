@@ -657,6 +657,7 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 	t.StartedAt, t.Said, t.SessionUnsure = time.Now(), nil, l.Unsure
 	t.Hook = HookAuthority{} // a new process: its integration reports afresh
 	t.Reports, t.Heard, t.ToldCutOff = reports, false, false
+	t.StarterTold = false // running again: one more stop to tell of
 	t.DetectAs = agents.DetectID(m.Cfg.Agents, t.Agent)
 	t.Resumed = resume
 	t.Light = StStarting
