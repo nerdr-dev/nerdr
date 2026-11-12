@@ -135,13 +135,31 @@ read. Configuration selected by a protected repository path can use
 Sandbox history is saved for each repository in the session, including
 after its tabs and worktrees are removed. Imported sandboxed work is
 recorded before the destination agent starts, including when that start
-fails. Older sessions that still contain recorded worktree paths conservatively
-mark every known repository once when migrated. Sessions saved in the new
-format do not repeat that migration when their repository history is empty.
-Older versions could erase those paths when worktrees disappeared. If all
-that history was already removed, migration cannot detect or recover the
-earlier sandbox use; the current agent configuration is not proof of where
-an agent ran in the past.
+fails. Older sessions kept only the folders an agent ran in a sandbox in.
+When such a session is migrated, nerdr marks the repository of each folder
+it can tie to one: a saved tab's worktree, or a worktree or main checkout
+of a repository it knows. A folder that is gone and belongs to no saved
+tab marks no repository. Sessions saved in the new format do not repeat
+that migration when their repository history is empty. Older versions
+could erase those folders when worktrees disappeared. If that history was
+already removed, migration cannot detect or recover the earlier sandbox
+use; the current agent configuration is not proof of where an agent ran in
+the past.
+
+Where nerdr holds back, it says which repository, which tab or folder the
+history is from, and how to have nerdr forget it. A new tab in such a
+repository is still made: nerdr does not fetch there, so the branch starts
+from the base as it was last fetched, with a warning, and setup does not
+run in it.
+
+Have nerdr forget a repository's sandbox history only when you trust what
+is in the repository and its worktrees now: **Forget sandbox history…** in
+the tab's menu, or, with nerdr not running, `nerdr sandbox clear REPO` in
+the folder you start nerdr in (`nerdr sandbox` lists the repositories,
+`nerdr sandbox clear --all` forgets all of them). nerdr then fetches,
+pushes and runs hooks and setup there as in any other repository, until an
+agent runs in a sandbox there again. The menu refuses while an agent runs
+in a sandbox in the repository.
 Repository history protects host Git and setup; it does not by itself mark
 every tab in the repository as having run a sandboxed agent. Hook and move
 restrictions follow the individual tab and its worktrees.

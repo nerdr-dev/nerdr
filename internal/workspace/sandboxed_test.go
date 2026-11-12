@@ -102,3 +102,62 @@ func TestSandboxedPushRefusesLFSWithoutRunningHostCode(t *testing.T) {
 		t.Fatal("refused push ran its hook")
 	}
 }
+
+// TestWorktreeIsMadeWhereASandboxedAgentRan: nerdr runs no fetch in a
+// repository an agent has run in a sandbox in, and a new tab there is made
+// all the same: from the base as it was last fetched, with a warning that
+// names the repository, where its history is from and how to have nerdr
+// forget it. Once it is forgotten, the base is fetched and pinned again.
+func TestWorktreeIsMadeWhereASandboxedAgentRan(t *testing.T) {
+	root := t.TempDir()
+	a, push := cloneWithOrigin(t, root, "a")
+	had := revParse(t, a.Path, "refs/remotes/origin/main")
+	newest := push()
+	gitsafe.SandboxedRepoFrom(a.Path, "tab old, /somewhere/old-a")
+
+	plan, err := MakePlan(filepath.Join(root, "worktrees"), "feat", []Repo{a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	warnings, err := plan.Sync()
+	if err != nil {
+		t.Fatalf("no tab where a sandboxed agent ran: %v", err)
+	}
+	if len(warnings) != 1 {
+		t.Fatalf("warnings = %v", warnings)
+	}
+	for _, want := range []string{"as it was last fetched", a.Path, "tab old, /somewhere/old-a", "nerdr sandbox clear " + a.Path, "Forget sandbox history"} {
+		if !strings.Contains(warnings[0], want) {
+			t.Errorf("warning lacks %q: %s", want, warnings[0])
+		}
+	}
+	wts, err := plan.Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := revParse(t, wts[0].Path, "HEAD"); got != had {
+		t.Fatalf("started from %s, not the base as last fetched %s", got, had)
+	}
+	if plan.Items[0].Pinned != "" || len(plan.SetupIn()) != 0 {
+		t.Fatal("a base nobody fetched counts as origin's")
+	}
+
+	// A fetch asked for outright says the same, rather than only git's
+	// "transport not allowed".
+	err = FetchForkPR(a.Path, 1, "pr-1")
+	if err == nil || !strings.Contains(err.Error(), "nerdr sandbox clear "+a.Path) || !strings.Contains(err.Error(), "tab old") {
+		t.Fatalf("fetch refusal = %v", err)
+	}
+
+	gitsafe.ForgetSandboxed(a.Path)
+	plan, err = MakePlan(filepath.Join(root, "worktrees"), "next", []Repo{a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if warnings, err := plan.Sync(); err != nil || len(warnings) != 0 {
+		t.Fatalf("after forgetting: %v, %v", warnings, err)
+	}
+	if plan.Items[0].Pinned != newest {
+		t.Fatalf("pinned %q, origin has %s", plan.Items[0].Pinned, newest)
+	}
+}

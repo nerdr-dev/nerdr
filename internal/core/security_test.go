@@ -54,7 +54,10 @@ func TestImportedSandboxHistoryPersistsWithoutRunningAgent(t *testing.T) {
 	}
 }
 
-func TestLegacySandboxHistorySurvivesDeletedWorktree(t *testing.T) {
+// TestLegacySandboxHistoryOfADeletedWorktreeMarksNoRepository: a folder
+// from a session that kept no repositories, now gone and of no tab, cannot
+// be tied to a repository, and marks none: not every one nerdr knows.
+func TestLegacySandboxHistoryOfADeletedWorktreeMarksNoRepository(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "repo")
 	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0700); err != nil {
@@ -62,13 +65,8 @@ func TestLegacySandboxHistorySurvivesDeletedWorktree(t *testing.T) {
 	}
 	c := &Core{Root: root}
 	c.restoreSandboxed(state.Session{SandboxedDirs: map[string]bool{filepath.Join(root, "removed"): true}})
-	if !c.SandboxedRepos[repo] || !gitsafe.RepoSandboxed(repo) {
-		t.Fatal("legacy history lost on migration")
-	}
-	tab := &Tab{AgentState: Agent{Tab: state.Tab{Worktrees: []workspace.Worktree{{Repo: repo, Path: filepath.Join(root, "new")}}}}}
-	c.MarkSandboxed(tab)
-	if tab.HasSandboxed() {
-		t.Fatal("untouched tab inherited repository history")
+	if len(c.SandboxedRepos) != 0 || gitsafe.RepoSandboxed(repo) {
+		t.Fatalf("a folder of no known repository marked %v", c.SandboxedRepos)
 	}
 }
 

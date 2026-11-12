@@ -230,6 +230,10 @@ func (m *Model) tabItems() []menuItem {
 		menuItem{label: "Move right", key: "⇧→", run: cmd("shift+right")},
 		menuItem{label: "Close tab…", key: "x", run: cmd("x")},
 	)
+	if repos := m.sandboxedRepos(t); len(repos) > 0 {
+		items = append(items, menuItem{label: "Sandbox"},
+			menuItem{label: "Forget sandbox history…", run: func(m *Model) tea.Cmd { return m.askForgetSandboxed(t, repos) }})
+	}
 	return items
 }
 

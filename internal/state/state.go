@@ -193,6 +193,10 @@ type Session struct {
 	SandboxHistoryVersion int             `json:"sandbox_history_version,omitempty"`
 	SandboxedDirs         map[string]bool `json:"sandboxed_dirs,omitempty"`
 	SandboxedRepos        map[string]bool `json:"sandboxed_repos,omitempty"`
+	// SandboxSources is, for a repository of SandboxedRepos, where its
+	// history is from, to tell the user: the tab or folder an agent ran in
+	// a sandbox in.
+	SandboxSources map[string]string `json:"sandbox_sources,omitempty"`
 	// SideWidth is the columns the sidebar was dragged to, its frames
 	// included; 0 leaves it as wide as its names need.
 	SideWidth int `json:"side_width,omitempty"`

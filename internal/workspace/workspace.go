@@ -516,7 +516,9 @@ func (p Plan) Describe() []string {
 // and fast-forwards the local branch of the same name to it, as `git pull
 // --ff-only` would. A fetch that fails stops the tab from being made rather
 // than starting it from a copy that may be out of date, with a *FetchError.
-// A repository without origin has nothing to sync with.
+// A repository without origin has nothing to sync with. One where nerdr
+// runs no fetch, an agent having run in a sandbox there, starts from the
+// copy it has, with a warning saying so (see sandboxNote).
 func (p *Plan) Sync() (warnings []string, err error) {
 	for i := range p.Items {
 		it := &p.Items[i]
@@ -527,6 +529,15 @@ func (p *Plan) Sync() (warnings []string, err error) {
 		b := strings.TrimPrefix(it.Base, "origin/")
 		if p.Unfetched {
 			warnings = append(warnings, fmt.Sprintf("%s: started from %s as it was last fetched; it may be out of date", it.Repo.Name, it.Base))
+			continue
+		}
+		if note := sandboxNote(it.Repo.Path); note != "" {
+			// No fetch can run here (see gitsafe's delegateEnv), and the
+			// tab is not to fail for it: it starts from the base as last
+			// fetched, unpinned, so neither setup nor hooks from its code
+			// run (see SetupIn, addFromBase).
+			warnings = append(warnings, fmt.Sprintf("%s: started from %s as it was last fetched, without fetching it: %s",
+				it.Repo.Name, it.Base, note))
 			continue
 		}
 		// The commit is taken from origin's answer, not from the ref the
@@ -1288,7 +1299,11 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 		}
 		msg := gitReason(stderr.String())
 		if slices.Contains(cmd.Env, "GIT_ALLOW_PROTOCOL=") && strings.Contains(msg, "transport '") && strings.Contains(msg, "not allowed") {
-			msg += ": nerdr disables host Git transports after an agent has run in a sandbox in this repository; transport programs can execute worktree code. Use Git inside the sandbox, or inspect the work and use your own terminal"
+			if note := sandboxNote(dir); note != "" {
+				msg += ": " + note
+			} else {
+				msg += ": nerdr runs no fetch or push where an agent has run in a sandbox"
+			}
 		}
 		if msg == "" {
 			msg = err.Error()
@@ -1296,6 +1311,24 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 		return string(out), errors.New(msg)
 	}
 	return string(out), nil
+}
+
+// sandboxNote is why nerdr neither fetches nor pushes in the repository
+// dir is in, "" when it does: which repository an agent has run in a
+// sandbox in, where, and how the user has nerdr forget it.
+func sandboxNote(dir string) string {
+	repo, from, ok := gitsafe.SandboxSource(dir)
+	if !ok {
+		return ""
+	}
+	where := ""
+	if from != "" {
+		where = " (" + from + ")"
+	}
+	return "nerdr does not fetch or push in " + repo + ", where an agent has run in a sandbox" + where +
+		": the programs git fetches and pushes with can run what such an agent left there, outside its sandbox. " +
+		"Fetch or push in your own terminal; or, when you trust what is in the repository, have nerdr forget it: " +
+		"Forget sandbox history in the tab's menu, or nerdr sandbox clear " + repo + " with nerdr not running"
 }
 
 // hasHookCommand reports whether git has `git hook`, which came with git

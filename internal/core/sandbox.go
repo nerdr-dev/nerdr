@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"maps"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -164,14 +165,39 @@ func (m *Core) MarkSandboxed(t *Tab) {
 				m.markSandboxedDir(w.Path)
 			}
 			if w.Repo != "" {
-				if m.SandboxedRepos == nil {
-					m.SandboxedRepos = map[string]bool{}
-				}
-				m.SandboxedRepos[w.Repo] = true
-				gitsafe.SandboxedRepo(w.Repo)
+				m.markSandboxedRepo(w.Repo, sandboxSource(o.Name, w.Path))
 			}
 		}
 	}
+}
+
+// markSandboxedRepo records that a sandboxed agent has run in the main
+// checkout repo or a worktree of it, and from, where: what the user is told
+// when nerdr holds back there. The first source known is kept.
+func (m *Core) markSandboxedRepo(repo, from string) {
+	if m.SandboxedRepos == nil {
+		m.SandboxedRepos = map[string]bool{}
+	}
+	if m.SandboxSources == nil {
+		m.SandboxSources = map[string]string{}
+	}
+	m.SandboxedRepos[repo] = true
+	if m.SandboxSources[repo] == "" && from != "" {
+		m.SandboxSources[repo] = from
+	}
+	gitsafe.SandboxedRepoFrom(repo, m.SandboxSources[repo])
+}
+
+// sandboxSource names the tab and folder a repository's sandbox history is
+// from.
+func sandboxSource(tab, dir string) string {
+	switch {
+	case tab != "" && dir != "":
+		return "tab " + tab + ", " + dir
+	case tab != "":
+		return "tab " + tab
+	}
+	return dir
 }
 
 // Register only newly recorded paths. Restored paths are registered once in
@@ -189,24 +215,28 @@ func (m *Core) ImportSandboxed(wts []workspace.Worktree) {
 	if m.SandboxedDirs == nil {
 		m.SandboxedDirs = map[string]bool{}
 	}
-	if m.SandboxedRepos == nil {
-		m.SandboxedRepos = map[string]bool{}
-	}
 	for _, w := range wts {
 		if w.Path != "" {
 			m.markSandboxedDir(w.Path)
 		}
 		if w.Repo != "" {
-			m.SandboxedRepos[w.Repo] = true
-			gitsafe.SandboxedRepo(w.Repo)
+			m.markSandboxedRepo(w.Repo, "work brought in from an agent in a sandbox, "+w.Path)
 		}
 	}
 	m.SaveSession()
 }
 
-// Old sessions kept only worktree names. A deleted worktree cannot be
-// associated with its repository safely, so migrate conservatively: every
-// known repository is tainted. ScanAll only inspects directory metadata.
+// restoreSandboxed takes up where agents have run in a sandbox, as the
+// session has it, and tells gitsafe.
+//
+// Old sessions kept only the folders (SandboxHistoryVersion 0), not the
+// repositories. A repository is marked for such a folder only when the
+// folder can be tied to it: by a tab of the session whose worktree it is,
+// or by the repository itself, whose .git/worktrees names the folder. A
+// folder that is gone, of a tab that is closed, belongs to no repository
+// nerdr can name, and marks none: marking every repository for it would
+// stop host fetches and pushes in repositories no sandboxed agent has
+// been in, for a user who may have tried a sandbox once.
 func (m *Core) restoreSandboxed(sess state.Session) {
 	m.SandboxedDirs = maps.Clone(sess.SandboxedDirs)
 	if m.SandboxedDirs == nil {
@@ -216,18 +246,9 @@ func (m *Core) restoreSandboxed(sess state.Session) {
 	if m.SandboxedRepos == nil {
 		m.SandboxedRepos = map[string]bool{}
 	}
-	if sess.SandboxHistoryVersion == 0 && len(sess.SandboxedDirs) > 0 {
-		repos, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
-		for _, r := range repos {
-			m.SandboxedRepos[r.Path] = true
-		}
-		for _, t := range sess.Tabs {
-			for _, w := range t.Worktrees {
-				if w.Repo != "" {
-					m.SandboxedRepos[w.Repo] = true
-				}
-			}
-		}
+	m.SandboxSources = maps.Clone(sess.SandboxSources)
+	if m.SandboxSources == nil {
+		m.SandboxSources = map[string]string{}
 	}
 	// Recover known associations before dropping missing worktree paths.
 	// Repo paths come from the saved session, never a worktree's .git file.
@@ -235,11 +256,26 @@ func (m *Core) restoreSandboxed(sess state.Session) {
 		for _, w := range t.Worktrees {
 			if w.Repo != "" && (t.Sandboxed || m.SandboxedDirs[t.Dir] || m.SandboxedDirs[w.Path]) {
 				m.SandboxedRepos[w.Repo] = true
+				if m.SandboxSources[w.Repo] == "" {
+					m.SandboxSources[w.Repo] = sandboxSource(t.Name, w.Path)
+				}
+			}
+		}
+	}
+	if sess.SandboxHistoryVersion == 0 && len(sess.SandboxedDirs) > 0 {
+		// ScanAll only inspects directory metadata.
+		repos, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
+		for dir := range sess.SandboxedDirs {
+			for _, r := range repos {
+				if !m.SandboxedRepos[r.Path] && sandboxedDirOf(r, dir) {
+					m.SandboxedRepos[r.Path] = true
+					m.SandboxSources[r.Path] = dir + ", from an earlier session"
+				}
 			}
 		}
 	}
 	for repo := range m.SandboxedRepos {
-		gitsafe.SandboxedRepo(repo)
+		gitsafe.SandboxedRepoFrom(repo, m.SandboxSources[repo])
 	}
 	for dir := range m.SandboxedDirs {
 		if _, err := os.Stat(dir); os.IsNotExist(err) {
@@ -248,6 +284,103 @@ func (m *Core) restoreSandboxed(sess state.Session) {
 		}
 		gitsafe.Sandboxed(dir)
 	}
+}
+
+// sandboxedDirOf reports whether dir, a folder an agent ran in a sandbox
+// in, is of repository r: its main checkout, a worktree of it, or a tab's
+// folder of several repositories with r's worktree in it under r's name
+// (see workspace.MakePlan). The worktree is asked of r's own
+// .git/worktrees, not of the folder's .git file, which the agent wrote.
+func sandboxedDirOf(r workspace.Repo, dir string) bool {
+	return SamePath(r.Path, dir) || gitsafe.Belongs(r.Path, dir) ||
+		gitsafe.Belongs(r.Path, filepath.Join(dir, r.Name))
+}
+
+// ForgetSandboxed drops the sandbox history of the main checkout repo, as
+// the user asked: nerdr fetches, pushes and runs hooks and setup there
+// again as in a repository no sandboxed agent has worked in. The tabs with
+// a worktree of it lose theirs too, or the next look at one would mark the
+// repository again. It is refused, with why, while an agent runs in a
+// sandbox there: what it writes next is not what the user looked at.
+func (m *Core) ForgetSandboxed(repo string) (why string) {
+	var tabs []*Tab
+	for _, t := range m.Tabs {
+		o := t.Owner()
+		if slices.Contains(tabs, o) || !slices.ContainsFunc(o.Worktrees, func(w workspace.Worktree) bool { return SamePath(w.Repo, repo) }) {
+			continue
+		}
+		for _, a := range o.AgentsIn() {
+			if a.InSandbox {
+				return fmt.Sprintf("%s runs in a sandbox in tab %s now: close or restart it outside the sandbox first", a.Agent, o.Name)
+			}
+		}
+		tabs = append(tabs, o)
+	}
+	for _, o := range tabs {
+		o.Sandboxed = false
+		for _, a := range o.AgentsIn() {
+			a.Sandboxed = false
+		}
+		delete(m.SandboxedDirs, o.Dir)
+		for _, w := range o.Worktrees {
+			delete(m.SandboxedDirs, w.Path)
+		}
+	}
+	for dir := range m.SandboxedDirs {
+		if SamePath(dir, repo) || gitsafe.Belongs(repo, dir) {
+			delete(m.SandboxedDirs, dir)
+		}
+	}
+	for r := range m.SandboxedRepos {
+		if SamePath(r, repo) {
+			delete(m.SandboxedRepos, r)
+			delete(m.SandboxSources, r)
+		}
+	}
+	gitsafe.ForgetSandboxed(repo)
+	m.SaveSession()
+	return ""
+}
+
+// ForgetSandboxedIn is ForgetSandboxed on a saved session, for nerdr
+// sandbox clear, run while no nerdr has the session: no agent runs then.
+// With repo "", all the session's sandbox history goes. It reports whether
+// there was any to drop.
+func ForgetSandboxedIn(sess *state.Session, repo string) bool {
+	of := func(t state.Tab) bool {
+		return repo == "" || slices.ContainsFunc(t.Worktrees, func(w workspace.Worktree) bool { return SamePath(w.Repo, repo) })
+	}
+	found := false
+	for i := range sess.Tabs {
+		t := &sess.Tabs[i]
+		if !of(*t) {
+			continue
+		}
+		found = found || t.Sandboxed
+		t.Sandboxed = false
+		for j := range t.Agents {
+			found = found || t.Agents[j].Sandboxed
+			t.Agents[j].Sandboxed = false
+		}
+		delete(sess.SandboxedDirs, t.Dir)
+		for _, w := range t.Worktrees {
+			delete(sess.SandboxedDirs, w.Path)
+		}
+	}
+	for dir := range sess.SandboxedDirs {
+		if repo == "" || SamePath(dir, repo) || gitsafe.Belongs(repo, dir) {
+			delete(sess.SandboxedDirs, dir)
+			found = true
+		}
+	}
+	for r := range sess.SandboxedRepos {
+		if repo == "" || SamePath(r, repo) {
+			delete(sess.SandboxedRepos, r)
+			delete(sess.SandboxSources, r)
+			found = true
+		}
+	}
+	return found
 }
 
 // NoTerminal is what a confined agent is told when it asks for a

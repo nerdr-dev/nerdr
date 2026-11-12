@@ -2,7 +2,9 @@ package core
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
@@ -129,5 +131,96 @@ func TestRestoreAssociatesMissingWorktreeBeforePruning(t *testing.T) {
 	})
 	if c.SandboxedDirs[missing] || !c.SandboxedRepos[repo] || !gitsafe.RepoSandboxed(repo) {
 		t.Fatal("missing path was not pruned after preserving repository history")
+	}
+}
+
+// TestLegacySandboxHistoryMarksOnlyItsRepositories: a session from before
+// repositories were kept has one folder an agent ran in a sandbox in, a
+// worktree of one repository among several. Only that repository is
+// marked, with the folder as where its history is from; so is the one of
+// a tab whose worktree is gone, which the tab names. The others are not.
+func TestLegacySandboxHistoryMarksOnlyItsRepositories(t *testing.T) {
+	root := t.TempDir()
+	var repos []string
+	for _, name := range []string{"one", "two", "three", "four"} {
+		repos = append(repos, gitRepo(t, root, name).Path)
+	}
+	one, two, three, four := repos[0], repos[1], repos[2], repos[3]
+	wts := t.TempDir()
+	wt := filepath.Join(wts, "feat-one")
+	// A tab of several repositories has their worktrees under its folder.
+	group := filepath.Join(wts, "both")
+	for _, argv := range [][]string{
+		{"git", "-C", one, "worktree", "add", "-q", "-b", "feat", wt},
+		{"git", "-C", four, "worktree", "add", "-q", "-b", "both", filepath.Join(group, "four")},
+	} {
+		if out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v\n%s", argv, err, out)
+		}
+	}
+	gone := filepath.Join(wts, "gone-three")
+	c := &Core{Root: root}
+	c.restoreSandboxed(state.Session{
+		SandboxedDirs: map[string]bool{wt: true, gone: true, group: true, filepath.Join(wts, "nobody's"): true},
+		Tabs:          []state.Tab{{Name: "old", Dir: gone, Worktrees: []workspace.Worktree{{Repo: three, Path: gone}}}},
+	})
+	if len(c.SandboxedRepos) != 3 || !c.SandboxedRepos[one] || !c.SandboxedRepos[three] || !c.SandboxedRepos[four] {
+		t.Fatalf("marked %v, want only %s, %s and %s", c.SandboxedRepos, one, three, four)
+	}
+	if gitsafe.RepoSandboxed(two) || !gitsafe.RepoSandboxed(one) {
+		t.Fatal("gitsafe was not told the same")
+	}
+	if !strings.Contains(c.SandboxSources[one], wt) || !strings.Contains(c.SandboxSources[three], "tab old") {
+		t.Fatalf("sources = %v", c.SandboxSources)
+	}
+	if _, from, ok := gitsafe.SandboxSource(one); !ok || !strings.Contains(from, wt) {
+		t.Fatalf("gitsafe's source = %q, %v", from, ok)
+	}
+}
+
+// TestForgetSandboxed: the user has nerdr forget a repository's sandbox
+// history. The repository, its folders and its tab lose theirs, and stay
+// without it when the tab is looked at again; another repository keeps
+// its own. While an agent runs in a sandbox there, it is refused.
+func TestForgetSandboxed(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	root := t.TempDir()
+	repo, other := gitRepo(t, root, "repo").Path, gitRepo(t, root, "other").Path
+	dir, otherDir := t.TempDir(), t.TempDir()
+	c := &Core{Root: root}
+	tab := &Tab{AgentState: Agent{InSandbox: true, Tab: state.Tab{Name: "feat", Dir: dir, Worktrees: []workspace.Worktree{{Repo: repo, Path: dir}}}}}
+	kept := &Tab{AgentState: Agent{InSandbox: true, Tab: state.Tab{Name: "kept", Dir: otherDir, Worktrees: []workspace.Worktree{{Repo: other, Path: otherDir}}}}}
+	c.Tabs = []*Tab{tab, kept}
+	c.MarkSandboxed(tab)
+	c.MarkSandboxed(kept)
+	if why := c.ForgetSandboxed(repo); !strings.Contains(why, "feat") || !c.SandboxedRepos[repo] {
+		t.Fatalf("forgot under an agent in a sandbox: %q", why)
+	}
+	tab.InSandbox = false
+	if why := c.ForgetSandboxed(repo); why != "" {
+		t.Fatal(why)
+	}
+	c.MarkSandboxed(tab)
+	if tab.HasSandboxed() || c.SandboxedRepos[repo] || c.SandboxedDirs[dir] || c.SandboxSources[repo] != "" || gitsafe.RepoSandboxed(repo) {
+		t.Fatalf("history left: tab %v, repos %v, dirs %v", tab.HasSandboxed(), c.SandboxedRepos, c.SandboxedDirs)
+	}
+	if !c.SandboxedRepos[other] || !gitsafe.RepoSandboxed(other) || !kept.HasSandboxed() {
+		t.Fatal("another repository lost its history")
+	}
+	// As saved, so restored.
+	sess, err := state.Load(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sess.SandboxedRepos[repo] || !sess.SandboxedRepos[other] {
+		t.Fatalf("saved %v", sess.SandboxedRepos)
+	}
+	// nerdr sandbox clear, on the saved session.
+	sess.Tabs = []state.Tab{kept.Tab}
+	if !ForgetSandboxedIn(&sess, other) || len(sess.SandboxedRepos) != 0 || len(sess.SandboxedDirs) != 0 || sess.Tabs[0].Sandboxed {
+		t.Fatalf("session keeps %v, %v", sess.SandboxedRepos, sess.SandboxedDirs)
+	}
+	if ForgetSandboxedIn(&sess, other) {
+		t.Fatal("found history to forget twice")
 	}
 }

@@ -141,6 +141,9 @@ type Core struct {
 	// SandboxedRepos keeps repository provenance even after all its
 	// worktrees have been removed.
 	SandboxedRepos map[string]bool
+	// SandboxSources is where each of SandboxedRepos has its history from,
+	// for the user: the tab or folder an agent ran in a sandbox in.
+	SandboxSources map[string]string
 	// Copy is set in a client's copy of core's state (see Mirror): what
 	// core reads from disk, the copy has only as core sent it.
 	Copy bool `json:"-"`

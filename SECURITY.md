@@ -38,10 +38,19 @@ its settings, and is not a nerdr vulnerability.
 
 nerdr retains sandbox history for repositories after a worktree or tab is
 removed, and records that history before importing sandboxed work. A failed
-agent start does not clear it. Older sessions with surviving worktree history
-are migrated conservatively by marking all known repositories. Older versions
-could erase that history when a worktree disappeared; if none remains in the
-saved session, migration cannot detect or recover that earlier sandbox use.
+agent start does not clear it. Older sessions kept only the folders an agent
+ran in a sandbox in. Migration marks the repository of each folder it can
+tie to one: a saved tab's worktree, or a worktree or main checkout of a
+known repository, as that repository's own `.git/worktrees` names it. A
+folder that is gone and belongs to no saved tab marks no repository, and
+older versions could erase a folder when its worktree disappeared;
+migration cannot detect or recover that earlier sandbox use.
+
+Only you take sandbox history away: with Forget sandbox history in the
+tab's menu, or `nerdr sandbox clear` while nerdr is not running, which
+changes the saved session. Both are out of reach of an agent in a sandbox,
+which can reach neither nerdr's client socket nor its state folder. The
+tab's menu is refused while an agent runs in a sandbox in the repository.
 
 In repositories with sandbox history, nerdr refuses host Git operations
 when executable filter, textconv, external diff or merge drivers are
@@ -56,7 +65,9 @@ including SSH, HTTPS, local remotes and custom helpers. Executable
 authentication/signing delegates and environment overrides are blocked
 or suppressed. Required signing fails rather than silently producing an
 unsigned commit. Fetch and push must run inside the sandbox or in the
-user's terminal. Global GPG/SSH signing program settings and credential
+user's terminal. A new tab is still made there: its branch starts from
+the base as it was last fetched, with a warning, and without the setup and
+hooks that a base origin named would get. Global GPG/SSH signing program settings and credential
 helpers do not themselves block ordinary local Git. Other executable
 delegates, including `core.gitProxy`, `core.alternateRefsCommand`,
 `remote.*.uploadpack`/`receivepack`/`vcs`, `uploadpack.packObjectsHook` and
