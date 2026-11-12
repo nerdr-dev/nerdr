@@ -9,16 +9,15 @@ Each agent runs in a pseudo-terminal with a virtual screen
 (`charmbracelet/x/vt`). `internal/input` passes keys through unchanged,
 except for the prefix key.
 
-`internal/detect` uses herdr's screen-rule engine and detection manifests.
-It prefers copies in `~/.local/state/herdr/agent-detection` when they are
-at least as recent as the bundled versions. herdr refreshes those copies
-while running. Custom manifests in `~/.config/herdr/agent-detection`
-always take precedence. Manifests are © herdr contributors, Apache-2.0.
+`internal/detect` reads an agent's state off its screen with a rule
+engine and a detection manifest for each agent, both from
+[herdr](https://herdr.dev); the manifests are © herdr contributors,
+Apache-2.0.
 
 A completed tab counts as seen once it has been active for a second,
 with nerdr focused and no editor over it. Until then its agent is not
 taken as visible either, so walking past a tab does not clear its
-light. Inside herdr, nerdr's pane must be focused.
+light.
 
 ## The core and the holder
 
@@ -50,15 +49,15 @@ do not know about each other.
 ## Resuming conversations
 
 Claude starts with a session ID and resumes with `--resume <id>`.
-Reported session IDs from herdr integrations take precedence. Otherwise,
+A conversation ID the agent reports takes precedence. Otherwise,
 opencode and Copilot use the newest session for the worktree, and Codex
 uses `resume --last` in that folder. If resuming fails immediately, nerdr
 starts a new conversation.
 
 ## Integrations
 
-`internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock` using
-herdr's JSON-line protocol. Agents get `NERDR_SOCKET` and a secret for
+`internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock`, with a
+JSON-line protocol. Agents get `NERDR_SOCKET` and a secret for
 their tab in `NERDR_TAB`. nerdr's [agent commands](../agent-commands/)
 and built-in hooks (`nerdr hook …`) use them to send requests and status
 reports to the running nerdr.
@@ -68,28 +67,32 @@ Some commands do not go through the socket: `nerdr why`, `order` and
 `nerdr usage` read the agents' logs themselves (`search` only asks nerdr
 which folders to search).
 
-For herdr's integrations, agents also get `HERDR_ENV=1`,
-`HERDR_PANE_ID` (the same secret), `HERDR_SOCKET_PATH`, and
-`HERDR_BIN_PATH` pointing to nerdr. `nerdr pane report-agent …` takes
-the reports in place of herdr's CLI.
-
-For herdr's protocol (`nerdr pane`), only `pane.report_agent`,
-`pane.report_agent_session` and `pane.release_agent` are accepted. Each
-tab gets a new secret at every start, so agents can report only for
+Each tab gets a new secret at every start, so agents can report only for
 their own tab. Conversation IDs that resemble
 flags are rejected, and control characters are removed from text.
 Reported state lasts until released or the agent restarts.
 
-Terminal panes receive neither the socket nor herdr's variables. Running
-`herdr` in a shell therefore connects to herdr itself.
+Terminal panes do not get the socket.
 
 ## Automatic messages
 
 nerdr pastes queued messages using the agent's paste mode, then sends
 Enter. It never inserts messages while the agent is asking a question.
-If the agent shows no response within five seconds, nerdr reports a stall
-and pauses the rest of the queue (`✉n⏸`) until you visit the tab, so the
-messages stay in order.
+An agent whose turn is over, with only commands it started still running
+in the background, is at its prompt and gets its messages.
+
+For an agent with nerdr's hooks (claude, codex, copilot, opencode, agy
+and grok), a message counts as taken only once the hook reports the
+agent at work. Until then nerdr presses Enter again, 1.5 and 3 seconds
+later, while the agent is at its prompt: an agent that has just started
+can drop an Enter and leave the text in its input box. After eight
+seconds without that report, nerdr says the message was typed in but
+not sent. Other agents, and slash or shell commands, are read from the
+screen: if the agent shows no response within five seconds, nerdr
+reports a stall.
+
+Either way, the rest of the queue pauses (`✉n⏸`) until you visit the
+tab, so the messages stay in order.
 
 ## Saved sessions
 
@@ -102,11 +105,7 @@ To recover closed tabs, quit nerdr (Quit, not Close: a core left running
 would write over it) and copy a snapshot over the session
 file. Unreadable session files are preserved as `….broken-<time>.json`.
 
-## herdr and the review panel
-
-nerdr reports its most urgent tab through `herdr pane report-agent` and
-switches to it when herdr focuses the pane. Tab agents report to nerdr's
-socket, so their hooks cannot overwrite that combined report.
+## The review panel
 
 The review panel (`internal/review` and related packages) follows the
 active tab's worktrees. `nerdr why` and `nerdr order` append JSON lines
@@ -217,8 +216,8 @@ the screen. Grok runs no hooks in a folder it has not been told to trust,
 and asks in every new folder once any hook exists, a worktree included.
 Until you answer, the tab shows as blocked and is read from the screen.
 
-Clear screen evidence can override hooks through herdr's `visible_*`
-rules. A visible dialog means the agent needs input. A question absent
+Clear screen evidence can override hooks through the manifests'
+`visible_*` rules. A visible dialog means the agent needs input. A question absent
 for two seconds is treated as answered or dismissed. After an interrupted
 turn without `Stop`, an idle, unchanged screen for a few seconds marks
 the agent idle. For an agent whose manifest has no idle rule (see

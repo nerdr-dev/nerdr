@@ -26,6 +26,11 @@ Set `status_lights = "symbols"` to tell them apart by shape as well:
 has been the active tab for a second while nerdr has focus, so passing
 it on the way to another tab leaves it green.
 
+A tab with several agents takes the light that matters most within it:
+red if any of them needs you, else yellow while any still works, then
+cyan, then green. One agent finishing its part leaves the tab yellow
+while another carries on.
+
 nerdr knows an agent's state from the agent's own hooks where it has
 them, and from its screen otherwise; see
 [How it works](../../reference/how-it-works/#knowing-when-an-agent-is-done).
@@ -62,7 +67,6 @@ details, and `tab_details = false` starts without them.
 When nerdr's window does not have focus, it sends a desktop notification;
 when you are in another tab, a message in the bar. `notify` chooses when:
 `all` (the default), `blocked` (an agent needs input), `done` or `off`.
-Inside herdr, notifications go through herdr.
 
 nerdr also watches GitHub for you:
 

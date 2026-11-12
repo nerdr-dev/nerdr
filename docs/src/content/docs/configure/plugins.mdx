@@ -180,7 +180,9 @@ To be asked every time for one plugin, such as a deploy, set
 `confirm_plugin_runs = true` in nerdr's config (settings, Plugins).
 
 nerdr then asks you before the run, and shows the tab, the agent and
-the parameters it gives. `y` runs it. `n` does not, and the agent is
+the parameters it gives. Hidden characters in the command are shown as
+escapes, and a command longer than the screen scrolls: yes counts only
+once you have seen its end. `y` runs it. `n` does not, and the agent is
 told not to try again unless you ask. The agent waits about a minute and
 a half; if you have not answered by then, the run does not happen. If
 you are answering another question, the agent is told to try again

@@ -20,8 +20,8 @@ make all        # binaries for Linux and macOS, amd64 and arm64, in dist/
 ```sh
 make test   # unit tests, with the race detector
 make e2e    # the real binary in a pseudo-terminal with a fake agent:
-            # setup, worktrees, status lights, review panel, herdr
-            # integration, quit, resume and close
+            # setup, worktrees, status lights, review panel,
+            # quit, resume and close
 make vet
 make fmt
 ```
@@ -31,6 +31,23 @@ sending it a task:
 
 ```sh
 NERDR_E2E_CLAUDE=1 go test -tags e2e ./internal/e2e -run TestRealClaude -v
+```
+
+## Profiling
+
+With `NERDR_PROFILE` naming a folder, the client, the core and the
+holder each take a CPU profile from their start, into
+`<role>-<pid>.cpu` there. `SIGUSR2` ends it, and the process then writes
+a heap (`.heap`) and an allocation profile (`.allocs`) beside it and runs
+on. The core and the holder take the variable only when they start, so
+quit nerdr first (Quit, not Close). Send the signal only to the
+processes named in the folder: a nerdr that is not profiling ends on it.
+
+```sh
+NERDR_PROFILE=/tmp/nerdr-prof nerdr
+# later, from another terminal:
+for f in /tmp/nerdr-prof/*.cpu; do p=${f##*-}; kill -USR2 "${p%.cpu}"; done
+go tool pprof -top /tmp/nerdr-prof/client-*.cpu
 ```
 
 ## The docs

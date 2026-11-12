@@ -31,8 +31,26 @@ description: The words nerdr uses, and how its screen is laid out.
   is a narrow column of F-keys; an F-key or a click opens it.
 - **The bottom line** shows the keys you can press, and nerdr's messages.
 
+## The screen and the core
+
+What you see is nerdr's TUI, a client. The tabs, the agents, their
+terminals and all the work are kept by nerdr's core, a process that runs
+on its own, once for each folder you start nerdr in:
+
+- **Close** nerdr (`ctrl+q q`, then `enter`), close its window or lose
+  the SSH connection, and the core and every agent work on. Start nerdr
+  in the same folder again to see them, the same processes.
+- **Quit** (`ctrl+q q q`) stops the core and the agents. The next start
+  brings every tab back, each agent continuing its conversation.
+
+The core can also run on another machine. `nerdr connect box:~/src`
+shows the agents of a core on the server `box`, over SSH, and one nerdr
+can show the cores of several machines at once, its own and its
+servers'. See [Other machines](../../use/remote/).
+
 ## Words
 
+- **Core.** The process that keeps the tabs and runs the agents, on this machine or a server. The TUI you see is its client.
 - **Tab.** One task. A tab has a branch, a worktree for that branch in each of its repositories, and an agent working there. See [Tabs, branches and worktrees](../../use/tabs/).
 - **Group.** Tabs are grouped by repository. A tab spanning several repositories belongs to a group whose name you choose, `multi` by default.
 - **Worktree.** A second checkout of a repository, on its own branch, in its own folder. Git lets one repository have many. nerdr puts them in `~/worktrees-nerdr`, so your main checkout stays untouched.
@@ -41,4 +59,5 @@ description: The words nerdr uses, and how its screen is laid out.
 - **Status light.** <span class="light-working">●</span> working, <span class="light-background">●</span> a background process runs, <span class="light-input">●</span> needs your input, <span class="light-done">●</span> done and not yet seen, ○ seen or idle, `z` asleep. See [Progress and notifications](../../use/progress/).
 - **Prefix.** `ctrl+q`. Everything you type goes to the agent, except after the prefix, when the next key is a nerdr command. The prefix can be changed.
 - **Skill.** Instructions nerdr installs for the agents, so they know how to use nerdr: explain a change, ask for a review, message another agent. See [Skills (F4)](../../panel/skills/).
+- **Server.** Another machine whose agents nerdr shows, reached over SSH. See [Other machines](../../use/remote/).
 - **Plugin.** A custom script or tool — such as one that rebuilds your Docker setup or seeds a database — that agents can run with parameters, or that you can run directly in F5. See [Plugins](../../configure/plugins/).

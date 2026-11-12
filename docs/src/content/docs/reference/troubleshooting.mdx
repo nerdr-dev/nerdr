@@ -89,15 +89,16 @@ suppressed instead, so they do not cause this whole-repository refusal.
 
 nerdr resumes the conversation it knows the agent had. For codex and agy,
 it learns which one after the agent's first turn. If resuming fails at
-once, nerdr starts a new conversation. herdr's integrations report the
-exact conversation, even after `/clear`; see
-[herdr's agent integrations](../../use/remote/#herdrs-agent-integrations).
+once, nerdr starts a new conversation.
 
 ## A task was not sent
 
 nerdr never types a task while the agent asks a question or a review is
-going on. If the agent did not respond within five seconds, the queue is
-paused (`✉n⏸`) until you visit the tab.
+going on. If the agent did not take it up, nerdr says so and pauses the
+queue (`✉n⏸`) until you visit the tab. When it says the task was typed in
+but not sent, the text is still in the agent's input box, although
+Enter was pressed again: press Enter in its pane. See
+[Automatic messages](../how-it-works/#automatic-messages).
 
 ## I closed a tab by mistake
 
@@ -112,7 +113,7 @@ keeps the newest 20, at most one every 15 minutes. See
 Closing nerdr, or losing the SSH connection, leaves its agents running:
 start nerdr in the same folder again to connect to them. Quitting stops
 them. With `NERDR_HOLDER=0`, nerdr runs the agents itself and they stop
-with it; run it inside [herdr](../../use/remote/#inside-herdr) to keep them running.
+with it.
 
 On a server, agents that stop when you log out of it are ended by
 systemd-logind. See

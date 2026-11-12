@@ -95,8 +95,8 @@ Everything lives at [nerdr.app](https://nerdr.app/):
 ## Inspired by herdr
 
 nerdr builds on [herdr](https://herdr.dev)'s status lights, mouse controls
-and rules for detecting an agent's state; see [NOTICE](NOTICE). Run nerdr
-inside herdr to come back to it from anywhere, or on another machine.
+and rules for detecting an agent's state; see [NOTICE](NOTICE). Thank you
+to herdr's authors.
 
 ## Development
 
