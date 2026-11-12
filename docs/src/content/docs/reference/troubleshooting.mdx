@@ -59,17 +59,18 @@ The command's error says which is missing. See
 ## Git says a transport is not allowed
 
 After a sandboxed agent has worked in a repository, nerdr refuses host
-Git fetch and push, including SSH, HTTPS and local remotes. Transport
-and authentication helpers can run scripts from the agent's worktree.
+Git push, and fetch other than of a new tab's base from `origin` over SSH
+or HTTPS. Transport and authentication helpers can run scripts from the
+agent's worktree.
 The message names the repository and the tab or folder its sandbox
 history is from. Run the operation inside the sandbox, or inspect the
 work and use your own terminal. Local status and diffs remain available
 unless another unsafe Git setting blocks them.
 
-A new tab is still made in such a repository. nerdr does not fetch the
-base there, so the branch starts from the base as it was last fetched,
-and nerdr says so; fetch in your own terminal first to start from the
-newest.
+A new tab is still made in such a repository. When `origin` is reached
+over SSH or HTTPS, nerdr fetches the base as usual. Otherwise the branch
+starts from the base as it was last fetched, and nerdr says why; fetch in
+your own terminal first to start from the newest.
 
 If you never run agents in a sandbox, or trust what is in the repository
 now, have nerdr forget its sandbox history: **Forget sandbox history…**

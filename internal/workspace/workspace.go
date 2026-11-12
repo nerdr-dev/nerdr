@@ -17,7 +17,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -372,7 +371,7 @@ func remoteBranch(repo, branch string) bool {
 		return false
 	}
 	refspecs := append([]string{"+refs/heads/" + branch + ":" + ref}, baseRefspec(repo)...)
-	_, err := gitTimeout(fetchTimeout, repo, append([]string{"fetch", "--quiet", "origin"}, refspecs...)...)
+	_, err := gitOrigin(repo, append([]string{"fetch", "--quiet", "origin"}, refspecs...)...)
 	switch {
 	case err == nil:
 		return true
@@ -399,7 +398,7 @@ func baseRefspec(repo string) []string {
 // offline, the copy there is stays the best guess.
 func fetchBase(repo string) {
 	if rs := baseRefspec(repo); rs != nil {
-		_, _ = gitTimeout(fetchTimeout, repo, append([]string{"fetch", "--quiet", "origin"}, rs...)...)
+		_, _ = gitOrigin(repo, append([]string{"fetch", "--quiet", "origin"}, rs...)...)
 	}
 }
 
@@ -516,9 +515,10 @@ func (p Plan) Describe() []string {
 // and fast-forwards the local branch of the same name to it, as `git pull
 // --ff-only` would. A fetch that fails stops the tab from being made rather
 // than starting it from a copy that may be out of date, with a *FetchError.
-// A repository without origin has nothing to sync with. One where nerdr
-// runs no fetch, an agent having run in a sandbox there, starts from the
-// copy it has, with a warning saying so (see sandboxNote).
+// A repository without origin has nothing to sync with. One where an agent
+// has run in a sandbox, and nerdr cannot fetch from origin safely (see
+// gitsafe.OriginEnv), starts from the copy it has, with a warning saying
+// so.
 func (p *Plan) Sync() (warnings []string, err error) {
 	for i := range p.Items {
 		it := &p.Items[i]
@@ -531,13 +531,13 @@ func (p *Plan) Sync() (warnings []string, err error) {
 			warnings = append(warnings, fmt.Sprintf("%s: started from %s as it was last fetched; it may be out of date", it.Repo.Name, it.Base))
 			continue
 		}
-		if note := sandboxNote(it.Repo.Path); note != "" {
-			// No fetch can run here (see gitsafe's delegateEnv), and the
-			// tab is not to fail for it: it starts from the base as last
+		if _, why := gitsafe.OriginEnv(it.Repo.Path); why != "" {
+			// No fetch can run here (see gitsafe.OriginEnv), and the tab
+			// is not to fail for it: it starts from the base as last
 			// fetched, unpinned, so neither setup nor hooks from its code
 			// run (see SetupIn, addFromBase).
-			warnings = append(warnings, fmt.Sprintf("%s: started from %s as it was last fetched, without fetching it: %s",
-				it.Repo.Name, it.Base, note))
+			warnings = append(warnings, fmt.Sprintf("%s: started from %s as it was last fetched, without fetching it: %s. %s",
+				it.Repo.Name, it.Base, why, sandboxNote(it.Repo.Path)))
 			continue
 		}
 		// The commit is taken from origin's answer, not from the ref the
@@ -549,7 +549,7 @@ func (p *Plan) Sync() (warnings []string, err error) {
 		}
 		remote := "origin/" + b
 		refspec := "+refs/heads/" + b + ":refs/remotes/" + remote
-		if _, err := gitTimeout(fetchTimeout, it.Repo.Path, "fetch", "--quiet", "origin", refspec); err != nil {
+		if _, err := gitOrigin(it.Repo.Path, "fetch", "--quiet", "origin", refspec); err != nil {
 			return warnings, &FetchError{Repo: it.Repo.Name, Branch: b, Err: err}
 		}
 		afterFetch(it.Repo.Path)
@@ -572,7 +572,7 @@ var afterFetch = func(repo string) {}
 
 // remoteCommit is the commit origin says its branch b is at.
 func remoteCommit(repo, b string) (string, error) {
-	out, err := gitTimeout(fetchTimeout, repo, "ls-remote", "origin", "refs/heads/"+b)
+	out, err := gitOrigin(repo, "ls-remote", "origin", "refs/heads/"+b)
 	if err != nil {
 		return "", err
 	}
@@ -1298,11 +1298,9 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 			return string(out), fmt.Errorf("git %s: timed out after %s", args[0], timeout)
 		}
 		msg := gitReason(stderr.String())
-		if slices.Contains(cmd.Env, "GIT_ALLOW_PROTOCOL=") && strings.Contains(msg, "transport '") && strings.Contains(msg, "not allowed") {
+		if strings.Contains(msg, "transport '") && strings.Contains(msg, "not allowed") {
 			if note := sandboxNote(dir); note != "" {
-				msg += ": " + note
-			} else {
-				msg += ": nerdr runs no fetch or push where an agent has run in a sandbox"
+				msg += ". " + note
 			}
 		}
 		if msg == "" {
@@ -1313,9 +1311,26 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 	return string(out), nil
 }
 
-// sandboxNote is why nerdr neither fetches nor pushes in the repository
-// dir is in, "" when it does: which repository an agent has run in a
-// sandbox in, where, and how the user has nerdr forget it.
+// gitOrigin runs a fetch or ls-remote from origin in the main checkout
+// repo. Where an agent has run in a sandbox it is the one transport nerdr
+// runs, over ssh or https alone, and not at all when gitsafe.OriginEnv
+// says why not; a fetch then leaves the submodules alone, their config
+// being in the worktree.
+func gitOrigin(repo string, args ...string) (string, error) {
+	env, why := gitsafe.OriginEnv(repo)
+	if why != "" {
+		return "", errors.New(why + ". " + sandboxNote(repo))
+	}
+	if gitsafe.RepoSandboxed(repo) && args[0] == "fetch" {
+		args = append([]string{"fetch", "--no-recurse-submodules"}, args[1:]...)
+	}
+	return gitRunEnv(fetchTimeout, env, repo, args...)
+}
+
+// sandboxNote is what nerdr holds back in the repository dir is in, an
+// agent having run in a sandbox there, "" when it does not: which
+// repository, where that history is from, and how the user has nerdr
+// forget it.
 func sandboxNote(dir string) string {
 	repo, from, ok := gitsafe.SandboxSource(dir)
 	if !ok {
@@ -1325,9 +1340,10 @@ func sandboxNote(dir string) string {
 	if from != "" {
 		where = " (" + from + ")"
 	}
-	return "nerdr does not fetch or push in " + repo + ", where an agent has run in a sandbox" + where +
-		": the programs git fetches and pushes with can run what such an agent left there, outside its sandbox. " +
-		"Fetch or push in your own terminal; or, when you trust what is in the repository, have nerdr forget it: " +
+	return "An agent has run in a sandbox in " + repo + where +
+		": there nerdr does not push, and fetches only from origin over ssh or https, in the main checkout, " +
+		"since the programs git fetches and pushes with can run what such an agent left there, outside its sandbox. " +
+		"Push or fetch in your own terminal; or, when you trust what is in the repository, have nerdr forget it: " +
 		"Forget sandbox history in the tab's menu, or nerdr sandbox clear " + repo + " with nerdr not running"
 }
 

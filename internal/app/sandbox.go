@@ -68,8 +68,9 @@ func (m *Model) askForgetSandboxed(t *core.Tab, repos []string) tea.Cmd {
 	}
 	lines = append(lines, "",
 		"An agent has run in a sandbox here. What it wrote, nerdr does not",
-		"run as you, outside the sandbox: so nerdr does not fetch or push in",
-		"this repository, and runs no Git hooks or setup on that code.",
+		"run as you, outside the sandbox: so nerdr does not push in this",
+		"repository, fetches only a new tab's base from origin, and runs no",
+		"Git hooks or setup on that code.",
 		"",
 		"Forget it only when you trust what is in the repository and its",
 		"worktrees now. nerdr then works there as in any other, until an",
