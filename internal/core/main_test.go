@@ -16,6 +16,7 @@ func TestMain(m *testing.M) {
 	// The check from inside a sandbox tries to write nothing, but for the
 	// tests of that.
 	SandboxWrites = func(*Core, *Tab) []string { return nil }
+	SandboxWarns = func(*Core, *Tab) []string { return nil }
 	code := m.Run()
 	os.RemoveAll(dir)
 	os.Exit(code)

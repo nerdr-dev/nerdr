@@ -46,10 +46,20 @@ type Target struct {
 	// nerdr's config and state, the main checkouts' .git/config and
 	// .git/hooks, the folder the other tabs' worktrees are in.
 	Writes []string
+	// Warns are folders and files the agent had better not be able to
+	// write, but that do not keep it from starting: those nerdr puts its
+	// skills, plugins and hooks in in the home folder, for every agent.
+	Warns []string
 }
 
-// writesSep comes between the process ids and Writes in Args.
-const writesSep = "--"
+// writesSep comes before Writes in Args, warnsSep before Warns; each
+// after the process ids, Writes first. A check of a nerdr from before
+// Warns takes them for more Writes, or warnsSep for a bad process id: it
+// refuses more than it needs to, not less.
+const (
+	writesSep = "--"
+	warnsSep  = "--warn"
+)
 
 // none stands for an empty argument.
 const none = "-"
@@ -69,6 +79,9 @@ func (t Target) Args() []string {
 	if len(t.Writes) > 0 {
 		out = append(append(out, writesSep), t.Writes...)
 	}
+	if len(t.Warns) > 0 {
+		out = append(append(out, warnsSep), t.Warns...)
+	}
 	return out
 }
 
@@ -84,16 +97,23 @@ func ParseArgs(args []string) (Target, error) {
 		return s
 	}
 	t := Target{Nonce: args[0], ClientDir: opt(args[1]), Sock: opt(args[2]), Key: opt(args[3]), PidNS: opt(args[4])}
-	for i, a := range args[5:] {
-		if a == writesSep {
-			t.Writes = append(t.Writes, args[5+i+1:]...)
-			break
+	// Paths are absolute, so never one of the separators.
+	var into *[]string
+	for _, a := range args[5:] {
+		switch {
+		case a == writesSep && into == nil:
+			into = &t.Writes
+		case a == warnsSep && (into == nil || into == &t.Writes):
+			into = &t.Warns
+		case into != nil:
+			*into = append(*into, a)
+		default:
+			p, err := strconv.Atoi(a)
+			if err != nil || p <= 0 {
+				return Target{}, fmt.Errorf("sandbox check: bad process id %q", a)
+			}
+			t.Pids = append(t.Pids, p)
 		}
-		p, err := strconv.Atoi(a)
-		if err != nil || p <= 0 {
-			return Target{}, fmt.Errorf("sandbox check: bad process id %q", a)
-		}
-		t.Pids = append(t.Pids, p)
 	}
 	return t, nil
 }
@@ -109,6 +129,9 @@ type Result struct {
 	Holder []string `json:"holder,omitempty"`
 	// Writes are those of Target's Writes the check could write.
 	Writes []string `json:"writes,omitempty"`
+	// Warns are those of Target's Warns it could write. A check of a
+	// nerdr from before them answers without any.
+	Warns []string `json:"warns,omitempty"`
 }
 
 // Reached reports whether the check got to anything it must not.
@@ -153,6 +176,11 @@ func Probe(t Target) Result {
 	for _, p := range t.Writes {
 		if canWrite(p, t.Nonce) {
 			r.Writes = append(r.Writes, p)
+		}
+	}
+	for _, p := range t.Warns {
+		if canWrite(p, t.Nonce) {
+			r.Warns = append(r.Warns, p)
 		}
 	}
 	return r

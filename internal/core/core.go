@@ -144,6 +144,12 @@ type Core struct {
 	// SandboxSources is where each of SandboxedRepos has its history from,
 	// for the user: the tab or folder an agent ran in a sandbox in.
 	SandboxSources map[string]string
+	// sandboxWarned is, for each kind of agent, what the sandbox check
+	// last found it could write of what is only warned of (see
+	// sandboxWarns), as one string: the user is told when that changes,
+	// not at every start. Not saved: a core that starts again says it once
+	// more.
+	sandboxWarned map[agents.Kind]string
 	// Copy is set in a client's copy of core's state (see Mirror): what
 	// core reads from disk, the copy has only as core sent it.
 	Copy bool `json:"-"`

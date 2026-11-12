@@ -16,10 +16,12 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/statedir"
+	"github.com/nerdr-dev/nerdr/skills"
 )
 
 // HeldCheck is the kind of held program that is a check from inside a
@@ -89,6 +91,7 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		PidNS:     sandboxcheck.PidNS(),
 		Pids:      []int{os.Getpid()},
 		Writes:    SandboxWrites(m, t),
+		Warns:     SandboxWarns(m, t),
 	}
 	if m.Held != nil {
 		target.Pids = append(target.Pids, m.Held.Client.Pid())
@@ -184,7 +187,70 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
 		Logf("sandbox check: %s", note)
 		m.Tell(NoticeMsg(note))
 	}
+	if !ev.OK {
+		return
+	}
+	// Once for each kind of agent, until what it can write changes: an
+	// agent that starts often would say the same each time.
+	warned := strings.Join(ev.Result.Warns, "\x00")
+	if m.sandboxWarned[ev.Kind] == warned {
+		return
+	}
+	if m.sandboxWarned == nil {
+		m.sandboxWarned = map[agents.Kind]string{}
+	}
+	m.sandboxWarned[ev.Kind] = warned
+	if len(ev.Result.Warns) > 0 {
+		note := fmt.Sprintf("%s's sandbox lets it write where nerdr installs its skills, plugins and hooks for every agent (%s): an agent in a sandbox can change what agents outside one load from there. Set install = \"worktree\" in nerdr's config, or have the sandbox deny writing them; %s",
+			ev.Kind, strings.Join(ev.Result.Warns, ", "), docs)
+		Logf("sandbox check: %s", note)
+		m.Tell(NoticeMsg(note))
+	}
+}
 
+// SandboxWarns is what the check is to try to write and only warn of;
+// the tests keep it from the user's own home folder.
+var SandboxWarns = (*Core).sandboxWarns
+
+// sandboxWarns are the folders and files nerdr installs its skills,
+// plugins and hooks in in the home folder, when the install setting is
+// "home", for the agents there are: every agent nerdr starts loads them,
+// one outside a sandbox too. A sandbox that lets its agent write them is
+// warned of, not refused: they are the agents' own folders, which many
+// sandboxes give their agent. For a file, its folder too, in which it can
+// be replaced. Those not there are not tried, nor made.
+//
+// Not copilot's plugin: nerdr gives copilot its own copy, in the state
+// folder or the worktree (see CopilotPlugin), nor codex's config, which
+// codex reads whatever the setting.
+func (m *Core) sandboxWarns(*Tab) []string {
+	if m.Cfg.Install != config.InstallHome {
+		return nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		return nil
+	}
+	kinds := m.Available()
+	var out []string
+	for _, tg := range skills.Home(home, kinds) {
+		out = append(out, tg.Dir)
+	}
+	var files []string
+	if slices.Contains(kinds, agents.OpenCode) {
+		files = append(files, hooks.OpenCodePluginHome(home))
+	}
+	if slices.Contains(kinds, agents.Antigravity) {
+		files = append(files, hooks.AgyHooksHome(home))
+	}
+	if slices.Contains(kinds, agents.Grok) {
+		files = append(files, hooks.GrokHooksHome(home))
+	}
+	for _, f := range files {
+		out = append(out, f, filepath.Dir(f))
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // SandboxWrites is what the check is to try to write; the tests keep it

@@ -250,7 +250,8 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		where = append(where, core.TildePath(hooks.OpenCodePluginHome(home), home)+" (opencode's plugin, which says what it is doing)")
 	}
 	if slices.Contains(m.dialogOn().Core.Available(), agents.Copilot) {
-		where = append(where, core.TildePath(hooks.CopilotPluginHome(home), home)+" (copilot's plugin, which says what it is doing)")
+		// Not in the home folder: see core.CopilotPlugin.
+		where = append(where, core.TildePath(core.CopilotPluginState(), home)+" (copilot's plugin, which says what it is doing; in the tab's folder for a copilot in a sandbox)")
 	}
 	if slices.Contains(m.dialogOn().Core.Available(), agents.Antigravity) {
 		where = append(where, core.TildePath(hooks.AgyHooksHome(home), home)+" (nerdr's hooks for agy, which say what it is doing, beside any others)")

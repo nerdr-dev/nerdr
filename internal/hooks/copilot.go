@@ -15,9 +15,9 @@ import (
 // nerdr's own hooks in copilot, as in claude: read off the screen, copilot
 // can look done between two steps, and no rule knows its idle screen. Its
 // hooks say it exactly: Stop once the turn is over. They come in a plugin
-// of nerdr's (see InstallCopilotPlugin), which nerdr writes along with the
-// skills and gives the copilot it starts with --plugin-dir, so a copilot
-// the agent runs itself has none. They report through `nerdr hook
+// of nerdr's (see InstallCopilotPlugin), which nerdr writes in its state
+// folder or the worktree and gives the copilot it starts with
+// --plugin-dir, so a copilot the agent runs itself has none. They report through `nerdr hook
 // copilot`, below.
 
 // CopilotSource is the source nerdr's copilot hooks report as.
@@ -33,8 +33,11 @@ const CopilotMarker = "Installed and kept up to date by nerdr"
 // out of some.
 var copilotEvents = []string{"SessionStart", "UserPromptSubmit", "PreToolUse", "PostToolUse", "PostToolUseFailure", "Notification", "Stop", "SubagentStart", "SubagentStop"}
 
-// CopilotPluginHome is the plugin's folder in the home folder, for every
-// copilot nerdr starts.
+// CopilotPluginHome is the plugin's folder in the home folder, where
+// nerdr put it for every copilot with the install setting "home" before.
+// It is no longer written nor given to copilot: a sandbox may let its
+// copilot write ~/.copilot, and every copilot would then run the hooks it
+// put there (see core's CopilotPlugin). One left there is the user's.
 func CopilotPluginHome(home string) string {
 	return filepath.Join(home, ".copilot", "nerdr-plugin")
 }

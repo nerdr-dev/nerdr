@@ -14,7 +14,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/detect"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
-	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // SetHookSocket gives the agents the socket their integrations report to.
@@ -68,37 +68,50 @@ func (m *Core) SetCodexTrust(trusted bool) {
 	}
 }
 
-// CopilotPlugin is the folder of nerdr's plugin for t's copilot, where the
-// install setting put it, or "" for none.
+// CopilotPlugin is the folder of nerdr's plugin for t's copilot, or ""
+// for none, as t.InSandbox has it: set to how the agent is started before
+// it is (see SpawnPrepared). Copilot runs the commands in the hooks.json
+// of the folder it is given with --plugin-dir, so which one is chosen by
+// who can write it, whatever the install setting, "off" but giving none:
+//
+//   - a copilot in a sandbox gets the copy in its own worktree (see
+//     projectSkills.install), which its sandbox lets it see; it may
+//     change it, for itself alone;
+//   - one outside a sandbox gets nerdr's own copy in its state folder,
+//     which a sandbox must deny writing (the check tries that). Not the
+//     worktree's, where a sandboxed agent can add files or replace
+//     hooks.json after a check, nor one in the home folder, which some
+//     sandboxes let their agent write (cplt gives copilot ~/.copilot):
+//     its commands would run in every copilot, outside a sandbox too.
 func (m *Core) CopilotPlugin(t *Tab) string {
+	if !m.CopilotPlugins() {
+		return ""
+	}
 	var dir string
-	switch m.Cfg.Install {
-	case config.InstallHome:
-		home, err := os.UserHomeDir()
-		if err != nil {
+	if t.InSandbox {
+		dir = hooks.CopilotPluginProject(t.Dir)
+	} else {
+		dir = CopilotPluginState()
+		if _, err := hooks.InstallCopilotPlugin(dir); err != nil {
 			return ""
 		}
-		dir = hooks.CopilotPluginHome(home)
-	case config.InstallWorktree:
-		if t.InSandbox {
-			dir = hooks.CopilotPluginProject(t.Dir)
-		} else {
-			// A copilot outside a sandbox must not be given --plugin-dir
-			// in an agent-writable worktree, where a sandboxed agent can
-			// add files or replace hooks.json after a check; use nerdr's
-			// own copy in its state folder instead.
-			dir = filepath.Join(filepath.Dir(state.Dir()), "copilot-plugin")
-			if _, err := hooks.InstallCopilotPlugin(dir); err != nil {
-				return ""
-			}
-		}
-	default:
-		return ""
 	}
 	if !hooks.HasCopilotPlugin(dir) {
 		return ""
 	}
 	return dir
+}
+
+// CopilotPlugins reports whether the install setting has nerdr give
+// copilot its plugin at all: not "off".
+func (m *Core) CopilotPlugins() bool {
+	return m.Cfg.Install == config.InstallHome || m.Cfg.Install == config.InstallWorktree
+}
+
+// CopilotPluginState is nerdr's own copy of its copilot plugin, in the
+// state folder, for a copilot outside a sandbox.
+func CopilotPluginState() string {
+	return filepath.Join(statedir.Dir(), "copilot-plugin")
 }
 
 // TrustCodex is hooks.TrustCodexHooks; the tests keep the user's codex

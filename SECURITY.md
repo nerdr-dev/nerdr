@@ -104,6 +104,17 @@ by the Git reader is limited to 16 MiB per regular file.
 Index snapshots accept only regular files of at most 128 MiB; nonblocking
 opens reject named pipes, and reads remain bounded if the file grows.
 
+## Files nerdr installs for the agents
+
+With `install = "home"`, nerdr writes its skills, opencode's plugin and the
+agy and grok hooks into the agents' own folders in the home folder, which
+every agent loads, outside a sandbox too; a sandbox that lets its agent
+write them lets it change what the others load. nerdr's sandbox check warns
+when it can, without refusing the agent. Copilot's plugin is never taken
+from the home folder: nerdr passes `--plugin-dir` with a copy in the
+worktree to a copilot in a sandbox, and its own copy in the state folder to
+one outside a sandbox.
+
 ## What happens next
 
 nerdr is maintained by a few people in their spare time, so there is no
