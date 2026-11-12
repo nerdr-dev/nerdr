@@ -17,9 +17,12 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
-// SetHookSocket gives the agents the socket their integrations report to.
-func (m *Core) SetHookSocket(path string) {
-	m.HookSock = path
+// SetHookSocket gives the agents the sockets their integrations report
+// to: sandbox to those started in a sandbox, host to the rest. "" is none.
+// An agent is never given the other's: one in a sandbox may be let take
+// over sandbox's (see hooks.HostSocketPath).
+func (m *Core) SetHookSocket(sandbox, host string) {
+	m.HookSock, m.HostSock = sandbox, host
 	if exe, err := spawn.Bin(); err == nil {
 		m.HookBin = exe
 	}
@@ -151,15 +154,57 @@ func (m *Core) CutOff(t *Tab) string {
 	return why + "; then restart the agent. See \"Agents in a sandbox\" in nerdr's docs"
 }
 
-// SetHookSocketError is why nerdr has no socket, shown now and given to
-// the agents, so that nerdr's commands in them say so rather than blame a
-// sandbox. Another nerdr having it is the likely one.
+// SetHookSocketError is why nerdr has no socket for the agents in a
+// sandbox, shown now and given to them, so that nerdr's commands in them
+// say so rather than blame a sandbox. Another nerdr having it is the
+// likely one.
 func (m *Core) SetHookSocketError(err error) {
 	m.HookSockErr = err.Error()
 	if errors.Is(err, hooks.ErrTaken) {
 		m.HookSockErr += "; quit that nerdr and restart this one, or its tabs cannot ask, try, review, spin off or hand off"
 	}
-	m.Tell(NoticeMsg("no socket for the agents: " + m.HookSockErr))
+	m.Tell(NoticeMsg("no socket for the agents in a sandbox: " + m.HookSockErr))
+}
+
+// SetHostSocketError is SetHookSocketError for the agents outside a
+// sandbox, which are not given the sandbox's socket in its place.
+func (m *Core) SetHostSocketError(err error) {
+	m.HostSockErr = err.Error()
+	m.Tell(NoticeMsg("no socket for the agents outside a sandbox: " + m.HostSockErr))
+}
+
+// Socket is the socket t's agent reports to, as t.InSandbox has it, and
+// why there is none, when there is not.
+func (m *Core) Socket(t *Tab) (sock, why string) {
+	return m.socketFor(t.InSandbox)
+}
+
+// socketFor is Socket for an agent started in a sandbox, or not.
+func (m *Core) socketFor(sandboxed bool) (sock, why string) {
+	if sandboxed {
+		return m.HookSock, m.HookSockErr
+	}
+	return m.HostSock, m.HostSockErr
+}
+
+// SocketReplacedMsg says the socket for the agents in a sandbox was found
+// removed or replaced, and listened at again, or why it could not be.
+type SocketReplacedMsg struct {
+	Path string
+	Err  error
+}
+
+// OnSocketReplaced tells the user of ev: something in a sandbox, likely
+// an agent, put a socket of its own in nerdr's place, to answer the
+// other agents in a sandbox, or took nerdr's away.
+func (m *Core) OnSocketReplaced(ev SocketReplacedMsg) {
+	note := ev.Path + " was removed or replaced by something other than nerdr, likely an agent in a sandbox that may write it"
+	if ev.Err != nil {
+		note += "; nerdr could not listen there again: " + ev.Err.Error()
+	} else {
+		note += "; nerdr listens there again. Until it did, what the agents in a sandbox asked of nerdr may have been answered by that agent"
+	}
+	m.Tell(NoticeMsg(note + ". See \"Setting nerdr up for a sandbox\" in nerdr's docs"))
 }
 
 // SetSocketShared says another nerdr has the socket a sandbox is told
@@ -167,22 +212,21 @@ func (m *Core) SetHookSocketError(err error) {
 // all works but for an agent in a sandbox that lets it reach only the
 // usual socket.
 func (m *Core) SetSocketShared(taken error) {
-	note := taken.Error() + ": this nerdr's agents report to " + m.HookSock + " instead"
 	for _, s := range m.Cfg.Agents {
 		if s.Sandboxed {
-			note += "; an agent in a sandbox reaches this nerdr only if its sandbox lets it reach that socket too"
-			break
+			m.Tell(NoticeMsg(taken.Error() + ": this nerdr's agents in a sandbox report to " + m.HookSock +
+				" instead, which they reach only if their sandbox lets them reach that socket too"))
+			return
 		}
 	}
-	m.Tell(NoticeMsg(note))
 }
 
 // agentEnv is the environment an agent runs with: childEnv, the socket
-// nerdr's own commands report to, and herdr's variables pointing its
+// nerdr's own commands report to, as t.InSandbox has it (see Socket), and herdr's variables pointing its
 // integrations at nerdr. The tab's id stands for herdr's pane id.
 func (m *Core) AgentEnv(t *Tab) []string {
 	env := m.TabEnv(t)
-	sock, sockErr := m.HookSock, m.HookSockErr
+	sock, sockErr := m.Socket(t)
 	if t.InSandbox {
 		env = append(env, "NERDR_SANDBOXED=1")
 	}

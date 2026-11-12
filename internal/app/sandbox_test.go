@@ -2,6 +2,7 @@ package app
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"slices"
@@ -121,14 +122,15 @@ func sandboxModel(t *testing.T) (*Model, *core.Tab) {
 	s := m.home().Core.Cfg.Agents[agents.Claude]
 	s.Sandboxed = true
 	m.home().Core.Cfg.Agents[agents.Claude] = s
-	m.home().Core.SetHookSocket("/run/nerdr.sock")
+	m.home().Core.SetHookSocket("/run/nerdr.sock", "/run/host.sock")
 	tb := m.Cur()
 	tb.InSandbox = true
 	return m, tb
 }
 
 // TestSandboxedAgentIsToldItIsInOne: an agent started sandboxed is told
-// it is in one, and reports to the socket the others do.
+// it is in one, and reports to the socket for agents in a sandbox; one
+// outside a sandbox reports to the other, never to that one.
 func TestSandboxedAgentIsToldItIsInOne(t *testing.T) {
 	m, tb := sandboxModel(t)
 	env := m.home().Core.AgentEnv(tb)
@@ -139,8 +141,19 @@ func TestSandboxedAgentIsToldItIsInOne(t *testing.T) {
 	}
 	m.home().Core.NewAgent(tb, agents.Codex)
 	other := tb.ExtraAgents()[0]
-	if env := m.home().Core.AgentEnv(other); !slices.Contains(env, "NERDR_SOCKET=/run/nerdr.sock") || slices.Contains(env, "NERDR_SANDBOXED=1") {
-		t.Fatalf("codex is not sandboxed: %q", env)
+	env = m.home().Core.AgentEnv(other)
+	for _, want := range []string{"NERDR_SOCKET=/run/host.sock", "HERDR_SOCKET_PATH=/run/host.sock"} {
+		if !slices.Contains(env, want) || slices.Contains(env, "NERDR_SANDBOXED=1") {
+			t.Fatalf("codex is not sandboxed, so %s: %q", want, env)
+		}
+	}
+	// Without a socket of its own, it is not given the sandbox's.
+	m.home().Core.SetHookSocket("/run/nerdr.sock", "")
+	m.home().Core.SetHostSocketError(errors.New("no folder"))
+	env = m.home().Core.AgentEnv(other)
+	if slices.ContainsFunc(env, func(kv string) bool { return strings.Contains(kv, "/run/nerdr.sock") }) ||
+		!slices.Contains(env, "NERDR_NO_SOCKET=no folder") {
+		t.Fatalf("codex given the sandbox's socket: %q", env)
 	}
 }
 

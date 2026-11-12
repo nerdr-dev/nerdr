@@ -28,7 +28,8 @@ about it, and what is left for your sandbox to do.
   checkout's `.git/config`, `.git/hooks`, `.git/config.worktree` and
   `.git/worktrees/*/config.worktree`.
   With nerdr's core running on its own, as it does unless
-  `NERDR_HOLDER=0`, it must also deny the client socket's folder. nerdr refuses to start an
+  `NERDR_HOLDER=0`, it must also deny the client socket's folder, where
+  the hook socket of the agents outside a sandbox is too. nerdr refuses to start an
   agent whose sandbox check finds it can reach that folder; if it cannot
   check, it refuses to start the agent too. Detected write access to the
   protected config, state, Git paths or other worktrees also blocks startup.

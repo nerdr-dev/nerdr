@@ -98,21 +98,9 @@ func runCore(h *core.Held) error {
 		<-made
 		loop.Post(ev)
 	}
-	hookSrv, err := hooks.Listen(hooks.SocketPath(), func(r hooks.Report) { post(r) })
-	var taken error
-	if errors.Is(err, hooks.ErrTaken) {
-		taken = err
-		hookSrv, err = hooks.Listen(hooks.ForRoot(hooks.SocketPath(), root), func(r hooks.Report) { post(r) })
-	}
-	if err == nil {
-		defer hookSrv.Close()
-		c.SetHookSocket(hookSrv.Path())
-		if taken != nil {
-			c.SetSocketShared(taken)
-		}
-	} else {
-		c.SetHookSocketError(err)
-	}
+	socks := listenHooks(root, func(r hooks.Report) { post(r) })
+	defer socks.close()
+	socks.give(c, post)
 	if _, err := exec.LookPath("gpg-connect-agent"); err == nil {
 		_ = exec.Command("gpg-connect-agent", "/bye").Run()
 	}

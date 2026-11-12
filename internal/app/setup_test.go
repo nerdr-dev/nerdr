@@ -317,7 +317,7 @@ func TestCodexGetsNerdrsHooksOnceTrusted(t *testing.T) {
 	m := paneModel(t)
 	m.home().Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{cmd}}}
 	askedHelp(m.home().Core.Cfg.Agents)
-	m.home().Core.SetHookSocket("/run/nerdr.sock")
+	m.home().Core.SetHookSocket("/run/nerdr.sock", "/run/host.sock")
 	tb := m.Cur()
 	m.home().Core.Cfg.Install = config.InstallWorktree
 	startAsked(t, m, m.home().Core.NewAgent(tb, agents.Codex))
@@ -369,7 +369,7 @@ func TestCopilotPluginGoesWithTheSkills(t *testing.T) {
 	m := paneModel(t)
 	m.home().Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Copilot: {Command: []string{cmd}}}
 	askedHelp(m.home().Core.Cfg.Agents)
-	m.home().Core.SetHookSocket("/run/nerdr.sock")
+	m.home().Core.SetHookSocket("/run/nerdr.sock", "/run/host.sock")
 	m.home().Core.Cfg.Install = config.InstallHome
 	if note := m.home().Core.ApplySkills(); strings.Contains(note, "nerdr-plugin") {
 		t.Errorf("the plugin is not to go in the home folder: %q", note)

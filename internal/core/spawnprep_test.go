@@ -31,7 +31,7 @@ func stubTrust(t *testing.T) *atomic.Int32 {
 func TestSpawnAsksTheCLIAwayFromMu(t *testing.T) {
 	asked := stubTrust(t)
 	rec := &recorder{}
-	m := &Core{Client: NoClient{}, Spawner: rec, HookSock: "/run/nerdr.sock"}
+	m := &Core{Client: NoClient{}, Spawner: rec, HookSock: "/run/nerdr.sock", HostSock: "/run/host.sock"}
 	m.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{"cat"}}}
 	tab := &Tab{}
 	tab.Dir, tab.Agent = t.TempDir(), agents.Codex

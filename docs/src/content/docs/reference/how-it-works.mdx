@@ -56,8 +56,10 @@ starts a new conversation.
 
 ## Integrations
 
-`internal/hooks` listens on `~/.local/state/nerdr/nerdr.sock`, with a
-JSON-line protocol. Agents get `NERDR_SOCKET` and a secret for
+`internal/hooks` listens on two sockets with a JSON-line protocol:
+`~/.local/state/nerdr/nerdr.sock` for the agents started in a sandbox,
+and one in the client socket's folder for the rest, which a sandbox
+cannot reach. Agents get their socket in `NERDR_SOCKET` and a secret for
 their tab in `NERDR_TAB`. nerdr's [agent commands](../agent-commands/)
 and built-in hooks (`nerdr hook …`) use them to send requests and status
 reports to the running nerdr.

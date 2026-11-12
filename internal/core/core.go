@@ -60,8 +60,9 @@ type Core struct {
 	// by its tab's id; see skillon.go. A client is sent them in a part
 	// of their own (PartSkills), not with the rest of core.
 	SkillLooks map[string]SkillLook `json:"-"`
-	// hookSockErr is why there is no hookSock, when there is not.
-	HookSockErr string
+	// HookSockErr is why there is no HookSock, when there is not, and
+	// HostSockErr the same for HostSock.
+	HookSockErr, HostSockErr string
 
 	// Spawner starts the programs of the tabs: agents, terminals and
 	// plugins. Nil is spawn.Local, or Held's holder; see Programs.
@@ -160,9 +161,10 @@ type Core struct {
 	// Unseen are the programs in the holder no tab took up, for the
 	// client to show and the user to stop; see unseen.go.
 	Unseen []UnseenProgram
-	// hookSock is the socket herdr's integrations in the agents report to,
-	// and hookBin nerdr itself, for those that report through the CLI.
-	HookSock, HookBin string
+	// HookSock is the socket herdr's integrations in the agents started in
+	// a sandbox report to, HostSock the one for the rest (see SetHookSocket),
+	// and HookBin nerdr itself, for those that report through the CLI.
+	HookSock, HostSock, HookBin string
 	// InfoBusy is set while a tab's branches are being looked at; see
 	// RefreshInfo. Overlaps is, per tab id, the other tabs changing some of
 	// the same files, and Shared the same by file, for the review panel's
