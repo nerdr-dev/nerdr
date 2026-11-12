@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // A repository whose .git/config has extensions.worktreeConfig on (as "git
@@ -424,9 +425,20 @@ func worktreeKeys(f string) (keys []string, ok bool) {
 
 // configCommand is `git config args…` on a file named in args, run outside
 // any repository so that git reads that file and nothing else of one.
+//
+// git still looks for a .git in the folder it runs in, ceiling or not, so
+// that is the state folder's temporary folder, which a sandboxed agent
+// cannot write: not os.TempDir, where it often can, and could put a .git
+// of its own that makes every such command fail. When the folder cannot
+// be made, the command fails to start, which callers take as they take a
+// failure of git's.
 func configCommand(args ...string) *exec.Cmd {
 	cmd := proc.Detach(exec.Command("git", append([]string{"config"}, args...)...))
-	cmd.Dir = os.TempDir()
+	dir, _ := statedir.EnsureTempDir()
+	if dir == "" {
+		dir = statedir.TempDir()
+	}
+	cmd.Dir = dir
 	var e []string
 	for _, kv := range os.Environ() {
 		if !strings.HasPrefix(kv, "GIT_DIR=") && !strings.HasPrefix(kv, "GIT_COMMON_DIR=") &&
@@ -434,7 +446,7 @@ func configCommand(args ...string) *exec.Cmd {
 			e = append(e, kv)
 		}
 	}
-	cmd.Env = append(e, "GIT_CEILING_DIRECTORIES="+os.TempDir())
+	cmd.Env = append(e, "GIT_CEILING_DIRECTORIES="+dir)
 	return cmd
 }
 

@@ -331,9 +331,10 @@ shows a notice saying what the check reached, and writes it to the
 core's log in `~/.local/state/nerdr/`.
 
 The check also tries to write where the agent must not be able to:
-`~/.config/nerdr`, `~/.local/state/nerdr`, the `.git/config` and
-`.git/hooks` of the main checkouts of the tab's repositories, and the
-folder the other tabs' worktrees are in. An agent that can write another
+`~/.config/nerdr`, `~/.local/state/nerdr` and its `tmp` folder by itself
+(nerdr checks a new worktree's files out from a store there), the
+`.git/config` and `.git/hooks` of the main checkouts of the tab's
+repositories, and the folder the other tabs' worktrees are in. An agent that can write another
 tab's worktree can change the code that tab's agent and setup command
 run, outside its own sandbox. When any of them can be written, nerdr
 refuses to start the agent and shows a notice naming them: tighten the

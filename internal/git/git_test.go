@@ -7,6 +7,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 func TestParseStatus(t *testing.T) {
@@ -263,5 +265,37 @@ func TestWorkTree(t *testing.T) {
 	out, _ := exec.Command("git", "-C", dir, "status", "--porcelain").Output()
 	if string(out) != " M a.txt\n" {
 		t.Fatalf("the worktree's own index was touched: %q", out)
+	}
+}
+
+// TestWorkTreeIndexIsInTheStateFolder: the temporary index is made in the
+// state folder's temporary folder, not in os.TempDir, which sandboxes
+// tend to let their agent write; where the state folder cannot be made,
+// WorkTree fails rather than fall back to it.
+func TestWorkTreeIndexIsInTheStateFolder(t *testing.T) {
+	dir := t.TempDir()
+	if out, err := exec.Command("git", "-C", dir, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
+	}
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	state := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", state)
+	if _, err := WorkTree(dir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(statedir.TempDir()); err != nil {
+		t.Fatalf("no temporary folder in the state folder: %v", err)
+	}
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Fatalf("os.TempDir was written: %v", left)
+	}
+	blocked := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocked, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("XDG_STATE_HOME", blocked)
+	if _, err := WorkTree(dir); err == nil {
+		t.Fatal("WorkTree made its index somewhere other than the state folder")
 	}
 }

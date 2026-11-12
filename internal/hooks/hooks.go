@@ -39,6 +39,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/handoff"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -318,12 +319,7 @@ type Server struct {
 // is, so a sandbox around an agent can be told once to allow connecting
 // to it. One nerdr has it at a time: see Listen.
 func SocketPath() string {
-	d := os.Getenv("XDG_STATE_HOME")
-	if d == "" {
-		home, _ := os.UserHomeDir()
-		d = filepath.Join(home, ".local", "state")
-	}
-	return filepath.Join(d, "nerdr", "nerdr.sock")
+	return filepath.Join(statedir.Dir(), "nerdr.sock")
 }
 
 // ForRoot is socket path made the folder root's own, for a nerdr that

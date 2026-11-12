@@ -14,6 +14,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // A pack is what a move carries from one machine to the other, as one
@@ -159,14 +161,22 @@ func Size(n int64) string {
 	}
 }
 
-// tempPrefixes are the temporary folders a move makes, in os.TempDir.
-var tempPrefixes = []string{"nerdr-move-out-", "nerdr-move-in-", "nerdr-move-look-", "nerdr-index-"}
+// tempPrefixes are the temporary folders a move, and the making of a
+// worktree from a verified base, make in statedir.TempDir.
+var tempPrefixes = []string{"nerdr-move-out-", "nerdr-move-in-", "nerdr-move-look-", "nerdr-index-", "nerdr-objects-"}
 
-// Sweep removes the temporary folders of moves left by a core that ended
-// in the middle of one: those of this user's older than age. A move under
-// way, of another core's, is far younger.
+// Sweep removes the temporary folders left by a core that ended in the
+// middle of a move or of making a worktree: those of this user's older
+// than age, in statedir.TempDir and in os.TempDir, where versions before
+// it made them. A move under way, of another core's, is far younger.
 func Sweep(age time.Duration) {
-	entries, err := os.ReadDir(os.TempDir())
+	sweep(statedir.TempDir(), age)
+	sweep(os.TempDir(), age)
+}
+
+// sweep is Sweep in the folder dir.
+func sweep(dir string, age time.Duration) {
+	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return
 	}
@@ -182,6 +192,6 @@ func Sweep(age time.Duration) {
 		if st, ok := info.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != uid {
 			continue
 		}
-		_ = os.RemoveAll(filepath.Join(os.TempDir(), e.Name()))
+		_ = os.RemoveAll(filepath.Join(dir, e.Name()))
 	}
 }

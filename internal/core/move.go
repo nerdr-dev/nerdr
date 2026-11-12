@@ -18,6 +18,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/handoff"
 	"github.com/nerdr-dev/nerdr/internal/move"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 	"github.com/nerdr-dev/nerdr/internal/store"
 	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -223,7 +224,7 @@ func (q MoveLook) Do(m *Core) Cmd {
 		if msg.Err != "" {
 			return msg
 		}
-		dir, err := os.MkdirTemp("", "nerdr-move-look-")
+		dir, err := statedir.MkdirTemp("nerdr-move-look-")
 		if err != nil {
 			msg.Err = err.Error()
 			return msg
@@ -288,7 +289,7 @@ func (q MoveStart) Do(m *Core) Cmd {
 		}
 		return m.Tell(MovePackedMsg{Job: q.Job, T: q.T, Err: err})
 	}
-	dir, err := os.MkdirTemp("", "nerdr-move-out-")
+	dir, err := statedir.MkdirTemp("nerdr-move-out-")
 	if err != nil {
 		return m.Tell(MovePackedMsg{Job: q.Job, T: q.T, Err: err.Error()})
 	}
@@ -639,7 +640,7 @@ func (q MovePut) Do(m *Core) Cmd {
 		if q.Off != 0 {
 			return m.Tell(MovePutMsg{Job: q.Job, Off: q.Off, Err: "the move's first chunk did not come"})
 		}
-		d, err := os.MkdirTemp("", "nerdr-move-in-")
+		d, err := statedir.MkdirTemp("nerdr-move-in-")
 		if err != nil {
 			return m.Tell(MovePutMsg{Job: q.Job, Off: q.Off, Err: err.Error()})
 		}

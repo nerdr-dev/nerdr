@@ -38,6 +38,7 @@ import (
 	gitdata "github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 const (
@@ -185,7 +186,7 @@ func Snapshot(path string) (Part, error) {
 	if !ok {
 		return p, errors.New("git does not know " + path + " as a worktree of the repository")
 	}
-	tmp, err := os.MkdirTemp("", "nerdr-index-")
+	tmp, err := statedir.MkdirTemp("nerdr-index-")
 	if err != nil {
 		return p, err
 	}

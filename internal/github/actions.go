@@ -15,6 +15,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // This file is what nerdr does with GitHub for a tab, rather than what the
@@ -225,7 +226,7 @@ func CreatePR(dir, origin string) (string, error) {
 	// .gitmodules there overrides the setting in the environment. gh
 	// needs the commits alone, so it is given an index that is not there:
 	// with no gitlink in it, the status looks into no folder's repository.
-	tmp, err := os.MkdirTemp("", "nerdr-index-")
+	tmp, err := statedir.MkdirTemp("nerdr-index-")
 	if err != nil {
 		return "", err
 	}

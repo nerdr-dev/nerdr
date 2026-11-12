@@ -14,6 +14,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
 // WorkTree is the id of the tree git would commit if everything in the
@@ -25,7 +26,7 @@ func WorkTree(worktreePath string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	tmp, err := os.MkdirTemp("", "nerdr-index-")
+	tmp, err := statedir.MkdirTemp("nerdr-index-")
 	if denied.Err(err) != nil {
 		return "", err
 	}
@@ -128,7 +129,7 @@ func StageAll(ctx context.Context, worktreePath string) error {
 		return err
 	}
 	real := strings.TrimSpace(string(out))
-	tmp, err := os.MkdirTemp("", "nerdr-index-")
+	tmp, err := statedir.MkdirTemp("nerdr-index-")
 	if denied.Err(err) != nil {
 		return err
 	}

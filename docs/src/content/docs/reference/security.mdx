@@ -244,7 +244,10 @@ origin's commit, or name others with a ref under `refs/replace`. Where a
 sandboxed agent has run in the repository, or asked for the tab, nerdr
 therefore first copies the commit into an object store of its own, which
 fails when an object is not what its id says, and checks the new
-worktree's files out from that copy. Such a tab is not made when the check
+worktree's files out from that copy. That store, like nerdr's other
+temporary Git folders, is in `~/.local/state/nerdr/tmp`, which the
+sandbox must not let its agent write, and not in the system temporary
+folder (`$TMPDIR` on macOS), which sandboxes often allow. Such a tab is not made when the check
 fails; run `git fsck` in the repository then. A repository with no origin
 has no commit to ask for: a tab a sandboxed agent asks for there gets no
 `setup`.

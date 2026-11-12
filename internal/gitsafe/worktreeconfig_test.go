@@ -183,3 +183,26 @@ func TestSandboxedRepositoryRetainsCanonicalIdentity(t *testing.T) {
 		t.Fatal("alias did not retain taint")
 	}
 }
+
+// TestConfigCommandIgnoresARepositoryInTheTemporaryFolder: a .git an
+// agent puts in os.TempDir, which git cannot set up, does not make git
+// config fail there: it runs in the state folder's temporary folder.
+func TestConfigCommandIgnoresARepositoryInTheTemporaryFolder(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	if err := os.WriteFile(filepath.Join(tmp, ".git"), []byte("gitdir: /nonexistent\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	common := t.TempDir()
+	if err := os.WriteFile(filepath.Join(common, "config"), []byte("[core]\n\tbare = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if extensionOn(common) {
+		t.Fatal("the extension taken as on")
+	}
+	keys, ok := worktreeKeys(filepath.Join(common, "config"))
+	if !ok || len(keys) != 1 || keys[0] != "core.bare" {
+		t.Fatalf("keys %v, %v", keys, ok)
+	}
+}
