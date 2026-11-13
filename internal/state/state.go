@@ -94,6 +94,9 @@ type Tab struct {
 	// the panel above the agent.
 	Reviewed    string `json:"reviewed,omitempty"`
 	ReviewBrief string `json:"review_brief,omitempty"`
+	// ReviewApproved is set when that review ended with every reviewer
+	// approving.
+	ReviewApproved bool `json:"review_approved,omitempty"`
 	// FindingsSent is set while the agent works on the findings of a
 	// review that has ended; the brief goes when its turn on them does.
 	FindingsSent bool `json:"findings_sent,omitempty"`

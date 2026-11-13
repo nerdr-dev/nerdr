@@ -382,8 +382,14 @@ func (m *Core) EndReview(t *Tab, brief string, notify bool) {
 		}
 		m.DropReviewPane(s.R)
 	}
+	approved := len(run.Seats) > 0
+	for _, s := range run.Seats {
+		if s.Res == nil || s.Res.Verdict != codereview.Approve {
+			approved = false
+		}
+	}
 	t.Review = nil
-	t.ReviewBrief, t.FindingsSent = brief, false
+	t.ReviewBrief, t.ReviewApproved, t.FindingsSent = brief, approved, false
 	m.SaveSession()
 	m.Tell(PanesMsg{})
 	m.Toast(t.Name + ": review " + brief)
@@ -481,7 +487,7 @@ func (m *Core) FindingsDone(t *Tab) {
 	if !t.FindingsSent || t.Review != nil || t.FindingsQueued() {
 		return
 	}
-	t.FindingsSent, t.ReviewBrief = false, ""
+	t.FindingsSent, t.ReviewBrief, t.ReviewApproved = false, "", false
 	m.SaveSession()
 	m.Tell(PanesMsg{})
 }

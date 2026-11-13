@@ -33,6 +33,14 @@ var (
 	panelLabelStyle = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(accent).Bold(true)
 	panelDimStyle   = lipgloss.NewStyle().Background(lipgloss.Color("236")).Foreground(lipgloss.Color("245"))
 	panelRuleStyle  = lipgloss.NewStyle().Foreground(accent)
+	// toneColours are the colours of the panel rows that have a tone: an
+	// approval green as in its dialog, a review the orange of the review
+	// dialogs, the background the yellow of a working light.
+	toneColours = map[core.Tone]lipgloss.Color{
+		core.ToneApproved:   verdictColour(true),
+		core.ToneReview:     verdictColour(false),
+		core.ToneBackground: lightColours[core.StWorking],
+	}
 )
 
 // wrapWithReply is wrapRows of text with reply after it, the reply kept
@@ -84,7 +92,7 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 		rows = append(rows, core.PanelRow{Label: "status:", Text: wrapRows(s, textW, 1)[0]})
 	}
 	if s := backgroundLine(t); s != "" {
-		rows = append(rows, core.PanelRow{Label: "bg:", Text: ansi.Truncate(s, textW, "…"), Dim: true})
+		rows = append(rows, core.PanelRow{Label: "bg:", Text: ansi.Truncate(s, textW, "…"), Tone: core.ToneBackground})
 	}
 	if n := strings.TrimSpace(t.Note); n != "" {
 		rows = append(rows, core.PanelRow{Label: "note:", Text: wrapRows(n, textW, 1)[0]})
@@ -97,7 +105,11 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 			m.pk("a s")+" switches now or cancels", textW, "…"), Dim: true})
 	}
 	if s := m.reviewLine(t); s != "" && t.ReviewOf == nil {
-		rows = append(rows, core.PanelRow{Label: "rev:", Text: ansi.Truncate(s, textW, "…"), Dim: t.Review == nil})
+		tone := core.ToneReview
+		if t.Review == nil && t.ReviewApproved {
+			tone = core.ToneApproved
+		}
+		rows = append(rows, core.PanelRow{Label: "rev:", Text: ansi.Truncate(s, textW, "…"), Tone: tone})
 	}
 	if s := m.messagesLine(t); s != "" {
 		rows = append(rows, core.PanelRow{Label: "tasks:", Text: ansi.Truncate(s, textW, "…"), Dim: true})
@@ -154,6 +166,9 @@ func (m *Model) taskLines(t *core.Tab, w, h int) []string {
 		text := panelStyle
 		if r.Dim {
 			text = panelDimStyle
+		}
+		if c, ok := toneColours[r.Tone]; ok {
+			text = panelStyle.Foreground(c)
 		}
 		label := panelLabelStyle.Render(padTo(r.Label, core.PanelLabelW))
 		if r.Label == "last:" {
