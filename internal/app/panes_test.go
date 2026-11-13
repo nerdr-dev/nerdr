@@ -686,7 +686,7 @@ func TestStarterToldOfClose(t *testing.T) {
 	m := paneModel(t)
 	fakeAgent(m, agents.Codex)
 	tb := m.Cur()
-	c := m.home().Core
+	c := &m.home().Core
 	start := func(text string) *core.Tab {
 		t.Helper()
 		if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.NewAgent, Kind: "codex", Text: text}); a.Err != "" {
