@@ -197,16 +197,23 @@ func (m *Core) OnReady(rep hooks.Report) Cmd {
 		return nil // the review going on looks again when the agent's turn ends
 	}
 	ask := &ReadyAsk{Focus: rep.Focus}
-	if k := agents.Kind(rep.Kind); k != "" {
+	for _, r := range rep.Reviewers {
+		k := agents.Kind(r.Kind)
 		switch {
+		case k == "":
+		case slices.ContainsFunc(ask.By, func(b Reviewer) bool { return b.Kind == k }):
+			m.Toast(t.Name + ": " + string(k) + " reviews once; a second " + string(k) + " is left out")
 		case !Contains(m.Available(), k):
-			m.Toast(t.Name + ": there is no agent " + string(k) + " here to review with; the configured reviewer reviews")
-		case rep.Model != "" && !agents.TakesModel(k):
+			m.Toast(t.Name + ": there is no agent " + string(k) + " here to review with")
+		case r.Model != "" && !agents.TakesModel(k):
 			m.Toast(t.Name + ": nerdr cannot start " + string(k) + " with a model of its choosing; it reviews with its own")
-			ask.By = Reviewer{Kind: k}
+			ask.By = append(ask.By, Reviewer{Kind: k})
 		default:
-			ask.By = Reviewer{Kind: k, Model: rep.Model}
+			ask.By = append(ask.By, Reviewer{Kind: k, Model: r.Model})
 		}
+	}
+	if len(rep.Reviewers) > 0 && len(ask.By) == 0 {
+		m.Toast(t.Name + ": none of the reviewers asked for is here; the configured reviewer reviews")
 	}
 	t.ReviewAsk = ask
 	Debugf("review %s: ready, agent %s", m.AgentName(t), t.Light.Label())
@@ -289,7 +296,15 @@ func (m *Core) EndRound(t *Tab) Cmd {
 			break
 		}
 	}
-	auto := m.Cfg.Review.SendFindings == config.FindingsAuto && (!sandboxed || t.InSandbox)
+	// Findings from a sandboxed reviewer wait for the user before they go
+	// to an agent outside a sandbox, asked for or not.
+	auto := (run.Asked || m.Cfg.Review.SendFindings == config.FindingsAuto) && (!sandboxed || t.InSandbox)
+	fixPrompt := func() string {
+		if run.Asked {
+			return codereview.AskedFixPrompt(changes, run.Round, run.Rounds, askAgain(run.Seats))
+		}
+		return codereview.FixPrompt(changes, run.Round, run.Rounds)
+	}
 	switch {
 	case len(stay) == 0:
 		// Approval ends the review, but does not discard its remarks.
@@ -297,7 +312,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 		// around waiting for optional remarks to be addressed.
 		var remarks state.Message
 		if len(changes) > 0 {
-			remarks = state.Message{Text: codereview.FixPrompt(changes, run.Round, run.Rounds),
+			remarks = state.Message{Text: fixPrompt(),
 				Auto: auto, Sandboxed: sandboxed}
 			t.Messages = append([]state.Message{remarks}, t.Messages...)
 		}
@@ -307,10 +322,19 @@ func (m *Core) EndRound(t *Tab) Cmd {
 			// which is otherwise only a line in the panel.
 			t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: remarks, Approved: true, Says: says}
 		}
+	case run.Asked:
+		// The agent that asked has all of it, and asks again if it wants
+		// another look: first, ahead of what waited for the review.
+		fix := state.Message{Text: fixPrompt(), Auto: auto, Sandboxed: sandboxed}
+		t.Messages = append([]state.Message{fix}, t.Messages...)
+		m.EndReview(t, brief, true)
+		if !auto {
+			t.ReviewDone = &state.ReviewDone{Brief: brief, Msg: fix, Says: says}
+		}
 	case run.Round >= run.Rounds:
 		// The user decides what is left: the findings wait in F3. Where
 		// they are is not in the brief, which outlives them there.
-		fix := state.Message{Text: codereview.FixPrompt(changes, run.Round, run.Rounds), Sandboxed: sandboxed}
+		fix := state.Message{Text: fixPrompt(), Sandboxed: sandboxed}
 		t.Messages = append(t.Messages, fix)
 		brief += " after " + Plural(run.Round, "round")
 		m.EndReview(t, brief, true)
@@ -326,7 +350,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 			}
 		}
 		run.Seats = stay
-		run.FixMsg = state.Message{Text: codereview.FixPrompt(changes, run.Round, run.Rounds), Auto: auto, Sandboxed: sandboxed}
+		run.FixMsg = state.Message{Text: fixPrompt(), Auto: auto, Sandboxed: sandboxed}
 		// Ahead of what waited for the review: the fixes are for the
 		// work as it was reviewed.
 		t.Messages = append([]state.Message{run.FixMsg}, t.Messages...)
@@ -523,6 +547,10 @@ type ReviewRun struct {
 	// go.
 	Brief    string
 	Approved []string
+	// Asked is set on a review the agent asked for with nerdr
+	// request-review: its findings always go to the agent, and the agent
+	// asks for another round when it wants one.
+	Asked bool
 }
 
 // Seat is a reviewer in a review.
@@ -620,11 +648,25 @@ type Reviewer struct {
 	Model string
 }
 
+// askAgain is the command that asks for another review by the same
+// reviewers, with the same models.
+func askAgain(seats []*Seat) string {
+	cmd := `"${NERDR_BIN:-nerdr}" request-review`
+	for _, s := range seats {
+		cmd += " --agent " + string(s.R.Agent)
+		if s.R.Model != "" {
+			cmd += " --model " + s.R.Model
+		}
+	}
+	return cmd
+}
+
 // ReadyAsk is an agent's word that its work is ready for a review: what
-// it wants looked at most, and who it asked to review it, if it said.
+// it wants looked at most, and who it asked to review it, if it said:
+// one agent or more, to review together.
 type ReadyAsk struct {
 	Focus string
-	By    Reviewer
+	By    []Reviewer
 }
 
 // ReviewToTell is the review done in cur, or one of its agents, that is
@@ -713,10 +755,16 @@ func (m *Core) OnTree(msg TreeMsg) Cmd {
 			// looked at: the end of that turn is the time.
 			return nil
 		}
-		focus, by := "", msg.By
+		var focus string
+		var by []Reviewer
+		// Asked for by the agent, rather than started by hand.
+		asked := t.ReviewAsk != nil && msg.Why == TreeAuto
+		if msg.By.Kind != "" {
+			by = []Reviewer{msg.By}
+		}
 		if a := t.ReviewAsk; a != nil {
 			focus = a.Focus
-			if by.Kind == "" {
+			if len(by) == 0 {
 				by = a.By
 			}
 		}
@@ -730,10 +778,10 @@ func (m *Core) OnTree(msg TreeMsg) Cmd {
 		if msg.Why == TreeAuto && msg.Tree == t.Reviewed {
 			return nil // reviewed as it is
 		}
-		if by.Kind == "" {
-			by = Reviewer{Kind: m.ReviewKind(t)}
+		if len(by) == 0 {
+			by = []Reviewer{{Kind: m.ReviewKind(t)}}
 		}
-		return m.StartReview(t, by, msg.Base, msg.Tree, focus)
+		return m.startReview(t, by, msg.Base, msg.Tree, focus, asked)
 	case TreeFixed:
 		run := t.Review
 		if run == nil || run.Phase != Fixing {
@@ -760,9 +808,23 @@ func (m *Core) OnTree(msg TreeMsg) Cmd {
 
 // StartReview starts by reviewing t's work, looking most at focus.
 func (m *Core) StartReview(t *Tab, by Reviewer, base, tree, focus string) Cmd {
-	t.Review = &ReviewRun{Round: 1, Rounds: max(m.Cfg.Review.Rounds, 1), Base: base, Tree: tree, Focus: focus,
+	return m.startReview(t, []Reviewer{by}, base, tree, focus, false)
+}
+
+// startReview starts by reviewing t's work together, in one round. One
+// the agent asked for (asked) has a round only: its findings go to the
+// agent, which asks for another when it wants one.
+func (m *Core) startReview(t *Tab, by []Reviewer, base, tree, focus string, asked bool) Cmd {
+	rounds := max(m.Cfg.Review.Rounds, 1)
+	if asked {
+		rounds = 1
+	}
+	t.Review = &ReviewRun{Round: 1, Rounds: rounds, Base: base, Tree: tree, Focus: focus, Asked: asked,
 		Id: time.Now().Format(time.RFC3339Nano)}
-	cmd := m.AddReviewer(t, by)
+	var cmd Cmd
+	for _, b := range by {
+		cmd = Batch(cmd, m.AddReviewer(t, b))
+	}
 	if len(t.Review.Seats) == 0 {
 		t.Review = nil
 	}

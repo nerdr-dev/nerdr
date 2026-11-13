@@ -275,11 +275,25 @@ func TestReadyNamesItsReviewer(t *testing.T) {
 	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "kind": "Codex", "model": "gpt-6-astra"}); err != nil {
 		t.Fatal(err)
 	}
-	if r := next(t, got); r.Kind != "codex" || r.Model != "gpt-6-astra" {
+	if r := next(t, got); len(r.Reviewers) != 1 || r.Reviewers[0] != (Reviewer{Kind: "codex", Model: "gpt-6-astra"}) {
 		t.Fatalf("report = %+v", r)
 	}
 	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "model": "gpt-6-astra"}); err == nil {
 		t.Fatal("a model without its agent was taken")
+	}
+	// Two at once, each with its model or none.
+	two := []Reviewer{{Kind: "Codex", Model: "gpt-6-astra"}, {Kind: "agy"}}
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "reviewers": two}); err != nil {
+		t.Fatal(err)
+	}
+	if r := next(t, got); len(r.Reviewers) != 2 || r.Reviewers[0].Kind != "codex" || r.Reviewers[1] != (Reviewer{Kind: "agy"}) {
+		t.Fatalf("report = %+v", r)
+	}
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "reviewers": []Reviewer{{Model: "gpt-6-astra"}}}); err == nil {
+		t.Fatal("a reviewer with a model and no agent was taken")
+	}
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "reviewers": make([]Reviewer, MaxReviewers+1)}); err == nil {
+		t.Fatal("more reviewers than allowed were taken")
 	}
 }
 

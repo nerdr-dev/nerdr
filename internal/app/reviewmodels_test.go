@@ -62,7 +62,7 @@ func TestReadyNamesTheReviewer(t *testing.T) {
 	m := testModel(t)
 	out := argvAgent(t, m)
 	tb := reviewOn(t, m)
-	cmd := m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Kind: "codex", Model: "gpt-6-astra"})
+	cmd := m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Reviewers: []hooks.Reviewer{{Kind: "codex", Model: "gpt-6-astra"}}})
 	if cmd == nil {
 		t.Fatal("ready between turns looks at the worktree")
 	}
@@ -83,7 +83,7 @@ func TestReviewModelFromTheConfig(t *testing.T) {
 	out := argvAgent(t, m)
 	m.home().Core.Cfg.Review.Models = map[agents.Kind]string{agents.Codex: "gpt-6-sol"}
 	tb := reviewOn(t, m)
-	m.home().Core.OnTree(m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Kind: "codex"})().(core.TreeMsg))
+	m.home().Core.OnTree(m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Reviewers: []hooks.Reviewer{{Kind: "codex"}}})().(core.TreeMsg))
 	t.Cleanup(func() { m.home().Core.EndReview(tb, "done", false) })
 	if argv := startedWith(t, out); !strings.Contains(argv, "--model\ngpt-6-sol\n") {
 		t.Fatalf("started with %q", argv)

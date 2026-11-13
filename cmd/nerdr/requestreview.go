@@ -11,7 +11,7 @@ import (
 )
 
 // requestReviewUsage is written for the agent, as whyUsage is.
-const requestReviewUsage = `usage: nerdr request-review [--agent KIND [--model MODEL]] [FOCUS]    (or - to read FOCUS from stdin)
+const requestReviewUsage = `usage: nerdr request-review [--agent KIND [--model MODEL]]... [FOCUS]    (or - to read FOCUS from stdin)
 
 Says your work in this tab is ready for a code review: a second agent
 reviews it once your turn ends, and its findings come
@@ -25,6 +25,10 @@ the agent's own listing (codex's /model, cursor-agent models, opencode
 models) the rest. Only when the user asked for them; without, the
 reviewer the user set up reviews.
 
+Give --agent once for each agent the user named, up to 4, each followed
+by its own --model if the user gave one: they review together, and their
+findings come to you as one message. Each kind reviews once.
+
 Run it once, when you have finished what you were asked to do, then end
 your turn. Unless nerdr told you code review is on in this tab, run it
 only when the user has asked for a review or said yes to one.
@@ -37,17 +41,24 @@ func runRequestReview(args []string) int {
 		fmt.Fprint(os.Stderr, requestReviewUsage)
 		return 2
 	}
-	var kind, model string
+	var by []hooks.Reviewer
 	for len(args) > 1 && (args[0] == "--agent" || args[0] == "--model") {
-		if args[0] == "--agent" {
-			kind = args[1]
-		} else {
-			model = args[1]
+		switch {
+		case args[0] == "--agent":
+			by = append(by, hooks.Reviewer{Kind: args[1]})
+		case len(by) == 0:
+			fmt.Fprintln(os.Stderr, "nerdr request-review: --model is the model of an agent: give --agent before it")
+			return 2
+		case by[len(by)-1].Model != "":
+			fmt.Fprintln(os.Stderr, "nerdr request-review: one --model for each --agent")
+			return 2
+		default:
+			by[len(by)-1].Model = args[1]
 		}
 		args = args[2:]
 	}
-	if model != "" && kind == "" {
-		fmt.Fprintln(os.Stderr, "nerdr request-review: --model is the model of an agent: give --agent too")
+	if len(by) > hooks.MaxReviewers {
+		fmt.Fprintf(os.Stderr, "nerdr request-review: name at most %d agents to review\n", hooks.MaxReviewers)
 		return 2
 	}
 	focus := strings.Join(args, " ")
@@ -68,7 +79,7 @@ func runRequestReview(args []string) int {
 	if !ok {
 		return 1
 	}
-	if err := send(sock, hooks.RequestReview, map[string]any{"pane_id": tab, "focus": focus, "kind": kind, "model": model}); err != nil {
+	if err := send(sock, hooks.RequestReview, map[string]any{"pane_id": tab, "focus": focus, "reviewers": by}); err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr request-review:", err)
 		return 1
 	}

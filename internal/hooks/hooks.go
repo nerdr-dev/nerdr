@@ -108,6 +108,9 @@ type Report struct {
 	Kind string
 	// Model is the model a NewAgent report asks for, "" for the config's.
 	Model string
+	// Reviewers are the agents a RequestReview report asks to review
+	// with, together, each with its model or ""; none for the one set up.
+	Reviewers []Reviewer
 	// Limits is what a Usage report says.
 	Limits *usage.Report
 	// What is what a Query asks for; Name a terminal's ("terminal 2"),
@@ -290,6 +293,7 @@ type params struct {
 	Text             string             `json:"text"`
 	Kind             string             `json:"kind"`
 	Model            string             `json:"model"`
+	Reviewers        []Reviewer         `json:"reviewers"`
 	What             string             `json:"what"`
 	Name             string             `json:"name"`
 	Lines            int                `json:"lines"`
@@ -678,20 +682,41 @@ func handleReview(c *client, id string, p params) []byte {
 	return okResponse(id)
 }
 
+// Reviewer is an agent a request for a review names, with its model.
+type Reviewer struct {
+	Kind  string `json:"kind"`
+	Model string `json:"model"`
+}
+
+// MaxReviewers is how many agents one request for a review may name.
+const MaxReviewers = 4
+
 func handleRequestReview(c *client, id string, p params) []byte {
 	focus := strings.TrimSpace(clean.Text(p.Focus))
-	kind, model := strings.ToLower(clean.Line(p.Kind)), clean.Line(p.Model)
-	switch {
-	case len(focus) > codereview.MaxFocus:
+	if len(focus) > codereview.MaxFocus {
 		return invalid(id, "focus is too long")
-	case len(kind) > 40:
-		return invalid(id, "kind is not an agent")
-	case model != "" && kind == "":
-		return invalid(id, "a model is the model of an agent: give the agent too")
-	case badModel(model) != "":
-		return invalid(id, badModel(model))
 	}
-	c.send(Report{Method: RequestReview, Pane: p.PaneID, Focus: focus, Kind: kind, Model: model})
+	asked := p.Reviewers
+	if len(asked) == 0 && (p.Kind != "" || p.Model != "") {
+		asked = []Reviewer{{Kind: p.Kind, Model: p.Model}}
+	}
+	if len(asked) > MaxReviewers {
+		return invalid(id, fmt.Sprintf("name at most %d reviewers", MaxReviewers))
+	}
+	var by []Reviewer
+	for _, r := range asked {
+		kind, model := strings.ToLower(clean.Line(r.Kind)), clean.Line(r.Model)
+		switch {
+		case len(kind) > 40:
+			return invalid(id, "kind is not an agent")
+		case model != "" && kind == "":
+			return invalid(id, "a model is the model of an agent: give the agent too")
+		case badModel(model) != "":
+			return invalid(id, badModel(model))
+		}
+		by = append(by, Reviewer{Kind: kind, Model: model})
+	}
+	c.send(Report{Method: RequestReview, Pane: p.PaneID, Focus: focus, Reviewers: by})
 	return okResponse(id)
 }
 

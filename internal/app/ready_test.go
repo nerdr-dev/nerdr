@@ -76,6 +76,31 @@ func TestReadyWithAutoOff(t *testing.T) {
 	}
 }
 
+// TestReadyWithTwoReviewers: an agent that names two reviewers has them
+// review together, in the same round; a kind named twice reviews once.
+func TestReadyWithTwoReviewers(t *testing.T) {
+	m := testModel(t)
+	// cat stands in for codex and agy, which CI does not have.
+	m.home().Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.Codex: {Command: []string{"cat"}}, agents.Antigravity: {Command: []string{"cat"}}}
+	tb := m.Cur()
+	tb.Dir = t.TempDir()
+	tb.Light = core.StWorking
+	m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Reviewers: []hooks.Reviewer{
+		{Kind: "codex"}, {Kind: "agy"}, {Kind: "codex"}}})
+	if a := tb.ReviewAsk; a == nil || len(a.By) != 2 {
+		t.Fatalf("ask = %+v", a)
+	}
+	tb.Light = core.StIdle
+	m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "t1"})
+	t.Cleanup(func() { m.home().Core.EndReview(tb, "done", false) })
+	if tb.Review == nil || len(tb.Review.Seats) != 2 || !tb.Review.Asked || tb.Review.Rounds != 1 {
+		t.Fatalf("review = %+v", tb.Review)
+	}
+	if a, b := tb.Review.Seats[0].R.Agent, tb.Review.Seats[1].R.Agent; a != agents.Codex || b != agents.Antigravity {
+		t.Fatalf("reviewers %s and %s", a, b)
+	}
+}
+
 // TestClaudeIsToldToSayReady: claude's system prompt asks it to use
 // nerdr-request-review only while a review waits for it, and never a reviewer's.
 func TestClaudeIsToldToSayReady(t *testing.T) {
