@@ -28,7 +28,22 @@ const (
 type PanelRow struct {
 	Label, Text string
 	Dim, Rule   bool
+	// Tone colours the text, over Dim; the client picks the colour.
+	Tone Tone
 }
+
+// Tone is what a panel row's colour says.
+type Tone int
+
+const (
+	ToneNone Tone = iota
+	// ToneApproved: a code review that approved the work.
+	ToneApproved
+	// ToneReview: a code review under way, or one that asked for changes.
+	ToneReview
+	// ToneBackground: something the agent left running in the background.
+	ToneBackground
+)
 
 // replyArrow is put between a prompt and the brief one that answers it.
 const ReplyArrow = " → "
