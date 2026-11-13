@@ -662,12 +662,13 @@ func TestFleetRemovedWhileConnecting(t *testing.T) {
 		t.Fatal(err)
 	}
 	var mc *fleet.Machine
-	release := make(chan struct{})
+	dialing, release := make(chan struct{}), make(chan struct{})
 	var made *attach.Conn
 	locked(m, func() {
 		m.cfg().Servers = []config.Server{{Name: "box"}}
 		mc = m.fleet.Named("box")
 		mc.Redial = func() (*attach.Conn, error) {
+			close(dialing)
 			<-release
 			a, b, err := attach.Pair()
 			if err != nil {
@@ -685,6 +686,7 @@ func TestFleetRemovedWhileConnecting(t *testing.T) {
 	}
 	result := make(chan tea.Msg, 1)
 	go func() { result <- retry() }()
+	<-dialing // removed while it connects, not before it tries
 	locked(m, func() { m.removeServer(mc) })
 	close(release)
 	msg := <-result

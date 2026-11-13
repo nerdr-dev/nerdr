@@ -301,12 +301,18 @@ func TestASandboxThatLetsTheAgentWriteTheHomeInstallIsWarnedOf(t *testing.T) {
 func TestSandboxWarnsAreTheHomeInstall(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	t.Setenv("PATH", t.TempDir())
+	bin := t.TempDir()
+	t.Setenv("PATH", bin)
+	// An agent found by its own path; not /bin/true, which macOS has not.
+	agent := filepath.Join(bin, "agent")
+	if err := os.WriteFile(agent, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	c := &Core{}
 	c.Cfg.Agents = map[agents.Kind]agents.Spec{
-		agents.Claude:      {Command: []string{"/bin/true"}},
-		agents.OpenCode:    {Command: []string{"/bin/true"}},
-		agents.Antigravity: {Command: []string{"/bin/true"}},
+		agents.Claude:      {Command: []string{agent}},
+		agents.OpenCode:    {Command: []string{agent}},
+		agents.Antigravity: {Command: []string{agent}},
 	}
 	c.Cfg.Install = config.InstallWorktree
 	if w := c.sandboxWarns(&Tab{}); w != nil {
