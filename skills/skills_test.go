@@ -46,6 +46,29 @@ func TestSkillsAreValidForEveryAgent(t *testing.T) {
 	}
 }
 
+// TestSkillFrontmatterIsPlainYAML: every value in a skill's frontmatter
+// is a plain YAML scalar, as Description reads it. Copilot CLI parses the
+// frontmatter as YAML and skips a skill it cannot read; claude is more
+// lenient, so a description with "way: split" in it worked there only.
+func TestSkillFrontmatterIsPlainYAML(t *testing.T) {
+	for _, s := range All() {
+		front, _ := s.split()
+		for _, l := range strings.Split(strings.Trim(front, "\n"), "\n") {
+			key, v, ok := strings.Cut(l, ": ")
+			if !ok || strings.ContainsAny(key, " \t") {
+				t.Errorf("%s: %q is not a key and its value", s.Name, l)
+				continue
+			}
+			switch {
+			case v == "" || strings.ContainsAny(v[:1], "-?:,[]{}#&*!|>'\"%@`"):
+				t.Errorf("%s: %s starts with what YAML reads as more than text: %.20q", s.Name, key, v)
+			case strings.Contains(v, ": ") || strings.Contains(v, " #") || strings.HasSuffix(v, ":"):
+				t.Errorf("%s: %s has \": \" or \" #\" in it, which YAML does not take unquoted", s.Name, key)
+			}
+		}
+	}
+}
+
 // TestSkillFilesFollowSKILLmd covers a skill's files beside SKILL.md: they
 // are installed and brought up to date with it, each left alone when the
 // user took it over, and removed with it when the skill is turned off.
