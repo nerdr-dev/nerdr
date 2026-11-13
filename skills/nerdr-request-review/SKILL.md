@@ -40,6 +40,14 @@ When the user names who should review — an agent, and perhaps its model
 "${NERDR_BIN:-nerdr}" request-review --agent codex --model gpt-6-astra "The retry loop in fetch.go."
 ```
 
+When the user names more than one, give `--agent` for each, each
+followed by its own `--model` if the user gave one; they review together
+("review it with codex on astra and agy on gemini 4"):
+
+```sh
+"${NERDR_BIN:-nerdr}" request-review --agent codex --model gpt-6-astra --agent agy --model gemini-4 "The retry loop in fetch.go."
+```
+
 `nerdr request-review --help` says how to name them. Leave both out when
 the user named no one: the reviewer they set up reviews. This is the
 review that sends you findings to fix; do not start a reviewer with
@@ -49,11 +57,14 @@ If the command fails, show the user its message and stop there; do not
 look for, build or run another nerdr.
 
 Then end your turn. Do not start more work: the review starts when your
-turn ends, and its findings come to you as a new message. Work on them as
-you would on the user's; nerdr has the reviewer look again afterwards, so
-there is no need to run this again for the same review.
+turn ends. nerdr waits until every reviewer has sent theirs, and their
+findings come to you together as one message. Read all of it before you
+change anything, then work on it as you would on the user's. nerdr does
+not have it reviewed again by itself: when you are done, decide whether
+what you changed needs another look, and if it does, run the command the
+message gives you — the same reviewers — before you finish that turn.
 
-Run it once per piece of work. Not for a turn that only answered a
+Apart from that one, run it once per piece of work. Not for a turn that only answered a
 question or changed nothing, and not to review someone else's work. If
 the command fails, or says you are not in a nerdr tab, just finish as
 usual.

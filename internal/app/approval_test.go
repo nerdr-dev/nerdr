@@ -54,6 +54,38 @@ func TestApprovalRemarksReachAuthor(t *testing.T) {
 	}
 }
 
+// TestAskedReviewGoesToTheAgent: a review the agent asked for waits for
+// every reviewer, then sends all the findings to the agent with
+// send_findings = "ask" too, and ends after its round: the agent asks for
+// another, with the same reviewers, when it wants one.
+func TestAskedReviewGoesToTheAgent(t *testing.T) {
+	m := testModel(t)
+	tb := m.Cur()
+	tb.Messages = []state.Message{{Text: "queued task"}}
+	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "asked-a", Agent: "codex", Model: "gpt-6-astra"}}, ReviewOf: tb}
+	b := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "asked-b", Agent: "agy"}}, ReviewOf: tb}
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: a}, {R: b}}, Round: 1, Rounds: 1, Asked: true, Tree: "asked-tree"}
+	change := &codereview.Result{Verdict: codereview.Changes, Summary: "One bug",
+		Findings: []codereview.Finding{{File: "a.go", Severity: codereview.High, Text: "the loop never ends"}}}
+	m.home().Core.OnReview(hooks.Report{Pane: a.HookKey(), Review: change})
+	if tb.Review == nil || len(tb.Messages) != 1 {
+		t.Fatal("the review should wait for the other reviewer")
+	}
+	ok := &codereview.Result{Verdict: codereview.Approve, Summary: "Fine"}
+	m.home().Core.OnReview(hooks.Report{Pane: b.HookKey(), Review: ok})
+	if tb.Review != nil {
+		t.Fatal("an asked review should end after its round")
+	}
+	msg := tb.Messages[0]
+	if !msg.Auto || !strings.Contains(msg.Text, "the loop never ends") || tb.ReviewDone != nil {
+		t.Fatalf("findings should go to the agent at once: %+v, done %+v", msg, tb.ReviewDone)
+	}
+	if again := `request-review --agent codex --model gpt-6-astra --agent agy`; !strings.Contains(msg.Text, again) ||
+		strings.Contains(msg.Text, "nerdr then has") {
+		t.Fatalf("the agent should be told how to ask again:\n%s", msg.Text)
+	}
+}
+
 func TestApprovalWithoutRemarksDoesNotQueueMessage(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()

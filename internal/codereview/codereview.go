@@ -347,6 +347,17 @@ type Review struct {
 // FixPrompt is the message for the tab's agent with the reviewers'
 // findings, numbered through.
 func FixPrompt(rs []Review, round, rounds int) string {
+	return fixPrompt(rs, round, rounds, "")
+}
+
+// AskedFixPrompt is FixPrompt for a review the agent asked for: it has
+// all the reviewers' findings at once, and asks for another review with
+// again, the command for it, when it wants one.
+func AskedFixPrompt(rs []Review, round, rounds int, again string) string {
+	return fixPrompt(rs, round, rounds, again)
+}
+
+func fixPrompt(rs []Review, round, rounds int, again string) string {
 	var b strings.Builder
 	var who []string
 	approved := len(rs) > 0
@@ -387,6 +398,13 @@ func FixPrompt(rs []Review, round, rounds int) string {
 	}
 	if approved {
 		b.WriteString("\n\nThe review is complete; these remarks do not request another round. Consider them and address what you agree with. Explain any you leave unchanged.")
+		return b.String()
+	}
+	if again != "" {
+		b.WriteString("\n\nRead all of it before you change anything: every reviewer has sent theirs, and one may answer another. " +
+			"Fix what you agree with. Where you disagree, say why in your answer rather than changing the code. " +
+			"nerdr does not have it reviewed again by itself. When you are done, decide whether what you changed needs another look; " +
+			"if it does, ask for one with the same reviewers before you finish your turn:\n\n" + again)
 		return b.String()
 	}
 	b.WriteString("\n\nFix what you agree with. Where you disagree, say why in your answer rather than changing the code. When you are done, finish your turn: ")
