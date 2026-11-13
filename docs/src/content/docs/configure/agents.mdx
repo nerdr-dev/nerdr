@@ -65,7 +65,7 @@ agent wrappers.
 ## Agents in a sandbox: `sandboxed`
 
 nerdr runs as you, outside every sandbox. An agent that can reach nerdr's
-hook socket, which every agent reports to, could otherwise ask nerdr to do what its sandbox stops it from
+hook socket could otherwise ask nerdr to do what its sandbox stops it from
 doing: open a terminal pane (your shell), start an agent or a tab that is
 not in a sandbox, or send such an agent a task. Set `sandboxed = true` for
 an agent whose `command` puts it in a sandbox:
@@ -78,7 +78,9 @@ sandboxed = true
 
 Such an agent:
 
-- gets `NERDR_SANDBOXED=1`, and reports to the hook socket the others do;
+- gets `NERDR_SANDBOXED=1`, and reports to the hook socket for agents in
+  a sandbox, not the one agents outside a sandbox report to (see
+  [What a sandbox must allow](#what-a-sandbox-must-allow));
 - cannot open, restart or close terminal panes (`nerdr terminal`,
   `nerdr close`), nor close an agent outside a sandbox;
 - can start agents, tabs (`nerdr agent`, `nerdr tab new`) and spun-off
