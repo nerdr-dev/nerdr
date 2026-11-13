@@ -1,6 +1,6 @@
 ---
 name: nerdr-spinoff
-description: Make new branches the nerdr way: split work off into new nerdr tabs, one branch, worktree and agent per part. Inside nerdr (NERDR=1), use this whenever the user asks for work on new or separate branches, worktrees, tabs or pull requests ("in two branches", "a branch for the parser fix", "split this up", "split these tasks out into tabs"), whether the work is done or still to do — instead of making or switching branches with git in your own worktree, which belongs to your tab, and instead of nerdr tab new, which is only for when the user says not to be asked. Only when the user asks for new branches.
+description: Make new branches the nerdr way, splitting work off into new nerdr tabs, one branch, worktree and agent per part. Inside nerdr (NERDR=1), use this whenever the user asks for work on new or separate branches, worktrees, tabs or pull requests ("in two branches", "a branch for the parser fix", "split this up", "split these tasks out into tabs"), whether the work is done or still to do — instead of making or switching branches with git in your own worktree, which belongs to your tab, and instead of nerdr tab new, which is only for when the user says not to be asked. Only when the user asks for new branches.
 ---
 
 <!-- nerdr: installed and kept up to date by nerdr. Remove this line to keep your own edits. -->
