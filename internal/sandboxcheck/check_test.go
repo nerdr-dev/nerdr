@@ -119,8 +119,11 @@ func TestProbeReachesAnOpenClientSocket(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := Probe(Target{ClientDir: dir, Sock: sock, Key: key})
-	if !slices.Equal(r.Client, []string{"folder", "socket", "key"}) {
+	if !slices.Equal(r.Client, []string{"folder", "socket", "key"}) || !r.Reached() {
 		t.Errorf("reached %v", r.Client)
+	}
+	if (Result{Client: []string{"folder"}}).Reached() {
+		t.Error("seeing into the folder alone counts as reaching the socket")
 	}
 	// Gone, or shut away: nothing.
 	ln.Close()

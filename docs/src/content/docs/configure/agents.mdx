@@ -434,7 +434,8 @@ nerdr does not start it.
   `$XDG_RUNTIME_DIR/nerdr` when `XDG_RUNTIME_DIR` is set; without it, in
   `~/.cache/nerdr/run` on Linux and `~/Library/Application Support/nerdr/run`
   on macOS; never under `~/.local/state/nerdr`. The sandbox must deny
-  that folder, not only writing to it: a sandbox that lets the agent
+  connecting to the socket and reading the key there, not only writing
+  to the folder (better still, it denies the whole folder): a sandbox that lets the agent
   read and connect to anything in your home folder is enough without the
   core, but not with it. nerdr also refuses a client run by one of its
   own programs, but a process that has left the agent's process tree
@@ -462,11 +463,11 @@ server's [login environment](../../use/remote/#the-agents-environment-on-a-serve
 When a `sandboxed` agent starts, nerdr first checks from inside its
 sandbox: it runs its own executable through the agent's `command`, in
 place of the agent, with the agent's environment and folder. Each of
-these that gets through counts as reaching nerdr:
+these but `folder` that gets through counts as reaching nerdr:
 
 | The check reports | What it tries | It gets through when |
 | --- | --- | --- |
-| `folder` | Look up the client socket's file (`lstat`), and list the client socket's folder | The socket's file can be looked up, or the listing shows it. Looking up a file needs only its metadata: a sandbox that denies reading the folder's files but allows reading metadata everywhere, as many macOS profiles do, still lets this through |
+| `folder` | Look up the client socket's file (`lstat`), and list the client socket's folder | The socket's file can be looked up, or the listing shows it. Looking up a file needs only its metadata: a sandbox that denies reading the folder's files but allows reading metadata everywhere, as many macOS profiles do, still lets this through. This alone does not keep the agent from starting: nerdr starts it and shows a notice naming the folder, since what is in the folder is no way in without connecting to the socket or reading the key |
 | `socket` | Connect to the client socket | The connection is made. On macOS, connecting to a Unix socket is a network rule in a sandbox profile, not a file rule |
 | `key` | Read the client socket's key file | It reads anything from it |
 | `/proc <pid>` | Open a socket of the core's or holder's through `/proc/<pid>/fd` (Linux) | One opens |
@@ -477,7 +478,7 @@ The last three are tried only on Linux, and only when the check runs in
 the core's PID namespace: in one of its own, the process ids mean other
 processes. On macOS they are not tried.
 
-If the check gets through, nerdr does not start the agent. The tab shows
+If any of the others gets through, nerdr does not start the agent. The tab shows
 why in full until you start the agent again: what the check reached, and
 the paths it tried, the client socket's folder, the socket and the key,
 as nerdr has them, with the folder's real path too when a link leads

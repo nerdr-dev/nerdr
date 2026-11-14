@@ -122,7 +122,8 @@ func ParseArgs(args []string) (Target, error) {
 // found, empty when it found none.
 type Result struct {
 	// Client: "folder" (it could see into the socket's folder), "socket"
-	// (connect to it) and "key" (read the key).
+	// (connect to it) and "key" (read the key). Of these only "socket"
+	// and "key" are a way in: seeing the folder tells what is there.
 	Client []string `json:"client,omitempty"`
 	// Holder: "pidfd_getfd", "ptrace" and "/proc", each with the process
 	// it reached.
@@ -134,8 +135,17 @@ type Result struct {
 	Warns []string `json:"warns,omitempty"`
 }
 
-// Reached reports whether the check got to anything it must not.
-func (r Result) Reached() bool { return len(r.Client) > 0 || len(r.Holder) > 0 }
+// Reached reports whether the check got to anything it must not: the
+// client socket, to connect to it or read its key, or the holder. Seeing
+// into the socket's folder alone is not: many macOS sandboxes let every
+// file's metadata be read, and what is in the folder is no way in.
+func (r Result) Reached() bool {
+	return slices.Contains(r.Client, "socket") || slices.Contains(r.Client, "key") || len(r.Holder) > 0
+}
+
+// SeesFolder reports whether the check could see into the client
+// socket's folder.
+func (r Result) SeesFolder() bool { return slices.Contains(r.Client, "folder") }
 
 // Main runs the check, inside the sandbox, and prints what it found on
 // the line Parse reads: the exit status is always 0, for a sandbox that
