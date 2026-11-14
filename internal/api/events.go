@@ -12,8 +12,9 @@ import (
 //   - "tab_closed", TabID, Name: a tab is gone.
 //   - "tab", Tab: a tab's name, task, status, branches or terminals
 //     changed.
-//   - "agent", TabID, Agent, Was: an agent's state changed (Was is "" for
-//     one just come, and Agent.State "gone" for one gone).
+//   - "agent", TabID, Name, Agent, Was: an agent's state changed (Was is
+//     "" for one just come, and Agent.State "gone" for one gone); Name is
+//     its tab's.
 //   - "waiting", Waiting: the agents that want the user changed, neediest
 //     first.
 //   - "question", Question: nerdr asks the user something.
@@ -51,7 +52,7 @@ func Diff(a, b core.APIState) []Event {
 		if !ok {
 			out = append(out, Event{Event: "tab_opened", Tab: &t})
 			for _, ag := range t.Agents {
-				out = append(out, Event{Event: "agent", TabID: t.ID, Agent: &ag})
+				out = append(out, Event{Event: "agent", TabID: t.ID, Name: t.Name, Agent: &ag})
 			}
 			continue
 		}
@@ -67,16 +68,16 @@ func Diff(a, b core.APIState) []Event {
 			delete(was, ag.ID)
 			switch {
 			case !ok:
-				out = append(out, Event{Event: "agent", TabID: t.ID, Agent: &ag})
+				out = append(out, Event{Event: "agent", TabID: t.ID, Name: t.Name, Agent: &ag})
 			case o != agentKey(ag, o):
-				out = append(out, Event{Event: "agent", TabID: t.ID, Agent: &ag, Was: o.State})
+				out = append(out, Event{Event: "agent", TabID: t.ID, Name: t.Name, Agent: &ag, Was: o.State})
 			}
 		}
 		for _, ag := range old.Agents {
 			if _, gone := was[ag.ID]; gone {
 				g := ag
 				g.State = "gone"
-				out = append(out, Event{Event: "agent", TabID: t.ID, Agent: &g, Was: ag.State})
+				out = append(out, Event{Event: "agent", TabID: t.ID, Name: t.Name, Agent: &g, Was: ag.State})
 			}
 		}
 	}

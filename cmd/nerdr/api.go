@@ -30,7 +30,7 @@ it ends, unless it subscribed: then the events go on. For example:
 
 Over ssh: ssh HOST nerdr api FOLDER. A nerdr must already run for the
 folder. Programs nerdr runs, its agents among them, are refused.
-See https://nerdr.app/reference/api/ for the requests and events.
+See https://nerdr.app/api/requests/ for the requests and events.
 `
 
 // runAPI is `nerdr api`.

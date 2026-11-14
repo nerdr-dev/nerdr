@@ -1,0 +1,241 @@
+---
+title: Requests
+description: Everything a program can ask of nerdr's API — the state, an agent's screen, messages, keys, answers and new tabs.
+---
+
+A request is one line of JSON with an `op`, what to do, and the
+parameters it takes. `id` is optional and can be any JSON value: the
+answer carries it back, so a program can match answers to requests.
+
+```json
+{"id": 7, "op": "read", "target": "9f3c01aa", "lines": 20}
+```
+
+The answer is `{"id": …, "result": …}`, or `{"id": …, "error": "…"}`
+when the request could not be done. The error is a sentence meant for
+people. Requests are answered one at a time, in the order they were
+sent, and an answer can be interleaved with [events](../events/).
+
+Tabs, agents and terminals are identified by the IDs in
+[`state`](#state). A tab's and an agent's ID stay the same for as long
+as it is there, across restarts of nerdr too; a terminal's for as long
+as nerdr runs. A tab's ID is also the ID of its first agent.
+
+| `op` | Parameters | Does |
+|---|---|---|
+| [`state`](#state) | | Everything at once |
+| [`subscribe`](#subscribe) | | Events from now on |
+| [`read`](#read) | `target`, `lines` | What an agent or terminal shows |
+| [`send`](#send) | `agent`, `text` | Queue a message for an agent |
+| [`type`](#type) | `target`, `text`, `keys` | Type into an agent or terminal now |
+| [`answer`](#answer) | `question`, `yes` | Answer one of nerdr's questions |
+| [`seen`](#seen) | `agent` | Look at an agent, as visiting it does |
+| [`wake`](#wake) | `tab` | Wake a sleeping tab |
+| [`repos`](#repos) | | The repositories a tab can be made in |
+| [`new_tab`](#new_tab) | `repos`, `branch`, `agent`, `model`, `task` | Make a tab |
+
+## state
+
+Every tab with its agents, terminals and branches; the agents that need
+you; nerdr's open questions; and the agents that can be started.
+
+```json
+{"id":1,"op":"state"}
+```
+
+```json
+{"id":1,"result":{
+  "root": "/home/you/develop",
+  "tabs": [{
+    "id": "9f3c01aa",
+    "name": "fix-login",
+    "dir": "/home/you/.nerdr/worktrees/fix-login",
+    "task": "Fix the login redirect",
+    "status": "tests pass, writing the PR",
+    "agents": [
+      {"id": "9f3c01aa", "num": 1, "kind": "claude", "model": "opus", "state": "blocked", "context_percent": 41},
+      {"id": "1b2e77d0", "num": 2, "kind": "codex", "state": "working", "reviewer": true, "messages_waiting": 1}
+    ],
+    "terminals": [{"id": "c4d5e6f7", "name": "terminal", "command": "make test", "running": true}],
+    "branches": [{"repo": "web", "branch": "fix-login", "ahead": 3, "behind": 0,
+                  "lines_added": 40, "lines_deleted": 12, "files_changed": 3,
+                  "pushed": true, "pr": 412, "pr_state": "OPEN", "ci": "pass",
+                  "pr_url": "https://github.com/you/web/pull/412"}]
+  }],
+  "waiting": ["9f3c01aa"],
+  "questions": [],
+  "agents": ["claude", "codex"]
+}}
+```
+
+**A tab** has its `name` and the folder it works in (`dir`). It may also
+have a `group`, the `task` it was given, and a `status`: what its agent
+last said of where the work stands (`nerdr status`).
+
+**An agent** has its `num`, the number the tab shows it by ("2:codex"),
+and its `kind` and `model`. `reviewer` is set for an agent that reviews
+another's work, and `messages_waiting` counts the messages waiting to
+be typed in to it. Its `state` is one of:
+
+| `state` | The agent |
+|---|---|
+| `starting` | is starting |
+| `working` | is at work |
+| `background` | has finished its turn, with commands it started still running |
+| `blocked` | asks you something, on its screen |
+| `done` | has finished, and you have not looked at it yet |
+| `idle` | waits at its prompt |
+| `asleep` | was put to sleep while its tab was not looked at (`sleep_after`) |
+| `exited` | has stopped |
+
+**`waiting`** lists the agents that need you, in the same order as
+nerdr's waiting list: the ones asking first, then the ones that are done,
+oldest first.
+
+**A terminal** has its `name`, as `nerdr read` calls it ("terminal",
+"terminal 2"), and `command`, the last command an agent ran in it.
+
+**A branch** shows each repository's branch: how far it is ahead of or
+behind its base, its changes, and its pull request and CI once nerdr has
+looked them up. `pr_state` is GitHub's (`OPEN`, `CLOSED`, `MERGED`), and
+`ci` is `fail`, `pending` or `pass`.
+
+### Questions
+
+`questions` are what nerdr asks you, waiting for a yes or no. They are
+not what an agent asks on its screen; that is an agent in the `blocked`
+state, which you answer with [`type`](#type).
+
+```json
+{"id": 4, "kind": "plugin_run", "text": "fix-login would run the plugin deploy",
+ "agent": "9f3c01aa", "plugin": "deploy", "values": {"env": "staging"},
+ "dir": "/home/you/.nerdr/worktrees/fix-login", "until": "2026-11-14T21:03:00+01:00"}
+```
+
+| `kind` | Asks |
+|---|---|
+| `repo_setup` | May the setup in `.nerdr.toml` of `repos` run in new worktrees? A tab being made waits for the answer; with no, it is made without the setup |
+| `plugin_run` | May `agent` run `plugin` with `values` in `dir`? If not answered by `until`, the answer is no |
+
+`text` asks the question in one sentence, ready to show.
+
+## subscribe
+
+From now on, the program is also sent [events](../events/). The answer
+is `{"id":…,"result":{}}`. Ask for `state` after subscribing, and follow
+the events from there.
+
+## read
+
+The last `lines` lines (80 if not given) of what an agent or a terminal
+shows, as plain text:
+
+```json
+{"id":2,"op":"read","target":"9f3c01aa","lines":15}
+```
+
+```json
+{"id":2,"result":{"text":"Do you want to proceed?\n❯ 1. Yes\n  2. No, and tell Claude what to do differently\n"}}
+```
+
+`target` is an agent's or a terminal's ID (`agent` works too, for an
+agent). An agent that is not running is an error.
+
+## send
+
+Queues `text` as a message for `agent`. nerdr types it in, and presses
+enter, once the agent is at its prompt, never while it is asking
+something, the same way messages between agents work. Use this for
+anything you would tell the agent in words.
+
+```json
+{"id":3,"op":"send","agent":"9f3c01aa","text":"Also cover the logout redirect"}
+```
+
+The answer comes as soon as the message is queued. The agent's
+`messages_waiting` counts it until it is typed in.
+
+## type
+
+Types into an agent or a terminal right away: first `text`, as a paste,
+then `keys`. Use it to answer what an agent asks on its screen, to
+interrupt it, or to run a command in a terminal.
+
+```json
+{"id":4,"op":"type","target":"9f3c01aa","keys":["1","enter"]}
+{"id":5,"op":"type","target":"c4d5e6f7","text":"make test","keys":["enter"]}
+{"id":6,"op":"type","target":"9f3c01aa","keys":["esc"]}
+```
+
+A key is a single character, typed as it is, or one of: `enter`, `esc`,
+`tab`, `shift-tab`, `backspace`, `space`, `up`, `down`, `left`, `right`,
+`home`, `end`, `pageup`, `pagedown`, `ctrl-a`, `ctrl-c`, `ctrl-d`,
+`ctrl-e`, `ctrl-l`, `ctrl-o`, `ctrl-r`, `ctrl-t`, `ctrl-u`, `ctrl-z`.
+
+## answer
+
+Answers one of nerdr's [questions](#questions): `yes` true or false.
+nerdr goes on as if you had answered in its window, and the question
+goes from every client.
+
+```json
+{"id":7,"op":"answer","question":4,"yes":true}
+```
+
+A question already answered, or timed out, is an error.
+
+## seen
+
+Counts as you looking at the agent, as visiting its tab does: a `done`
+agent turns `idle`, and messages that were held back because you typed
+to it go on. A phone app sends this when you open an agent.
+
+```json
+{"id":8,"op":"seen","agent":"9f3c01aa"}
+```
+
+## wake
+
+Wakes the agents of a tab that were put to sleep while it was not
+looked at (`sleep_after`).
+
+```json
+{"id":9,"op":"wake","tab":"9f3c01aa"}
+```
+
+## repos
+
+The repositories nerdr finds, to make a tab in:
+
+```json
+{"id":10,"op":"repos"}
+```
+
+```json
+{"id":10,"result":[{"name":"api","path":"/home/you/develop/api"},{"name":"web","path":"/home/you/develop/web"}]}
+```
+
+## new_tab
+
+Makes a tab on a new branch `branch` in the repositories named in
+`repos`, the same way `nerdr tab new` does for an agent. Its agent is
+started with `task`.
+
+```json
+{"id":11,"op":"new_tab","repos":["api"],"branch":"fix-timeout",
+ "agent":"claude","task":"The /orders call times out on large carts; find out why and fix it"}
+```
+
+- `agent` is one of `state`'s `agents`, the first of them if not given;
+  `model` is optional.
+- The answer, `{"branch":"fix-timeout"}`, says the tab is being made.
+  Making its worktrees takes a moment. The tab then arrives with a
+  `tab_opened` [event](../events/), or a `notice` says why it was not
+  made, for example a branch of that name already being there.
+- If a repository has a setup in `.nerdr.toml` that you have not
+  allowed, a `repo_setup` question comes first, and the tab is made
+  once it is answered.
+
+The request is refused at once if the branch name is not valid, a
+repository or agent is not there, or the tab limit (`max_tabs`) is
+reached.

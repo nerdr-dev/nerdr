@@ -1,0 +1,102 @@
+---
+title: Build on nerdr
+description: nerdr's API lets your own programs see what the agents are doing and talk to them — a phone app, a notifier, a chat bot, a dashboard.
+---
+
+import { Aside, CardGrid, Card } from '@astrojs/starlight/components';
+
+nerdr has an API for programs you write yourself. A program connected
+to it sees what nerdr sees: the tabs, each agent's state and screen, the
+waiting list, and what nerdr asks you. It can also act the way you do:
+send an agent a message, press keys in its pane, answer nerdr's
+questions, and make new tabs.
+
+nerdr keeps running as usual while a program is connected, with its
+window open or closed. Several programs can be connected at once.
+
+## What you can build
+
+<CardGrid>
+	<Card title="A notifier" icon="information">
+		A desktop or phone notification when an agent asks something or
+		finishes. It takes ten lines of shell; see
+		[Examples](../examples/#notify-when-an-agent-needs-you).
+	</Card>
+	<Card title="A phone app" icon="phone">
+		A connector on your machine that serves a small web app: the
+		waiting list, an agent's screen, a box to reply. It can be reached
+		over Tailscale or another private network.
+	</Card>
+	<Card title="A chat bot" icon="comment">
+		Agents that ask something post to Slack or Matrix, and your reply
+		is typed in to the agent.
+	</Card>
+	<Card title="Automation" icon="rocket">
+		A script that makes a tab for each new issue with a label, or that
+		reports each tab's pull request and CI to a dashboard.
+	</Card>
+</CardGrid>
+
+## How it works
+
+```
+your program ──▶ nerdr api ──▶ API socket ──▶ nerdr's core ──▶ agents
+                (stdin/stdout)  (private,       (runs while the
+                                 keyed)          window is closed)
+```
+
+nerdr's core is the part that runs the tabs and agents. It lives on
+when you close nerdr's window and stops when you quit (see
+[how it works](../../reference/how-it-works/#the-core-and-the-holder)).
+The core listens on an API socket of its own, beside the socket its
+window connects to.
+
+The protocol is JSON lines: one JSON object per line, each way. Your
+program sends requests and gets answers, and once it subscribes, it is
+also sent events as things happen. Any language that can start a
+process and read lines can use it.
+
+## Try it
+
+Start nerdr in a folder, then run this from another terminal:
+
+```sh
+echo '{"id":1,"op":"state"}' | nerdr api ~/develop
+```
+
+The first line is the welcome, and the second is the answer: every tab,
+its agents and their states. To watch what happens, subscribe and leave
+it running:
+
+```sh
+echo '{"op":"subscribe"}' | nerdr api ~/develop
+```
+
+Then make a tab in nerdr, or give an agent some work, and see the events
+come in.
+
+## In this chapter
+
+- [Connecting](../connecting/): `nerdr api`, over SSH, or straight to
+  the socket; and how the API is guarded.
+- [Requests](../requests/): everything a program can ask, with
+  examples.
+- [Events](../events/): what a subscribed program is told.
+- [Examples](../examples/): a notifier in shell and a client in Python
+  to start from.
+
+<Aside type="caution">
+The API can do much of what you can do: type into an agent, approve a
+plugin run, make a tab. It is safe on your machine because only you can
+reach it (see [Connecting](../connecting/#how-it-is-guarded)). Never put
+it on the network as it is. A program that brings it to your phone must
+authenticate you itself.
+</Aside>
+
+## Versions
+
+The API's version is 1, and nerdr sends it in the welcome. New requests,
+fields and events may be added without changing the version, so ignore
+what you do not know. A change that would break a program written for
+version 1 raises the version, and a program says which version it was
+written for when it connects.

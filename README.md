@@ -38,6 +38,9 @@ question.*
 - **Your own scripts as plugins.** Custom scripts (like rebuilding Docker or
   seeding a database) that agents can run with parameters, or that you can
   run directly in `F5`. [Plugins →](https://nerdr.app/configure/plugins/)
+- **Build on it.** An API lets your own programs follow the agents and
+  talk to them: notifications, a phone app, a chat bot.
+  [Build on nerdr →](https://nerdr.app/api/overview/)
 - **Close it, and the agents work on.** Closing nerdr, or losing the SSH
   connection, leaves the agents running; start nerdr again to see them.
   Quit stops them. [Remote →](https://nerdr.app/use/remote/)
@@ -89,6 +92,7 @@ Everything lives at [nerdr.app](https://nerdr.app/):
 [configuration](https://nerdr.app/configure/configuration/) ·
 [keyboard](https://nerdr.app/configure/keyboard/) ·
 [plugins](https://nerdr.app/configure/plugins/) ·
+[API](https://nerdr.app/api/overview/) ·
 [other machines](https://nerdr.app/use/remote/) ·
 [security](https://nerdr.app/reference/security/)
 

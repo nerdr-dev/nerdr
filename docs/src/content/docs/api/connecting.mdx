@@ -1,0 +1,130 @@
+---
+title: Connecting
+description: Reach nerdr's API with nerdr api, over SSH, or straight from its socket — and how it is kept to you.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+Each folder you run nerdr in has its own nerdr, and its own API. It is
+there as long as that nerdr runs, with the window open or closed, until
+you quit.
+
+## With nerdr api
+
+The simplest way is to start `nerdr api` from your program and talk to
+it over its standard input and output:
+
+```sh
+nerdr api [FOLDER]
+```
+
+`FOLDER` is the folder nerdr runs in, the current one when not given.
+`nerdr api` finds the API socket and says hello with the key for you.
+Every line after that is passed through unchanged.
+
+- The first line out is the welcome:
+  `{"api":1,"version":"v0.9.0","root":"/home/you/develop"}`.
+- Each line your program writes is a [request](../requests/), and each
+  line it reads is an answer to one, or an [event](../events/) once it
+  has subscribed.
+- When its input ends, `nerdr api` answers what it was sent and exits.
+  If it subscribed, it keeps passing on events until it is stopped.
+- If no nerdr runs for the folder, or nerdr refuses the connection, it
+  says why on standard error and exits with status 1.
+
+`nerdr api` does not start nerdr. Start nerdr in the folder first; after
+that, closing its window leaves the API running.
+
+## From another machine
+
+Run `nerdr api` over SSH. Nothing more is needed on either side:
+
+```sh
+ssh devbox nerdr api ~/develop
+```
+
+This is also how to reach nerdr on a server from a program on your
+laptop: start the program, have it run `ssh`, and read and write lines
+as usual.
+
+## Straight to the socket
+
+A program can also connect to the socket itself, without `nerdr api`.
+The socket and its key are in nerdr's private socket folder:
+
+| | Folder |
+|---|---|
+| With `XDG_RUNTIME_DIR` set | `$XDG_RUNTIME_DIR/nerdr` |
+| Linux, without it | `~/.cache/nerdr/run` |
+| macOS, without it | `~/Library/Application Support/nerdr/run` |
+
+The socket is `api-HASH.sock` and the key is `api-HASH.key`. `HASH` is
+the first 16 hexadecimal digits of the SHA-256 of the folder's real path
+(symbolic links resolved, no trailing slash). The key changes every time
+nerdr's core starts, so read it each time you connect.
+
+The first line your program sends is the hello, with the key and the
+API version it was written for:
+
+```json
+{"key":"5f0c…","api":1}
+```
+
+nerdr answers with the welcome, or with `{"error":"…"}` and closes the
+connection: for a wrong key, for an API version newer than its own, or
+for a program it runs (see below).
+
+In Python:
+
+```python
+import hashlib, json, os, socket
+
+def connect(folder):
+    root = os.path.realpath(os.path.expanduser(folder))
+    run = os.path.join(os.environ.get("XDG_RUNTIME_DIR", ""), "nerdr") \
+        if os.environ.get("XDG_RUNTIME_DIR") else os.path.expanduser("~/.cache/nerdr/run")
+    name = "api-" + hashlib.sha256(root.encode()).hexdigest()[:16]
+    with open(os.path.join(run, name + ".key")) as f:
+        key = f.read().strip()
+    s = socket.socket(socket.AF_UNIX)
+    s.connect(os.path.join(run, name + ".sock"))
+    lines = s.makefile("rw")
+    lines.write(json.dumps({"key": key, "api": 1}) + "\n")
+    lines.flush()
+    welcome = json.loads(lines.readline())
+    if "error" in welcome:
+        raise RuntimeError(welcome["error"])
+    return lines
+```
+
+On macOS, replace `~/.cache/nerdr/run` with
+`~/Library/Application Support/nerdr/run`. Running `nerdr api` instead
+saves you from this.
+
+## How it is guarded
+
+The API can type into agents, answer nerdr's questions and make tabs,
+so only you may use it. It is guarded the same way as the socket
+nerdr's window connects to:
+
+- **Its folder is yours alone.** The socket and the key live in a
+  folder only your user can open.
+- **It needs the key.** The key is in a file only you can read, and it
+  changes every time nerdr's core starts.
+- **nerdr's own programs are refused.** nerdr refuses any connection
+  from a program it runs, its agents included, whether they run in a
+  sandbox or not. An agent cannot use the API, even by running
+  `nerdr api`.
+- **Sandboxes are checked.** Before an agent in a sandbox starts, nerdr
+  checks from inside the sandbox that the agent can neither connect to
+  the API's socket nor read its key, and it does not start the agent if
+  it can (see [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own)).
+
+<Aside type="caution" title="Bringing it to your phone">
+The API is only reachable from your own machine, on purpose. A program
+that makes it reachable from elsewhere, such as a connector for a phone
+app, takes on the job of keeping it to you. Run the connector on a
+private network only (Tailscale, WireGuard), behind its own sign-in, and
+never on a port open to the internet. Whoever can use the connector can
+have your agents run commands as you.
+</Aside>
