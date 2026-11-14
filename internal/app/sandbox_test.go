@@ -3,6 +3,7 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	xansi "github.com/charmbracelet/x/ansi"
 	"os"
 	"path/filepath"
 	"slices"
@@ -919,5 +920,19 @@ func TestForgetSandboxHistoryFromTheTabMenu(t *testing.T) {
 	}
 	if item() != nil {
 		t.Fatal("still offered once forgotten")
+	}
+}
+
+// Why an agent was not started is shown in its tab whole, wrapped, not
+// cut at the pane's edge, nor in a path: a refused sandbox's is long, and
+// ends with the paths to deny.
+func TestWhyAnAgentDidNotStartIsShownWhole(t *testing.T) {
+	m := testModel(t)
+	tb := m.Cur()
+	tb.Light = core.StExited
+	tb.Err = "not started: its sandbox lets it reach nerdr's client socket, which can do anything you can: it could " +
+		strings.Repeat("see into the folder and more, ", 7) + "and, " + `connect to "/x/Application Support/nerdr/run/core-end.sock"`
+	if screen := xansi.Strip(m.View()); !strings.Contains(screen, `"/x/Application Support/nerdr/run/core-end.sock"`) {
+		t.Fatalf("the end of why is not on the screen:\n%s", screen)
 	}
 }

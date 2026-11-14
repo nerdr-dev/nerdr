@@ -461,13 +461,29 @@ server's [login environment](../../use/remote/#the-agents-environment-on-a-serve
 
 When a `sandboxed` agent starts, nerdr first checks from inside its
 sandbox: it runs its own executable through the agent's `command`, in
-place of the agent, with the agent's environment and folder. The check
-tries to see into the client socket's folder, connect to the socket and
-read its key. On Linux it also tries to reach the holder and the core
-through `/proc`, `pidfd_getfd` and `ptrace`; on macOS that part is not
-tried. If the check gets through, nerdr does not start the agent: it
-shows a notice saying what the check reached, and writes it to the
-core's log in `~/.local/state/nerdr/`.
+place of the agent, with the agent's environment and folder. Each of
+these that gets through counts as reaching nerdr:
+
+| The check reports | What it tries | It gets through when |
+| --- | --- | --- |
+| `folder` | Look up the client socket's file (`lstat`), and list the client socket's folder | The socket's file can be looked up, or the listing shows it. Looking up a file needs only its metadata: a sandbox that denies reading the folder's files but allows reading metadata everywhere, as many macOS profiles do, still lets this through |
+| `socket` | Connect to the client socket | The connection is made. On macOS, connecting to a Unix socket is a network rule in a sandbox profile, not a file rule |
+| `key` | Read the client socket's key file | It reads anything from it |
+| `/proc <pid>` | Open a socket of the core's or holder's through `/proc/<pid>/fd` (Linux) | One opens |
+| `pidfd_getfd <pid>` | Take a descriptor of the core's or holder's with `pidfd_getfd` (Linux) | One is taken |
+| `ptrace <pid>` | Trace the core or holder (Linux) | It may |
+
+The last three are tried only on Linux, and only when the check runs in
+the core's PID namespace: in one of its own, the process ids mean other
+processes. On macOS they are not tried.
+
+If the check gets through, nerdr does not start the agent. The tab shows
+why in full until you start the agent again: what the check reached, and
+the paths it tried, the client socket's folder, the socket and the key,
+as nerdr has them, with the folder's real path too when a link leads
+there. Those paths are the ones the sandbox's rule must deny. nerdr also
+writes it to the core's log in `~/.local/state/nerdr/`, on a line that
+starts `sandbox check:`.
 
 The check also tries to write where the agent must not be able to:
 `~/.config/nerdr`, `~/.local/state/nerdr` and its `tmp` folder by itself
@@ -475,8 +491,11 @@ The check also tries to write where the agent must not be able to:
 `.git/config` and `.git/hooks` of the main checkouts of the tab's
 repositories, and the folder the other tabs' worktrees are in. An agent that can write another
 tab's worktree can change the code that tab's agent and setup command
-run, outside its own sandbox. When any of them can be written, nerdr
-refuses to start the agent and shows a notice naming them: tighten the
+run, outside its own sandbox. A folder counts as writable when the
+check can make a file in it (`.nerdr-sandbox-check-…`, removed at once);
+a file, when it can be opened to append to, with nothing written. One
+that is not there is not tried. When any of them can be written, nerdr
+refuses to start the agent and its tab names them: tighten the
 sandbox so it lets the agent write its own worktree, and of the main
 checkout's `.git` only what a commit needs.
 
@@ -504,8 +523,8 @@ nerdr puts the check where the agent's program is in `command`: the last
 word named as the agent is (`claude`, `codex`, `cursor-agent`, …, or the
 section's name for an agent nerdr does not know). If none is, as with a
 single script that starts the sandbox and the agent, or the sandbox
-cannot run `$NERDR_BIN`, nerdr says it could not check and refuses to start
-the agent. Configure a wrapper that can run both the agent and the check
+cannot run `$NERDR_BIN`, nerdr refuses to start the agent, and its tab
+says it could not check, and why. Configure a wrapper that can run both the agent and the check
 inside the same sandbox, or set `check_command` (below).
 
 An agent's built-in sandbox for tool commands alone cannot be verified
