@@ -1,6 +1,7 @@
 package core
 
 import (
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -189,6 +190,54 @@ func TestASandboxThatDeniesTheClientSocketIsNotWarnedOf(t *testing.T) {
 	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --unshare-pid -- \"$@\"\n")
 	if notes, started := check(t, c, tb, cl); len(notes) != 0 || !started {
 		t.Errorf("started %v, notices %q", started, notes)
+	}
+}
+
+// TestASandboxThatLetsTheAgentReachTheAPIIsRefused: a sandbox that hides
+// the client socket and its key, but not the API's beside them, keeps
+// the agent from starting all the same, naming the API's.
+func TestASandboxThatLetsTheAgentReachTheAPIIsRefused(t *testing.T) {
+	if err := exec.Command("bwrap", "--dev-bind", "/", "/", "--unshare-pid", "true").Run(); err != nil {
+		t.Skip("no bwrap that runs here: ", err)
+	}
+	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --bind /dev/null \"$CLIENT_SOCK\" --bind /dev/null \"$CLIENT_KEY\" --unshare-pid -- \"$@\"\n")
+	sock, key, _ := attach.Paths(c.Root)
+	t.Setenv("CLIENT_SOCK", sock)
+	t.Setenv("CLIENT_KEY", key)
+	apiSock, apiKey, err := attach.APIPaths(c.Root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, err := net.Listen("unix", apiSock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { ln.Close() })
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			conn.Close()
+		}
+	}()
+	if err := os.WriteFile(apiKey, []byte("k\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, started := check(t, c, tb, cl)
+	if started {
+		t.Fatal("started, though its sandbox lets it reach the API")
+	}
+	for _, want := range []string{`connect to the API's "` + apiSock + `"`, `read the API's "` + apiKey + `"`} {
+		if !strings.Contains(tb.Err, want) {
+			t.Errorf("%q not in %q", want, tb.Err)
+		}
+	}
+	for _, not := range []string{`connect to "` + sock + `"`, `read "` + key + `"`} {
+		if strings.Contains(tb.Err, not) {
+			t.Errorf("%q in %q: the client socket was hidden", not, tb.Err)
+		}
 	}
 }
 

@@ -95,6 +95,10 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 	if err != nil {
 		return unknown(err.Error())
 	}
+	apiSock, apiKey, err := attach.APIPaths(m.Root)
+	if err != nil {
+		return unknown(err.Error())
+	}
 	var nonce [8]byte
 	_, _ = rand.Read(nonce[:])
 	target := sandboxcheck.Target{
@@ -102,6 +106,8 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		ClientDir: filepath.Dir(sock),
 		Sock:      sock,
 		Key:       keyFile,
+		APISock:   apiSock,
+		APIKey:    apiKey,
 		PidNS:     sandboxcheck.PidNS(),
 		Pids:      []int{os.Getpid()},
 		Writes:    SandboxWrites(m, t),
@@ -199,7 +205,7 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) string {
 	if why != "" {
 		Logf("sandbox check (%v): %s not started: %s", took, ev.Kind, why)
 	} else if ev.OK {
-		Logf("sandbox check (%v): %s's sandbox keeps it from the client socket and the holder", took, ev.Kind)
+		Logf("sandbox check (%v): %s's sandbox keeps it from the client socket, the API's and the holder", took, ev.Kind)
 	}
 	m.sandboxWarn(ev)
 	return why
@@ -211,6 +217,7 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) string {
 // leads there: the sandbox may go by that one.
 func (m *Core) sandboxRefusal(ev SandboxCheckedMsg) string {
 	sock, key, _ := attach.Paths(m.Root)
+	apiSock, apiKey, _ := attach.APIPaths(m.Root)
 	dir := filepath.Dir(sock)
 	folder := quoted(dir)
 	if real, err := filepath.EvalSymlinks(dir); err == nil && real != dir {
@@ -239,6 +246,10 @@ func (m *Core) sandboxRefusal(ev SandboxCheckedMsg) string {
 				ways = append(ways, "connect to "+quoted(sock))
 			case "key":
 				ways = append(ways, "read "+quoted(key))
+			case "api-socket":
+				ways = append(ways, "connect to the API's "+quoted(apiSock))
+			case "api-key":
+				ways = append(ways, "read the API's "+quoted(apiKey))
 			default:
 				ways = append(ways, w)
 			}
