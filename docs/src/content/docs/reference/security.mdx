@@ -30,7 +30,8 @@ about it, and what is left for your sandbox to do.
   With nerdr's core running on its own, as it does unless
   `NERDR_HOLDER=0`, it must also deny the client socket's folder, where
   the hook socket of the agents outside a sandbox is too. nerdr refuses to start an
-  agent whose sandbox check finds it can reach that folder; if it cannot
+  agent whose sandbox check finds it can connect to the client socket
+  or read its key; one that can only see into the folder is warned of. If it cannot
   check, it refuses to start the agent too. Detected write access to the
   protected config, state, Git paths or other worktrees also blocks startup.
   The check runs before every

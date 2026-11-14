@@ -121,6 +121,41 @@ func TestAWrapperThatLetsTheAgentReachTheClientSocketIsRefused(t *testing.T) {
 	}
 }
 
+// A sandbox that lets the agent see into the client socket's folder, but
+// not connect to the socket or read its key, as a macOS profile that lets
+// every file's metadata be read does, does not keep the agent from
+// starting: it is warned of, naming the folder, once until it changes.
+func TestSeeingIntoTheClientSocketsFolderAloneIsWarnedOf(t *testing.T) {
+	t.Setenv(attach.EnvDir, t.TempDir())
+	cl := &toldClient{}
+	m := &Core{Client: cl, Root: t.TempDir()}
+	sock, _, _ := attach.Paths(m.Root)
+	ev := SandboxCheckedMsg{Kind: agents.Codex, OK: true, Result: sandboxcheck.Result{Client: []string{"folder"}}}
+	if ev.Refused() {
+		t.Fatal("refused for seeing into the folder")
+	}
+	if why := m.OnSandboxChecked(ev); why != "" {
+		t.Fatalf("refused: %q", why)
+	}
+	if len(cl.notices) != 1 || !strings.Contains(cl.notices[0], `client socket's folder ("`+filepath.Dir(sock)+`")`) ||
+		!strings.Contains(cl.notices[0], "not connect to the socket or read its key") {
+		t.Fatalf("notices %q", cl.notices)
+	}
+	m.OnSandboxChecked(ev)
+	if len(cl.notices) != 1 {
+		t.Errorf("warned again: %q", cl.notices)
+	}
+	m.OnSandboxChecked(SandboxCheckedMsg{Kind: agents.Codex, OK: true})
+	m.OnSandboxChecked(ev)
+	if len(cl.notices) != 2 {
+		t.Errorf("not warned again once it changed back: %q", cl.notices)
+	}
+	m.OnSandboxChecked(SandboxCheckedMsg{Kind: agents.Codex, OK: true, Result: sandboxcheck.Result{Client: []string{"folder", "key"}}})
+	if len(cl.notices) != 2 {
+		t.Errorf("a refusal warned of the folder too: %q", cl.notices)
+	}
+}
+
 // A client socket's folder reached through a link is named as it is
 // once the link is followed too: the sandbox may go by that path.
 func TestARefusalNamesTheFoldersRealPath(t *testing.T) {
@@ -131,7 +166,7 @@ func TestARefusalNamesTheFoldersRealPath(t *testing.T) {
 	}
 	t.Setenv(attach.EnvDir, link)
 	m := &Core{Client: &toldClient{}, Root: t.TempDir()}
-	why := m.OnSandboxChecked(SandboxCheckedMsg{Kind: agents.Codex, OK: true, Result: sandboxcheck.Result{Client: []string{"folder"}}})
+	why := m.OnSandboxChecked(SandboxCheckedMsg{Kind: agents.Codex, OK: true, Result: sandboxcheck.Result{Client: []string{"folder", "socket"}}})
 	realDir, _ := filepath.EvalSymlinks(real)
 	if !strings.Contains(why, `"`+link+`" ("`+realDir+`" once its links are followed)`) {
 		t.Errorf("%q", why)

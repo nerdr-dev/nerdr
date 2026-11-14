@@ -45,7 +45,9 @@ type SandboxCheckedMsg struct {
 }
 
 // Refused reports whether the agent is not to start: the check found its
-// sandbox exposes the client socket, holder or critical writable paths, or could not be checked.
+// sandbox lets it connect to the client socket or read its key, reach
+// the holder or write critical paths, or could not be checked. Seeing
+// into the client socket's folder alone is only warned of.
 func (ev SandboxCheckedMsg) Refused() bool {
 	return !ev.OK || ev.Result.Reached() || len(ev.Result.Writes) > 0
 }
@@ -239,15 +241,21 @@ const sandboxDocs = `see "Agents in a sandbox" in nerdr's docs`
 // from the words around it.
 func quoted(path string) string { return "\"" + path + "\"" }
 
-// sandboxWarn tells of where nerdr installs for every agent that ev's
-// sandbox lets its agent write.
+// sandboxWarn tells of what ev's sandbox lets its agent do that does not
+// keep it from starting: see into the client socket's folder, and write
+// where nerdr installs for every agent.
 func (m *Core) sandboxWarn(ev SandboxCheckedMsg) {
 	if !ev.OK {
 		return
 	}
-	// Once for each kind of agent, until what it can write changes: an
-	// agent that starts often would say the same each time.
+	// Once for each kind of agent, until what it is warned of changes: an
+	// agent that starts often would say the same each time. The folder
+	// only of one that starts: a refusal names it already.
+	folder := ev.Result.SeesFolder() && !ev.Refused()
 	warned := strings.Join(ev.Result.Warns, "\x00")
+	if folder {
+		warned = "folder\x01" + warned
+	}
 	if m.sandboxWarned[ev.Kind] == warned {
 		return
 	}
@@ -258,6 +266,13 @@ func (m *Core) sandboxWarn(ev SandboxCheckedMsg) {
 	if len(ev.Result.Warns) > 0 {
 		note := fmt.Sprintf("%s's sandbox lets it write where nerdr installs its skills, plugins and hooks for every agent (%s): an agent in a sandbox can change what agents outside one load from there. Set install = \"worktree\" in nerdr's config, or have the sandbox deny writing them; %s",
 			ev.Kind, strings.Join(ev.Result.Warns, ", "), sandboxDocs)
+		Logf("sandbox check: %s", note)
+		m.Tell(NoticeMsg(note))
+	}
+	if folder {
+		sock, _, _ := attach.Paths(m.Root)
+		note := fmt.Sprintf("%s's sandbox lets it see into nerdr's client socket's folder (%s): it can tell what is there, though not connect to the socket or read its key. If the sandbox can deny the folder's metadata and listing too, have it do so; %s",
+			ev.Kind, quoted(filepath.Dir(sock)), sandboxDocs)
 		Logf("sandbox check: %s", note)
 		m.Tell(NoticeMsg(note))
 	}
