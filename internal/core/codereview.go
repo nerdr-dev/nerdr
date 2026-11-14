@@ -343,9 +343,7 @@ func (m *Core) EndRound(t *Tab) Cmd {
 		// The ones that approved have had their say.
 		for _, s := range run.Seats {
 			if s.Res.Verdict == codereview.Approve {
-				if s.R.Pane != nil {
-					go s.R.Pane.Close()
-				}
+				stopAgent(s.R)
 				m.DropReviewPane(s.R)
 			}
 		}
@@ -401,9 +399,7 @@ func (m *Core) EndReview(t *Tab, brief string, notify bool) {
 		}
 	}
 	for _, s := range run.Seats {
-		if p := s.R.Pane; p != nil {
-			go p.Close()
-		}
+		stopAgent(s.R)
 		m.DropReviewPane(s.R)
 	}
 	approved := len(run.Seats) > 0
@@ -437,9 +433,7 @@ func (m *Core) DropReviewer(t, r *Tab, why string, notify bool) Cmd {
 		}
 	}
 	m.saveReview()
-	if p := r.Pane; p != nil {
-		go p.Close()
-	}
+	stopAgent(r)
 	m.DropReviewPane(r)
 	m.Toast(t.Name + ": " + why + " · the review goes on with " + m.ReviewerNames(t))
 	if run.Phase == Reviewing && m.RoundDone(t) {

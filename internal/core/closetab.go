@@ -41,6 +41,15 @@ func (m *Core) CloseTab(t *Tab, remove, force bool, branchHeads map[string]strin
 	m.ForgetTabPRNews(t.Name)
 	m.SaveSession()
 	m.FindOverlaps() // the other tabs no longer share files with this one
+	// What the agents' hooks kept in the temporary folder goes with them,
+	// once their programs have stopped, below. Not the reviewers': EndReview
+	// stops each and forgets it then (stopAgent).
+	var hookKeys []string
+	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
+		if a.HookID != "" {
+			hookKeys = append(hookKeys, a.HookID)
+		}
+	}
 	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
 		if a.Review != nil {
 			m.EndReview(a, "stopped", false)
@@ -58,6 +67,9 @@ func (m *Core) CloseTab(t *Tab, remove, force bool, branchHeads map[string]strin
 		// goes.
 		for _, p := range progs {
 			p.Close()
+		}
+		for _, k := range hookKeys {
+			forgetAgent(k)
 		}
 		if !remove {
 			return TabClosedMsg{Note: "closed " + name + " — the worktree is kept"}

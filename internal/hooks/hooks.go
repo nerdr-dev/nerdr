@@ -373,12 +373,19 @@ func Listen(path string, send func(Report)) (*Server, error) {
 	if err := denied.Err(os.MkdirAll(filepath.Dir(path), 0o700)); err != nil {
 		return nil, err
 	}
-	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	// The folder is another's to write only when it is another's: what is
+	// in it would then be theirs to put there, a socket to answer the
+	// agents among it.
+	if err := ownDir(filepath.Dir(path)); err != nil {
+		return nil, err
+	}
+	// Not through a link left where the lock is: it is written to below.
+	lock, err := os.OpenFile(path+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if denied.Err(err) != nil {
 		return nil, err
 	}
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
-		owner, _ := io.ReadAll(lock)
+		owner, _ := io.ReadAll(io.LimitReader(lock, 4<<10))
 		_ = lock.Close()
 		if errors.Is(err, syscall.EWOULDBLOCK) {
 			if o := strings.TrimSpace(string(owner)); o != "" {
@@ -402,6 +409,29 @@ func Listen(path string, send func(Report)) (*Server, error) {
 	s.wg.Add(1)
 	go s.accept(ln)
 	return s, nil
+}
+
+// ownDir is why dir, the folder of a socket, cannot hold one: it is not
+// this user's, or others may write in it and it cannot be made theirs
+// alone to. Whoever can write in the folder can put a socket of their own
+// where nerdr's is, and answer the agents that connect, each giving its
+// tab's secret. A folder of this user's that others may write in has
+// that taken away, as rundir tightens its own; reading it is left, as it
+// was made. A link to a folder of theirs is theirs.
+func ownDir(dir string) error {
+	fi, err := os.Stat(dir)
+	if err != nil {
+		return err
+	}
+	if st, ok := fi.Sys().(*syscall.Stat_t); !ok || int(st.Uid) != os.Getuid() {
+		return fmt.Errorf("%s belongs to another user", dir)
+	}
+	if perm := fi.Mode().Perm(); perm&0o022 != 0 {
+		if err := os.Chmod(dir, fi.Mode()&^0o022); err != nil {
+			return fmt.Errorf("%s can be written by other users (mode %o): %w", dir, perm, err)
+		}
+	}
+	return nil
 }
 
 // ListenHost is Listen at HostSocketPath(root), its folder made and
