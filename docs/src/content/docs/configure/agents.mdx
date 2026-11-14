@@ -467,7 +467,7 @@ these but `folder` that gets through counts as reaching nerdr:
 
 | The check reports | What it tries | It gets through when |
 | --- | --- | --- |
-| `folder` | Look up the client socket's file (`lstat`), and list the client socket's folder | The socket's file can be looked up, or the listing shows it. Looking up a file needs only its metadata: a sandbox that denies reading the folder's files but allows reading metadata everywhere, as many macOS profiles do, still lets this through. This alone does not keep the agent from starting: nerdr starts it and shows a notice naming the folder, since what is in the folder is no way in without connecting to the socket or reading the key |
+| `folder` | Look up the client socket's file (`lstat`), and list the client socket's folder | The socket's file can be looked up, or the listing shows it. Looking up a file needs only its metadata: a sandbox that denies reading the folder's files but allows reading metadata everywhere, as many macOS profiles do, still lets this through. This alone does not keep the agent from starting: nerdr starts it, and notes the folder in the [history (F6)](../../panel/history/) and the core's log, not in the bar, since what is in the folder is no way in without connecting to the socket or reading the key |
 | `socket` | Connect to the client socket | The connection is made. On macOS, connecting to a Unix socket is a network rule in a sandbox profile, not a file rule |
 | `key` | Read the client socket's key file | It reads anything from it |
 | `/proc <pid>` | Open a socket of the core's or holder's through `/proc/<pid>/fd` (Linux) | One opens |

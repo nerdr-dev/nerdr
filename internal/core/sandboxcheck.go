@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -42,6 +41,8 @@ type SandboxCheckedMsg struct {
 	Result sandboxcheck.Result
 	OK     bool
 	Why    string
+	// Took is how long the check took, for the log.
+	Took time.Duration
 }
 
 // Refused reports whether the agent is not to start: the check found its
@@ -117,30 +118,51 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 	m.Hold(&spec, Label{Kind: HeldCheck, Tab: t.ID}, true, "")
 	progs := m.Programs()
 	return func() SandboxCheckedMsg {
-		out, err := RunCheck(progs, spec, SandboxCheckWait)
+		start := time.Now()
+		out, err := RunCheck(progs, spec, SandboxCheckWait, func(out []byte) bool {
+			_, ok := sandboxcheck.Parse(out, target.Nonce)
+			return ok
+		})
+		took := time.Since(start)
 		if err != nil {
-			return SandboxCheckedMsg{Kind: kind, Why: "it could not start: " + err.Error()}
+			return SandboxCheckedMsg{Kind: kind, Why: "it could not start: " + err.Error(), Took: took}
 		}
 		r, ok := sandboxcheck.Parse(out, target.Nonce)
 		if !ok {
-			return SandboxCheckedMsg{Kind: kind, Why: noAnswer}
+			return SandboxCheckedMsg{Kind: kind, Why: noAnswer, Took: took}
 		}
-		return SandboxCheckedMsg{Kind: kind, Result: r, OK: true}
+		return SandboxCheckedMsg{Kind: kind, Result: r, OK: true, Took: took}
 	}
 }
 
 // RunCheck starts s with progs and is what it printed, once it has
-// exited or wait has gone by, when it is ended.
-func RunCheck(progs spawn.Spawner, s spawn.Spec, wait time.Duration) ([]byte, error) {
+// exited or wait has gone by, when it is ended. answered reports whether
+// what it printed so far has the whole answer: once it has, nothing more
+// is waited for after it exits.
+func RunCheck(progs spawn.Spawner, s spawn.Spec, wait time.Duration, answered func([]byte) bool) ([]byte, error) {
 	p, err := progs.Spawn(s)
 	if err != nil {
 		return nil, err
 	}
+	// Only the reader writes out, and it is read once the reader is done.
 	var out bytes.Buffer
 	read := make(chan struct{})
+	got := make(chan struct{})
 	go func() {
 		defer close(read)
-		_, _ = io.Copy(&out, io.LimitReader(p, 1<<20))
+		buf := make([]byte, 4096)
+		said := false
+		for out.Len() < 1<<20 {
+			n, err := p.Read(buf)
+			out.Write(buf[:n])
+			if !said && n > 0 && answered(out.Bytes()) {
+				said = true
+				close(got)
+			}
+			if err != nil {
+				return
+			}
+		}
 	}()
 	exited := make(chan struct{})
 	go func() {
@@ -153,9 +175,11 @@ func RunCheck(progs spawn.Spawner, s spawn.Spec, wait time.Duration) ([]byte, er
 		_ = p.Signal(p.Pid(), syscall.SIGKILL)
 		<-exited
 	}
-	// What it printed last may still be on its way.
+	// What it printed last may still be on its way, unless the answer is
+	// in already: a terminal may not tell of its end until it is closed.
 	select {
 	case <-read:
+	case <-got:
 	case <-time.After(time.Second):
 	}
 	_ = p.Close()
@@ -171,10 +195,11 @@ func RunCheck(progs spawn.Spawner, s spawn.Spec, wait time.Duration) ([]byte, er
 // restart.
 func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) string {
 	why := m.sandboxRefusal(ev)
+	took := ev.Took.Round(time.Millisecond)
 	if why != "" {
-		Logf("sandbox check: %s not started: %s", ev.Kind, why)
+		Logf("sandbox check (%v): %s not started: %s", took, ev.Kind, why)
 	} else if ev.OK {
-		Logf("sandbox check: %s's sandbox keeps it from the client socket and the holder", ev.Kind)
+		Logf("sandbox check (%v): %s's sandbox keeps it from the client socket and the holder", took, ev.Kind)
 	}
 	m.sandboxWarn(ev)
 	return why
@@ -273,8 +298,9 @@ func (m *Core) sandboxWarn(ev SandboxCheckedMsg) {
 		sock, _, _ := attach.Paths(m.Root)
 		note := fmt.Sprintf("%s's sandbox lets it see into nerdr's client socket's folder (%s): it can tell what is there, though not connect to the socket or read its key. If the sandbox can deny the folder's metadata and listing too, have it do so; %s",
 			ev.Kind, quoted(filepath.Dir(sock)), sandboxDocs)
+		// Of little harm, so kept out of the bar: the history has it.
 		Logf("sandbox check: %s", note)
-		m.Tell(NoticeMsg(note))
+		m.Tell(HistoryMsg{Cat: HistoryInfo, Text: note})
 	}
 }
 

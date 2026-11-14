@@ -1,6 +1,8 @@
 package app
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
@@ -15,6 +17,8 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.toast(m.expandKeys(string(ev)))
 	case core.NoticeMsg:
 		m.Notice(m.expandKeys(string(ev)))
+	case core.HistoryMsg:
+		m.history.add(ev.Cat, m.expandKeys(ev.Text), time.Now())
 	case core.LightMsg:
 		if a := m.fleet.ByRef(ev.A); a != nil {
 			m.notifyChange(a, ev.Visible, ev.Now)

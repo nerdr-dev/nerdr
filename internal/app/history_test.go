@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nerdr-dev/nerdr/internal/core"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -25,6 +27,15 @@ func TestTheHistoryKeepsWhatTheBarSaid(t *testing.T) {
 	}
 	if n := len(m.history.entries); n != historyCap || m.history.entries[0].text != "toast "+strconv.Itoa(historyCap+4) {
 		t.Fatalf("%d kept, the latest %q", n, m.history.entries[0].text)
+	}
+}
+
+// What core keeps for the history alone goes there, not to the bar.
+func TestHistoryAloneIsNotShownInTheBar(t *testing.T) {
+	m := testModel(t)
+	m.Tell(core.HistoryMsg{Cat: core.HistoryInfo, Text: "the sandbox lets it see the folder"})
+	if m.toastText != "" || len(m.history.entries) != 1 || m.history.entries[0].cat != catInfo {
+		t.Fatalf("bar %q, history %+v", m.toastText, m.history.entries)
 	}
 }
 
