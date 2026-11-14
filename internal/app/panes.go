@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -538,8 +539,17 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 		switch {
 		case a == nil:
 		case a.Err != "":
-			msg = []string{"", "  " + warn(a.Err), "", "  " + keyHint("r") + " / enter: try again   " +
-				keyHint(m.cfg().Prefix) + " " + keyHint(m.shownKeys("x")) + ": close the tab"}
+			// Wrapped, not cut: why a sandboxed agent was not started
+			// is long, and the paths in it are what to fix, so broken
+			// at spaces only, unless one is wider than the pane.
+			msg = []string{""}
+			for _, l := range wrapWords(a.Err, max(w-4, 10)) {
+				for _, r := range strings.Split(ansi.Hardwrap(l, max(w-4, 10), false), "\n") {
+					msg = append(msg, "  "+warn(r))
+				}
+			}
+			msg = append(msg, "", "  "+keyHint("r")+" / enter: try again   "+
+				keyHint(m.cfg().Prefix)+" "+keyHint(m.shownKeys("x"))+": close the tab")
 		default:
 			msg = []string{"", "  Starting " + string(a.Agent) + " in " + a.Dir + " …"}
 		}

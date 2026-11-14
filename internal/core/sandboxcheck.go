@@ -161,47 +161,87 @@ func RunCheck(progs spawn.Spawner, s spawn.Spec, wait time.Duration) ([]byte, er
 	return out.Bytes(), nil
 }
 
-// OnSandboxChecked explains why a sandboxed launch was refused, and reports
-// writable sensitive paths. Every launch is checked again, including after
-// an unknown result, so fixing the sandbox needs no core restart.
-func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
-	sock, _, _ := attach.Paths(m.Root)
-	dir := filepath.Dir(sock)
-	const docs = `see "Agents in a sandbox" in nerdr's docs`
-	const scope = "kernel.yama.ptrace_scope is 0, so only the sandbox stops a process of yours from tracing nerdr's holder"
-	var note string
-	switch {
-	case !ev.OK:
-		note = fmt.Sprintf("nerdr did not start %s: it could not check that its sandbox denies nerdr's client socket, in %s: %s. Configure a sandbox wrapper that can run the check; %s",
-			ev.Kind, dir, ev.Why, docs)
-		if ptraceOpen() {
-			note += "; also, " + scope
-		}
-	case ev.Result.Reached() || len(ev.Result.Writes) > 0:
-		var parts []string
-		if len(ev.Result.Client) > 0 {
-			parts = append(parts, fmt.Sprintf("nerdr's client socket, which can do anything you can (%s, in %s)",
-				strings.Join(ev.Result.Client, ", "), dir))
-		}
-		if len(ev.Result.Holder) > 0 {
-			h := fmt.Sprintf("nerdr's holder or core, which run every program (%s)", strings.Join(ev.Result.Holder, ", "))
-			if ptraceOpen() {
-				h += "; " + scope
-			}
-			parts = append(parts, h)
-		}
-		if len(ev.Result.Writes) > 0 {
-			parts = append(parts, "critical writable paths ("+strings.Join(ev.Result.Writes, ", ")+")")
-		}
-		note = fmt.Sprintf("nerdr did not start %s: its sandbox lets it reach %s. The sandbox must deny them; %s",
-			ev.Kind, strings.Join(parts, ", and "), docs)
-	default:
+// OnSandboxChecked is why a sandboxed launch is refused, "" when it is
+// not, for the tab to show until the agent is started again: what the
+// check reached, by path, or why it could not tell. It is logged, and
+// writable sensitive paths are told of. Every launch is checked again,
+// including after an unknown result, so fixing the sandbox needs no core
+// restart.
+func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) string {
+	why := m.sandboxRefusal(ev)
+	if why != "" {
+		Logf("sandbox check: %s not started: %s", ev.Kind, why)
+	} else if ev.OK {
 		Logf("sandbox check: %s's sandbox keeps it from the client socket and the holder", ev.Kind)
 	}
-	if note != "" {
-		Logf("sandbox check: %s", note)
-		m.Tell(NoticeMsg(note))
+	m.sandboxWarn(ev)
+	return why
+}
+
+// sandboxRefusal is why ev refuses its agent, "" when it does not. It
+// names the client socket's folder, socket and key as nerdr has them, for
+// the sandbox's rule to deny, and the folder's real path too, when a link
+// leads there: the sandbox may go by that one.
+func (m *Core) sandboxRefusal(ev SandboxCheckedMsg) string {
+	sock, key, _ := attach.Paths(m.Root)
+	dir := filepath.Dir(sock)
+	folder := quoted(dir)
+	if real, err := filepath.EvalSymlinks(dir); err == nil && real != dir {
+		folder += " (" + quoted(real) + " once its links are followed)"
 	}
+	const scope = "kernel.yama.ptrace_scope is 0, so only the sandbox stops a process of yours from tracing nerdr's holder"
+	if !ev.OK {
+		why := fmt.Sprintf("it could not check that its sandbox denies nerdr's client socket, in the folder %s: %s. Configure a sandbox wrapper that can run the check; %s",
+			folder, ev.Why, sandboxDocs)
+		if ptraceOpen() {
+			why += "; also, " + scope
+		}
+		return why
+	}
+	if !ev.Result.Reached() && len(ev.Result.Writes) == 0 {
+		return ""
+	}
+	var parts []string
+	if len(ev.Result.Client) > 0 {
+		var ways []string
+		for _, w := range ev.Result.Client {
+			switch w {
+			case "folder":
+				ways = append(ways, "see into the folder "+quoted(dir))
+			case "socket":
+				ways = append(ways, "connect to "+quoted(sock))
+			case "key":
+				ways = append(ways, "read "+quoted(key))
+			default:
+				ways = append(ways, w)
+			}
+		}
+		parts = append(parts, fmt.Sprintf("nerdr's client socket, which can do anything you can: it could %s. The sandbox must deny the folder %s",
+			strings.Join(ways, ", "), folder))
+	}
+	if len(ev.Result.Holder) > 0 {
+		h := fmt.Sprintf("nerdr's holder or core, which run every program (%s)", strings.Join(ev.Result.Holder, ", "))
+		if ptraceOpen() {
+			h += "; " + scope
+		}
+		parts = append(parts, h)
+	}
+	if len(ev.Result.Writes) > 0 {
+		parts = append(parts, "critical writable paths ("+strings.Join(ev.Result.Writes, ", ")+")")
+	}
+	return fmt.Sprintf("its sandbox lets it reach %s. The sandbox must deny them; %s", strings.Join(parts, "; and "), sandboxDocs)
+}
+
+// sandboxDocs says where nerdr's docs say how to set a sandbox up.
+const sandboxDocs = `see "Agents in a sandbox" in nerdr's docs`
+
+// quoted is path in quotes, for one with spaces in it to be told apart
+// from the words around it.
+func quoted(path string) string { return "\"" + path + "\"" }
+
+// sandboxWarn tells of where nerdr installs for every agent that ev's
+// sandbox lets its agent write.
+func (m *Core) sandboxWarn(ev SandboxCheckedMsg) {
 	if !ev.OK {
 		return
 	}
@@ -217,7 +257,7 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) {
 	m.sandboxWarned[ev.Kind] = warned
 	if len(ev.Result.Warns) > 0 {
 		note := fmt.Sprintf("%s's sandbox lets it write where nerdr installs its skills, plugins and hooks for every agent (%s): an agent in a sandbox can change what agents outside one load from there. Set install = \"worktree\" in nerdr's config, or have the sandbox deny writing them; %s",
-			ev.Kind, strings.Join(ev.Result.Warns, ", "), docs)
+			ev.Kind, strings.Join(ev.Result.Warns, ", "), sandboxDocs)
 		Logf("sandbox check: %s", note)
 		m.Tell(NoticeMsg(note))
 	}

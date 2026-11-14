@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -559,9 +560,10 @@ func (m *Core) OnSpawnReady(ev SpawnReady) Cmd {
 // SpawnPrepared is Spawn, with what the agent's CLI was asked.
 func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPrep) Cmd {
 	if prep.Check != nil {
-		m.OnSandboxChecked(*prep.Check)
-		if prep.Check.Refused() {
-			t.Err = "not started: its sandbox could not be verified to deny nerdr's client socket, holder and writes to critical paths"
+		if why := m.OnSandboxChecked(*prep.Check); prep.Check.Refused() {
+			// The whole of why: the tab shows it until it is started
+			// again, the toast only the start of it.
+			t.Err = "not started: " + cmp.Or(why, "its sandbox could not be verified to deny nerdr's client socket, holder and writes to critical paths")
 			t.Light = StExited
 			return nil
 		}
