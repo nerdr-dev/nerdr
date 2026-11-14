@@ -1,0 +1,131 @@
+---
+title: Examples
+description: Programs to start from — a notifier in shell, and a small Python client for nerdr's API.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+## Notify when an agent needs you
+
+A desktop notification each time an agent asks something or finishes.
+It needs [`jq`](https://jqlang.org/).
+
+```sh
+#!/bin/sh
+# nerdr-notify [FOLDER]: a notification when an agent needs you.
+echo '{"op":"subscribe"}' | nerdr api "${1:-.}" |
+  jq --unbuffered -r '
+    select(.event == "agent" and (.agent.state == "blocked" or .agent.state == "done"))
+    | "\(.name) · \(.agent.num):\(.agent.kind) " +
+      (if .agent.state == "blocked" then "asks you something" else "is done" end)' |
+  while IFS= read -r line; do
+    notify-send nerdr "$line"
+  done
+```
+
+On macOS, replace `notify-send nerdr "$line"` with:
+
+```sh
+osascript -e "display notification \"$line\" with title \"nerdr\""
+```
+
+To get the notifications on your phone, send them to a push service you
+use instead, such as your own [ntfy](https://ntfy.sh/) server:
+`curl -s -d "$line" https://ntfy.example.com/nerdr`.
+
+<Aside>
+The notification says which tab and agent, not what the agent asked:
+what an agent shows can contain code and secrets. Send it to a push
+service only if you trust that service with that.
+</Aside>
+
+## A Python client
+
+A small client to build on. It runs `nerdr api` (or `ssh HOST nerdr api`),
+matches answers to requests, and hands events to a queue:
+
+```python
+# nerdr_api.py
+import itertools, json, queue, subprocess, threading
+
+class Nerdr:
+    """A connection to the API of the nerdr running for folder."""
+
+    def __init__(self, folder=".", host=None):
+        cmd = ["nerdr", "api", folder]
+        if host:
+            cmd = ["ssh", host] + cmd
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                     stdout=subprocess.PIPE, text=True)
+        line = self.proc.stdout.readline()
+        if not line:
+            raise RuntimeError("nerdr api did not connect; see its error above")
+        self.welcome = json.loads(line)
+        self.events = queue.Queue()  # events, then None once disconnected
+        self._ids = itertools.count(1)
+        self._waiting = {}
+        self._lock = threading.Lock()
+        threading.Thread(target=self._read, daemon=True).start()
+
+    def _read(self):
+        for line in self.proc.stdout:
+            msg = json.loads(line)
+            if "event" in msg:
+                self.events.put(msg)
+            else:
+                with self._lock:
+                    answer = self._waiting.pop(msg.get("id"), None)
+                if answer:
+                    answer.put(msg)
+        self.events.put(None)
+
+    def call(self, op, **params):
+        """Sends a request and returns its result, or raises its error."""
+        answer = queue.Queue(maxsize=1)
+        with self._lock:
+            id = next(self._ids)
+            self._waiting[id] = answer
+            self.proc.stdin.write(json.dumps({"id": id, "op": op, **params}) + "\n")
+            self.proc.stdin.flush()
+        msg = answer.get()
+        if "error" in msg:
+            raise RuntimeError(msg["error"])
+        return msg["result"]
+```
+
+With it, a program that prints what each agent asks, as it asks:
+
+```python
+import sys
+from nerdr_api import Nerdr
+
+n = Nerdr(sys.argv[1] if len(sys.argv) > 1 else ".")
+n.call("subscribe")
+for tab in n.call("state")["tabs"]:
+    print(tab["name"], [f'{a["num"]}:{a["kind"]} {a["state"]}' for a in tab["agents"]])
+
+for ev in iter(n.events.get, None):
+    if ev["event"] == "agent" and ev["agent"]["state"] == "blocked":
+        a = ev["agent"]
+        print(f'\n{ev["name"]} · {a["num"]}:{a["kind"]} asks:')
+        print(n.call("read", target=a["id"], lines=15)["text"])
+    elif ev["event"] == "question":
+        print("\nnerdr asks:", ev["question"]["text"])
+```
+
+And to act on what it finds:
+
+```python
+n.call("type", target=agent_id, keys=["1", "enter"])         # pick choice 1
+n.call("send", agent=agent_id, text="Use the v2 endpoint instead")
+n.call("answer", question=question_id, yes=False)
+n.call("new_tab", repos=["api"], branch="fix-timeout",
+       task="The /orders call times out on large carts; fix it")
+```
+
+## Other languages
+
+Anything that can start a process and read and write lines works: run
+`nerdr api FOLDER`, write a JSON object per line, and read one per line.
+Remember that answers and events come on the same stream, so read it in
+one place and sort lines by whether they have an `event` field.

@@ -55,7 +55,7 @@ func TestDiff(t *testing.T) {
 			t.Fatalf("events %v, want %v", got, want)
 		}
 	}
-	if evs[1].Agent.State != "blocked" || evs[1].Was != "working" {
+	if evs[1].Agent.State != "blocked" || evs[1].Was != "working" || evs[1].Name != "one" {
 		t.Fatalf("agent %+v was %q", evs[1].Agent, evs[1].Was)
 	}
 	if evs[2].Agent.ID != "x" || evs[2].Agent.State != "gone" || evs[2].Was != "idle" {

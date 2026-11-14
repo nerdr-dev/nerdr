@@ -57,10 +57,13 @@ export default defineConfig({
 					items: ['configure/configuration', 'configure/keyboard', 'configure/agents', 'configure/plugins'],
 				},
 				{
+					label: 'Build on nerdr',
+					items: ['api/overview', 'api/connecting', 'api/requests', 'api/events', 'api/examples'],
+				},
+				{
 					label: 'Reference',
 					items: [
 						'reference/agent-commands',
-						'reference/api',
 						'reference/security',
 						'reference/how-it-works',
 						'reference/troubleshooting',

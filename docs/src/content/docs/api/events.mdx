@@ -1,0 +1,59 @@
+---
+title: Events
+description: What nerdr's API tells a subscribed program as it happens — agents changing state, tabs, questions and notices.
+---
+
+After a program sends [`subscribe`](../requests/#subscribe), nerdr also
+sends it events: lines with an `event` field and no `id`. They arrive
+between the answers to requests, as things happen.
+
+```json
+{"event":"agent","tab_id":"9f3c01aa","name":"fix-login","agent":{"id":"9f3c01aa","num":1,"kind":"claude","state":"blocked"},"was":"working"}
+```
+
+| `event` | Fields | When |
+|---|---|---|
+| `agent` | `tab_id`, `name`, `agent`, `was` | An agent's state changed (`was` is the state before), an agent arrived (`was` is empty), or one left (`agent.state` is `gone`). `name` is its tab's name |
+| `waiting` | `waiting` | The agents that need you changed: their IDs, in waiting-list order |
+| `tab_opened` | `tab` | A tab was made, by you, an agent or a program |
+| `tab_closed` | `tab_id`, `name` | A tab was closed |
+| `tab` | `tab` | A tab's name, task, status, branches or terminals changed |
+| `question` | `question` | nerdr asks you [something](../requests/#questions) |
+| `answered` | `question_id` | A question was answered, here or in another client, or timed out |
+| `notice` | `text`, `important` | What nerdr shows in its status bar. `important` marks what it keeps on screen until seen |
+| `lost` | | The program read too slowly and events were dropped |
+
+`tab`, `agent` and `question` carry the whole tab, agent or question, in
+the same form as in [`state`](../requests/#state). A tab's first agent
+also gets its own `agent` event when the tab opens. An agent's context
+used (`context_percent`) changing is not an event of its own; it comes
+with the next one, or with `state`.
+
+## Following along
+
+To keep its own copy of nerdr's state, a program:
+
+1. sends `subscribe`;
+2. sends `state` and takes the answer as its copy;
+3. applies each event to the copy: replace the tab or agent with the one
+   in the event, remove what is closed or gone, and keep `waiting` and
+   the questions as the events give them.
+
+If an event mentions something the copy does not have, or after `lost`,
+it sends `state` again. That is always safe.
+
+## Telling you something happened
+
+Most programs only need a few events:
+
+- **An agent needs you**: `agent` with `agent.state` of `blocked` (it
+  asks something) or `done` (it finished). `waiting` gives the whole
+  list, for a badge count.
+- **nerdr asks you something**: `question`, to answer with
+  [`answer`](../requests/#answer).
+- **A tab arrived or failed**: `tab_opened` after
+  [`new_tab`](../requests/#new_tab), or a `notice` saying why it was not
+  made.
+
+Events are sent once the change has happened in nerdr, within half a
+second.
