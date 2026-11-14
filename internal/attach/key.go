@@ -80,3 +80,15 @@ func sameKey(got, want string) bool {
 	}
 	return subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
 }
+
+// WriteKey writes a new key to path, readable by this user alone, and
+// returns it; ReadKey reads one, refusing a file others may read; and
+// SameKey compares a key given with the one written, in constant time.
+// For the API socket, which is guarded as this one is.
+func WriteKey(path string) (string, error) { return writeKey(path) }
+
+// ReadKey: see WriteKey.
+func ReadKey(path string) (string, error) { return readKey(path) }
+
+// SameKey: see WriteKey.
+func SameKey(got, want string) bool { return sameKey(got, want) }

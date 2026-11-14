@@ -42,6 +42,8 @@ usage:
                      there too); FOLDER is ~ when not given
   nerdr sandbox      the repositories nerdr holds back in, an agent having
                      run in a sandbox there; clear forgets it (takes -h)
+  nerdr api [FOLDER] the API of the nerdr running for FOLDER, for your own
+                     programs: JSON lines on stdin and stdout (takes -h)
   nerdr help         this text
   nerdr version      which nerdr this is
 
@@ -150,6 +152,8 @@ func main() {
 			os.Exit(runPlugin(os.Args[2:]))
 		case "sandbox":
 			os.Exit(runSandbox(os.Args[2:]))
+		case "api":
+			os.Exit(runAPI(os.Args[2:]))
 		case "hook":
 			// nerdr's own hooks in claude; see hooks.ClaudeSettings.
 			if len(os.Args) > 2 && os.Args[2] == "claude" {

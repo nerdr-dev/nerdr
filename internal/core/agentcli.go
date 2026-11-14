@@ -202,6 +202,26 @@ type BranchJSON struct {
 	After int `json:"commits_after_pr,omitempty"`
 }
 
+// BranchesJSON are tab t's branches, as last looked at, or as made when
+// they have not been yet.
+func BranchesJSON(t *Tab) []BranchJSON {
+	var out []BranchJSON
+	for _, w := range t.Info.Wts {
+		b := BranchJSON{Repo: filepath.Base(w.Repo), Branch: w.Branch, Ahead: w.Stats.Ahead, Behind: w.Stats.Behind,
+			Added: w.Add, Deleted: w.Del, Changed: len(w.Stats.Changed), Pushed: w.Unpushed == 0}
+		if w.HasPR {
+			b.PR, b.PRState, b.CI, b.URL, b.After = w.Pr.Number, w.Pr.State, w.Pr.CI, w.Pr.URL, w.Pr.After
+		}
+		out = append(out, b)
+	}
+	if len(out) == 0 {
+		for _, w := range t.Worktrees {
+			out = append(out, BranchJSON{Repo: filepath.Base(w.Repo), Branch: w.Branch})
+		}
+	}
+	return out
+}
+
 // TabsJSON is every tab, yours being the one asking.
 func (m *Core) TabsJSON(yours *Tab) []TabJSON {
 	var out []TabJSON
@@ -210,19 +230,7 @@ func (m *Core) TabsJSON(yours *Tab) []TabJSON {
 		for _, a := range t.AgentsIn() {
 			j.Agents = append(j.Agents, m.AgentJSON(a, nil))
 		}
-		for _, w := range t.Info.Wts {
-			b := BranchJSON{Repo: filepath.Base(w.Repo), Branch: w.Branch, Ahead: w.Stats.Ahead, Behind: w.Stats.Behind,
-				Added: w.Add, Deleted: w.Del, Changed: len(w.Stats.Changed), Pushed: w.Unpushed == 0}
-			if w.HasPR {
-				b.PR, b.PRState, b.CI, b.URL, b.After = w.Pr.Number, w.Pr.State, w.Pr.CI, w.Pr.URL, w.Pr.After
-			}
-			j.Branches = append(j.Branches, b)
-		}
-		if len(j.Branches) == 0 {
-			for _, w := range t.Worktrees {
-				j.Branches = append(j.Branches, BranchJSON{Repo: filepath.Base(w.Repo), Branch: w.Branch})
-			}
-		}
+		j.Branches = BranchesJSON(t)
 		for _, p := range t.Panes() {
 			if p.Kind == PaneShell {
 				j.Terminals = append(j.Terminals, TerminalName(p))
@@ -482,8 +490,9 @@ func (m *Core) RestartTerminal(o, from *Tab, r hooks.Report) Cmd {
 
 // tabMade opens the tab made for an agent, and tells the agent.
 func (m *Core) TabMade(msg TabMadeMsg) Cmd {
+	// From is nil for a tab the user asked for by the API: no agent is told.
 	tell := func(text string) {
-		if m.Live(msg.From) || m.Live(msg.From.Owner()) {
+		if msg.From != nil && (m.Live(msg.From) || m.Live(msg.From.Owner())) {
 			m.AddMessageFrom(msg.From, text, true, msg.Confined)
 		}
 	}
@@ -499,12 +508,15 @@ func (m *Core) TabMade(msg TabMadeMsg) Cmd {
 		return nil
 	}
 	group := ""
-	if m.Live(msg.From.Owner()) {
+	if msg.From != nil && m.Live(msg.From.Owner()) {
 		group = msg.From.Owner().Group
 	}
 	t, cmd := m.AddTabWith(msg.Plan.Branch, msg.Plan.Dir, group, msg.Wts, msg.Kind, msg.Model, msg.Task, msg.Confined)
 	m.Tell(PanesMsg{})
-	note := "made " + t.Name + " for " + m.AgentName(msg.From)
+	note := "made " + t.Name
+	if msg.From != nil {
+		note += " for " + m.AgentName(msg.From)
+	}
 	if len(msg.Warnings) > 0 {
 		note += "; " + strings.Join(msg.Warnings, "; ")
 	}
@@ -622,15 +634,23 @@ func (m *Core) OnNewTab(r hooks.Report) Cmd {
 		reply(hooks.Answer{Err: err.Error()})
 		return nil
 	}
-	var paths []string
-	for _, rp := range repos {
-		paths = append(paths, rp.Path)
-	}
 	task := fmt.Sprintf("Task from agent %d (%s) in the nerdr tab %s, which made this tab for you, on a branch of its own:\n\n%s",
 		max(from.Num, 1), from.Agent, from.Owner().Name, r.Text)
 	reply(hooks.Answer{Text: fmt.Sprintf("nerdr is making the tab %s, with %s; you get a message when it is there, or why it is not. "+
 		"Follow it with nerdr tabs.", r.Branch, k)})
-	branch, model, wtRoot, allowed := r.Branch, r.Model, m.WtRoot, SetupAllowedFile()
+	return m.MakeTab(from, r.Branch, k, r.Model, task, confined, repos)
+}
+
+// MakeTab makes a tab on a new branch in repos, its agent k given task,
+// once the user has allowed the repositories' setup; TabMadeMsg says how
+// it went. from is the agent that asked for it, told of it then, or nil
+// for the user.
+func (m *Core) MakeTab(from *Tab, branch string, k agents.Kind, model, task string, confined bool, repos []workspace.Repo) Cmd {
+	var paths []string
+	for _, rp := range repos {
+		paths = append(paths, rp.Path)
+	}
+	wtRoot, allowed := m.WtRoot, SetupAllowedFile()
 	return m.AskSetup(paths, func() Cmd {
 		return func() Event {
 			res := TabMadeMsg{From: from, Branch: branch, Kind: k, Model: model, Task: task, Confined: confined}
