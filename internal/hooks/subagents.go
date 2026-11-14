@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"syscall"
 )
 
 // A subagent started in the background goes on after the turn that
@@ -66,20 +65,13 @@ func subagentsFile(kind, pane string) string {
 
 // seeSubagents takes the event in the subagents kept in file; see see.
 func seeSubagents(file, event, agent string, newSession bool) SubagentWait {
-	// Hooks run in separate processes. Lock a stable sidecar, not the
-	// state file whose inode is replaced by the atomic rename below.
-	lock, err := os.OpenFile(file+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
-	if err != nil {
+	// Hooks run in separate processes. Lock a sidecar, not the state file
+	// whose inode is replaced by the atomic rename below.
+	lock, ok := lockState(file)
+	if !ok {
 		return SubagentWait{}
 	}
-	defer lock.Close()
-	if !ownFile(lock) {
-		return SubagentWait{}
-	}
-	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
-		return SubagentWait{}
-	}
-	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
+	defer lock.Close() // which lets the lock go
 	var s subagents
 	if b := readOwn(file); b != nil {
 		_ = json.Unmarshal(b, &s)

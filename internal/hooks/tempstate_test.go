@@ -3,8 +3,10 @@ package hooks
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 )
 
 // TestSubagentsFileKeepsTheSecret: the tab's secret is not in the name of
@@ -156,5 +158,73 @@ func TestListenTightensAFolderOthersCanWrite(t *testing.T) {
 	t.Cleanup(s.Close)
 	if fi, err := os.Stat(dir); err != nil || fi.Mode().Perm() != 0o755 {
 		t.Fatalf("the folder has mode %o (%v), want 755", fi.Mode().Perm(), err)
+	}
+}
+
+// TestALockRemovedWhileWaitedForIsTakenAgain: a hook waiting on the lock
+// while ForgetAgent removes it does not go on with the lock removed, which
+// nobody else can find: it takes the one at the path, as the next hook
+// will.
+func TestALockRemovedWhileWaitedForIsTakenAgain(t *testing.T) {
+	file := filepath.Join(t.TempDir(), "state.json")
+	first, ok := lockState(file)
+	if !ok {
+		t.Fatal("no lock")
+	}
+	got := make(chan *os.File, 1)
+	go func() {
+		l, _ := lockState(file) // waits on first
+		got <- l
+	}()
+	// Whether or not the other has opened the lock yet, it must end with
+	// the one at the path.
+	time.Sleep(50 * time.Millisecond)
+	if err := os.Remove(file + ".lock"); err != nil {
+		t.Fatal(err)
+	}
+	first.Close()
+	var second *os.File
+	select {
+	case second = <-got:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the waiting hook never got a lock")
+	}
+	if second == nil {
+		t.Fatal("the waiting hook got no lock")
+	}
+	defer second.Close()
+	held, err1 := second.Stat()
+	at, err2 := os.Lstat(file + ".lock")
+	if err1 != nil || err2 != nil || !os.SameFile(held, at) {
+		t.Fatalf("the lock held is not the one at the path (%v, %v)", err1, err2)
+	}
+}
+
+// TestForgetAgentBesideLiveHooks: hooks of a program not yet stopped,
+// running while its state is forgotten, each still see what the one
+// before wrote or nothing, never half, and none is left without a lock.
+func TestForgetAgentBesideLiveHooks(t *testing.T) {
+	t.Setenv("TMPDIR", t.TempDir())
+	const pane = "asleep"
+	file := subagentsFile("claude", pane)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 200 {
+			ForgetAgent(pane)
+		}
+	}()
+	for i := range 200 {
+		id := strconv.Itoa(i)
+		if w := seeSubagents(file, "SubagentStart", id, false); w.Going < 1 {
+			t.Fatalf("a hook went without the lock, or lost its own write: %+v", w)
+		}
+	}
+	<-done
+	ForgetAgent(pane)
+	for _, f := range []string{file, file + ".lock"} {
+		if _, err := os.Lstat(f); !os.IsNotExist(err) {
+			t.Errorf("%s is left: %v", f, err)
+		}
 	}
 }

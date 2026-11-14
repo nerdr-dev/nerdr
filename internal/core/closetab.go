@@ -42,8 +42,9 @@ func (m *Core) CloseTab(t *Tab, remove, force bool, branchHeads map[string]strin
 	m.SaveSession()
 	m.FindOverlaps() // the other tabs no longer share files with this one
 	// What the agents' hooks kept in the temporary folder goes with them,
-	// once their programs have stopped, below. Not the reviewers': EndReview
-	// stops each and forgets it then (stopAgent).
+	// once the programs in the tab's panes have stopped, below. Not the
+	// reviewers': EndReview stops each and forgets it then (stopAgent).
+	// One put to sleep a moment ago may still be ending: see stopAgent.
 	var hookKeys []string
 	for _, a := range append([]*Tab{t}, t.ExtraAgents()...) {
 		if a.HookID != "" {
