@@ -382,7 +382,7 @@ func (m *Model) sideBarRow() string {
 	}
 	warning := m.overlapWarning()
 	msg, menuBtn, _ := m.barStatus()
-	msg = ansi.Truncate(msg, max(m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(menuBtn)-1, 0), "…")
+	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(menuBtn)-1)
 	return joinBar(left, warning+msg+menuBtn, m.width, bar)
 }
 

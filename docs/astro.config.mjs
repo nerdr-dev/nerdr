@@ -49,6 +49,7 @@ export default defineConfig({
 						'panel/tasks',
 						'panel/skills',
 						'panel/plugins',
+						'panel/history',
 					],
 				},
 				{

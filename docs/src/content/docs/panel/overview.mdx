@@ -1,12 +1,13 @@
 ---
 title: The review panel
-description: Five screens beside the agent, F1 to F5. How to open them, size them and move around in them.
+description: Six screens beside the agent, F1 to F6. How to open them, size them and move around in them.
 ---
 
 import { LinkCard, CardGrid } from '@astrojs/starlight/components';
 
 The review panel on the right holds what you need besides the agent: its
-changes, GitHub, tasks, skills and plugins. Each is a screen with an
+changes, GitHub, tasks, skills, plugins and the history of nerdr's
+messages. Each is a screen with an
 F-key.
 
 <CardGrid>
@@ -15,6 +16,7 @@ F-key.
 	<LinkCard title="F3 Tasks" href="../tasks/" description="Tasks lined up for the agent, sent when it is idle." />
 	<LinkCard title="F4 Skills" href="../skills/" description="The skills nerdr gives the agents, and how often they use them." />
 	<LinkCard title="F5 Plugins" href="../plugins/" description="Your own scripts, and the screens they bring." />
+	<LinkCard title="F6 History" href="../history/" description="Everything nerdr has said in its bar, each message in full." />
 </CardGrid>
 
 ## Opening and closing
@@ -25,14 +27,14 @@ panel on that screen, beside the agent. Click the open one again to close
 the panel. When the panel stays open, the column becomes a row of screen
 names along its top.
 
-`F1`–`F5` open and focus a screen; `ctrl+q e 1`…`e 5` do the same, and
+`F1`–`F6` open and focus a screen; `ctrl+q e 1`…`e 6` do the same, and
 `m` in the panel cycles the screens. `esc`, `ctrl+q a a` or a click gives
 the keyboard back to the agent. Press `?` in the panel for all of its
 commands.
 
 | After `ctrl+q` | Action |
 |---|---|
-| `e 1`…`e 5` | Open code changes, GitHub, tasks, skills or plugins |
+| `e 1`…`e 6` | Open code changes, GitHub, tasks, skills, plugins or history |
 | `z e` | Show / hide the panel |
 | `z k` | Small panel, which folds again when you go back to the agent / keep it open |
 | `z z` | Make the panel full width |
@@ -42,9 +44,9 @@ commands.
 <details>
 <summary>F-keys in terminals and on Mac laptops</summary>
 
-In a terminal pane at its prompt, F1–F5 still switch screens. A
+In a terminal pane at its prompt, F1–F6 still switch screens. A
 full-screen program there (htop, mc, vim) gets the function keys for
-itself: use `ctrl+q e 1`…`e 5` then. F6 and up always go to the program.
+itself: use `ctrl+q e 1`…`e 6` then. F7 and up always go to the program.
 
 A Mac laptop may need `fn` for the F-keys. Set `function_keys = false`
 to label the screens with their `ctrl+q e` shortcuts instead.

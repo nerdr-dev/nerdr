@@ -23,7 +23,7 @@ import (
 //
 // A plugin's screen runs as long as its tab, whichever screen is shown,
 // and is drawn only on F5. While it has the keyboard every key goes to it
-// but F1-F5 and the prefix: F5 goes back to the list, and from the list to
+// but F1-F6 and the prefix: F5 goes back to the list, and from the list to
 // the screen again.
 
 // pluginsView is the F5 screen's state.

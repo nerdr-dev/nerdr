@@ -241,7 +241,7 @@ type Model struct {
 	// wideKey is the keys that make the panel as wide as the window, for
 	// its hints: nerdr's, after its prefix.
 	wideKey string
-	// screenKeys name the screens in the menu in place of F1 to F5, and
+	// screenKeys name the screens in the menu in place of F1 to F6, and
 	// screensHint says how they are pressed; see SetScreenKeys.
 	screenKeys  []string
 	screensHint string
@@ -415,7 +415,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.diffSel = lineSpan{} // a key may move or change the lines it is of
 		if m.filtering {
 			switch msg.String() {
-			case "f1", "f2", "f3", "f4", "f5":
+			case "f1", "f2", "f3", "f4", "f5", "f6":
 				m.filtering = false // the filter stays, as with enter; the key goes on to the menu
 			default:
 				return m.handleFilterKey(msg)

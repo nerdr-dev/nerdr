@@ -93,7 +93,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return nil
 	}
 	if m.focus == core.FocusReview && msg.String() == "?" &&
-		(m.panelMessages() || m.panelSkills() || m.panelPlugins() || m.panelAllPRs() || m.panelIssues()) {
+		(m.panelMessages() || m.panelSkills() || m.panelPlugins() || m.panelHistory() || m.panelAllPRs() || m.panelIssues()) {
 		// ? is help, as in the rest of the panel.
 		return m.openPalette()
 	}
@@ -105,6 +105,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	}
 	if m.focus == core.FocusReview && m.panelPlugins() {
 		return m.pluginsKey(msg)
+	}
+	if m.focus == core.FocusReview && m.panelHistory() {
+		return m.historyKey(msg)
 	}
 	if m.focus == core.FocusReview && m.panelAllPRs() {
 		return tea.Batch(m.allPRsKey(msg), m.syncPRPanel())
@@ -159,22 +162,22 @@ func (m *Model) reviewKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // panelKey reports whether k is one of the review panel's screens, F1 to
-// F5, which work whichever side has the keyboard.
+// F6, which work whichever side has the keyboard.
 func panelKey(k string) bool {
 	switch k {
-	case "f1", "f2", "f3", "f4", "f5":
+	case "f1", "f2", "f3", "f4", "f5", "f6":
 		return true
 	}
 	return false
 }
 
-// functionKeys is whether hints name the panel's screens F1 to F5.
+// functionKeys is whether hints name the panel's screens F1 to F6.
 func (m *Model) functionKeys() bool {
 	return m.cfg().FunctionKeys == nil || *m.cfg().FunctionKeys
 }
 
-// screenKey is how a hint names the review panel's screen n (1 to 4):
-// F1 to F5, or the prefix keys for it with function_keys off.
+// screenKey is how a hint names the review panel's screen n (1 to 6):
+// F1 to F6, or the prefix keys for it with function_keys off.
 func (m *Model) screenKey(n int) string {
 	if m.functionKeys() {
 		return "F" + strconv.Itoa(n)
@@ -193,7 +196,7 @@ func (m *Model) screenMenuKey(n int) string {
 
 // screenMenuKeys are the keys the review panel's menu shows before each
 // screen's name, and the hint for all of them: none with function_keys
-// on, for the panel's own F1 to F5.
+// on, for the panel's own F1 to F6.
 func (m *Model) screenMenuKeys() ([]string, string) {
 	if m.functionKeys() {
 		return nil, ""
@@ -202,7 +205,7 @@ func (m *Model) screenMenuKeys() ([]string, string) {
 	for n := 1; n <= len(review.ScreenNames()); n++ {
 		keys = append(keys, strings.ReplaceAll(m.shownKeys("e "+strconv.Itoa(n)), " ", ""))
 	}
-	return keys, m.pk("e") + " 1-5"
+	return keys, m.pk("e") + " 1-" + strconv.Itoa(len(review.ScreenNames()))
 }
 
 // keyPane is the program that has the keyboard: the one in the active
@@ -454,8 +457,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			m.setFocus(core.FocusAgent)
 		}
 		return m.resize()
-	case "e 1", "e 2", "e 3", "e 4", "e 5":
-		// F1-F5 without the function keys: a Mac laptop's are the
+	case "e 1", "e 2", "e 3", "e 4", "e 5", "e 6":
+		// F1-F6 without the function keys: a Mac laptop's are the
 		// brightness and volume unless fn is held, and a shell or an
 		// editor keeps them for itself. The screen is the id's, not the key
 		// pressed: e e runs e 1.

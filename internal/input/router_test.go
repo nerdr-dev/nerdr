@@ -167,9 +167,9 @@ func TestWheelBurstReachesTheProgramWhole(t *testing.T) {
 	}
 }
 
-// F1-F5 are nerdr's, for the review panel's screens, while an agent has
-// the keyboard; F6 and up are the agent's.
-func TestF5GoesToNerdrAndF6ToTheAgent(t *testing.T) {
+// F1-F6 are nerdr's, for the review panel's screens, while an agent has
+// the keyboard; F7 and up are the agent's.
+func TestF6GoesToNerdrAndF7ToTheAgent(t *testing.T) {
 	r := New(nil, 0x11)
 	var sunk bytes.Buffer
 	r.Passthrough(func(b []byte) { sunk.Write(b) })
@@ -177,11 +177,11 @@ func TestF5GoesToNerdrAndF6ToTheAgent(t *testing.T) {
 	got := make(chan []byte)
 	go func() { b, _ := io.ReadAll(r.pr); got <- b }()
 
-	r.route([]byte("a\x1bOSb\x1b[15~c\x1b[17~d"))
+	r.route([]byte("a\x1bOSb\x1b[15~c\x1b[17~d\x1b[18~e"))
 	_ = r.pw.Close()
 	app := <-got
 
-	if sunk.String() != "abc\x1b[17~d" || string(app) != "\x1bOS\x1b[15~" {
+	if sunk.String() != "abcd\x1b[18~e" || string(app) != "\x1bOS\x1b[15~\x1b[17~" {
 		t.Fatalf("sink got %q, app got %q", sunk.String(), app)
 	}
 }

@@ -105,6 +105,7 @@ func KeyGroups() map[string]CommandGroup {
 			{Key: "3", Label: "Tasks (F3)", Run: "e 3", Desc: "the tasks waiting for the agent: yours, and the review's findings"},
 			{Key: "4", Label: "Skills (F4)", Run: "e 4", Desc: "the agents' skills, nerdr's and others: which the agent has, how much they are used, and switch nerdr's on or off"},
 			{Key: "5", Label: "Plugins (F5)", Run: "e 5", Desc: "the plugins there are for the tab: what each does, and the screen of one that has its own"},
+			{Key: "6", Label: "History (F6)", Run: "e 6", Desc: "everything nerdr has said in its bar since it started, the latest first, each in full when picked"},
 		}},
 		"t": {"Panes", []CommandEntry{
 			{Key: "t", Label: "New terminal", Run: "t t", Desc: "a terminal in the worktree, in a new pane, last"},
