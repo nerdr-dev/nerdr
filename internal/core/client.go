@@ -62,6 +62,12 @@ func (m *Core) HasClient() bool {
 	return !none
 }
 
+// The kinds of HistoryMsg, as the TUI's history names them.
+const (
+	HistoryInfo    = "info"
+	HistoryWarning = "warning"
+)
+
 // Tell gives the client ev; see Client.Tell.
 func (m *Core) Tell(ev Event) Cmd {
 	if m.Client == nil {
@@ -75,6 +81,14 @@ func (m *Core) Tell(ev Event) Cmd {
 type (
 	// NoticeMsg is to be shown until it is read; a ToastMsg, for a moment.
 	NoticeMsg string
+
+	// HistoryMsg is kept in the TUI's history of what nerdr said (F6),
+	// as of kind Cat (HistoryInfo, HistoryWarning), without being shown
+	// in the bar: what is worth reading there, but not worth a
+	// distraction.
+	HistoryMsg struct {
+		Cat, Text string
+	}
 
 	// LightMsg is a change of agent A's light, seen by the user or not.
 	LightMsg struct {

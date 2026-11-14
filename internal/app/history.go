@@ -20,11 +20,11 @@ import (
 
 // The kinds of what the bar says, by where it comes from.
 const (
-	catInfo      = "info"      // what nerdr says of what was done, a moment
-	catWarning   = "warning"   // core's notices: what went wrong, or is to be fixed
-	catAgents    = "agents"    // agents behind the tab shown that want a look
-	catGitHub    = "github"    // news of your pull requests and issues
-	catApprovals = "approvals" // what you turned down for an agent
+	catInfo      = core.HistoryInfo    // what nerdr says of what was done, a moment
+	catWarning   = core.HistoryWarning // core's notices: what went wrong, or is to be fixed
+	catAgents    = "agents"            // agents behind the tab shown that want a look
+	catGitHub    = "github"            // news of your pull requests and issues
+	catApprovals = "approvals"         // what you turned down for an agent
 )
 
 // historyCap is how many messages the history keeps: the oldest go.

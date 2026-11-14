@@ -24,15 +24,20 @@ func init() {
 	}
 }
 
-// toldClient keeps the notices it is told.
+// toldClient keeps the notices it is told, and what is only for the
+// history.
 type toldClient struct {
 	NoClient
 	notices []string
+	history []HistoryMsg
 }
 
 func (c *toldClient) Tell(ev Event) Cmd {
-	if n, ok := ev.(NoticeMsg); ok {
-		c.notices = append(c.notices, string(n))
+	switch ev := ev.(type) {
+	case NoticeMsg:
+		c.notices = append(c.notices, string(ev))
+	case HistoryMsg:
+		c.history = append(c.history, ev)
 	}
 	return nil
 }
@@ -124,7 +129,8 @@ func TestAWrapperThatLetsTheAgentReachTheClientSocketIsRefused(t *testing.T) {
 // A sandbox that lets the agent see into the client socket's folder, but
 // not connect to the socket or read its key, as a macOS profile that lets
 // every file's metadata be read does, does not keep the agent from
-// starting: it is warned of, naming the folder, once until it changes.
+// starting: it is noted in the history, not the bar, naming the folder,
+// once until it changes.
 func TestSeeingIntoTheClientSocketsFolderAloneIsWarnedOf(t *testing.T) {
 	t.Setenv(attach.EnvDir, t.TempDir())
 	cl := &toldClient{}
@@ -137,22 +143,23 @@ func TestSeeingIntoTheClientSocketsFolderAloneIsWarnedOf(t *testing.T) {
 	if why := m.OnSandboxChecked(ev); why != "" {
 		t.Fatalf("refused: %q", why)
 	}
-	if len(cl.notices) != 1 || !strings.Contains(cl.notices[0], `client socket's folder ("`+filepath.Dir(sock)+`")`) ||
-		!strings.Contains(cl.notices[0], "not connect to the socket or read its key") {
-		t.Fatalf("notices %q", cl.notices)
+	if len(cl.notices) != 0 || len(cl.history) != 1 || cl.history[0].Cat != HistoryInfo ||
+		!strings.Contains(cl.history[0].Text, `client socket's folder ("`+filepath.Dir(sock)+`")`) ||
+		!strings.Contains(cl.history[0].Text, "not connect to the socket or read its key") {
+		t.Fatalf("notices %q, history %+v", cl.notices, cl.history)
 	}
 	m.OnSandboxChecked(ev)
-	if len(cl.notices) != 1 {
-		t.Errorf("warned again: %q", cl.notices)
+	if len(cl.history) != 1 {
+		t.Errorf("said again: %+v", cl.history)
 	}
 	m.OnSandboxChecked(SandboxCheckedMsg{Kind: agents.Codex, OK: true})
 	m.OnSandboxChecked(ev)
-	if len(cl.notices) != 2 {
-		t.Errorf("not warned again once it changed back: %q", cl.notices)
+	if len(cl.history) != 2 {
+		t.Errorf("not said again once it changed back: %+v", cl.history)
 	}
 	m.OnSandboxChecked(SandboxCheckedMsg{Kind: agents.Codex, OK: true, Result: sandboxcheck.Result{Client: []string{"folder", "key"}}})
-	if len(cl.notices) != 2 {
-		t.Errorf("a refusal warned of the folder too: %q", cl.notices)
+	if len(cl.history) != 2 || len(cl.notices) != 0 {
+		t.Errorf("a refusal noted the folder too: %+v %q", cl.history, cl.notices)
 	}
 }
 

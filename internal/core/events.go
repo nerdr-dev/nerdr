@@ -22,7 +22,7 @@ func registerEvents(evs ...Event) {
 
 func init() {
 	registerEvents(
-		ToastMsg(""), NoticeMsg(""), LightMsg{}, ReviewNewsMsg{}, ReviewMsg{},
+		ToastMsg(""), NoticeMsg(""), HistoryMsg{}, LightMsg{}, ReviewNewsMsg{}, ReviewMsg{},
 		PaneOpenedMsg{}, PaneClosedMsg{}, PanesMsg{}, LayoutMsg{}, StartedMsg{},
 		TermsMsg{}, SwitchedMsg{}, SpinoffAskMsg{}, SwitchAskMsg{}, IssuesMsg{},
 		IssueNewsMsg{}, IssuesDueMsg{}, PRsMsg{}, PRNewsMsg{}, PRMarkMsg{},
