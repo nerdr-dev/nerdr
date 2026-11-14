@@ -1,0 +1,12 @@
+# The actions are pinned to commits, which do not move by themselves:
+# Dependabot proposes the newer ones, and the Go modules' with them.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
