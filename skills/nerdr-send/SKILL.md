@@ -73,7 +73,7 @@ When the user asks for several agents, you coordinate:
 - **Do not race agents on the same task here.** Several agents with the
   same instructions in one worktree write over each other. To have
   agents try the same task each their own way, use the nerdr-spinoff
-  skill instead: one tab, branch and worktree each.
+  skill instead: one tab and branch each, with worktrees of their own.
 - **Write each task in full**, as for a message: the agent has none of
   your conversation. Say what done is, and what to send back.
 - **Commit only what is yours**, and tell the others not to commit, or

@@ -7,8 +7,8 @@ description: Hand your work in a nerdr tab to the agent the tab is switched to �
 
 # Handing your work to the next agent
 
-You are running in a tab of nerdr, which runs one coding agent per tab in
-its own git worktree. The user can switch a tab's agent — from claude to
+You are running in a nerdr tab: each tab has one branch across one or
+more repositories, with a git worktree of that branch in each. The user can switch a tab's agent — from claude to
 opencode, say — and the agent that takes over has **none of your
 conversation**. It sees the worktree, but not why it looks the way it
 does, what you and the user agreed, or what is left. The handoff is how it

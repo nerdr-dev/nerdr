@@ -1,12 +1,14 @@
 ---
 title: Tabs, branches and worktrees
-description: A tab per task, each with a branch and a worktree of its own. Start from main, an issue, a pull request or another tab's branch.
+description: A tab per task, with one branch across one or more repositories and a worktree in each. Start from main, an issue, a pull request or another tab's branch.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
-Each task gets a tab, and each tab gets a branch and a Git worktree: a
-checkout of its own, in a folder of its own. Agents in different tabs
+Each task gets a tab with one branch across one or
+[more repositories](#several-repositories-in-one-tab), and a Git worktree
+of that branch in each. A worktree is a checkout of its own, in a folder
+of its own. Agents in different tabs
 cannot overwrite each other's changes, and your main checkout stays
 separate from the work.
 

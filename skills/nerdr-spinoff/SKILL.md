@@ -7,10 +7,11 @@ description: Make new branches the nerdr way, splitting work off into new nerdr 
 
 # Splitting work off into new nerdr tabs
 
-You are running in a tab of nerdr, which runs one coding agent per tab,
-each in its own git worktree and branch. When a long session has grown
-into several unrelated changes, the user may ask you to hand some of them
-to new tabs, so each becomes a branch and a pull request of its own.
+You are running in a nerdr tab: each tab has one branch across one or
+more repositories, with a git worktree of that branch in each. When a
+long session has grown into several unrelated changes, the user may ask
+you to hand some of them to new tabs, so each becomes a branch and a pull
+request of its own.
 
 You do not make the branches or tabs yourself. You send nerdr a plan;
 nerdr shows the user one part at a time, where they name the branch

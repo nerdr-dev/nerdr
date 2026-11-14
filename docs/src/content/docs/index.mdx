@@ -1,9 +1,9 @@
 ---
 title: nerdr
-description: Run several coding agents at once, each in its own Git worktree. Track progress, answer questions and review changes in one terminal app for Linux and macOS.
+description: Run a team of coding agents in their own Git worktrees across one or more repositories. Track progress, answer questions and review changes in one terminal app for Linux and macOS.
 template: splash
 hero:
-  tagline: Run a team of coding agents, each in its own Git worktree. Track their progress, answer their questions and review their work, all in one terminal.
+  tagline: Run a team of coding agents in their own Git worktrees across one or more repositories. Track their progress, answer their questions and review their work, all in one terminal.
   image:
     file: ../../assets/sidebar.png
     alt: Three repositories, six worktrees in one with their status lights, an agent asking for permission, and its diff in the review panel
@@ -24,10 +24,10 @@ import { Card, CardGrid, LinkCard } from '@astrojs/starlight/components';
 
 ## One task, one tab
 
-Give each task a tab. nerdr creates a branch and a worktree from the latest
-`main` and starts your chosen agent in it. Fix a bug, build a feature and
-pick up an issue at the same time, without the agents stepping on each
-other.
+Give each task a tab. nerdr starts your chosen agent on a branch from the
+latest `main`, with a worktree in each repository the task needs, such as
+a backend and a frontend. Fix a bug, build a feature and pick up an issue
+at the same time, without the agents stepping on each other.
 
 <video autoPlay loop muted playsInline controls aria-label="nerdr with three repositories: a new tab with Codex, switching repositories, the changes in the review panel, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question" style="width:100%">
 	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "overview.webm"} type="video/webm" />
@@ -37,10 +37,11 @@ other.
 <p style="text-align:center"><em>A new tab with Codex, the repositories and their status lights, Claude's changes in the review panel, the tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to the agent with a question.</em></p>
 
 <CardGrid>
-	<Card title="A worktree per task" icon="seti:git">
-		Every tab is its own branch and worktree. Start from `main`, a GitHub
-		issue, a pull request or another tab's branch. Close the tab and nerdr
-		cleans up the worktree and the branch.
+	<Card title="Worktrees per task" icon="seti:git">
+		Every tab has its own branch across one or more repositories, with a
+		worktree in each. Start from `main`, a GitHub issue, a pull request or
+		another tab's branch. Close the tab and nerdr cleans up the
+		worktrees and the branch.
 	</Card>
 	<Card title="Progress at a glance" icon="seti:notebook">
 		Status lights show which agents work, wait for you or are done. The
