@@ -55,42 +55,39 @@ func (s *subagents) see(event, agent string, newSession bool) SubagentWait {
 	return SubagentWait{Going: len(s.Going), Ends: ends}
 }
 
+// subagentKinds are the agents whose hooks keep their subagents.
+var subagentKinds = []string{"claude", "copilot"}
+
 // subagentsFile is where the hooks of the agent kind in tab pane keep
-// its subagents.
+// its subagents: named by paneName, not by pane, which is a secret.
 func subagentsFile(kind, pane string) string {
-	return filepath.Join(os.TempDir(), "nerdr-"+kind+"-subagents-"+filepath.Base(pane)+".json")
+	return filepath.Join(os.TempDir(), "nerdr-"+kind+"-subagents-"+paneName(pane)+".json")
 }
 
 // seeSubagents takes the event in the subagents kept in file; see see.
 func seeSubagents(file, event, agent string, newSession bool) SubagentWait {
 	// Hooks run in separate processes. Lock a stable sidecar, not the
 	// state file whose inode is replaced by the atomic rename below.
-	lock, err := os.OpenFile(file+".lock", os.O_CREATE|os.O_RDWR, 0o600)
+	lock, err := os.OpenFile(file+".lock", os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
 	if err != nil {
 		return SubagentWait{}
 	}
 	defer lock.Close()
+	if !ownFile(lock) {
+		return SubagentWait{}
+	}
 	if err := syscall.Flock(int(lock.Fd()), syscall.LOCK_EX); err != nil {
 		return SubagentWait{}
 	}
 	defer syscall.Flock(int(lock.Fd()), syscall.LOCK_UN)
 	var s subagents
-	if b, err := os.ReadFile(file); err == nil {
+	if b := readOwn(file); b != nil {
 		_ = json.Unmarshal(b, &s)
 	}
 	before, _ := json.Marshal(s)
 	w := s.see(event, agent, newSession)
 	if b, _ := json.Marshal(s); string(b) != string(before) {
-		// Whole or not at all, for another hook reading it meanwhile.
-		tmp, err := os.CreateTemp(filepath.Dir(file), filepath.Base(file)+".*")
-		if err == nil {
-			defer os.Remove(tmp.Name())
-			_, writeErr := tmp.Write(b)
-			closeErr := tmp.Close()
-			if writeErr == nil && closeErr == nil {
-				_ = os.Rename(tmp.Name(), file)
-			}
-		}
+		writeWhole(file, b)
 	}
 	return w
 }

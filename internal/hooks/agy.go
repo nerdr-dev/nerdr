@@ -284,18 +284,14 @@ func agyTurnFile(nerdr, agy int) string {
 // of the agent's own conversation.
 func seeAgy(file string, ev AgyEvent) bool {
 	var t agyTurn
-	if b, err := os.ReadFile(file); err == nil {
+	if b := readOwn(file); b != nil {
 		_ = json.Unmarshal(b, &t)
 	}
 	before := t
 	own := t.see(ev)
 	if t != before {
-		// Whole or not at all, for a subagent's hook reading it meanwhile.
 		b, _ := json.Marshal(t)
-		tmp := fmt.Sprintf("%s.%d", file, os.Getpid())
-		if os.WriteFile(tmp, b, 0o600) == nil {
-			_ = os.Rename(tmp, file)
-		}
+		writeWhole(file, b)
 	}
 	return own
 }

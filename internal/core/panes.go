@@ -649,9 +649,7 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab, by *Tab) Cmd {
 				m.DropPane(t, q)
 			}
 		}
-		if a.Pane != nil {
-			go a.Pane.Close()
-		}
+		stopAgent(a)
 		name := m.PaneName(t, p)
 		kept := t.KeepTasks(a)
 		m.DropPane(t, p)
@@ -665,6 +663,23 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab, by *Tab) Cmd {
 	}
 	m.DropPane(t, p)
 	return m.Tell(LayoutMsg{})
+}
+
+// forgetAgent is hooks.ForgetAgent; a test puts its own.
+var forgetAgent = hooks.ForgetAgent
+
+// stopAgent stops a's program, out of the loop's way, and only then
+// removes what its hooks kept in the temporary folder: a hook of a
+// program still running would make the files anew, and with a lock of
+// another making than the one a hook beside it holds.
+func stopAgent(a *Tab) {
+	pane, key := a.Pane, a.HookID
+	go func() {
+		if pane != nil {
+			pane.Close()
+		}
+		forgetAgent(key)
+	}()
 }
 
 // TellStarter tells the agent that started a (nerdr agent) that a is no
