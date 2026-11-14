@@ -8,8 +8,8 @@
 [![CI](https://github.com/nerdr-dev/nerdr/actions/workflows/ci.yml/badge.svg)](https://github.com/nerdr-dev/nerdr/actions/workflows/ci.yml)
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 
-**Run a team of coding agents, each in its own Git worktree, and review
-their work, all in one terminal.**
+**Run a team of coding agents in their own Git worktrees across one or
+more repositories, and review their work in one terminal.**
 
 ![nerdr with three repositories: a new tab with Codex, switching repositories, the changes in the review panel, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question](docs/public/overview.gif)
 
@@ -18,9 +18,9 @@ changes in the review panel, the tests in a terminal, Codex reviewing
 Claude's work, and the waiting list taking you to the agent with a
 question.*
 
-- **One task, one tab.** Each tab gets a branch and a worktree from the
-  latest `main`, and the agent you pick. Start from an issue, a pull
-  request or another tab's branch. [Tabs and worktrees →](https://nerdr.app/use/tabs/)
+- **One task, one tab.** Each tab runs the agent you pick on a branch
+  from the latest `main` across one or more repositories, with a worktree
+  in each. Start from an issue, a pull request or another tab's branch. [Tabs and worktrees →](https://nerdr.app/use/tabs/)
 - **See who needs you.** Status lights show which agents work, wait for
   input or are done; the waiting list takes you to them. [Progress →](https://nerdr.app/use/progress/)
 - **A workbench per tab.** Terminals, more agents and code reviews beside

@@ -17,7 +17,7 @@ export default defineConfig({
 		starlight({
 			title: 'nerdr',
 			description:
-				'Run several coding agents at once, each in its own Git worktree, and review their work in one terminal app.',
+				'Run a team of coding agents in their own Git worktrees across one or more repositories, and review their work in one terminal app.',
 			favicon: '/favicon.svg',
 			customCss: ['./src/styles/nerdr.css'],
 			routeMiddleware: './src/routeData.ts',

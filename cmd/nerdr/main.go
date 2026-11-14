@@ -1,5 +1,5 @@
-// Command nerdr runs coding agents in tabs, each in its own git
-// worktree, with a live review of what they change beside them.
+// Command nerdr runs coding agents in tabs, each in git worktrees of its
+// own, with a live review of what they change beside them.
 package main
 
 import (
