@@ -668,10 +668,11 @@ func (m *Core) ClosePane(t *Tab, p *PaneTab, by *Tab) Cmd {
 // forgetAgent is hooks.ForgetAgent; a test puts its own.
 var forgetAgent = hooks.ForgetAgent
 
-// stopAgent stops a's program, out of the loop's way, and only then
-// removes what its hooks kept in the temporary folder: a hook of a
-// program still running would make the files anew, and with a lock of
-// another making than the one a hook beside it holds.
+// stopAgent stops a's program, out of the loop's way, and then removes
+// what its hooks kept in the temporary folder. A program of a's stopped a
+// moment before (put to sleep, switched) may still be ending, with a.Pane
+// already nil: its hooks go on beside the removal, which is made for that
+// (hooks.ForgetAgent), and at worst leave their file there again.
 func stopAgent(a *Tab) {
 	pane, key := a.Pane, a.HookID
 	go func() {

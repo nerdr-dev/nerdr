@@ -70,17 +70,60 @@ func writeWhole(file string, b []byte) {
 	}
 }
 
+// lockState locks the sidecar of file, file.lock, made when it is not
+// there, until the file it returns is closed. ok is false when it cannot:
+// the sidecar is a link, or not this user's.
+//
+// ForgetAgent removes the sidecar, and a hook of a program not yet
+// stopped may run meanwhile. One that had opened the sidecar before it
+// was removed would hold a lock nobody else can find, beside one that
+// made it anew: so the lock taken counts only while it is still the file
+// at the path, and is taken again otherwise.
+func lockState(file string) (lock *os.File, ok bool) {
+	path := file + ".lock"
+	for range 64 {
+		lock, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|syscall.O_NOFOLLOW, 0o600)
+		if err != nil {
+			return nil, false
+		}
+		if !ownFile(lock) || syscall.Flock(int(lock.Fd()), syscall.LOCK_EX) != nil {
+			lock.Close()
+			return nil, false
+		}
+		held, herr := lock.Stat()
+		at, aerr := os.Lstat(path)
+		if herr == nil && aerr == nil && os.SameFile(held, at) {
+			return lock, true
+		}
+		lock.Close() // removed, or replaced, while it was waited for
+	}
+	return nil, false
+}
+
 // ForgetAgent removes what the hooks of the agent that reported as pane
-// kept in the temporary folder, once the agent is gone for good. A file an
-// agent in a sandbox kept in a temporary folder of its own is not found,
-// and is left.
+// kept in the temporary folder, once the agent is gone for good. It is
+// done under the hooks' own lock, which is removed while held (see
+// lockState): a hook of a program still stopping, of an agent put to
+// sleep a moment before, say, goes on as before, and at worst leaves its
+// file there again. A file an agent in a sandbox kept in a temporary
+// folder of its own is not found, and is left.
 func ForgetAgent(pane string) {
 	if pane == "" {
 		return
 	}
 	for _, kind := range subagentKinds {
 		file := subagentsFile(kind, pane)
+		_, ferr := os.Lstat(file)
+		_, lerr := os.Lstat(file + ".lock")
+		if ferr != nil && lerr != nil {
+			continue // nothing kept: no lock made to remove it
+		}
+		lock, ok := lockState(file)
+		if !ok {
+			continue
+		}
 		_ = os.Remove(file)
 		_ = os.Remove(file + ".lock")
+		lock.Close()
 	}
 }
