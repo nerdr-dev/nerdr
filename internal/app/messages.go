@@ -39,7 +39,7 @@ func (m *Model) messagesKey(msg tea.KeyMsg) tea.Cmd {
 	t := m.CurAgent()
 	k := msg.String()
 	switch k {
-	case "f1", "f2", "f3", "f4", "f5", "m":
+	case "f1", "f2", "f3", "f4", "f5", "f6", "m":
 		// m steps through the panel's screens, as in the others.
 		return m.reviewKey(msg)
 	case "esc", "q":

@@ -174,8 +174,7 @@ func (m *Model) toastDenied() {
 	}
 	m.deniedSaid = n
 	if ds := denied.List(); len(ds) > 0 {
-		m.toastText = "Turned down: " + ds[0].What + " · " + m.pk("g")
-		m.toastUntil = time.Now().Add(core.InAppFor)
+		m.say(catApprovals, "Turned down: "+ds[0].What+" · "+m.pk("g"), core.InAppFor)
 	}
 }
 

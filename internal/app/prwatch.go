@@ -3,7 +3,6 @@ package app
 import (
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -55,8 +54,7 @@ func (m *Model) tellPRNews(news []state.PRNews) {
 	if len(news) > 1 {
 		text += fmt.Sprintf(" (and %d more)", len(news)-1)
 	}
-	m.toastText = text + " · " + m.screenKey(2)
-	m.toastUntil = time.Now().Add(core.InAppFor)
+	m.say(catGitHub, text+" · "+m.screenKey(2), core.InAppFor)
 	if !m.blurred {
 		return
 	}

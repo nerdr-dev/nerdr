@@ -4,7 +4,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -543,10 +542,8 @@ func (m *Model) paneLines(t *core.Tab, p *core.PaneTab, w, h int) []string {
 			// is long, and the paths in it are what to fix, so broken
 			// at spaces only, unless one is wider than the pane.
 			msg = []string{""}
-			for _, l := range wrapWords(a.Err, max(w-4, 10)) {
-				for _, r := range strings.Split(ansi.Hardwrap(l, max(w-4, 10), false), "\n") {
-					msg = append(msg, "  "+warn(r))
-				}
+			for _, l := range wrapText(a.Err, max(w-4, 10)) {
+				msg = append(msg, "  "+warn(l))
 			}
 			msg = append(msg, "", "  "+keyHint("r")+" / enter: try again   "+
 				keyHint(m.cfg().Prefix)+" "+keyHint(m.shownKeys("x"))+": close the tab")

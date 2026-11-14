@@ -30,6 +30,8 @@ const (
 	// modePlugins is the user's plugins, which nerdr draws, and a
 	// plugin's own screen.
 	modePlugins
+	// modeHistory is what nerdr has said in its bar, which nerdr draws.
+	modeHistory
 )
 
 // screens are the menu's screens in order, each with the function key it
@@ -45,6 +47,7 @@ var screens = [...]struct {
 	{"f3", modeMessages, "tasks", "tasks"},
 	{"f4", modeSkills, "skills", "skills"},
 	{"f5", modePlugins, "plugins", "plugins"},
+	{"f6", modeHistory, "history", "history"},
 }
 
 // menuModes are the screens the menu has, in its order.
@@ -99,6 +102,10 @@ func (m Model) Skills() bool { return m.mode == modeSkills }
 // Plugins reports whether the panel is showing the plugins (F5), which
 // nerdr draws as it does the messages.
 func (m Model) Plugins() bool { return m.mode == modePlugins }
+
+// History reports whether the panel is showing what nerdr has said in
+// its bar (F6), which nerdr draws as it does the messages.
+func (m Model) History() bool { return m.mode == modeHistory }
 
 // PRView is which of F2's views the panel shows.
 type PRView int
@@ -196,7 +203,7 @@ type Screen struct {
 	view PRView
 }
 
-// ScreenNames are the menu's screens' names, F1 to F5.
+// ScreenNames are the menu's screens' names, F1 to F6.
 func ScreenNames() []string {
 	var out []string
 	for _, s := range screens {
@@ -205,7 +212,7 @@ func ScreenNames() []string {
 	return out
 }
 
-// ScreenShort are the menu's screens' short names, F1 to F5, for nerdr's
+// ScreenShort are the menu's screens' short names, F1 to F6, for nerdr's
 // column of F-keys.
 func ScreenShort() []string {
 	var out []string
@@ -300,7 +307,7 @@ func (m Model) prViewAt(x int) (PRView, bool) {
 
 // nerdrDraws is whether nerdr draws what is below the menu.
 func (m Model) nerdrDraws() bool {
-	return m.mode == modeMessages || m.mode == modeSkills || m.mode == modePlugins || m.AllPRs() || m.Issues()
+	return m.mode == modeMessages || m.mode == modeSkills || m.mode == modePlugins || m.mode == modeHistory || m.AllPRs() || m.Issues()
 }
 
 // prReloadMsg carries the worktree's PR fetched again: r, or the slow

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -116,6 +117,8 @@ func (m *Model) panelBody(w, h int) []string {
 		title, body = "skills", m.skillsBody(m.Cur(), iw, ih)
 	case m.review.Plugins():
 		title, body = m.pluginsTitle(m.Cur()), m.pluginsBody(m.Cur(), iw, ih)
+	case m.review.History():
+		title, body = "history ("+strconv.Itoa(len(m.history.entries))+")", m.historyBody(iw, ih)
 	case m.review.AllPRs():
 		title = "my pull requests …"
 		if d := m.prPanel; d != nil && d.all {

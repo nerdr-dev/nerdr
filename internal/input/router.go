@@ -32,7 +32,7 @@ type Router struct {
 
 	// pass is true while input goes straight to the sink.
 	pass atomic.Bool
-	// fkeys is true while F1-F5 go to the sink with the rest: a shell or
+	// fkeys is true while F1-F6 go to the sink with the rest: a shell or
 	// an editor has the keyboard, and the program in it may want them.
 	fkeys atomic.Bool
 	// last is when the terminal last sent anything, in Unix nanoseconds.
@@ -105,11 +105,11 @@ func (r *Router) PrefixSeen() {
 	r.prefixed = false
 }
 
-// PassFKeys sends F1-F5 on to the sink as well, rather than to the
+// PassFKeys sends F1-F6 on to the sink as well, rather than to the
 // program, until called again with false.
 func (r *Router) PassFKeys(pass bool) { r.fkeys.Store(pass) }
 
-// PassesFKeys reports whether F1-F5 go on to the sink.
+// PassesFKeys reports whether F1-F6 go on to the sink.
 func (r *Router) PassesFKeys() bool { return r.fkeys.Load() }
 
 // LastInput is when the terminal last sent anything: a key, a click, the
@@ -334,13 +334,13 @@ func mouseLen(b []byte) int {
 // specialSeqs are all the escape sequences nextSpecial looks for.
 var specialSeqs = append([]string{"\x1b[I", "\x1b[O"}, appKeys...)
 
-// appKeys are keys that go to nerdr even while an agent has focus: F1-F5
+// appKeys are keys that go to nerdr even while an agent has focus: F1-F6
 // switch the review panel between its screens, the menu it always shows.
-// The agents nerdr runs do not use them; F6 and up go to them.
+// The agents nerdr runs do not use them; F7 and up go to them.
 var appKeys = []string{
 	"\x1bOP", "\x1bOQ", "\x1bOR", "\x1bOS", // F1-F4 as most terminals send them
 	"\x1b[11~", "\x1b[12~", "\x1b[13~", "\x1b[14~", // and as some others do
-	"\x1b[15~", // F5, which all send so
+	"\x1b[15~", "\x1b[17~", // F5 and F6, which all send so
 }
 
 // What nextSpecial found.

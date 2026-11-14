@@ -171,7 +171,7 @@ type Model struct {
 	reviewPick *modelPick
 
 	// panelScreens is where the review panel was when you last left each tab
-	// (F1 to F5), to go back to when you come to it again; paneBars what each
+	// (F1 to F6), to go back to when you come to it again; paneBars what each
 	// tab's row of panes showed when last drawn.
 	panelScreens map[*core.Tab]review.Screen
 	paneBars     map[*core.Tab]*barRow
@@ -190,6 +190,8 @@ type Model struct {
 	skills skillsView
 	// plugins is the F5 screen's state, and the plugins' screens started.
 	plugins pluginsView
+	// history is the F6 screen's: what the bar has said; see history.go.
+	history historyView
 
 	// prefix is set after the prefix key, until the command key arrives;
 	// nav keeps it on after a key that went to another tab, until enter.
@@ -311,6 +313,8 @@ type Model struct {
 
 	toastText  string
 	toastUntil time.Time
+	// toastSeq is the history's entry for the toast shown; see say.
+	toastSeq int
 	// deniedSaid is how many denials had been noted when the last was
 	// said in a toast (see toastDenied).
 	deniedSaid int
@@ -789,10 +793,10 @@ func (m *Model) syncInput() {
 	if m.router == nil {
 		return
 	}
-	// An editor, and a full-screen program in a terminal, have F1-F5 for
+	// An editor, and a full-screen program in a terminal, have F1-F6 for
 	// themselves: htop, mc and vim use them. A shell at its prompt does
 	// not, and leaves them to the panel's screens. The prefix leads to the
-	// screens either way (e 1-4).
+	// screens either way (e 1-6).
 	m.router.PassFKeys(false)
 	if m.editor != nil {
 		if exited, _, _ := m.editor.Exited(); !exited {
@@ -812,7 +816,7 @@ func (m *Model) syncInput() {
 		return
 	}
 	if p := m.pluginUIPane(); p != nil {
-		// A plugin's screen in F5; F1-F5 and the prefix stay nerdr's.
+		// A plugin's screen in F5; F1-F6 and the prefix stay nerdr's.
 		m.router.Passthrough(p.Input)
 		return
 	}
@@ -967,7 +971,7 @@ func (m *Model) pinReview() tea.Cmd {
 	if t != nil {
 		pins = tabPins(t)
 	}
-	// The panel's screen (F1 to F5) is the tab's own. It is kept on the tab
+	// The panel's screen (F1 to F6) is the tab's own. It is kept on the tab
 	// it was chosen in, not on whichever is active by now: a tab opened or
 	// closed changes the active one before the panel hears of it.
 	moved := t != m.screenTab
@@ -1102,10 +1106,7 @@ func (m *Model) dwelt() bool {
 	return time.Since(m.landed) >= core.SeenAfter
 }
 
-func (m *Model) toast(s string) {
-	m.toastText = s
-	m.toastUntil = time.Now().Add(4 * time.Second)
-}
+func (m *Model) toast(s string) { m.say(catInfo, s, 4*time.Second) }
 
 // Shutdown stops every agent. The session file keeps the tabs, so the next
 // start resumes them. It runs with the program no longer updating the

@@ -82,8 +82,7 @@ func (m *Model) toastSeen(t *core.Tab) {
 func (m *Model) flushNotes(herdrBefore string) {
 	if len(m.inApp) > 0 {
 		// Several in one tick share the bar.
-		m.toastText = strings.Join(m.inApp, " · ") + " · " + m.pk("n") + " goes there"
-		m.toastUntil = time.Now().Add(core.InAppFor)
+		m.say(catAgents, strings.Join(m.inApp, " · ")+" · "+m.pk("n")+" goes there", core.InAppFor)
 		m.toastTabs, m.toastOf = m.inAppTabs, m.toastText
 		m.inApp, m.inAppTabs = nil, nil
 	}

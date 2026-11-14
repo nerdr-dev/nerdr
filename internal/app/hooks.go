@@ -10,7 +10,4 @@ import (
 
 // Notice shows a message for longer than a toast: for what went wrong
 // before the screen was up.
-func (m *Model) Notice(s string) {
-	m.toastText = s
-	m.toastUntil = time.Now().Add(20 * time.Second)
-}
+func (m *Model) Notice(s string) { m.say(catWarning, s, 20*time.Second) }

@@ -66,8 +66,7 @@ func (m *Model) tellIssueNews(news []state.IssueNews) {
 	if len(news) > 1 {
 		what += fmt.Sprintf(" (and %d more)", len(news)-1)
 	}
-	m.toastText = label + " " + what + " · " + m.pk("i o")
-	m.toastUntil = time.Now().Add(core.InAppFor)
+	m.say(catGitHub, label+" "+what+" · "+m.pk("i o"), core.InAppFor)
 	if !m.blurred {
 		return
 	}

@@ -425,7 +425,7 @@ func (m *Model) groupBar() string {
 		})
 	left += plus
 	// A message longer than the room it has is cut, not the repositories.
-	msg = ansi.Truncate(msg, max(m.width-lipgloss.Width(left)-lipgloss.Width(menuBtn)-1, 0), "…")
+	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(menuBtn)-1)
 	return joinBar(left, msg+menuBtn, m.width, bar)
 }
 
@@ -540,7 +540,7 @@ func (m *Model) tabBar() string {
 			return nil
 		}) + plus
 	// A message longer than the room it has is cut, not the tabs.
-	msg = ansi.Truncate(msg, max(m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(menuBtn)-1, 0), "…")
+	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(menuBtn)-1)
 	return joinBar(left, warning+msg+menuBtn, m.width, bar)
 }
 

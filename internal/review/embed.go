@@ -275,7 +275,7 @@ func (m Model) quit() tea.Cmd {
 }
 
 // SetScreenKeys gives the panel the keys to name its six screens by in
-// its menu, in place of F1 to F5, and hint, which says how to press them;
+// its menu, in place of F1 to F6, and hint, which says how to press them;
 // nil for the F-keys.
 func (m Model) SetScreenKeys(keys []string, hint string) Model {
 	m.screenKeys, m.screensHint = keys, hint

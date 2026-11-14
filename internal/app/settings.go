@@ -144,13 +144,13 @@ func (m *Model) settingRows() []settingRow {
 				"Turn it off if you want your terminal to handle the mouse the way it does outside nerdr.",
 			example: `mouse = false`},
 		b("function_keys", "true",
-			"Whether the review panel's screens are called F1 to F5 in its menu and hints, and opened with those keys.\n"+
+			"Whether the review panel's screens are called F1 to F6 in its menu and hints, and opened with those keys.\n"+
 				"Turn it off if your F-keys are hard to reach, as on a Mac laptop, where they change brightness and volume unless you hold fn. The menu and hints then show the prefix keys that do the same: the prefix and e 1 for F1, up to e 4 for F4.",
 			`function_keys = false`),
 
 		{label: "Screen"},
 		{key: "layout", kind: sChoice, choices: []string{"normal", "wide", "small", "agent", "panel"}, def: `"normal"`, notes: layoutNotes, restart: true,
-			desc: "How the window is split between the agent and the F-menu (the review panel's screens F1-F5) when nerdr starts. The column of F-keys on the right is always there; the prefix and z l, or z k, change the rest while nerdr runs.\n" +
+			desc: "How the window is split between the agent and the F-menu (the review panel's screens F1-F6) when nerdr starts. The column of F-keys on the right is always there; the prefix and z l, or z k, change the rest while nerdr runs.\n" +
 				"normal: the agent on the left, the F-menu open beside the column, as wide as panel_width.\n" +
 				"wide: the same, but the agent gets 75% of the width.\n" +
 				"small: the F-menu closed. An F-key opens it, and it folds again when you go back to the agent.\n" +

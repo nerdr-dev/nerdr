@@ -34,10 +34,10 @@ type sketchPart struct {
 }
 
 var layouts = []layout{
-	{"=", "normal", []sketchPart{{"agent", 8}, {"F1-F5", 8}}, "normal"},
+	{"=", "normal", []sketchPart{{"agent", 8}, {"F1-F6", 8}}, "normal"},
 	{"+", "agent 75%", []sketchPart{{"agent", 12}, {"F", 4}}, "wide"},
 	{"a", "agent alone", []sketchPart{{"agent", 17}}, "agent"},
-	{"z", "F-menu alone", []sketchPart{{"F1-F5", 17}}, "panel"},
+	{"z", "F-menu alone", []sketchPart{{"F1-F6", 17}}, "panel"},
 	// Not in the config: two agents need a second tab, which nerdr may
 	// not have at start.
 	{"v", "two agents", []sketchPart{{"agent", 8}, {"agent 2", 8}}, ""},
