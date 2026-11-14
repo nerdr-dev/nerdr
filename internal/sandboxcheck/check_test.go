@@ -21,6 +21,8 @@ func TestArgsComeBackAsTheyWent(t *testing.T) {
 		{Nonce: "n4", Writes: []string{"/w"}},
 		{Nonce: "n5", Pids: []int{7}, Warns: []string{"/home/u/.claude/skills"}},
 		{Nonce: "n6", Writes: []string{"/w"}, Warns: []string{"/home/u/.agents/skills", "/home/u/.grok/hooks"}},
+		{Nonce: "n7", Pids: []int{7}, APISock: "/run/user/1/nerdr/api-a.sock", APIKey: "/run/user/1/nerdr/api-a.key"},
+		{Nonce: "n8", Writes: []string{"/w"}, Warns: []string{"/h"}, APISock: "/run/user/1/nerdr/api-a.sock"},
 	} {
 		args := in.Args()
 		if slices.Contains(args, "") {
@@ -40,6 +42,46 @@ func TestArgsComeBackAsTheyWent(t *testing.T) {
 	}
 	if _, err := ParseArgs([]string{"n", "-", "-", "-", "-", "x"}); err == nil {
 		t.Error("a bad process id was taken")
+	}
+	if _, err := ParseArgs([]string{"n", "-", "-", "-", "-", "--api", "/s"}); err == nil {
+		t.Error("the API's socket without its key was taken")
+	}
+}
+
+// TestProbeReachesAnOpenAPISocket: the API's socket and key are ways in
+// as the client socket's are.
+func TestProbeReachesAnOpenAPISocket(t *testing.T) {
+	dir, err := os.MkdirTemp("", "nck")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(dir) })
+	sock, key := filepath.Join(dir, "api.sock"), filepath.Join(dir, "api.key")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			c.Close()
+		}
+	}()
+	if err := os.WriteFile(key, []byte("k\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := Probe(Target{APISock: sock, APIKey: key})
+	if !slices.Equal(r.Client, []string{"api-socket", "api-key"}) || !r.Reached() {
+		t.Errorf("reached %v", r.Client)
+	}
+	for _, w := range []string{"api-socket", "api-key"} {
+		if !(Result{Client: []string{"folder", w}}).Reached() {
+			t.Errorf("%s does not count as reached", w)
+		}
 	}
 }
 

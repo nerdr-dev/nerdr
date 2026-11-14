@@ -32,7 +32,8 @@ const Arg = "--nerdr-sandbox-check"
 const marker = "NERDR-SANDBOX-CHECK"
 
 // Target is what the check is to try to reach: the client socket's
-// folder, the socket and its key, and the processes holding the holder's
+// folder, the socket and its key, the API's socket and key beside them
+// (see internal/api), and the processes holding the holder's
 // socket, the holder and the core. PidNS is the core's pid namespace, as
 // /proc/self/ns/pid links to it, "" when not known: the process ids mean
 // those processes only in it.
@@ -40,8 +41,10 @@ type Target struct {
 	Nonce     string
 	ClientDir string
 	Sock, Key string
-	PidNS     string
-	Pids      []int
+	// APISock and APIKey are the API's socket and key, "" for none.
+	APISock, APIKey string
+	PidNS           string
+	Pids            []int
 	// Writes are folders and files the agent must not be able to write:
 	// nerdr's config and state, the main checkouts' .git/config and
 	// .git/hooks, the folder the other tabs' worktrees are in.
@@ -56,9 +59,14 @@ type Target struct {
 // after the process ids, Writes first. A check of a nerdr from before
 // Warns takes them for more Writes, or warnsSep for a bad process id: it
 // refuses more than it needs to, not less.
+// apiSep comes last, before the API's socket and key: a check of a nerdr
+// from before the API takes it for a bad process id, or a path to warn
+// of, and so either does not answer, which keeps the agent from
+// starting, or does not look at the API at all.
 const (
 	writesSep = "--"
 	warnsSep  = "--warn"
+	apiSep    = "--api"
 )
 
 // none stands for an empty argument.
@@ -82,6 +90,15 @@ func (t Target) Args() []string {
 	if len(t.Warns) > 0 {
 		out = append(append(out, warnsSep), t.Warns...)
 	}
+	if t.APISock != "" || t.APIKey != "" {
+		api := []string{t.APISock, t.APIKey}
+		for i, s := range api {
+			if s == "" {
+				api[i] = none
+			}
+		}
+		out = append(append(out, apiSep), api...)
+	}
 	return out
 }
 
@@ -99,8 +116,13 @@ func ParseArgs(args []string) (Target, error) {
 	t := Target{Nonce: args[0], ClientDir: opt(args[1]), Sock: opt(args[2]), Key: opt(args[3]), PidNS: opt(args[4])}
 	// Paths are absolute, so never one of the separators.
 	var into *[]string
+	var api []string
 	for _, a := range args[5:] {
 		switch {
+		case a == apiSep && into != &api:
+			into = &api
+		case into == &api:
+			api = append(api, a)
 		case a == writesSep && into == nil:
 			into = &t.Writes
 		case a == warnsSep && (into == nil || into == &t.Writes):
@@ -115,6 +137,12 @@ func ParseArgs(args []string) (Target, error) {
 			t.Pids = append(t.Pids, p)
 		}
 	}
+	if into == &api {
+		if len(api) != 2 {
+			return Target{}, errors.New("sandbox check: the API takes a socket and a key")
+		}
+		t.APISock, t.APIKey = opt(api[0]), opt(api[1])
+	}
 	return t, nil
 }
 
@@ -122,8 +150,9 @@ func ParseArgs(args []string) (Target, error) {
 // found, empty when it found none.
 type Result struct {
 	// Client: "folder" (it could see into the socket's folder), "socket"
-	// (connect to it) and "key" (read the key). Of these only "socket"
-	// and "key" are a way in: seeing the folder tells what is there.
+	// (connect to it) and "key" (read the key), and "api-socket" and
+	// "api-key" the same of the API's. Of these all but "folder" are a
+	// way in: seeing the folder tells what is there.
 	Client []string `json:"client,omitempty"`
 	// Holder: "pidfd_getfd", "ptrace" and "/proc", each with the process
 	// it reached.
@@ -136,11 +165,12 @@ type Result struct {
 }
 
 // Reached reports whether the check got to anything it must not: the
-// client socket, to connect to it or read its key, or the holder. Seeing
+// client socket or the API's, to connect to it or read its key, or the
+// holder. Seeing
 // into the socket's folder alone is not: many macOS sandboxes let every
 // file's metadata be read, and what is in the folder is no way in.
 func (r Result) Reached() bool {
-	return slices.Contains(r.Client, "socket") || slices.Contains(r.Client, "key") || len(r.Holder) > 0
+	return slices.ContainsFunc(r.Client, func(w string) bool { return w != "folder" }) || len(r.Holder) > 0
 }
 
 // SeesFolder reports whether the check could see into the client
@@ -180,6 +210,17 @@ func Probe(t Target) Result {
 	if t.Key != "" {
 		if b, err := os.ReadFile(t.Key); err == nil && len(b) > 0 {
 			r.Client = append(r.Client, "key")
+		}
+	}
+	if t.APISock != "" {
+		if c, err := net.DialTimeout("unix", t.APISock, 2*time.Second); err == nil {
+			_ = c.Close()
+			r.Client = append(r.Client, "api-socket")
+		}
+	}
+	if t.APIKey != "" {
+		if b, err := os.ReadFile(t.APIKey); err == nil && len(b) > 0 {
+			r.Client = append(r.Client, "api-key")
 		}
 	}
 	r.Holder = probeHolder(t)
