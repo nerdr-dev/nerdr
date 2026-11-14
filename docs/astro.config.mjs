@@ -60,6 +60,7 @@ export default defineConfig({
 					label: 'Reference',
 					items: [
 						'reference/agent-commands',
+						'reference/api',
 						'reference/security',
 						'reference/how-it-works',
 						'reference/troubleshooting',

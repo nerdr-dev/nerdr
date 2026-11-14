@@ -70,6 +70,9 @@ const (
 
 // Tell gives the client ev; see Client.Tell.
 func (m *Core) Tell(ev Event) Cmd {
+	if m.Observe != nil {
+		m.Observe(ev)
+	}
 	if m.Client == nil {
 		return nil
 	}

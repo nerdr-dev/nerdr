@@ -30,6 +30,10 @@ type Core struct {
 	ID string
 	// Client is told what the user is to see; see Client.
 	Client Client `json:"-"`
+	// Observe, when set, sees each event the client is told, as Tell
+	// gives it, with Mu held: the API's, for what it passes on (see
+	// internal/api). It must not wait.
+	Observe func(Event) `json:"-"`
 	// Asking is what waits for the user to answer, the first asked first;
 	// see Asked.
 	Asking  []*Question

@@ -286,6 +286,14 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		// Also here: with no client, nothing may draw for a frame.
 		return Batch(m.InfoTick(now), m.ExpireAsks(now)), InfoTickMsg{}
 	}
+	if c, ok := ev.(Call); ok {
+		cmd := c.F(m)
+		if !c.Changes {
+			return cmd, nil
+		}
+		m.Gen++
+		return cmd, ChangedMsg{}
+	}
 	if q, ok := ev.(RequestEv); ok {
 		if _, quiet := q.R.(quietRequest); quiet {
 			return q.Run(m), nil
@@ -296,6 +304,16 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		return cmd, ChangedMsg{}
 	}
 	return nil, ev
+}
+
+// Call is work for the loop from outside core and its clients, the API's
+// (see internal/api): F runs with Mu held, as a request is done, and the
+// Cmd it gives runs as any. Changes says F may have changed what a client
+// draws, for it to draw again; a Call that only reads leaves it be. It is
+// done while core quits too: F looks at Quitting itself.
+type Call struct {
+	F       func(m *Core) Cmd
+	Changes bool
 }
 
 // quietRequest is a request of core's own that changes nothing a client

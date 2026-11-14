@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/api"
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/config"
@@ -146,20 +147,23 @@ func runCore(h *core.Held) error {
 	if err != nil {
 		return errStarting{err}
 	}
+	// Who may connect, to the client socket and to the API's: neither
+	// takes a program nerdr runs.
+	check := func(p hooks.Peer) string {
+		why := core.ClientUnderNerdr(p, origin)
+		if why == "" {
+			c.Mu.Lock()
+			why = c.ClientRefusal(p)
+			c.Mu.Unlock()
+		}
+		if why != "" {
+			core.Logf("client refused (%v): %s", p.Chain, why)
+		}
+		return why
+	}
 	srv, err := attach.Listen(sock, keyFile, attach.Config{
 		Version: version(),
-		Check: func(p hooks.Peer) string {
-			why := core.ClientUnderNerdr(p, origin)
-			if why == "" {
-				c.Mu.Lock()
-				why = c.ClientRefusal(p)
-				c.Mu.Unlock()
-			}
-			if why != "" {
-				core.Logf("client refused (%v): %s", p.Chain, why)
-			}
-			return why
-		},
+		Check:   check,
 		Client: func(conn *attach.Conn, h attach.Hello) {
 			core.Logf("client: connected")
 			c.Mu.Lock()
@@ -179,6 +183,26 @@ func runCore(h *core.Held) error {
 	c.FindAgents()
 	loop.Start()
 	defer loop.Stop()
+	// The API's socket, for the user's own programs; closed before the
+	// loop stops, its calls answered that nerdr quits.
+	if apiSock, apiKey, err := attach.APIPaths(root); err != nil {
+		core.Logf("no API socket: %v", err)
+	} else if as, err := api.Listen(apiSock, apiKey, api.Config{
+		Version: version(), Root: root, Check: check,
+		Post: func(call core.Call) { loop.Post(call) },
+	}); err != nil {
+		core.Logf("no API socket: %v", err)
+	} else {
+		defer as.Close()
+		c.Mu.Lock()
+		c.Observe = as.Observe
+		c.Mu.Unlock()
+		defer func() {
+			c.Mu.Lock()
+			c.Observe = nil
+			c.Mu.Unlock()
+		}()
+	}
 	// The client that started the core connects at once, and says how
 	// large it shows the agents; without one they start after a while.
 	loop.Post(core.RequestEv{R: core.StartWhenSized{Front: front, Beside: beside}})

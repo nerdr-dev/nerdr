@@ -429,8 +429,9 @@ below finds the agent can reach them, or cannot establish whether it can,
 nerdr does not start it.
 
 - **The client socket's folder.** A client can do anything you can,
-  approvals included. Its socket and the key to it, and the hook socket
-  of the agents outside a sandbox, are in
+  approvals included. Its socket and the key to it, the [API](../../reference/api/)'s
+  socket and key, and the hook socket of the agents outside a sandbox,
+  are in
   `$XDG_RUNTIME_DIR/nerdr` when `XDG_RUNTIME_DIR` is set; without it, in
   `~/.cache/nerdr/run` on Linux and `~/Library/Application Support/nerdr/run`
   on macOS; never under `~/.local/state/nerdr`. The sandbox must deny

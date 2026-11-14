@@ -1,0 +1,170 @@
+---
+title: API
+description: Read what nerdr's agents are doing, and send them messages, from your own programs — a phone app's connector, a script, a bot.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+nerdr has an API for your own programs: the connector of a phone app,
+a script that reports when an agent waits, a chat bot. They can see the
+tabs, the agents' states and screens, and the waiting list; send an
+agent a message or keys; answer what nerdr asks; and make tabs. nerdr
+keeps working as usual, with or without its window open.
+
+The API belongs to the nerdr running for a folder, as long as that nerdr
+runs: after Close too, until Quit. Several programs can be connected at
+once, with the TUI open or not.
+
+## Connecting
+
+The simplest way is `nerdr api`, which connects its standard input and
+output to the API of the nerdr running for a folder:
+
+```sh
+echo '{"id":1,"op":"state"}' | nerdr api ~/develop
+```
+
+Each line is one JSON object. The first line out is the welcome:
+
+```json
+{"api":1,"version":"v0.9.0","root":"/home/you/develop"}
+```
+
+Every line after that is either an answer to a request, carrying the
+request's `id`, or an event if the program subscribed. When input ends,
+`nerdr api` answers what it was sent and exits, unless the program
+subscribed. Then events keep coming until it is stopped.
+
+From another machine, run it over SSH:
+`ssh HOST nerdr api FOLDER`.
+
+A program can also connect to the socket itself. See
+[the socket](#the-socket).
+
+<Aside type="caution">
+The API can do much of what you can: type into an agent, answer its
+questions, approve a plugin run, make a tab. Do not expose it to the
+network directly. A connector that brings it to your phone must
+authenticate you on its own, for example by running only over
+Tailscale or another private network.
+</Aside>
+
+## Requests
+
+A request is `{"id": …, "op": "…", …}`. The `id` can be any JSON value,
+and the answer returns it: `{"id": …, "result": …}` or
+`{"id": …, "error": "…"}`. Requests are answered in the order they are
+sent.
+
+Tabs, agents and terminals are identified by their IDs from `state`.
+The ID of a tab is also the ID of its first agent.
+
+| `op` | Parameters | Effect |
+|---|---|---|
+| `state` | | Every tab with its agents, terminals and branches; the waiting list; the questions; the agents that can be started. See [state](#state) |
+| `subscribe` | | The [events](#events) from now on |
+| `read` | `target` (an agent or terminal ID), `lines` (80 if omitted) | `{"text": …}`, the last lines the agent or terminal shows |
+| `send` | `agent`, `text` | Queues `text` as a message for the agent. nerdr types it in when the agent is at its prompt, as it does with messages between agents |
+| `type` | `target`, `text`, `keys` | Types `text` as a paste, and then `keys`, into the agent or terminal right away: to answer what an agent asks on its screen, or to run a command in a terminal |
+| `answer` | `question`, `yes` | Answers one of nerdr's [questions](#questions) |
+| `seen` | `agent` | Marks the agent as looked at, as when you visit it: its done light goes out, and messages held back because you typed to it resume |
+| `wake` | `tab` | Wakes the tab's agents, if they were put to sleep (`sleep_after`) |
+| `repos` | | The repositories a tab can be made in: `[{"name", "path"}]` |
+| `new_tab` | `repos` (names), `branch`, `agent`, `model`, `task` | Makes a tab on a new branch from the latest default branch, its agent given `task`. `agent` is the first installed one if omitted. The tab arrives later with a `tab_opened` event, or a `notice` says why it was not made |
+
+Keys for `type` are single characters, or one of: `enter`, `esc`, `tab`,
+`shift-tab`, `backspace`, `space`, `up`, `down`, `left`, `right`, `home`,
+`end`, `pageup`, `pagedown`, `ctrl-a`, `ctrl-c`, `ctrl-d`, `ctrl-e`,
+`ctrl-l`, `ctrl-o`, `ctrl-r`, `ctrl-t`, `ctrl-u`, `ctrl-z`.
+
+For example, to pick the first choice of what Claude asks, and then a new
+tab:
+
+```json
+{"id":2,"op":"type","target":"9f3c01aa","keys":["1","enter"]}
+{"id":3,"op":"new_tab","repos":["api"],"branch":"fix-timeout","task":"The /orders call times out on large carts; find out why and fix it"}
+```
+
+### State
+
+```json
+{
+  "root": "/home/you/develop",
+  "tabs": [{
+    "id": "9f3c01aa", "name": "fix-login", "dir": "/home/you/.nerdr/worktrees/fix-login",
+    "task": "Fix the login redirect", "status": "tests pass, writing the PR",
+    "agents": [
+      {"id": "9f3c01aa", "num": 1, "kind": "claude", "state": "blocked", "context_percent": 41},
+      {"id": "1b2e77d0", "num": 2, "kind": "codex", "state": "working", "reviewer": true}
+    ],
+    "terminals": [{"id": "c4d5e6f7", "name": "terminal", "command": "make test", "running": true}],
+    "branches": [{"repo": "web", "branch": "fix-login", "ahead": 3, "behind": 0, "pr": 412, "ci": "pass", "pushed": true}]
+  }],
+  "waiting": ["9f3c01aa"],
+  "questions": [],
+  "agents": ["claude", "codex"]
+}
+```
+
+An agent's `state` is `starting`, `working`, `background` (its turn is
+over, and commands it started still run), `blocked` (it asks you
+something), `done` (it finished, and you have not looked yet), `idle`,
+`asleep`, or `exited`. `waiting` lists the agents that need you, the
+ones asking first, as in nerdr's waiting list.
+
+### Questions
+
+These are what nerdr asks you, not what an agent asks on its screen (to
+answer those, use `type`). `kind` is `repo_setup`, whether the
+`.nerdr.toml` setup of `repos` may run in new worktrees, or `plugin_run`,
+whether `agent` may run `plugin` with `values`. A plugin run that is not
+answered by `until` is refused. `text` says it in a sentence.
+
+## Events
+
+After `subscribe`, lines without an `id` are events:
+
+| `event` | Fields | When |
+|---|---|---|
+| `tab_opened` | `tab` | A tab was made, by you or an agent |
+| `tab_closed` | `tab_id`, `name` | A tab was closed |
+| `tab` | `tab` | A tab's name, task, status, branches or terminals changed |
+| `agent` | `tab_id`, `agent`, `was` | An agent's state changed, or the agent arrived (`was` is empty) or left (`state` is `gone`) |
+| `waiting` | `waiting` | The agents that need you changed |
+| `question` | `question` | nerdr asks you something |
+| `answered` | `question_id` | A question was answered, here or elsewhere, or timed out |
+| `notice` | `text`, `important` | What nerdr shows in its status bar; `important` for what it keeps on screen until seen |
+| `lost` | | The program read too slowly and events were dropped: get `state` again |
+
+A phone app would subscribe, call `state` once, and then follow the
+events. For example, it can send a push notification for each `agent`
+event whose state becomes `blocked` or `done`.
+
+## The socket
+
+`nerdr api` connects to a socket in the same folder as nerdr's client
+socket, named `api-HASH.sock`. The folder is `$XDG_RUNTIME_DIR/nerdr`;
+without `XDG_RUNTIME_DIR`, it is `~/.cache/nerdr/run` on Linux and
+`~/Library/Application Support/nerdr/run` on macOS. Next to it is `api-HASH.key`, a key that is new each
+time nerdr's core starts. A program connecting by itself sends the key
+in its first line:
+
+```json
+{"key":"…","api":1}
+```
+
+`api` is the API version the program was written for. A nerdr with an
+older API refuses the connection. A refusal, or a wrong key, is answered
+`{"error":"…"}` and the connection closes.
+
+The API is guarded the same way as the client socket: the folder and the
+key are yours alone, and nerdr refuses connections from the programs it
+runs, its agents included, whether sandboxed or not. A sandbox that
+denies the client socket's folder, as it must, denies this socket too.
+See [what a sandbox must deny](../../configure/agents/#what-a-sandbox-must-deny-when-the-core-runs-on-its-own).
+
+## Versions
+
+The API's version is 1. New requests, fields and events may be added
+without changing it, so ignore what you do not know. A change that would
+break a program written for version 1 raises the version.

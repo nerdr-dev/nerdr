@@ -50,3 +50,19 @@ var (
 	ensureDir = rundir.Ensure
 	checkDir  = rundir.Check
 )
+
+// APIPaths are the API socket of the core of folder root, and its key
+// file: beside the client socket, guarded as it is (see internal/api).
+func APIPaths(root string) (sock, key string, err error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", "", err
+	}
+	sum := sha256.Sum256([]byte(root))
+	name := "api-" + hex.EncodeToString(sum[:8])
+	return filepath.Join(dir, name+".sock"), filepath.Join(dir, name+".key"), nil
+}
+
+// EnsureDir makes the folder of the sockets, or checks the one there;
+// see rundir.Ensure.
+func EnsureDir(dir string) error { return ensureDir(dir) }
