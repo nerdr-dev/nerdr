@@ -192,11 +192,14 @@ func Snapshot(path string) (Part, error) {
 	}
 	defer os.RemoveAll(tmp)
 	index := filepath.Join(tmp, "index")
-	if b, err := os.ReadFile(filepath.Join(gitDir, "index")); err == nil {
-		if err := os.WriteFile(index, b, 0o600); err != nil {
+	if err := gitdata.CopyIndex(filepath.Join(gitDir, "index"), index); err != nil {
+		return p, err
+	}
+	if _, err := os.Stat(index); errors.Is(err, os.ErrNotExist) {
+		if _, err := run(path, []string{"GIT_INDEX_FILE=" + index}, "read-tree", "HEAD"); err != nil {
 			return p, err
 		}
-	} else if _, err := run(path, []string{"GIT_INDEX_FILE=" + index}, "read-tree", "HEAD"); err != nil {
+	} else if err != nil {
 		return p, err
 	}
 	env := []string{"GIT_INDEX_FILE=" + index}
