@@ -31,7 +31,7 @@ type Event struct {
 	Name       string            `json:"name,omitempty"`
 	Agent      *core.APIAgent    `json:"agent,omitempty"`
 	Was        string            `json:"was,omitempty"`
-	Waiting    []string          `json:"waiting,omitempty"`
+	Waiting    []string          `json:"waiting,omitzero"`
 	Question   *core.APIQuestion `json:"question,omitempty"`
 	QuestionID int               `json:"question_id,omitempty"`
 	Text       string            `json:"text,omitempty"`

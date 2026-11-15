@@ -1,10 +1,39 @@
 package api
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
+
+func TestWaitingEventJSON(t *testing.T) {
+	for _, waiting := range [][]string{nil, {}, {"t2"}} {
+		events := Diff(core.APIState{Waiting: []string{"t1"}}, core.APIState{Waiting: waiting})
+		b, err := json.Marshal(events[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		var wire map[string]json.RawMessage
+		if err := json.Unmarshal(b, &wire); err != nil {
+			t.Fatal(err)
+		}
+		want := `[]`
+		if len(waiting) > 0 {
+			want = `["t2"]`
+		}
+		if string(wire["waiting"]) != want {
+			t.Fatalf("waiting %v: %s, want waiting=%s", waiting, b, want)
+		}
+	}
+	b, err := json.Marshal(Event{Event: "notice", Text: "hello"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(b) != `{"event":"notice","text":"hello"}` {
+		t.Fatalf("unrelated event acquired a waiting field: %s", b)
+	}
+}
 
 func names(evs []Event) []string {
 	var out []string
