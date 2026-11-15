@@ -183,13 +183,10 @@ func CreatePRs(name string, wts []workspace.Worktree, have map[string]bool, hook
 	var urls, errs []string
 	skipped := false
 	for _, w := range wts {
-		if have[w.Repo] {
-			continue
-		}
 		repo := filepath.Base(w.Repo)
 		// A pull request is made of commits: work not yet committed is in
 		// none, and gh's refusal would not say so.
-		if s, err := workspace.BranchStats(w); err == nil && s.Ahead == 0 {
+		if s, err := workspace.BranchStats(w); !have[w.Repo] && err == nil && s.Ahead == 0 {
 			why := repo + ": no commits ahead of " + s.Base + " to open a pull request with"
 			if n := workspace.Uncommitted(w); n > 0 {
 				why += " — " + Plural(n, "file") + " changed but not committed: commit them first"
@@ -204,6 +201,9 @@ func CreatePRs(name string, wts []workspace.Worktree, have map[string]bool, hook
 			errs = append(errs, repo+": push: "+err.Error())
 			continue
 		}
+		if have[w.Repo] {
+			continue // the branch was pushed; only making the PR is skipped
+		}
 		url, err := github.CreatePR(w.Path, w.Origin)
 		if err != nil {
 			errs = append(errs, repo+": "+err.Error())
@@ -211,13 +211,13 @@ func CreatePRs(name string, wts []workspace.Worktree, have map[string]bool, hook
 		}
 		urls = append(urls, url)
 	}
-	switch {
-	case len(errs) > 0:
+	if len(errs) > 0 {
 		return "", strings.Join(errs, "; ")
-	case len(urls) == 0:
-		return name + " already has its pull request", ""
 	}
-	note = "opened " + strings.Join(urls, ", ")
+	note = "pushed " + name
+	if len(urls) > 0 {
+		note += "; opened " + strings.Join(urls, ", ")
+	}
 	if skipped {
 		note += " (git hooks not run: an agent in the tab ran in a sandbox)"
 	}
