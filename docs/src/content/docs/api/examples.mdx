@@ -65,28 +65,47 @@ class Nerdr:
         self._ids = itertools.count(1)
         self._waiting = {}
         self._lock = threading.Lock()
+        self._closed = False
         threading.Thread(target=self._read, daemon=True).start()
 
     def _read(self):
-        for line in self.proc.stdout:
-            msg = json.loads(line)
-            if "event" in msg:
-                self.events.put(msg)
-            else:
-                with self._lock:
-                    answer = self._waiting.pop(msg.get("id"), None)
-                if answer:
-                    answer.put(msg)
-        self.events.put(None)
+        error = "nerdr api disconnected"
+        try:
+            for line in self.proc.stdout:
+                msg = json.loads(line)
+                if "event" in msg:
+                    self.events.put(msg)
+                else:
+                    with self._lock:
+                        answer = self._waiting.pop(msg.get("id"), None)
+                    if answer:
+                        answer.put(msg)
+        except (OSError, ValueError) as exc:
+            error = f"nerdr api read failed: {exc}"
+        finally:
+            with self._lock:
+                self._closed = True
+                pending = list(self._waiting.values())
+                self._waiting.clear()
+            for answer in pending:
+                answer.put({"error": error})
+            self.events.put(None)
 
     def call(self, op, **params):
         """Sends a request and returns its result, or raises its error."""
         answer = queue.Queue(maxsize=1)
         with self._lock:
+            if self._closed:
+                raise RuntimeError("nerdr api disconnected")
             id = next(self._ids)
+            request = json.dumps({"id": id, "op": op, **params}) + "\n"
             self._waiting[id] = answer
-            self.proc.stdin.write(json.dumps({"id": id, "op": op, **params}) + "\n")
-            self.proc.stdin.flush()
+            try:
+                self.proc.stdin.write(request)
+                self.proc.stdin.flush()
+            except OSError as exc:
+                self._waiting.pop(id, None)
+                raise RuntimeError("nerdr api write failed") from exc
         msg = answer.get()
         if "error" in msg:
             raise RuntimeError(msg["error"])

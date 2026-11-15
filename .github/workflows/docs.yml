@@ -35,6 +35,7 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - run: npm ci
+      - run: python3 scripts/test-api-example.py
       - run: npm run build
         env:
           SITE: ${{ steps.pages.outputs.origin }}
