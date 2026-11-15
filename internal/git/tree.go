@@ -32,7 +32,7 @@ func WorkTree(worktreePath string) (string, error) {
 	}
 	defer os.RemoveAll(tmp)
 	name := filepath.Join(tmp, "index")
-	if err := copyIndex(strings.TrimSpace(string(out)), name); err != nil {
+	if err := CopyIndex(strings.TrimSpace(string(out)), name); err != nil {
 		return "", err
 	}
 	index := "GIT_INDEX_FILE=" + filepath.Clean(name)
@@ -135,7 +135,7 @@ func StageAll(ctx context.Context, worktreePath string) error {
 	}
 	defer os.RemoveAll(tmp)
 	copied := filepath.Join(tmp, "index")
-	if err := copyIndex(real, copied); err != nil {
+	if err := CopyIndex(real, copied); err != nil {
 		return err
 	}
 	if err := AddAll(ctx, worktreePath, "GIT_INDEX_FILE="+copied); err != nil {
@@ -210,11 +210,13 @@ func readIndexData(r io.Reader, limit int64) ([]byte, error) {
 	return data, nil
 }
 
+// CopyIndex copies a regular, bounded Git index to dst, preserving its
+// timestamp. A missing or empty index leaves dst absent; dst must not exist.
 // Git uses the index mtime to detect racy-clean entries: cached file stats
 // matching the index's timestamp still need their content checked. Giving a
 // copy a newer timestamp can silently hide same-size edits. Preserve it on
 // every copy, including StageAll's final replacement of the real index.
-func copyIndex(src, dst string) error {
+func CopyIndex(src, dst string) error {
 	data, stat, err := readIndex(src)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
