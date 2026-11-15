@@ -28,6 +28,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
@@ -435,21 +436,34 @@ func BranchCreated(worktreePath, branch string) (created time.Time, ok bool) {
 // ReadLines hands each non-empty line of the file at path to line. A
 // missing or unreadable file yields nothing rather than an error: these
 // records are optional, and a repository nobody has annotated is a normal
-// state, not a failure.
+// state, not a failure. Only regular files within the data folder's anchor
+// are read, without following the file itself through a symbolic link.
 func ReadLines(path string, line func([]byte)) {
 	if path == "" {
 		return
 	}
-	f, err := os.Open(path)
+	anchor, rel := anchorOf(path)
+	root, err := os.OpenRoot(anchor)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	f, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return
 	}
 	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() || st.Size() > maxRecordsBytes {
+		return
+	}
 
 	// A line longer than a record can be — written by hand, or by an
 	// agent — is passed over, not the end of the file: the records after
 	// it are read as any others.
-	r := bufio.NewReaderSize(f, 64*1024)
+	// Read only the size seen on the open descriptor: a growing file must
+	// not keep the core reading forever.
+	r := bufio.NewReaderSize(io.LimitReader(f, st.Size()), 64*1024)
 	var buf []byte
 	long := false
 	for {
@@ -478,3 +492,6 @@ func ReadLines(path string, line func([]byte)) {
 
 // maxLine is the longest line of a records file that is read.
 const maxLine = 4 << 20
+
+// maxRecordsBytes bounds a metadata read, including files of many short lines.
+const maxRecordsBytes = 64 << 20

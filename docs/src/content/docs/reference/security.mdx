@@ -269,6 +269,10 @@ their notes, review results, walkthroughs and handoffs. When it writes to
 `data_dir` or reads files from a worktree, nerdr does not follow
 symbolic links or paths that lead outside the folder, so an agent cannot
 use a link to make nerdr overwrite or show files elsewhere.
+Optional JSONL metadata is read only from regular files of at most
+64 MiB. Named pipes and symbolic links at the file itself are rejected,
+and each read stops at the file's initial size even if an agent keeps
+appending. Records longer than 4 MiB are skipped.
 
 Source navigation skips special files and sources larger than 512 KiB.
 It also limits directory traversal and the aggregate index, so navigation

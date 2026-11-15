@@ -103,6 +103,10 @@ incomplete, the review panel says so. Worktree content shown
 by the Git reader is limited to 16 MiB per regular file.
 Index snapshots accept only regular files of at most 128 MiB; nonblocking
 opens reject named pipes, and reads remain bounded if the file grows.
+Optional JSONL metadata (notes, review sessions and walkthroughs) accepts
+only regular files of at most 64 MiB within its configured data anchor,
+without following a symbolic link at the file itself. Each read is bounded
+by the file's initial size, and records longer than 4 MiB are skipped.
 
 ## Files nerdr installs for the agents
 
