@@ -303,6 +303,42 @@ func TestCopilotWaitingForBackgroundShells(t *testing.T) {
 	}
 }
 
+// TestCopilotCtrlCInterrupt: copilot 1.0.107 and newer end a turn's footer
+// with "ctrl+c interrupt". The footers are those reported for 1.0.107 to
+// 1.0.114 in herdrdev/herdr#5799, not captured here.
+func TestCopilotCtrlCInterrupt(t *testing.T) {
+	m := For("copilot")
+	screen := func(body, footer string) string {
+		return body +
+			" /tmp/cp                                Session: 0.13 AIC used\n" +
+			"╻▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄\n┃\n╹▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀\n" +
+			" " + footer + "                    Auto → gpt-6-luna\n"
+	}
+	for _, c := range []struct {
+		name, body, footer string
+		want               State
+	}{
+		{"working", " ● started\n", "◉ Working ctrl+c interrupt", Working},
+		{"running a tool", " ● started\n", "◎ Running bash · 1m 07s · 2.6 KiB ctrl+c interrupt", Working},
+		{"waiting for shells", " ● started\n", "● Waiting for background shells · 609 B ctrl+c interrupt", Idle},
+		{"conversation quotes the hint", " ● The footer says ctrl+c interrupt while it works.\n ● It is\n ● gone when\n ● the turn is over.\n", "", Idle},
+	} {
+		if r := m.Classify(Input{Screen: screen(c.body, c.footer)}); r.State != c.want {
+			t.Errorf("%s: got %v (%s), want %v", c.name, r.State, r.Rule, c.want)
+		}
+	}
+}
+
+// TestCopilotEnterSelectIsBlocked: copilot 1.0.109's permission prompt, as
+// reported in herdrdev/herdr#5799.
+func TestCopilotEnterSelectIsBlocked(t *testing.T) {
+	m := For("copilot")
+	screen := " Do you want to run this command?\n ❯ 1. Yes\n   2. No (Esc)\n ↑/↓ navigate · ctrl+e explain · enter select · esc cancel\n"
+	if r := m.Classify(Input{Screen: screen}); r.State != Blocked {
+		t.Errorf("got %v (%s), want blocked", r.State, r.Rule)
+	}
+}
+
 func TestPromptMarkerRegions(t *testing.T) {
 	for _, c := range []struct{ screen, spec, want string }{
 		{"before\n› input\nafter", "after_last_prompt_marker", "after"},

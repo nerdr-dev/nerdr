@@ -12,3 +12,6 @@ question is read as asking, from all of its wording together.
 
 copilot.toml has been changed here for copilot 1.0.98: waiting for
 background agents is read whatever dot the line starts with.
+It has been changed for copilot 1.0.114 too: a footer ending in "ctrl+c
+interrupt" is read as working, and "enter select · esc cancel" at the
+bottom as asking (herdrdev/herdr#5799).
