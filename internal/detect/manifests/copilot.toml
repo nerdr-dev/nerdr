@@ -1,5 +1,5 @@
 id = "copilot"
-version = "2026.10.19.2"
+version = "2026.11.18.1"
 min_engine_version = 1
 updated_at = "2026-08-29T00:00:00Z"
 aliases = ["github-copilot", "ghcs"]
@@ -23,6 +23,20 @@ all = [
   ] },
 ]
 
+# Copilot 1.0.109 asks with "enter select · esc cancel", without the "to".
+# Read at the bottom only: on the whole screen a conversation quoting the
+# hint would be read as asking.
+[[rules]]
+id = "selection_blocker_enter_select"
+state = "blocked"
+priority = 290
+region = "bottom_non_empty_lines(4)"
+visible_blocker = true
+all = [
+  { contains = ["esc cancel"] },
+  { contains = ["enter select"] },
+]
+
 [[rules]]
 id = "background_agents_working"
 state = "working"
@@ -32,6 +46,17 @@ visible_working = true
 # Its dot changes (◎, ●); copilot 1.0.98 shows ● while the screen is
 # otherwise still, for longer than an interrupted turn.
 line_regex = ['^\s*\S\s+Waiting for background agents(?:\s|·|$)']
+
+# Copilot 1.0.107 and newer end the footer of a turn with "ctrl+c
+# interrupt", not "esc esc interrupt".
+[[rules]]
+id = "ctrl_c_interrupt_working"
+state = "working"
+priority = 105
+region = "bottom_non_empty_lines(6)"
+visible_working = true
+contains = ["ctrl+c interrupt"]
+not = [{ line_regex = ['^\s*\S\s+Waiting for background shells(?:\s|·|$)'] }]
 
 [[rules]]
 id = "working_cancel_hint"
