@@ -153,3 +153,37 @@ func TestNoClientKeepsTheMachineAwake(t *testing.T) {
 		t.Fatalf("with an agent at work and no client: %+v", k)
 	}
 }
+
+// failingKeeper fails to hold while asked to, as logind refusing does.
+type failingKeeper struct{ sleep bool }
+
+func (k *failingKeeper) Set(sleep, screen bool) { k.sleep = sleep }
+func (k *failingKeeper) Err() string {
+	if k.sleep {
+		return "keeping the machine awake: refused"
+	}
+	return ""
+}
+
+// TestKeepAwakeSaysItsErrorOnce: a hold refused is said in the bar once,
+// not each time an agent works again after the agents were done.
+func TestKeepAwakeSaysItsErrorOnce(t *testing.T) {
+	k := &failingKeeper{}
+	old := NewKeeper
+	NewKeeper = func() Keeper { return k }
+	defer func() { NewKeeper = old }()
+	cl := &eventsClient{}
+	tb := &Tab{AgentState: Agent{Light: StWorking}}
+	core := &Core{Client: cl, Tabs: []*Tab{tb}, Cfg: config.Config{KeepAwake: config.KeepBusy}}
+	now := time.Now()
+	for range 3 {
+		tb.Light = StWorking
+		core.KeepAwake(now)
+		tb.Light = StIdle
+		now = now.Add(2 * AwakeAfter)
+		core.KeepAwake(now)
+	}
+	if len(cl.told) != 1 || cl.told[0] != ToastMsg("keep_awake: keeping the machine awake: refused") {
+		t.Fatalf("told %#v", cl.told)
+	}
+}
