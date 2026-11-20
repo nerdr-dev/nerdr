@@ -44,6 +44,12 @@ func ghWithin(timeout time.Duration, dir string, args ...string) ([]byte, error)
 
 // ghEnv is ghWithin with env added to gh's environment.
 func ghEnv(timeout time.Duration, dir string, env []string, args ...string) ([]byte, error) {
+	return ghBase(timeout, dir, gitsafe.Env(dir), env, args...)
+}
+
+// ghBase is ghEnv on base, the environment for git, rather than that
+// gitsafe gives for dir.
+func ghBase(timeout time.Duration, dir string, base, env []string, args ...string) ([]byte, error) {
 	if !Available() {
 		return nil, errors.New("the gh CLI is not installed")
 	}
@@ -51,7 +57,7 @@ func ghEnv(timeout time.Duration, dir string, env []string, args ...string) ([]b
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "gh", args...)
 	cmd.Dir = dir
-	cmd.Env = append(gitsafe.Env(dir), "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
+	cmd.Env = append(base, "GH_PROMPT_DISABLED=1", "GIT_TERMINAL_PROMPT=0", "NO_COLOR=1")
 	cmd.Env = append(cmd.Env, env...)
 	proc.Detach(cmd)
 	out, err := proc.Output(cmd)
@@ -358,7 +364,8 @@ func CloneRepo(parent, repo, name string) (string, error) {
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", err
 	}
-	if _, err := ghWithin(cloneTimeout, parent, "repo", "clone", repo, name, "--", "--quiet"); err != nil {
+	// Not pinned to a repository parent is inside: see gitsafe.EnvNoRepo.
+	if _, err := ghBase(cloneTimeout, parent, gitsafe.EnvNoRepo(), nil, "repo", "clone", repo, name, "--", "--quiet"); err != nil {
 		return "", err
 	}
 	return filepath.Join(parent, name), nil
