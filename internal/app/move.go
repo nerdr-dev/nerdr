@@ -13,6 +13,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/move"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 )
 
 // A tab can be moved to another machine of the fleet's (a m): its branch
@@ -537,11 +538,10 @@ func (d *moveDialog) view(m *Model, w, h int) string {
 	return box(title, lines, w)
 }
 
-// askLines are what the user is asked before the move: what goes, what
-// does not, and what stops.
+// askLines are what the user is asked before the move, in parts with a
+// heading each: what goes, where it lands, what stays and stops here, and
+// the agent there; then the keys.
 func (r *moveRun) askLines(m *Model) []string {
-	var lines []string
-	size := move.Size(r.look.Size)
 	changed := 0
 	var newFiles, ignored []string
 	more, ignMore := 0, 0
@@ -556,49 +556,83 @@ func (r *moveRun) askLines(m *Model) []string {
 	for _, rp := range r.repos {
 		branches = append(branches, rp.Branch)
 	}
-	lines = append(lines, "Goes: branch "+strings.Join(slices.Compact(branches), ", ")+", "+
-		core.Plural(changed, "file")+" not committed, the conversation, queue and note ("+size+")")
+	to := machineLabel(r.to)
+
+	lines := []string{moveHead("What goes"),
+		moveRow("Branch", strings.Join(slices.Compact(branches), ", ")),
+		moveRow("Changes", core.Plural(changed, "file")+" not committed")}
 	if len(newFiles) > 0 {
-		lines = append(lines, "  New files: "+listSome(newFiles, more, 6))
+		lines = append(lines, moveRow("New files", listSome(newFiles, more, 6)))
 	}
+	lines = append(lines,
+		moveRow("With it", "the conversation, the queue and the note"),
+		moveRow("Size", move.Size(r.look.Size)),
+		"", moveHead("Where it lands on "+to))
 	for i, t := range r.check.Repos {
+		label := "Repository"
+		if len(r.check.Repos) > 1 {
+			label = r.repos[i].Name
+		}
 		if t.CloneInto != "" {
-			lines = append(lines, warn("  "+r.repos[i].Name+" is not on "+machineLabel(r.to)+": it clones "+r.repos[i].Origin+" into "+t.CloneInto))
+			lines = append(lines, moveRow(label, warn("not there yet: cloned from "+r.repos[i].Origin)),
+				moveRow("", warn("into "+t.CloneInto)))
 		} else {
-			lines = append(lines, dim("  Into "+t.Path+" on "+machineLabel(r.to)))
+			lines = append(lines, moveRow(label, t.Path))
 		}
 	}
-	lines = append(lines, dim("  Worktree there: "+r.check.Dir))
-	if len(ignored) > 0 {
-		lines = append(lines, "Stays: "+listSome(ignored, ignMore, 6)+dim(" (git ignores them)"))
+	lines = append(lines, moveRow("Worktree", r.check.Dir))
+
+	if len(ignored) > 0 || len(r.stops) > 0 {
+		lines = append(lines, "", moveHead("Left here"))
+		if len(ignored) > 0 {
+			lines = append(lines, moveRow("Stays", listSome(ignored, ignMore, 6)+dim("  (git ignores them)")))
+		}
+		for i, s := range r.stops {
+			label := ""
+			if i == 0 {
+				label = "Stops"
+			}
+			lines = append(lines, moveRow(label, s))
+		}
 	}
-	if len(r.stops) > 0 {
-		lines = append(lines, "Stops: "+strings.Join(r.stops, ", "))
-	}
-	lines = append(lines, "")
-	agent := "Agent there: " + string(r.kind)
+
+	lines = append(lines, "", moveHead("The agent on "+to))
+	agent := string(r.kind)
 	if len(r.kinds) > 1 {
-		agent += "  " + m.button("a", "another")
+		agent += "   " + m.button("a", "another")
 	}
-	lines = append(lines, agent)
+	lines = append(lines, moveRow("Agent", agent))
 	if r.weaker() {
-		lines = append(lines, warn("  Not in a sandbox there, but the tab's agent is in one here"))
+		lines = append(lines, moveRow("", warn("Not in a sandbox there, but the tab's agent is in one here")))
 	}
 	if r.running {
 		if r.handoff {
-			lines = append(lines, "Asks "+string(r.agent)+" for a handoff first  "+m.button("h", "don't: its conversation goes as it is"))
+			lines = append(lines, moveRow("Handoff", string(r.agent)+" writes one first   "+m.button("h", "don't: its conversation goes as it is")))
 		} else {
-			lines = append(lines, "Its conversation goes as it is, no handoff  "+m.button("h", "ask for one"))
+			lines = append(lines, moveRow("Handoff", "none, its conversation goes as it is   "+m.button("h", "ask for one")))
 		}
 	}
-	lines = append(lines, dim("Until "+machineLabel(r.to)+" has the tab, it stays here."), "")
+
+	lines = append(lines, "", dim("Until "+to+" has the tab, it stays here."), "")
 	if r.stage == moveWeaker {
-		lines = append(lines, warn(string(r.kind)+" on "+machineLabel(r.to)+" runs without a sandbox. Move anyway?"),
+		lines = append(lines, warn(string(r.kind)+" on "+to+" runs without a sandbox. Move anyway?"), "",
 			m.button("y", "yes, without a sandbox")+"   "+m.button("n", "no"))
 		return lines
 	}
 	lines = append(lines, m.button("enter", "move")+"   "+m.button("esc", "cancel"))
 	return lines
+}
+
+// moveHead heads a part of the move's question.
+func moveHead(s string) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("252")).Render(s)
+}
+
+// moveRow is a line of a part of the move's question: label, dim, in a
+// column of its own, then what it says.
+func moveRow(label, s string) string {
+	const col = 12
+	return "  " + dim(label) + strings.Repeat(" ", max(col-lipgloss.Width(label), 1)) + s
 }
 
 // listSome is up to n of names, and how many more there are.
