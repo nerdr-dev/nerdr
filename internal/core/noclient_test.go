@@ -137,6 +137,7 @@ type heldKeeper struct{ sleep, screen bool }
 
 func (k *heldKeeper) Set(sleep, screen bool) { k.sleep, k.screen = sleep, screen }
 func (k *heldKeeper) Err() string            { return "" }
+func (k *heldKeeper) Note() string           { return "" }
 
 // TestNoClientKeepsTheMachineAwake: keep_awake holds while an agent works with
 // nobody looking, and core keeps no screen on: that is a client's.
@@ -154,13 +155,21 @@ func TestNoClientKeepsTheMachineAwake(t *testing.T) {
 	}
 }
 
-// failingKeeper fails to hold while asked to, as logind refusing does.
-type failingKeeper struct{ sleep bool }
+// failingKeeper fails to hold while asked to, as logind refusing does;
+// with part, it holds but in part, as logind does for a core in no login
+// session.
+type failingKeeper struct{ sleep, part bool }
 
 func (k *failingKeeper) Set(sleep, screen bool) { k.sleep = sleep }
 func (k *failingKeeper) Err() string {
-	if k.sleep {
+	if k.sleep && !k.part {
 		return "keeping the machine awake: refused"
+	}
+	return ""
+}
+func (k *failingKeeper) Note() string {
+	if k.sleep && k.part {
+		return "idle alone"
 	}
 	return ""
 }
@@ -184,6 +193,19 @@ func TestKeepAwakeSaysItsErrorOnce(t *testing.T) {
 		core.KeepAwake(now)
 	}
 	if len(cl.told) != 1 || cl.told[0] != ToastMsg("keep_awake: keeping the machine awake: refused") {
+		t.Fatalf("told %#v", cl.told)
+	}
+
+	// Held but in part: kept in the history, once, and not in the bar.
+	k.part, cl.told = true, nil
+	for range 3 {
+		tb.Light = StWorking
+		core.KeepAwake(now)
+		tb.Light = StIdle
+		now = now.Add(2 * AwakeAfter)
+		core.KeepAwake(now)
+	}
+	if len(cl.told) != 1 || cl.told[0] != (HistoryMsg{Cat: HistoryInfo, Text: "keep_awake: idle alone"}) {
 		t.Fatalf("told %#v", cl.told)
 	}
 }

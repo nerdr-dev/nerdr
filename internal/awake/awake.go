@@ -3,7 +3,10 @@
 // locked screen stops no agent; a machine asleep stops them all.
 package awake
 
-import "sync"
+import (
+	"errors"
+	"sync"
+)
 
 // Keeper holds the machine awake, and the screen on, as Set last asked.
 // Set only records what is wanted: the holding is done by a goroutine of
@@ -12,6 +15,7 @@ type Keeper struct {
 	mu            sync.Mutex
 	sleep, screen bool // wanted
 	err           string
+	note          string
 	wake          chan struct{}
 	closed        bool
 }
@@ -42,6 +46,23 @@ func (k *Keeper) Err() string {
 	return k.err
 }
 
+// Note is what of the last hold could not be had, when the rest of it
+// was: of no harm on most machines, so not an error. "" when all was.
+func (k *Keeper) Note() string {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	return k.note
+}
+
+// errNoSession is the hold refused but in part: on Linux, logind blocks
+// idle alone for a process in no login session, as nerdr's core on a
+// server started over ssh is. That holds off logind's own suspend when
+// idle, which is all a server without a desktop has; a desktop's, after
+// it has been idle a while, is a suspend asked for, and not held off.
+var errNoSession = errors.New("logind lets only a login session block sleep, and nerdr's core is in none" +
+	" (as when started over ssh): it holds off logind's own suspend when idle, but not one asked for," +
+	" such as a desktop's after it has been idle a while; see keep_awake in the docs for a polkit rule that lets it")
+
 // Close lets go of everything held.
 func (k *Keeper) Close() {
 	k.mu.Lock()
@@ -65,8 +86,11 @@ func (k *Keeper) run() {
 		k.mu.Unlock()
 		err := h.hold(sleep, screen)
 		k.mu.Lock()
-		k.err = ""
-		if err != nil {
+		k.err, k.note = "", ""
+		switch {
+		case errors.Is(err, errNoSession):
+			k.note = errNoSession.Error()
+		case err != nil:
 			k.err = err.Error()
 		}
 		k.mu.Unlock()

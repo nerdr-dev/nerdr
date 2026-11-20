@@ -152,11 +152,12 @@ keeps it awake; `keep_screen_on` keeps the screen on where you run
 nerdr.
 
 logind lets only a login session block sleep. nerdr on a server, started
-over ssh by the nerdr in front of you, is in none, so logind refuses, and
-nerdr says so once in the bar. It then blocks idle alone, which holds off
-logind's own suspend when idle (`IdleAction`), but not a suspend asked
-for, such as the desktop's after it has been idle a while. To let nerdr
-block sleep there too, add a polkit rule on the server, with your user
+over ssh by the nerdr in front of you, is in none, so it blocks idle
+alone, and notes so in the [history (F6)](../../panel/history/), not in
+the bar. That holds off logind's own suspend when idle (`IdleAction`),
+which is all a server without a desktop has, but not a suspend asked
+for, such as a desktop's after it has been idle a while. For a server
+with a desktop that suspends, add a polkit rule on it, with your user
 name for `you`, in `/etc/polkit-1/rules.d/50-nerdr-keep-awake.rules`:
 
 ```js
