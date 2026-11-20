@@ -101,6 +101,8 @@ type Core struct {
 	Awake     Keeper `json:"-"`
 	KeptAwake bool
 	AwakeErr  string
+	// awakeTold is the last AwakeErr said in the bar: it is said once.
+	awakeTold string
 	// Core's alone, and not sent: it changes at every look at the agents
 	// while one works.
 	LastBusy time.Time `json:"-"`

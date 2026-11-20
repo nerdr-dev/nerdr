@@ -1,6 +1,7 @@
 package awake
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -51,21 +52,44 @@ func (h *holder) hold(sleep, screen bool) error {
 
 // inhibitSleep asks logind to block sleep, and the suspend it does when
 // the machine has been idle, until the file it gives is closed.
+//
+// polkit lets a process block sleep only from a login session: not one
+// started by ssh with a command and no terminal, as nerdr's core on a
+// server is. Refused, it blocks idle alone, which polkit lets anyone, so
+// logind's own suspend when idle (IdleAction) is still held off; and says
+// that sleep is not, with the file.
 func inhibitSleep() (*os.File, error) {
 	bus, err := dbus.ConnectSystemBus()
 	if err != nil {
 		return nil, err
 	}
 	defer bus.Close()
-	var fd dbus.UnixFD
-	err = bus.Object("org.freedesktop.login1", "/org/freedesktop/login1").
-		Call("org.freedesktop.login1.Manager.Inhibit", 0, "sleep:idle", "nerdr", "an agent is working", "block").
-		Store(&fd)
-	if err != nil {
+	inhibit := func(what string) (*os.File, error) {
+		var fd dbus.UnixFD
+		err := bus.Object("org.freedesktop.login1", "/org/freedesktop/login1").
+			Call("org.freedesktop.login1.Manager.Inhibit", 0, what, "nerdr", "an agent is working", "block").
+			Store(&fd)
+		if err != nil {
+			return nil, err
+		}
+		return os.NewFile(uintptr(fd), "logind-inhibit"), nil
+	}
+	f, err := inhibit("sleep:idle")
+	if err == nil {
+		return f, nil
+	}
+	var denied dbus.Error
+	if !errors.As(err, &denied) || denied.Name != "org.freedesktop.DBus.Error.AccessDenied" {
 		return nil, err
 	}
-	return os.NewFile(uintptr(fd), "logind-inhibit"), nil
+	f, _ = inhibit("idle")
+	return f, errNoSession
 }
+
+// errNoSession is why logind would not block sleep: see inhibitSleep.
+var errNoSession = errors.New("logind lets only a login session block sleep, and nerdr's core is in none" +
+	" (as when started over ssh): a suspend asked for, or the desktop's when idle, is not held off;" +
+	" see keep_awake in the docs for a polkit rule that lets it")
 
 // inhibitScreen asks the desktop not to blank or lock the screen for being
 // idle, for as long as the connection it is asked on is open.

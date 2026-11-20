@@ -63,7 +63,11 @@ func (m *Core) KeepAwake(now time.Time) {
 	m.Awake.Set(want, false)
 	if err := m.Awake.Err(); err != m.AwakeErr {
 		m.AwakeErr = err
-		if err != "" {
+		// Said once while core runs: the hold is let go of when the agents
+		// are done and asked for again when one works, and would fail the
+		// same way each time.
+		if err != "" && err != m.awakeTold {
+			m.awakeTold = err
 			m.Toast("keep_awake: " + err)
 		}
 	}
