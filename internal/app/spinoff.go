@@ -332,14 +332,17 @@ func (m *Model) spinoffFailed(t *core.Tab, branch, err string) {
 // spinoffSkip leaves the part asked about without a tab, or with all set,
 // every part left.
 func (m *Model) spinoffSkip(t *core.Tab, all bool) tea.Cmd {
-	var cmd tea.Cmd
+	var cmds []tea.Cmd
 	for t.Spinoff != nil && len(t.Spinoff.Next) > 0 {
-		cmd = m.spinoffNext(t, spinoff.Outcome{Part: t.Spinoff.Next[0], Skipped: true})
-		if !all {
+		left := len(t.Spinoff.Next)
+		cmds = append(cmds, m.spinoffNext(t, spinoff.Outcome{Part: t.Spinoff.Next[0], Skipped: true}))
+		// A core that could not be reached left the part where it was:
+		// asking again would never end.
+		if !all || t.Spinoff == nil || len(t.Spinoff.Next) >= left {
 			break
 		}
 	}
-	return cmd
+	return tea.Batch(cmds...)
 }
 
 // spinoffNext has core record what became of t's first part, and move on.

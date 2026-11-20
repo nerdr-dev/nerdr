@@ -44,6 +44,32 @@ func TestSpinoffEscSkipsTheRest(t *testing.T) {
 	}
 }
 
+// Esc with no core to reach does not loop for ever on the part it cannot
+// skip.
+func TestSpinoffEscWithCoreGone(t *testing.T) {
+	m := testModel(t)
+	tb := m.Cur()
+	tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{
+		{Branch: "fix-a", Summary: "A.", Prompt: "Do A."},
+		{Branch: "fix-b", Summary: "B.", Prompt: "Do B."},
+	}}
+	m.openSpinoff(tb)
+	m.home().Core.Copy = true // a server not connected to: nothing does it
+	done := make(chan struct{})
+	go func() {
+		m.spinoffSkip(tb, true)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("esc hangs when the core cannot be reached")
+	}
+	if tb.Spinoff == nil || len(tb.Spinoff.Next) != 2 {
+		t.Fatal("the parts wait still, as nothing skipped them")
+	}
+}
+
 // The agent that split its work is told what became of it only once the
 // agents of the tabs made have taken their prompts up, or have been waited
 // for long enough: told sooner, one that looked for itself took a tab
