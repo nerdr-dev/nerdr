@@ -24,9 +24,13 @@ import (
 // worktree), name the branch, pick the agent.
 type wizard struct {
 	// mc is the machine the tab is made on: the active tab's, or one
-	// chosen with ctrl+o (see dialogOn).
+	// chosen in the list of machines or with ctrl+o (see dialogOn).
 	mc   *fleet.Machine
 	step int
+	// onMachines is set when the keyboard is in the list of machines
+	// above the repositories, shown when there are several: moving in it
+	// moves the dialog to the machine under the cursor.
+	onMachines bool
 
 	repos    []workspace.Repo
 	picked   map[int]bool
@@ -274,6 +278,90 @@ func (m *Model) openWizardOn(repo, branch string) tea.Cmd {
 	return cmd
 }
 
+// machines is the machines to choose among in the first step: the
+// fleet's, when there are several, else none.
+func (w *wizard) machines(m *Model) []*fleet.Machine {
+	if ms := m.fleet.Machines(); len(ms) > 1 {
+		return ms
+	}
+	return nil
+}
+
+// toMachine moves the dialog to machine mc, its repositories read from
+// there, the keyboard in the list of machines when inList.
+func (w *wizard) toMachine(m *Model, mc *fleet.Machine, inList bool) tea.Cmd {
+	if mc == w.mc || grey(mc) {
+		w.onMachines = inList
+		return nil
+	}
+	cmd := m.moveDialogTo(w, mc)
+	if nw, ok := m.dialog.(*wizard); ok {
+		nw.onMachines = inList
+	}
+	return cmd
+}
+
+// stepMachine moves the dialog to the next machine in the list by, -1
+// or 1, that is connected: false when there is none that way.
+func (w *wizard) stepMachine(m *Model, by int) (tea.Cmd, bool) {
+	ms := w.machines(m)
+	i := slices.Index(ms, w.mc)
+	for j := i + by; j >= 0 && j < len(ms); j += by {
+		if !grey(ms[j]) {
+			return w.toMachine(m, ms[j], true), true
+		}
+	}
+	return nil, false
+}
+
+// machineKey handles key k while the keyboard is in the list of
+// machines: false for what the step does as in the repositories.
+func (w *wizard) machineKey(m *Model, k string) (tea.Cmd, bool) {
+	switch k {
+	case "up", "k":
+		cmd, _ := w.stepMachine(m, -1)
+		return cmd, true
+	case "down", "j":
+		if cmd, ok := w.stepMachine(m, 1); ok {
+			return cmd, true
+		}
+		w.onMachines, w.cursor = false, 0
+		return nil, true
+	case "tab", "shift+tab", "enter":
+		w.onMachines = false
+		return nil, true
+	case " ", "x", "a":
+		return nil, true
+	}
+	return nil, false
+}
+
+// machineLines is the list of machines above the repositories, when
+// there are several.
+func (w *wizard) machineLines(m *Model, sel lipgloss.Style) []string {
+	ms := w.machines(m)
+	if len(ms) == 0 {
+		return nil
+	}
+	lines := []string{"Machine:"}
+	for _, mc := range ms {
+		line := "○ " + machineLabel(mc)
+		switch {
+		case grey(mc):
+			line = dim("✕ " + machineLabel(mc) + "  not connected")
+		case mc == w.mc:
+			line = "● " + machineLabel(mc)
+		}
+		if mc.Name != "" && mc.Host != "" && mc.Host != mc.Name {
+			line += "  " + dim(mc.Host)
+		}
+		lines = append(lines, m.onClick(cursorLine(w.onMachines && mc == w.mc, line, sel), func(m *Model) tea.Cmd {
+			return w.toMachine(m, mc, false)
+		}))
+	}
+	return append(lines, "")
+}
+
 // rows is how many entries the first step lists: repositories, then
 // existing worktrees.
 func (w *wizard) rows() int { return len(w.repos) + len(w.existing) }
@@ -303,8 +391,18 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	}
 	switch w.step {
 	case stepRepos:
+		if w.onMachines {
+			if cmd, done := w.machineKey(m, k); done {
+				return cmd
+			}
+		}
 		switch k {
+		case "tab", "shift+tab":
+			w.onMachines = len(w.machines(m)) > 0
 		case "up", "k":
+			if w.cursor == 0 && len(w.machines(m)) > 0 {
+				w.onMachines = true
+			}
 			w.cursor = max(w.cursor-1, 0)
 		case "down", "j":
 			w.cursor = min(w.cursor+1, max(w.rows()-1, 0))
@@ -834,6 +932,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 			lines = append(lines, noAgentHint(m)...)
 			lines = append(lines, "")
 		}
+		lines = append(lines, w.machineLines(m, sel)...)
 		lines = append(lines, "Repositories in "+dim(strings.Join(append([]string{m.dialogOn().Core.Root}, m.dialogOn().Core.Cfg.RepoDirs...), ", "))+":", "")
 		if len(w.repos) == 0 {
 			lines = append(lines, warn("  None found, so there is nothing to pick."), "")
@@ -855,8 +954,8 @@ func (w *wizard) view(m *Model, width, height int) string {
 				box = "[✓]"
 			}
 			line := fmt.Sprintf("%s %s", box, r.Name)
-			lines = append(lines, m.onClick(cursorLine(i == w.cursor, line, sel), func(m *Model) tea.Cmd {
-				w.cursor = i
+			lines = append(lines, m.onClick(cursorLine(!w.onMachines && i == w.cursor, line, sel), func(m *Model) tea.Cmd {
+				w.onMachines, w.cursor = false, i
 				return w.key(m, keyMsg(" "))
 			}))
 		}
@@ -875,14 +974,19 @@ func (w *wizard) view(m *Model, width, height int) string {
 				}
 				line := padTo(ansi.Truncate(g.Name, nameW, "…"), nameW+2) + dim(strings.Join(repos, ", "))
 				row := len(w.repos) + j
-				lines = append(lines, m.onClick(cursorLine(row == w.cursor, line, sel), func(m *Model) tea.Cmd {
-					w.cursor = row
+				lines = append(lines, m.onClick(cursorLine(!w.onMachines && row == w.cursor, line, sel), func(m *Model) tea.Cmd {
+					w.onMachines, w.cursor = false, row
 					return w.key(m, keyMsg("enter"))
 				}))
 			}
 		}
 		lists = append(lists, repoList)
 		keys := []string{"", "↑↓ move", " ", "pick", "a", "all", "enter", "continue"}
+		if w.onMachines {
+			keys = []string{"", "↑↓ machine", "enter", "to its repositories"}
+		} else if len(w.machines(m)) > 0 {
+			keys = append(keys, "tab", "machine")
+		}
 		if w.repoDir != "" {
 			keys = append(keys, "n", "new repository", "c", "clone")
 		}

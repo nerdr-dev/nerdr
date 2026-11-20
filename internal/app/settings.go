@@ -948,7 +948,7 @@ func (d *settings) footer(m *Model, w int) []string {
 		pairs = append(pairs, "← →", "change")
 	}
 	pairs = append(pairs, "?", "about", "d", "default", "esc", "close")
-	return append(out, m.keys(pairs...))
+	return append(out, m.withMachineKey(m.keys(pairs...)))
 }
 
 // SetVersion says which version of nerdr this client is, for the

@@ -459,6 +459,70 @@ func TestFleetNewTabOnChosenMachine(t *testing.T) {
 	})
 }
 
+// TestFleetNewTabMachineList: with several machines, the new-tab dialog
+// lists them above the repositories; ↑ from the first repository goes
+// into the list, ↓ there moves the dialog to the next machine, and ↓ past
+// the last goes back to its repositories. tab goes between the lists.
+func TestFleetNewTabMachineList(t *testing.T) {
+	m, here, box, _, told := twoMachines(t)
+	here.Mu.Lock()
+	hereRoot := here.Root
+	here.Mu.Unlock()
+	box.Mu.Lock()
+	boxRoot := box.Root
+	box.Mu.Unlock()
+	gitRepo(t, hereRoot)
+	gitRepo(t, boxRoot)
+
+	goTo(m, 0)
+	var cmd tea.Cmd
+	locked(m, func() { cmd = m.openWizard() })
+	if cmd != nil {
+		m.Update(cmd())
+	}
+	pump(t, m, told, "the list of machines", func(v string) bool {
+		on, repos := wizardRepos(m)
+		return on == "" && slices.Contains(repos, hereRoot) &&
+			strings.Contains(v, "Machine:") && strings.Contains(v, "● this machine") && strings.Contains(v, "○ box")
+	})
+	inList := func() (in bool) {
+		locked(m, func() { in = m.dialog.(*wizard).onMachines })
+		return in
+	}
+	key := func(k tea.KeyType) {
+		_, cmd := m.Update(tea.KeyMsg{Type: k})
+		if cmd != nil {
+			m.Update(cmd())
+		}
+	}
+
+	key(tea.KeyUp)
+	if !inList() {
+		t.Fatal("↑ from the first repository: not in the list of machines")
+	}
+	key(tea.KeyDown)
+	pump(t, m, told, "box's repositories", func(v string) bool {
+		on, repos := wizardRepos(m)
+		return on == "box" && slices.Contains(repos, boxRoot) && !slices.Contains(repos, hereRoot) &&
+			strings.Contains(v, "● box") && strings.Contains(v, "New tab · on box")
+	})
+	if !inList() {
+		t.Fatal("moved to box: the keyboard left the list of machines")
+	}
+	key(tea.KeyDown)
+	if inList() {
+		t.Fatal("↓ past the last machine: still in the list")
+	}
+	key(tea.KeyTab)
+	if !inList() {
+		t.Fatal("tab: not in the list of machines")
+	}
+	key(tea.KeyTab)
+	if inList() {
+		t.Fatal("tab again: still in the list of machines")
+	}
+}
+
 // TestFleetDialogFollowsTheActiveTab: with box's tab in front, a dialog
 // of no tab is box's, and what it asks naming no tab goes to box's core.
 func TestFleetDialogFollowsTheActiveTab(t *testing.T) {

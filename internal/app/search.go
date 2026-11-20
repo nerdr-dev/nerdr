@@ -233,6 +233,6 @@ func (d *searchDialog) view(m *Model, w, h int) string {
 	if d.reading && n > 0 {
 		lines = append(lines, "", dim("  reading the conversations changed since…"))
 	}
-	lines = append(lines, "", m.keys("", "type to find", "", "↑↓ move", "enter", "go to it / carry it on", "esc", "close"))
+	lines = append(lines, "", m.withMachineKey(m.keys("", "type to find", "", "↑↓ move", "enter", "go to it / carry it on", "esc", "close")))
 	return box(m.onTitle("Search conversations"), lines, w)
 }

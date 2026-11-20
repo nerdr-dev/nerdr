@@ -174,7 +174,7 @@ func (d *usageDialog) view(m *Model, w, h int) string {
 	for _, r := range rows {
 		lines = append(lines, "  "+r)
 	}
-	lines = append(lines, "", m.keys("r", "read codex's logs again", "esc", "close"))
+	lines = append(lines, "", m.withMachineKey(m.keys("r", "read codex's logs again", "esc", "close")))
 	return box(m.onTitle("Usage and rate limits"), lines, w)
 }
 
