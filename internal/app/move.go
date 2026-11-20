@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -79,7 +80,7 @@ func (m *Model) openMove() tea.Cmd {
 		return nil
 	}
 	if m.moving != nil {
-		m.dialog = &moveDialog{}
+		m.dialog = &moveDialog{shown: true}
 		return nil
 	}
 	from := m.machineOf(t)
@@ -129,9 +130,20 @@ func (m *Model) startMove(t *core.Tab, to *fleet.Machine) tea.Cmd {
 	}
 	r.stops = m.moveStops(t)
 	m.moving = r
-	m.dialog = &moveDialog{}
-	return m.doOn(to, core.MoveCheck{Job: r.job, Repos: r.repos})
+	d := &moveDialog{}
+	m.dialog = d
+	return tea.Batch(m.doOn(to, core.MoveCheck{Job: r.job, Repos: r.repos}),
+		tea.Tick(moveWait, func(time.Time) tea.Msg { return moveShowMsg{d} }))
 }
+
+// moveWait is how long the move dialog waits, after a machine is picked,
+// before it says it is asking the target and looking at what would go:
+// both are mostly done well within it, and a box for each, gone at once,
+// only flickers before the question.
+const moveWait = 500 * time.Millisecond
+
+// moveShowMsg comes moveWait after the move dialog d opened.
+type moveShowMsg struct{ d *moveDialog }
 
 // moveStops is what stops when t moves: what runs in it but its agent,
 // and what waits on it.
@@ -399,7 +411,16 @@ func (m *Model) moveFinish(remove, branch, keep bool) tea.Cmd {
 }
 
 // moveDialog shows the move going on, and asks what is to be asked.
-type moveDialog struct{}
+type moveDialog struct {
+	// shown is set once moveWait has passed: until then, and while the
+	// target is asked and the source looked at, nothing is drawn.
+	shown bool
+}
+
+func (d *moveDialog) hidden(m *Model) bool {
+	r := m.moving
+	return !d.shown && r != nil && (r.stage == moveChecking || r.stage == moveLooking)
+}
 
 func (d *moveDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	r := m.moving

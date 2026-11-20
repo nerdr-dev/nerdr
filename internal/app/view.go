@@ -211,6 +211,8 @@ func (m *Model) draw() string {
 	}
 	if c, ok := m.dialog.(*closeTab); ok && c.hidden() {
 		// Not drawn until it knows what it is asking; see closeWait.
+	} else if d, ok := m.dialog.(*moveDialog); ok && d.hidden(m) {
+		// Nor until the move has something to ask; see moveWait.
 	} else if m.dialog != nil {
 		m.dialogZones = len(m.zoneFns)
 		// The whole box is a zone of its own, so a click on it that
