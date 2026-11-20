@@ -57,7 +57,7 @@ func (h *holder) hold(sleep, screen bool) error {
 // started by ssh with a command and no terminal, as nerdr's core on a
 // server is. Refused, it blocks idle alone, which polkit lets anyone, so
 // logind's own suspend when idle (IdleAction) is still held off; and says
-// that sleep is not, with the file.
+// that sleep is not (errNoSession), with the file.
 func inhibitSleep() (*os.File, error) {
 	bus, err := dbus.ConnectSystemBus()
 	if err != nil {
@@ -82,14 +82,11 @@ func inhibitSleep() (*os.File, error) {
 	if !errors.As(err, &denied) || denied.Name != "org.freedesktop.DBus.Error.AccessDenied" {
 		return nil, err
 	}
-	f, _ = inhibit("idle")
-	return f, errNoSession
+	if f, idleErr := inhibit("idle"); idleErr == nil {
+		return f, errNoSession
+	}
+	return nil, err
 }
-
-// errNoSession is why logind would not block sleep: see inhibitSleep.
-var errNoSession = errors.New("logind lets only a login session block sleep, and nerdr's core is in none" +
-	" (as when started over ssh): a suspend asked for, or the desktop's when idle, is not held off;" +
-	" see keep_awake in the docs for a polkit rule that lets it")
 
 // inhibitScreen asks the desktop not to blank or lock the screen for being
 // idle, for as long as the connection it is asked on is open.

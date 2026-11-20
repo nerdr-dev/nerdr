@@ -11,6 +11,7 @@ import (
 type Keeper interface {
 	Set(sleep, screen bool)
 	Err() string
+	Note() string
 }
 
 var NewKeeper = func() Keeper { return awake.New() }
@@ -70,5 +71,11 @@ func (m *Core) KeepAwake(now time.Time) {
 			m.awakeTold = err
 			m.Toast("keep_awake: " + err)
 		}
+	}
+	// Held but in part, as on a server without a desktop, where that is
+	// all that is needed: for the history alone, once.
+	if note := m.Awake.Note(); note != "" && note != m.awakeNoted {
+		m.awakeNoted = note
+		m.Tell(HistoryMsg{Cat: HistoryInfo, Text: "keep_awake: " + note})
 	}
 }

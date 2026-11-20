@@ -12,6 +12,7 @@ type fakeKeeper struct{ sleep, screen bool }
 
 func (k *fakeKeeper) Set(sleep, screen bool) { k.sleep, k.screen = sleep, screen }
 func (k *fakeKeeper) Err() string            { return "" }
+func (k *fakeKeeper) Note() string           { return "" }
 
 // TestKeepAwake covers keep_awake: busy holds the machine awake while an
 // agent works and a minute after, always all the time, off never; and
