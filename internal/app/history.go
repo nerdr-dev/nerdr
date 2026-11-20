@@ -15,7 +15,7 @@ import (
 // The review panel's F6 screen: everything nerdr has said in its bar
 // since this nerdr started, the latest first, one row each with when, of
 // what kind and how it starts, and below the rows the whole of the one
-// picked. The bar shows only what fits; a message cut there ends with a
+// picked, its text to be selected with the mouse, or copied whole with c. The bar shows only what fits; a message cut there ends with a
 // link here.
 
 // The kinds of what the bar says, by where it comes from.
@@ -48,6 +48,9 @@ type historyView struct {
 	seq     int
 	picked  int
 	scroll  int
+	// sel is the text of the one picked, as drawn: it can be selected
+	// with the mouse, and is copied when the button is let go.
+	sel textSel
 }
 
 // say shows s in the bar for d, and keeps it in the history as of kind
@@ -55,7 +58,19 @@ type historyView struct {
 func (m *Model) say(cat, s string, d time.Duration) {
 	m.toastText = s
 	m.toastUntil = time.Now().Add(d)
-	m.toastSeq = m.history.add(cat, s, time.Now())
+	m.toastSeq = m.addHistory(cat, s)
+}
+
+// addHistory keeps s in the history as of kind cat, and is its entry's
+// seq. While the history is shown, the message read there stays picked:
+// a new one, such as the bar saying what was just copied from it, does
+// not take its place.
+func (m *Model) addHistory(cat, s string) int {
+	h := &m.history
+	if m.panelHistory() && len(h.entries) > 0 {
+		h.picked = h.entries[h.index()].seq
+	}
+	return h.add(cat, s, time.Now())
 }
 
 // add keeps s, and is its entry's seq: the same message again, of the
@@ -139,6 +154,10 @@ func (m *Model) historyKey(msg tea.KeyMsg) tea.Cmd {
 		h.scroll += 10
 	case "pgup", "b", "ctrl+u":
 		h.scroll = max(h.scroll-10, 0)
+	case "c":
+		if len(h.entries) > 0 {
+			m.copyText(h.entries[i].text)
+		}
 	}
 	return nil
 }
@@ -156,7 +175,7 @@ func catStyle(cat string) lipgloss.Style {
 // of it, then the whole of the message picked, wrapped.
 func (m *Model) historyBody(w, h int) []string {
 	hv := &m.history
-	keys := m.historyKeys("↑↓", "pick", "pgdown", "scroll", "b", "back", "esc", "agent")
+	keys := m.historyKeys("↑↓", "pick", "pgdown", "scroll", "c", "copy", "b", "back", "esc", "agent")
 	if len(hv.entries) == 0 {
 		return fitLines([]string{"", "  Nothing said in the bar yet: what nerdr says there", "  is kept here, the latest first.", "", keys}, w, h)
 	}
@@ -184,18 +203,17 @@ func (m *Model) historyBody(w, h int) []string {
 	}
 	head := append([]string{""}, windowRows(rows, picked, max(h/2-1, 3))...)
 	e := hv.entries[picked]
-	text := []string{"", " " + catStyle(e.cat).Bold(true).Render(e.cat) + dim(" · "+e.at.Format("15:04:05 Jan 2"))}
-	for _, l := range wrapText(e.text, max(w-2, 10)) {
-		text = append(text, " "+l)
-	}
+	head = append(head, "", " "+catStyle(e.cat).Bold(true).Render(e.cat)+dim(" · "+e.at.Format("15:04:05 Jan 2")))
 	foot := []string{"", ansi.Truncate(keys, w, "…")}
 	room := max(h-len(head)-len(foot), 1)
-	hv.scroll = min(hv.scroll, max(len(text)-room, 0))
-	shown := text[hv.scroll:]
-	if len(shown) > room {
-		shown = shown[:room]
+	hv.sel.setText(e.text, max(w-2, 10))
+	n := len(hv.sel.rows)
+	hv.scroll = min(hv.scroll, max(n-room, 0))
+	hv.sel.scroll = func(by int) { hv.scroll = min(max(hv.scroll+by, 0), max(n-room, 0)) }
+	for _, l := range m.selRows(&hv.sel, hv.scroll, hv.scroll+room) {
+		head = append(head, " "+l)
 	}
-	return append(fitLines(append(head, shown...), w, h-len(foot)), foot...)
+	return append(fitLines(head, w, h-len(foot)), foot...)
 }
 
 // historyKeys is the history's key hints, each a button for its key.

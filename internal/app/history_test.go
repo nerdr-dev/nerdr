@@ -84,3 +84,43 @@ func TestF6OpensTheHistory(t *testing.T) {
 		t.Fatalf("\n%s", screen)
 	}
 }
+
+// The text of the message picked can be selected with the mouse, and is
+// copied when the button is let go; c copies the whole of it.
+func TestSelectTextInTheHistory(t *testing.T) {
+	m := testModel(t)
+	var copied string
+	was := toClipboard
+	toClipboard = func(s string) bool { copied = s; return true }
+	defer func() { toClipboard = was }()
+	msg := "push failed:\nremote: Permission to nerdr-dev/nerdr.git denied"
+	m.Notice(msg)
+	m.Update(tea.KeyMsg{Type: tea.KeyF6})
+
+	x, y := screenAt(t, m, "remote: Permission")
+	m.Update(tea.MouseMsg{X: x + 8, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.Update(tea.MouseMsg{X: x + 17, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	m.View()
+	m.Update(tea.MouseMsg{X: x + 17, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if copied != "Permission" {
+		t.Fatalf("copied %q", copied)
+	}
+	if !m.panelHistory() || m.drag != dragNone {
+		t.Fatal("the history should stay, and the drag end")
+	}
+
+	// From the row above: the rows between, and the newline. (The copy
+	// said so in the bar, kept as a row above: the text moved down.)
+	x, y = screenAt(t, m, "remote: Permission")
+	fx, fy := screenAt(t, m, "failed:")
+	m.Update(tea.MouseMsg{X: fx, Y: fy, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	m.Update(tea.MouseMsg{X: x + 5, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	if copied != "failed:\nremote" {
+		t.Fatalf("copied %q", copied)
+	}
+
+	m.Update(keyMsg("c"))
+	if copied != msg {
+		t.Fatalf("c copies the message picked, not %q", copied)
+	}
+}
