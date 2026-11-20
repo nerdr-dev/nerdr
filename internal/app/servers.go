@@ -149,6 +149,9 @@ func (m *Model) login(s config.Server) tea.Cmd {
 	if old := m.loggingIn; old != nil {
 		old.close()
 	}
+	if tell := m.tellFn; tell != nil {
+		d.typed = func() { tell(loginOutputMsg{d: d, typed: true}) }
+	}
 	m.loggingIn = d
 	m.dialog = d
 	m.syncInput()
@@ -172,8 +175,14 @@ type loginDialog struct {
 	ptmx *os.File
 	tty  *os.File
 
-	mu     sync.Mutex
-	out    []byte
+	// typed, when set, has the TUI draw again: what is typed shows.
+	typed func()
+
+	mu  sync.Mutex
+	out []byte
+	// stars is how many characters were typed of what ssh does not show
+	// as it reads it, a password: shown as that many stars.
+	stars  int
 	closed bool
 }
 
@@ -197,10 +206,11 @@ func (d *loginDialog) dialCmd() tea.Cmd {
 }
 
 // loginOutputMsg is that ssh wrote on the dialog's terminal; done once it
-// is closed.
+// is closed. Or, typed, that something was typed there, to draw only.
 type loginOutputMsg struct {
-	d    *loginDialog
-	done bool
+	d     *loginDialog
+	done  bool
+	typed bool
 }
 
 // readCmd reads what ssh writes next on its terminal.
@@ -210,6 +220,9 @@ func (d *loginDialog) readCmd() tea.Cmd {
 		n, err := d.ptmx.Read(buf)
 		d.mu.Lock()
 		d.out = append(d.out, buf[:n]...)
+		if n > 0 {
+			d.stars = 0 // ssh has taken what was typed, or asks anew
+		}
 		if len(d.out) > 16<<10 {
 			d.out = d.out[len(d.out)-16<<10:]
 		}
@@ -218,8 +231,42 @@ func (d *loginDialog) readCmd() tea.Cmd {
 	}
 }
 
-// write sends what is typed to ssh's terminal.
-func (d *loginDialog) write(b []byte) { _, _ = d.ptmx.Write(b) }
+// write sends what is typed to ssh's terminal. A password, which ssh
+// reads with the terminal's echo off, is counted for the stars shown in
+// its place.
+func (d *loginDialog) write(b []byte) {
+	hidden := !ptyEchoes(d.ptmx)
+	d.mu.Lock()
+	if hidden {
+		d.stars = starsAfter(d.stars, b)
+	} else {
+		d.stars = 0
+	}
+	d.mu.Unlock()
+	_, _ = d.ptmx.Write(b)
+	if d.typed != nil {
+		d.typed()
+	}
+}
+
+// starsAfter is how many characters of a line typed unseen are left,
+// stars of them having been typed, once b is typed too: as the terminal
+// edits the line ssh reads.
+func starsAfter(stars int, b []byte) int {
+	for _, c := range b {
+		switch {
+		case c == '\r' || c == '\n' || c == 0x15 || c == 0x03 || c == 0x04:
+			stars = 0 // entered, the line erased (ctrl+u), or given up
+		case c == 0x7f || c == 0x08:
+			stars = max(stars-1, 0)
+		case c&0xc0 == 0x80:
+			// More of a character of several bytes.
+		default:
+			stars++
+		}
+	}
+	return stars
+}
 
 // close ends the dialog's terminal: ssh, still asking, ends with it.
 func (d *loginDialog) close() {
@@ -231,10 +278,25 @@ func (d *loginDialog) close() {
 	}
 }
 
+// closeAfter ends the dialog's terminal once conn, the connection ssh
+// made, has closed; at once when it made none. The terminal is ssh's
+// controlling one: ended while ssh runs, it hangs ssh up, and the
+// connection ends with it, to be made again only without a password.
+func (d *loginDialog) closeAfter(conn *attach.Conn) {
+	if conn == nil {
+		d.close()
+		return
+	}
+	go func() {
+		<-conn.Done()
+		d.close()
+	}()
+}
+
 // text is the last n lines ssh wrote, as a terminal would show them.
 func (d *loginDialog) text(n int) []string {
 	d.mu.Lock()
-	out := ansi.Strip(string(d.out))
+	out := ansi.Strip(string(d.out)) + strings.Repeat("*", d.stars)
 	d.mu.Unlock()
 	var lines []string
 	for _, l := range strings.Split(strings.ReplaceAll(out, "\r\n", "\n"), "\n") {
@@ -279,7 +341,7 @@ func (m *Model) onServerDialed(msg serverDialedMsg) tea.Cmd {
 		return nil
 	}
 	if d := msg.login; d != nil {
-		d.close()
+		d.closeAfter(msg.conn)
 		if m.dialog == d {
 			m.dialog = nil
 		}
