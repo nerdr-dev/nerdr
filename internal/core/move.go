@@ -564,6 +564,19 @@ func (m *Core) moveAbort(job, why string) Cmd {
 	if t.Moving == nil || t.Moving.Job != job {
 		return nil
 	}
+	msg := m.AgentName(t) + ": not moved"
+	if why != "" {
+		msg += " (" + why + ")"
+	}
+	return m.moveCarryOn(o, msg+"; it carries on here")
+}
+
+// moveCarryOn has the tab of move o carry on here, no longer being moved:
+// its agents, which the move stopped, are started again with their
+// conversations. What else it stopped, a terminal or a review, is not.
+// said is told.
+func (m *Core) moveCarryOn(o *moveOut, said string) Cmd {
+	t := o.t
 	t.Moving = nil
 	if w := t.Handoff; w != nil && w.Move {
 		m.CancelHandoff(t)
@@ -580,22 +593,21 @@ func (m *Core) moveAbort(job, why string) Cmd {
 	cmd := Batch(cmds...)
 	m.SaveSession()
 	m.Tell(PanesMsg{})
-	msg := m.AgentName(t) + ": not moved"
-	if why != "" {
-		msg += " (" + why + ")"
-	}
-	m.Toast(msg + "; it carries on here")
+	m.Toast(said)
 	return cmd
 }
 
 // MoveDone ends move Job of tab T on the source, once the target has the
 // tab: the tab is closed, and with Remove its worktrees deleted, and with
-// BranchHeads their branches as well (see CloseTab).
+// BranchHeads their branches as well (see CloseTab). With Keep the tab is
+// not closed: it carries on here too, as after a move given up, the two
+// on the same branch from then on with nothing between them.
 type MoveDone struct {
 	Job         string
 	T           TabRef
 	Remove      bool
 	BranchHeads map[string]string
+	Keep        bool
 }
 
 func (q MoveDone) Do(m *Core) Cmd {
@@ -606,6 +618,12 @@ func (q MoveDone) Do(m *Core) Cmd {
 	delete(m.movesOut, q.Job)
 	go os.RemoveAll(o.dir)
 	t := o.t
+	if q.Keep {
+		if !m.Live(t) || t.Moving == nil || t.Moving.Job != q.Job {
+			return nil
+		}
+		return m.moveCarryOn(o, m.AgentName(t)+": moved, and kept here too; it carries on here")
+	}
 	t.Moving = nil
 	return m.CloseTab(t, q.Remove, true, q.BranchHeads)
 }

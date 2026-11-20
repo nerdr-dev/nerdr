@@ -209,6 +209,57 @@ func TestFleetMoveTab(t *testing.T) {
 	}
 }
 
+// TestFleetMoveKeepsTheTab: once box has the tab, this machine's can be
+// kept too: its agent is started again, and the two are tabs of the one
+// repository, which is this machine's as well, box's tab under box's name.
+func TestFleetMoveKeepsTheTab(t *testing.T) {
+	m, here, box, _, told := twoMachines(t)
+	moveSetup(t, m, told, here, box, false)
+	goTo(m, 0)
+	locked(m, func() { m.openMove() })
+	pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "Goes: branch feat") })
+	pressKey(m, "h")
+	pressKey(m, "enter")
+	pump(t, m, told, "the tab on box", func(v string) bool {
+		return strings.Contains(v, "login is on box") && strings.Contains(v, "keep the tab there too")
+	})
+	pressKey(m, "4")
+	pumpUntil(t, m, told, "carrying on here", func() bool {
+		here.Mu.Lock()
+		defer here.Mu.Unlock()
+		return len(here.Tabs) == 1 && here.Tabs[0].Moving == nil && here.Tabs[0].Light != core.StExited
+	})
+	box.Mu.Lock()
+	onBox := 0
+	for _, tb := range box.Tabs {
+		if tb.Name == "login" {
+			onBox++
+		}
+	}
+	box.Mu.Unlock()
+	if onBox != 1 {
+		t.Fatalf("%d tabs login on box", onBox)
+	}
+	pumpUntil(t, m, told, "both in proj", func() bool {
+		var ok bool
+		locked(m, func() { ok = len(m.fleet.GroupTabs("proj")) == 2 })
+		return ok
+	})
+	locked(m, func() {
+		if m.moving != nil || m.dialog != nil {
+			t.Errorf("the move is not over: dialog %T", m.dialog)
+		}
+		idx := m.fleet.GroupTabs("proj")
+		mine, boxs := m.fleet.Tabs()[idx[0]], m.fleet.Tabs()[idx[1]]
+		if m.machineBadge("proj") != "" || m.tabBadge(mine) != "" || !strings.Contains(m.tabBadge(boxs), " box ") {
+			t.Errorf("badges: proj %q, this machine's tab %q, box's %q", m.machineBadge("proj"), m.tabBadge(mine), m.tabBadge(boxs))
+		}
+		if !strings.Contains(m.machineBadge("ops"), " box ") {
+			t.Errorf("ops, with tabs on box alone, is not under its name: %q", m.machineBadge("ops"))
+		}
+	})
+}
+
 // TestFleetMoveRefusedLeavesTheTab: a move box cannot take (a branch of
 // its own of the name) is refused before anything stops, and the tab
 // carries on here.
