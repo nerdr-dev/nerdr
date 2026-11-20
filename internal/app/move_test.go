@@ -142,7 +142,7 @@ func TestFleetMoveTab(t *testing.T) {
 	goTo(m, 0)
 	locked(m, func() { m.openMove() })
 	pump(t, m, told, "what goes", func(v string) bool {
-		return strings.Contains(v, "Goes: branch feat") && strings.Contains(v, "new.txt") && strings.Contains(v, "Stays: .env")
+		return strings.Contains(v, "What goes") && strings.Contains(v, " feat") && strings.Contains(v, "new.txt") && strings.Contains(v, ".env  (git ignores them)")
 	})
 	// No handoff: the echoing agent writes none.
 	pressKey(m, "h")
@@ -218,7 +218,7 @@ func TestFleetMoveKeepsTheTab(t *testing.T) {
 	moveSetup(t, m, told, here, box, false)
 	goTo(m, 0)
 	locked(m, func() { m.openMove() })
-	pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "Goes: branch feat") })
+	pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "What goes") })
 	pressKey(m, "h")
 	pressKey(m, "enter")
 	pump(t, m, told, "the tab on box", func(v string) bool {
@@ -295,7 +295,7 @@ func TestFleetMoveFailsLate(t *testing.T) {
 	moveSetup(t, m, told, here, box, false)
 	goTo(m, 0)
 	locked(m, func() { m.openMove() })
-	pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "Goes: branch feat") })
+	pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "What goes") })
 	// The folder for the worktree is taken meanwhile.
 	var dir string
 	locked(m, func() { dir = m.moving.check.Dir })
@@ -364,7 +364,7 @@ func TestFleetMoveSandboxDroppedAfterTheYes(t *testing.T) {
 	})
 	goTo(m, 0)
 	locked(m, func() { m.openMove() })
-	v := pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "Goes: branch feat") })
+	v := pump(t, m, told, "what goes", func(v string) bool { return strings.Contains(v, "What goes") })
 	if strings.Contains(v, "Not in a sandbox there") {
 		t.Fatal("warned though box is sandboxed")
 	}
