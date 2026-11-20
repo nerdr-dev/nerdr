@@ -169,11 +169,42 @@ func (m *Model) greyLines(mc *fleet.Machine, w, h int) []string {
 	return framed(fitLines(lines, w-2, h-2), w, h, name, m.focus == core.FocusAgent)
 }
 
-// machineBadge names the machine of group g before it in the bars, when
-// it is not this one: grey, with a cross, while its core is out of reach.
+// machineBadge names the machines of group g before it in the bars, when
+// none of its tabs is on this one: a repository with a tab here is this
+// machine's too, and only its tabs elsewhere say where they are
+// (tabBadge). Grey, with a cross, while a machine's core is out of reach.
 func (m *Model) machineBadge(g string) string {
-	mc, _ := m.fleet.GroupOf(g)
-	return m.badgeOf(mc)
+	var out string
+	for _, mc := range m.groupElsewhere(g) {
+		out += m.badgeOf(mc)
+	}
+	return out
+}
+
+// groupElsewhere are the machines of group g's tabs when none of them is
+// on this machine, nil when one is.
+func (m *Model) groupElsewhere(g string) []*fleet.Machine {
+	ms := m.fleet.GroupMachines(g)
+	for _, mc := range ms {
+		if mc.Name == "" {
+			return nil
+		}
+	}
+	return ms
+}
+
+// tabBadge names the machine of tab t before it, in the tab row and the
+// sidebar, when it is not this one.
+func (m *Model) tabBadge(t *core.Tab) string { return m.badgeOf(m.machineOf(t)) }
+
+// where is tab t's group for a list of tabs, and its machine when it is
+// not this one.
+func (m *Model) where(t *core.Tab) string {
+	g := m.fleet.Group(t)
+	if mc := m.machineOf(t); mc.Name != "" {
+		g += " on " + mc.Name
+	}
+	return g
 }
 
 // emptyMachines are the badges of the named machines with no tabs, for
@@ -203,24 +234,24 @@ func (m *Model) badgeOf(mc *fleet.Machine) string {
 	return m.tip(st.Render(label), tip)
 }
 
-// groupShown is group g as the bars show it, after its machine's badge:
-// the group as its machine's core names it.
-func (m *Model) groupShown(g string) string {
-	_, name := m.fleet.GroupOf(g)
-	return name
+// badgeWidth is the columns machine mc's badge takes: as badgeOf draws
+// it, without a tip made.
+func badgeWidth(mc *fleet.Machine) int {
+	switch {
+	case mc.Name == "":
+		return 0
+	case grey(mc):
+		return lipgloss.Width(" " + mc.Name + " ✕ ")
+	}
+	return lipgloss.Width(" " + mc.Name + " ")
 }
 
 // groupWidth is the columns group g's name takes in the bars, its
-// machine's badge with it: as machineBadge draws it, without a tip made.
+// machines' badges with it.
 func (m *Model) groupWidth(g string) int {
-	mc, name := m.fleet.GroupOf(g)
-	w := lipgloss.Width(name)
-	switch {
-	case mc.Name == "":
-	case grey(mc):
-		w += lipgloss.Width(" " + mc.Name + " ✕ ")
-	default:
-		w += lipgloss.Width(" " + mc.Name + " ")
+	w := lipgloss.Width(g)
+	for _, mc := range m.groupElsewhere(g) {
+		w += badgeWidth(mc)
 	}
 	return w
 }

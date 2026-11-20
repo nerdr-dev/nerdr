@@ -162,7 +162,7 @@ func goTo(m *Model, i int) {
 
 // TestFleetShowsBothMachines: the TUI shows the tabs of both cores, this
 // machine's first, each named by its own machine though their ids are the
-// same, box's in a group of box's under its name.
+// same; box's repository, with no tab here, and its tab under box's name.
 func TestFleetShowsBothMachines(t *testing.T) {
 	m, _, _, _, told := twoMachines(t)
 	tb, ref := boxTab(t, m)
@@ -177,8 +177,14 @@ func TestFleetShowsBothMachines(t *testing.T) {
 		if m.fleet.ByRef(ref) != tb || m.machineOf(tb).Name != "box" {
 			t.Fatal("box's tab is not found by its ref")
 		}
-		if gs := m.fleet.Groups(); len(gs) != 2 || gs[0] != "app" || gs[1] != "box:ops" {
+		if gs := m.fleet.Groups(); len(gs) != 2 || gs[0] != "app" || gs[1] != "ops" {
 			t.Fatalf("groups %q", gs)
+		}
+		if m.machineBadge("app") != "" || !strings.Contains(m.machineBadge("ops"), " box ") {
+			t.Fatalf("badges: app %q, ops %q", m.machineBadge("app"), m.machineBadge("ops"))
+		}
+		if m.tabBadge(first) != "" || !strings.Contains(m.tabBadge(tb), " box ") {
+			t.Fatalf("tab badges: %q, %q", m.tabBadge(first), m.tabBadge(tb))
 		}
 	})
 	goTo(m, 1)

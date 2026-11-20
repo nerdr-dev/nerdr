@@ -320,73 +320,37 @@ func (f *Fleet) IndexOn(mc *Machine, t *core.Tab) int { return core.TabList(mc.C
 // TabIndex is where t is in Tabs, or -1 when it is not there.
 func (f *Fleet) TabIndex(t *core.Tab) int { return f.Tabs().Index(t) }
 
-// The tabs are grouped by machine first, then as each machine's core
-// groups them (core.Tab.GroupName): a group of this machine's is called
-// by that name, one of another machine's by the machine's name, a colon,
-// and that name.
+// The tabs are grouped as each machine's core groups them
+// (core.Tab.GroupName), whatever machine they are on: the tabs of one
+// repository stand together, this machine's and another's, one machine's
+// after another's.
 
 // Group is the group tab t is in.
-func (f *Fleet) Group(t *core.Tab) string {
-	return groupName(f.ofOrHome(f.Of(t)), t.GroupName())
-}
+func (f *Fleet) Group(t *core.Tab) string { return t.GroupName() }
 
-func groupName(mc *Machine, g string) string {
-	if mc.Name == "" {
-		return g
-	}
-	return mc.Name + ":" + g
-}
-
-// GroupOf is the machine of group g, and the group as its core names it.
-func (f *Fleet) GroupOf(g string) (*Machine, string) {
+// GroupMachines are the machines with tabs in group g, in the fleet's
+// order.
+func (f *Fleet) GroupMachines(g string) []*Machine {
+	var out []*Machine
 	for _, mc := range f.Machines() {
-		if mc.Name != "" && len(g) > len(mc.Name) && g[:len(mc.Name)+1] == mc.Name+":" {
-			return mc, g[len(mc.Name)+1:]
-		}
-	}
-	return f.Home(), g
-}
-
-// GroupTabs is the indexes into Tabs of the tabs in group g, in order.
-func (f *Fleet) GroupTabs(g string) []int {
-	mc, name := f.GroupOf(g)
-	at := 0
-	for _, o := range f.Machines() {
-		if o == mc {
-			idx := core.TabList(o.Core.Tabs).GroupTabs(name)
-			for i := range idx {
-				idx[i] += at
-			}
-			return idx
-		}
-		at += len(o.Core.Tabs)
-	}
-	return nil
-}
-
-// Groups lists the groups that have tabs, a machine's after another's;
-// see core.TabList.Groups.
-func (f *Fleet) Groups() []string {
-	var out []string
-	for _, mc := range f.Machines() {
-		for _, g := range core.TabList(mc.Core.Tabs).Groups() {
-			out = append(out, groupName(mc, g))
+		if len(core.TabList(mc.Core.Tabs).GroupTabs(g)) > 0 {
+			out = append(out, mc)
 		}
 	}
 	return out
 }
 
+// GroupTabs is the indexes into Tabs of the tabs in group g, in order.
+func (f *Fleet) GroupTabs(g string) []int { return f.Tabs().GroupTabs(g) }
+
+// Groups lists the groups that have tabs; see core.TabList.Groups.
+func (f *Fleet) Groups() []string { return f.Tabs().Groups() }
+
 // GroupStatus is the light group g shows; see core.TabList.GroupStatus.
-func (f *Fleet) GroupStatus(g string) core.Status {
-	mc, name := f.GroupOf(g)
-	return core.TabList(mc.Core.Tabs).GroupStatus(name)
-}
+func (f *Fleet) GroupStatus(g string) core.Status { return f.Tabs().GroupStatus(g) }
 
 // GroupCount is how many of group g's tabs are lit st.
-func (f *Fleet) GroupCount(g string, st core.Status) int {
-	mc, name := f.GroupOf(g)
-	return core.TabList(mc.Core.Tabs).GroupCount(name, st)
-}
+func (f *Fleet) GroupCount(g string, st core.Status) int { return f.Tabs().GroupCount(g, st) }
 
 // CountStatus is how many tabs have status s.
 func (f *Fleet) CountStatus(s core.Status) int { return f.Tabs().CountStatus(s) }

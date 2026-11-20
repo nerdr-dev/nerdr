@@ -80,7 +80,8 @@ func (m *Model) measureWideW() int {
 		w = max(w, m.groupWidth(g)+len(strconv.Itoa(len(m.fleet.GroupTabs(g))))+6)
 		for n, i := range m.fleet.GroupTabs(g) {
 			// light, n:name, a mark or two, and its details
-			w = max(w, lipgloss.Width(m.fleet.Tabs()[i].Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(m.fleet.Tabs()[i], i == m.Active)))
+			t := m.fleet.Tabs()[i]
+			w = max(w, badgeWidth(m.machineOf(t))+lipgloss.Width(t.Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(t, i == m.Active)))
 		}
 	}
 	return min(max(w+2, sideMin), max(sideMax, m.width/5), m.width/3) + 1
@@ -215,7 +216,7 @@ func (m *Model) repoList(w, h int, small bool) []string {
 			}
 			badge := m.machineBadge(g)
 			s = badge + m.sideEntry(w-2-lipgloss.Width(badge), g == cur, walking, m.fleet.GroupStatus(g), "the tab here that most wants a look",
-				m.groupShown(g), "", count+moreSt.Render(")"))
+				g, "", count+moreSt.Render(")"))
 		}
 		s = m.tip(s, g+": "+tip+" · click: go there · right-click: more")
 		lines = append(lines, m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd {
@@ -283,7 +284,8 @@ func (m *Model) tabList(w, h int, small bool) []string {
 			if mark := m.reviewMark(t, bg); mark != "" {
 				extra = lipgloss.NewStyle().Background(bg).Render(" ") + mark + extra
 			}
-			s = m.sideEntry(w-2, active, walking, t.Lit(), "", strconv.Itoa(n+1)+":"+t.Name, more, extra)
+			badge := m.tabBadge(t)
+			s = badge + m.sideEntry(w-2-lipgloss.Width(badge), active, walking, t.Lit(), "", strconv.Itoa(n+1)+":"+t.Name, more, extra)
 		}
 		s = m.tip(s, t.Name+" · "+string(t.Agent)+" · "+t.Lit().Label()+" · right-click: more · middle-click: close")
 		lines = append(lines, m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.tabMouse(t, ev) }))
