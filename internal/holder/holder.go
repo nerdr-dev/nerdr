@@ -78,7 +78,9 @@ type prog struct {
 	ckData []byte
 
 	// writes wait for the writer, in order.
-	writes  []*write
+	writes []*write
+	// writing is the write the writer has out, if any.
+	writing *write
 	wake    chan struct{} // the writer has work, or should stop
 	readerQ chan struct{} // closed when the reader stops
 	writerQ chan struct{} // closed when the writer stops
@@ -369,6 +371,7 @@ func (h *Holder) writer(p *prog) {
 			dst, w = p.in, &write{data: p.stdin}
 		} else if len(p.writes) > 0 {
 			dst, w = p.out, p.writes[0]
+			p.writing = w
 		}
 		h.mu.Unlock()
 		if w == nil {
@@ -377,6 +380,7 @@ func (h *Holder) writer(p *prog) {
 		}
 		n, err := dst.Write(w.data[w.n:])
 		h.mu.Lock()
+		p.writing = nil
 		w.n += n
 		if h.paused && errors.Is(err, os.ErrDeadlineExceeded) {
 			if dst == p.in {
@@ -392,7 +396,11 @@ func (h *Holder) writer(p *prog) {
 			h.mu.Unlock()
 			continue
 		}
-		p.writes = p.writes[1:]
+		// Done may have emptied the queue while this write was out,
+		// and answered the rest.
+		if len(p.writes) > 0 && p.writes[0] == w {
+			p.writes = p.writes[1:]
+		}
 		if w.to != nil {
 			r := &Msg{Op: OpWrite, Seq: w.seq, Pos: int64(w.n)}
 			if err != nil {
@@ -621,6 +629,16 @@ func (h *Holder) ack(m *Msg) error {
 		// Closing does not wait: the reader's Read returns, and the
 		// writer's Write.
 		p.out.Close()
+		// The writer answers the write it has out; the rest are
+		// answered here, as they will not be written.
+		for _, w := range p.writes {
+			if w == p.writing || w.to == nil {
+				continue
+			}
+			r := &Msg{Op: OpWrite, Seq: w.seq, Pos: int64(w.n)}
+			errMsg(r, os.ErrClosed)
+			w.to.post(r, nil)
+		}
 		p.writes = nil
 		p.signalChanged()
 		p.poke()
