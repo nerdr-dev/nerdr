@@ -615,7 +615,7 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 
 	case loginOutputMsg:
 		m.fleet.Bump()
-		if msg.done || m.loggingIn != msg.d {
+		if msg.done || msg.typed || m.loggingIn != msg.d {
 			return nil
 		}
 		return msg.d.readCmd()

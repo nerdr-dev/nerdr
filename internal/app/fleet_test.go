@@ -7,11 +7,13 @@ import (
 	"os/exec"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
+	"golang.org/x/sys/unix"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/attach"
@@ -580,6 +582,122 @@ func TestFleetLoginGoesToSsh(t *testing.T) {
 			t.Fatalf("box: %+v", mc)
 		}
 	})
+}
+
+// TestFleetLoginShowsStars: a password, which ssh reads with its
+// terminal showing nothing, is shown as a star for each character typed,
+// fewer as they are erased, and none once it is entered.
+func TestFleetLoginShowsStars(t *testing.T) {
+	m, _, _, _ := remoteTUI(t, "sh", "-c", `echo here-ready; sleep 30`)
+	s := config.Server{Name: "box"}
+	read := make(chan string, 1)
+	locked(m, func() {
+		m.cfg().Servers = []config.Server{s}
+		m.SetDial(func(_ config.Server, _ bool, tty *os.File) (*attach.Conn, error) {
+			tm, err := unix.IoctlGetTermios(int(tty.Fd()), getTermios)
+			if err != nil {
+				return nil, err
+			}
+			tm.Lflag &^= unix.ECHO
+			if err := unix.IoctlSetTermios(int(tty.Fd()), setTermios, tm); err != nil {
+				return nil, err
+			}
+			_, _ = tty.WriteString("box's password: ")
+			line, _ := bufio.NewReader(tty).ReadString('\n')
+			read <- strings.TrimSpace(line)
+			return nil, errors.New("Permission denied")
+		})
+	})
+	var d *loginDialog
+	locked(m, func() {
+		m.login(s)
+		d, _ = m.dialog.(*loginDialog)
+	})
+	if d == nil {
+		t.Fatalf("dialog %T", m.dialog)
+	}
+	drawn := 0
+	d.typed = func() { drawn++ }
+	dialed := make(chan tea.Msg, 1)
+	go func() { dialed <- d.dialCmd()() }()
+	last := func() string { l := d.text(5); return l[len(l)-1] }
+	for !strings.Contains(last(), "box's password:") {
+		m.Update(d.readCmd()())
+	}
+	d.write([]byte("blåbær"))
+	if got := last(); got != "box's password: ******" || drawn != 1 {
+		t.Fatalf("typed: %q, drawn %d", got, drawn)
+	}
+	d.write([]byte{0x7f})
+	if got := last(); got != "box's password: *****" {
+		t.Fatalf("erased: %q", got)
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "box's password: *****") || strings.Contains(v, "blåb") {
+		t.Fatalf("shown:\n%s", v)
+	}
+	d.write([]byte("\r"))
+	if got := <-read; got != "blåbæ" {
+		t.Fatalf("ssh read %q", got)
+	}
+	if got := last(); strings.Contains(got, "*") {
+		t.Fatalf("entered: %q", got)
+	}
+	m.Update(<-dialed)
+}
+
+// TestFleetLoginKeepsSshRunning: ssh has the login dialog's terminal as
+// its controlling one, and is hung up when that ends. It lives on once the
+// dialog is gone, the connection with it, and ends when the connection
+// does.
+func TestFleetLoginKeepsSshRunning(t *testing.T) {
+	m, _, _, _ := remoteTUI(t, "sh", "-c", `echo here-ready; sleep 30`)
+	_, _, dial := boxCore(t, "sh", "-c", `echo box-ready; sleep 30`)
+	s := config.Server{Name: "box"}
+	ended := make(chan error, 1)
+	var box *attach.Conn
+	locked(m, func() {
+		m.cfg().Servers = []config.Server{s}
+		m.SetDial(func(_ config.Server, _ bool, tty *os.File) (*attach.Conn, error) {
+			ssh := exec.Command("sleep", "30")
+			ssh.ExtraFiles = []*os.File{tty}
+			ssh.SysProcAttr = &syscall.SysProcAttr{Setsid: true, Setctty: true, Ctty: 3}
+			if err := ssh.Start(); err != nil {
+				return nil, err
+			}
+			go func() { ended <- ssh.Wait() }()
+			conn, err := dial()
+			box = conn
+			return conn, err
+		})
+	})
+	var d *loginDialog
+	locked(m, func() {
+		m.login(s)
+		d, _ = m.dialog.(*loginDialog)
+	})
+	if d == nil {
+		t.Fatalf("dialog %T", m.dialog)
+	}
+	msg := d.dialCmd()()
+	if _, cmd := m.Update(msg); cmd != nil {
+		m.Update(cmd())
+	}
+	locked(m, func() {
+		if mc := m.fleet.Named("box"); m.dialog != nil || mc == nil || mc.Gone != "" || mc.Conn == nil {
+			t.Fatalf("after the login: dialog %T, box %+v", m.dialog, mc)
+		}
+	})
+	select {
+	case err := <-ended:
+		t.Fatalf("ssh ended with the dialog: %v", err)
+	case <-time.After(300 * time.Millisecond):
+	}
+	box.Close("")
+	select {
+	case <-ended:
+	case <-time.After(5 * time.Second):
+		t.Fatal("ssh still runs, its connection closed")
+	}
 }
 
 // TestFleetMachinesDialog: the Machines dialog lists both machines, d
