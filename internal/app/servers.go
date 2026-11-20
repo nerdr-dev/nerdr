@@ -3,6 +3,7 @@ package app
 import (
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 
@@ -386,8 +387,19 @@ type machinesDialog struct {
 	err    string
 }
 
+// serverNameMax is the most characters a server's name takes, typed in.
+const serverNameMax = 5
+
 func (m *Model) openMachines() tea.Cmd {
 	m.dialog = &machinesDialog{}
+	return nil
+}
+
+// openMachinesAt opens the Machines dialog with the cursor on mc.
+func (m *Model) openMachinesAt(mc *fleet.Machine) tea.Cmd {
+	d := &machinesDialog{}
+	d.cursor = max(slices.Index(m.fleet.Machines(), mc), 0)
+	m.dialog = d
 	return nil
 }
 
@@ -445,7 +457,7 @@ func (d *machinesDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 func (d *machinesDialog) startAdding() {
 	d.adding, d.field, d.err = true, 0, ""
 	for i, p := range []struct{ prompt, hold string }{
-		{"name:   ", "box: as the tab bar shows it"},
+		{"name:   ", "box: at most 5 letters, as nerdr shows it"},
 		{"ssh:    ", "the host as ssh knows it; the name if empty"},
 		{"folder: ", "~"},
 	} {
@@ -453,6 +465,8 @@ func (d *machinesDialog) startAdding() {
 		in.Prompt, in.Placeholder, in.CharLimit = p.prompt, p.hold, 200
 		d.inputs[i] = in
 	}
+	// Short, to fit the sidebar and the badges in the bars.
+	d.inputs[0].CharLimit = serverNameMax
 	d.inputs[0].Focus()
 }
 

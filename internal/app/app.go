@@ -310,6 +310,13 @@ type Model struct {
 	// sideWidth is the columns the sidebar's edge was dragged to, its
 	// frames included; 0 for as wide as its names need.
 	sideWidth int
+	// machTop is the first machine shown at the foot of the sidebar's
+	// tabs, when they are too many to show at once: the wheel moves it,
+	// and sets machScrolled; until then the active tab's machine is kept
+	// in view. machAt and machN are the rows of the list of tabs they
+	// take, as last drawn, for the wheel.
+	machTop, machAt, machN int
+	machScrolled           bool
 
 	toastText  string
 	toastUntil time.Time

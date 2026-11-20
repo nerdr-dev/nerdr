@@ -3,6 +3,7 @@ package app
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"slices"
@@ -523,6 +524,39 @@ func TestFleetNewTabMachineList(t *testing.T) {
 	}
 }
 
+// TestFleetSidebarMachines: the wide sidebar lists the machines at its
+// foot, with their tabs, and not in the row on top; a click on one opens
+// the Machines dialog at it.
+func TestFleetSidebarMachines(t *testing.T) {
+	m, _, _, _, _ := twoMachines(t)
+	goTo(m, 0)
+	locked(m, func() {
+		m.sideBar = true
+		m.resize()
+	})
+	v := ansi.Strip(m.View())
+	rows := strings.Split(v, "\n")
+	boxY := -1
+	for y, r := range rows {
+		if strings.Contains(r, " box (1)") {
+			boxY = y
+		}
+	}
+	if boxY < 0 || !strings.Contains(rows[boxY-1], "▸ this machine (1)") {
+		t.Fatalf("no machines at the sidebar's foot:\n%s", v)
+	}
+	if strings.Contains(rows[0], " box ") {
+		t.Fatalf("box in the row on top: %q", rows[0])
+	}
+	m.Update(tea.MouseMsg{X: 2, Y: boxY, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	locked(m, func() {
+		d, ok := m.dialog.(*machinesDialog)
+		if !ok || m.fleet.Machines()[d.cursor].Name != "box" {
+			t.Fatalf("after the click: %T", m.dialog)
+		}
+	})
+}
+
 // TestFleetDialogFollowsTheActiveTab: with box's tab in front, a dialog
 // of no tab is box's, and what it asks naming no tab goes to box's core.
 func TestFleetDialogFollowsTheActiveTab(t *testing.T) {
@@ -944,5 +978,43 @@ func TestFleetPanelsFollowTheMachine(t *testing.T) {
 	locked(m, func() { m.syncPRPanel() })
 	if got := on(&m.issuePanelOn); got != "this machine" {
 		t.Fatalf("issues of %q", got)
+	}
+}
+
+// TestSideMachinesScroll: more machines than there is room for under the
+// tabs show as many as fit, at least 3, with a line saying how many more
+// there are above or below; scrolling moves them, never past either end.
+func TestSideMachinesScroll(t *testing.T) {
+	m := testModel(t)
+	var rows []string
+	for i := range 10 {
+		rows = append(rows, fmt.Sprintf("m%d", i))
+	}
+	plain := func(ss []string) []string {
+		out := make([]string, len(ss))
+		for i, s := range ss {
+			out[i] = strings.TrimSpace(ansi.Strip(s))
+		}
+		return out
+	}
+	if got := m.machineWindow(rows, 30, 5, 20); len(got) != 10 {
+		t.Fatalf("room for all: %d rows", len(got))
+	}
+	if got := m.machineWindow(rows, 5, 5, 20); got != nil {
+		t.Fatalf("no room: %q", plain(got))
+	}
+	got := plain(m.machineWindow(rows, 10, 5, 20))
+	if want := []string{"m0", "m1", "m2", "m3", "↓ 6 more"}; !slices.Equal(got, want) {
+		t.Fatalf("at the top: %q, want %q", got, want)
+	}
+	m.scrollMachines(3)
+	got = plain(m.machineWindow(rows, 10, 5, 20))
+	if want := []string{"↑ 4 more", "m4", "m5", "m6", "↓ 3 more"}; !slices.Equal(got, want) {
+		t.Fatalf("scrolled: %q, want %q", got, want)
+	}
+	m.scrollMachines(100)
+	got = plain(m.machineWindow(rows, 10, 5, 20))
+	if want := []string{"↑ 6 more", "m6", "m7", "m8", "m9"}; !slices.Equal(got, want) {
+		t.Fatalf("at the bottom: %q, want %q", got, want)
 	}
 }

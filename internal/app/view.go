@@ -320,7 +320,7 @@ func (m *Model) hostBadge() string {
 	if host == "" || mc.Name != "" {
 		return ""
 	}
-	return m.tip(lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).Bold(true).
+	return m.tip(lipgloss.NewStyle().Background(machineUpBg).Foreground(lipgloss.Color("231")).Bold(true).
 		Render(" "+host+" "), "The agents of these tabs run on "+host)
 }
 
@@ -329,7 +329,12 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	if m.focus == core.FocusReview {
 		hint = " review · esc → agent" + hint
 	}
-	status := m.emptyMachines() + m.hostBadge() + m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
+	status := m.hostBadge()
+	if !m.sideMachines() {
+		// The wide sidebar lists the machines at its foot.
+		status = m.emptyMachines() + status
+	}
+	status += m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
 		func(m *Model) tea.Cmd {
 			return m.openPalette()
 		}), "All commands")
