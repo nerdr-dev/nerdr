@@ -80,13 +80,31 @@ func (m *Model) nextMachine() (tea.Cmd, bool) {
 	}
 	for k := 1; k < len(ms); k++ {
 		if mc := ms[(i+k)%len(ms)]; !grey(mc) {
-			m.chosen = mc
-			m.fleet.Bump()
-			m.dialog = nil // the next opens on mc
-			return d.reopen(m), true
+			return m.moveDialogTo(d, mc), true
 		}
 	}
 	return nil, true
+}
+
+// moveDialogTo opens dialog d anew on machine mc, its lists read from
+// there.
+func (m *Model) moveDialogTo(d machineDialog, mc *fleet.Machine) tea.Cmd {
+	m.chosen = mc
+	m.fleet.Bump()
+	m.dialog = nil // the next opens on mc
+	return d.reopen(m)
+}
+
+// withMachineKey is a dialog's row of keys with ctrl+o added, a button
+// for it, when there are several machines to move the dialog to.
+func (m *Model) withMachineKey(keys string) string {
+	if len(m.fleet.Machines()) < 2 {
+		return keys
+	}
+	return keys + dim(" · ") + m.onClick(keyHint("ctrl+o")+" "+dim("other machine"), func(m *Model) tea.Cmd {
+		cmd, _ := m.nextMachine()
+		return cmd
+	})
 }
 
 // onTitle is title, of a dialog of no tab, naming the machine it is on

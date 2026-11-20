@@ -304,7 +304,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		dim("    relative, e.g. .nerdr — inside each worktree, for agents in a sandbox"),
 		dim("    absolute, e.g. ~/nerdr-data — one folder, a subfolder per repository"),
 		"",
-		m.keys("enter", "save in "+core.TildePath(m.dialogOn().Core.ConfigPath(), home), "tab", "next question", "esc", "ask next time"))
+		m.withMachineKey(m.keys("enter", "save in "+core.TildePath(m.dialogOn().Core.ConfigPath(), home), "tab", "next question", "esc", "ask next time")))
 	if d.saving != "" {
 		lines = append(lines, "", dim("saving…"))
 	}

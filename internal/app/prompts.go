@@ -246,7 +246,7 @@ func (d *promptPicker) view(m *Model, w, h int) string {
 		}))
 	}
 	lines = append(lines, "", dim("  ⏎ sent with enter   ✎ put in for you to send"), "",
-		m.keys("enter", "use", "", "1-9 pick", "ctrl+n", "new", "ctrl+e", "edit", "esc", "cancel"))
+		m.withMachineKey(m.keys("enter", "use", "", "1-9 pick", "ctrl+n", "new", "ctrl+e", "edit", "esc", "cancel")))
 	return box("Saved prompts", lines, w)
 }
 
