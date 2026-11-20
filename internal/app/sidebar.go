@@ -1,6 +1,8 @@
 package app
 
 import (
+	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -84,6 +86,12 @@ func (m *Model) measureWideW() int {
 			w = max(w, badgeWidth(m.machineOf(t))+lipgloss.Width(t.Name)+len(strconv.Itoa(n+1))+8+lipgloss.Width(m.sideDetails(t, i == m.Active)))
 		}
 	}
+	if len(m.fleet.Machines()) > 1 {
+		for _, mc := range m.fleet.Machines() {
+			// ▸ name (n) ✕
+			w = max(w, lipgloss.Width(machineLabel(mc))+len(strconv.Itoa(len(mc.Core.Tabs)))+5)
+		}
+	}
 	return min(max(w+2, sideMin), max(sideMax, m.width/5), m.width/3) + 1
 }
 
@@ -127,6 +135,43 @@ func (m *Model) sidebarLines(h int, small bool) []string {
 	out = append(out, m.tabList(w, h-rh, small)...)
 	for i := range out {
 		out[i] += " "
+	}
+	return out
+}
+
+// sideMachines reports whether the wide sidebar lists the machines at its
+// foot: when there are several, in place of their badges in the row on
+// top.
+func (m *Model) sideMachines() bool {
+	return m.sideW() > 0 && !m.sideSmall && len(m.fleet.Machines()) > 1
+}
+
+// sideMachineRows are the machines at the foot of the wide sidebar's
+// list of tabs, one a row w wide: its name and its tabs, on green while connected, on grey
+// while not. A click opens the Machines dialog at it.
+func (m *Model) sideMachineRows(w int, small bool) []string {
+	if small || len(m.fleet.Machines()) < 2 {
+		return nil
+	}
+	cur := m.machineOf(m.Cur())
+	var out []string
+	for _, mc := range m.fleet.Machines() {
+		n := len(mc.Core.Tabs)
+		st := lipgloss.NewStyle().Background(machineUpBg).Foreground(lipgloss.Color("231")).Bold(true)
+		label := machineLabel(mc) + " (" + strconv.Itoa(n) + ")"
+		tip := machineLabel(mc) + ": " + core.Plural(n, "tab")
+		if grey(mc) {
+			st = lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(lipgloss.Color("246"))
+			label += " ✕"
+			tip += ", not connected"
+		}
+		mark := "  "
+		if mc == cur {
+			mark = "▸ "
+		}
+		row := st.Render(padTo(ansi.Truncate(mark+label, w, "…"), w))
+		row = m.tip(row, tip+" · click or "+m.pk("k")+": machines")
+		out = append(out, m.onClick(row, func(m *Model) tea.Cmd { return m.openMachinesAt(mc) }))
 	}
 	return out
 }
@@ -309,7 +354,59 @@ func (m *Model) tabList(w, h int, small bool) []string {
 	if small {
 		title = ""
 	}
-	return framed(fitLines(sideWindow(lines, at, h-2), w-2, h-2), w, h, title, walking)
+	// The machines at the foot of the list: as many as there is room for
+	// below the tabs, scrolling when there are more.
+	mrows := m.machineWindow(m.sideMachineRows(w-2, small), h-2, len(lines), w-2)
+	m.machAt, m.machN = h-1-len(mrows), len(mrows)
+	body := append(fitLines(sideWindow(lines, at, h-2-len(mrows)), w-2, h-2-len(mrows)), mrows...)
+	return framed(body, w, h, title, walking)
+}
+
+// machineWindow is the machines' rows shown in a list room rows tall with
+// tabs rows of tabs: all, when there is room for them under the tabs;
+// else at least 3, and never more than leave the tabs 3, a line at the
+// top or bottom saying how many more there are that way. None when even
+// that does not fit.
+func (m *Model) machineWindow(rows []string, room, tabs, w int) []string {
+	n := len(rows)
+	if n == 0 {
+		return nil
+	}
+	show := min(n, max(room-tabs, 3), room-3)
+	if show < min(n, 3) {
+		return nil
+	}
+	if show >= n {
+		return rows
+	}
+	cur := slices.Index(m.fleet.Machines(), m.machineOf(m.Cur()))
+	top := max(cur-show/2, 0)
+	if m.machScrolled {
+		top = m.machTop
+	}
+	top = min(max(top, 0), n-show)
+	m.machTop = top
+	out := slices.Clone(rows[top : top+show])
+	more := func(s string, by int) string {
+		return m.onClick(dim(padTo(s, w)), func(m *Model) tea.Cmd {
+			m.scrollMachines(by * (show - 1))
+			return nil
+		})
+	}
+	if top > 0 {
+		out[0] = more(fmt.Sprintf("  ↑ %d more", top+1), -1)
+	}
+	if rest := n - top - show; rest > 0 {
+		out[show-1] = more(fmt.Sprintf("  ↓ %d more", rest+1), 1)
+	}
+	return out
+}
+
+// scrollMachines moves the machines at the foot of the sidebar's tabs by
+// rows, when they are too many to show at once.
+func (m *Model) scrollMachines(by int) {
+	m.machTop += by
+	m.machScrolled = true
 }
 
 // sideDetails is what the tab row says about tab t, for its entry in the
@@ -412,8 +509,14 @@ func (m *Model) sideWheel(ev tea.MouseMsg) tea.Cmd {
 	if !isWheel(ev) || !m.wheelStep() {
 		return nil
 	}
-	if ev.Y-m.barRows() < m.sideRepoH(m.height-m.barRows(), m.sideSmall) {
+	y := ev.Y - m.barRows()
+	rh := m.sideRepoH(m.height-m.barRows(), m.sideSmall)
+	if y < rh {
 		return m.stepGroup(wheelDir(ev))
+	}
+	if !m.sideSmall && m.machN > 0 && y-rh >= m.machAt && y-rh < m.machAt+m.machN {
+		m.scrollMachines(wheelDir(ev))
+		return nil
 	}
 	return m.stepInGroup(wheelDir(ev))
 }

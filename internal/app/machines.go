@@ -220,12 +220,16 @@ func (m *Model) emptyMachines() string {
 	return out
 }
 
+// machineUpBg is the background of a machine connected, in its badge and
+// at the foot of the sidebar: a dark green.
+const machineUpBg = lipgloss.Color("#1f4a2a")
+
 // badgeOf is machine mc's badge, "" for this one.
 func (m *Model) badgeOf(mc *fleet.Machine) string {
 	if mc.Name == "" {
 		return ""
 	}
-	st := lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231")).Bold(true)
+	st := lipgloss.NewStyle().Background(machineUpBg).Foreground(lipgloss.Color("231")).Bold(true)
 	label, tip := " "+mc.Name+" ", "The agents of these tabs run on "+mc.Name
 	if grey(mc) {
 		st = lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(lipgloss.Color("246"))
