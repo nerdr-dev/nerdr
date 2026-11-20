@@ -756,6 +756,10 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		}
 		return nil
 
+	case moveShowMsg:
+		msg.d.shown = true
+		return nil
+
 	case promptEnterMsg:
 		m.promptEnter(msg.t)
 		return nil

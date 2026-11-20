@@ -18,6 +18,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func moveGit(t *testing.T, dir string, args ...string) string {
@@ -386,5 +387,31 @@ func TestFleetMoveSandboxDroppedAfterTheYes(t *testing.T) {
 	box.Mu.Unlock()
 	if n != 1 {
 		t.Errorf("%d tabs on box", n)
+	}
+}
+
+// TestFleetMoveWaitsBeforeShowingSteps covers the steps before the move's
+// question: nothing is drawn for them until moveWait has passed, so the
+// dialog does not flicker through them when they are quick, and esc still
+// cancels.
+func TestFleetMoveWaitsBeforeShowingSteps(t *testing.T) {
+	m := testModel(t)
+	d := &moveDialog{}
+	m.dialog = d
+	m.moving = &moveRun{name: "login", from: m.home(), to: m.home(), stage: moveChecking}
+	for _, st := range []moveStage{moveChecking, moveLooking} {
+		m.moving.stage = st
+		if v := ansi.Strip(m.View()); strings.Contains(v, "Move login") {
+			t.Fatalf("stage %d drawn before moveWait:\n%s", st, v)
+		}
+	}
+	m.moving.stage = moveAsking
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Move login") {
+		t.Fatalf("the question not drawn at once:\n%s", v)
+	}
+	m.moving.stage = moveLooking
+	m.Update(moveShowMsg{d})
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Looking at what would go") {
+		t.Fatalf("a slow step not drawn after moveWait:\n%s", v)
 	}
 }
