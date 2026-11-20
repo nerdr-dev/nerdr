@@ -229,8 +229,33 @@ func env(dir string, mode hookMode) []string { return envFor(dir, mode, false) }
 // envFor is env; with origin, for a fetch from origin in a main checkout
 // with sandbox history, with ssh and https left open (see OriginEnv).
 func envFor(dir string, mode hookMode, origin bool) []string {
-	e := os.Environ()
 	d, ok := dirs(dir)
+	return envDirs(d, ok, mode, origin)
+}
+
+// EnvNoRepo is Env for git that makes a repository (init, clone) in a
+// folder: no repository is pinned, and none git was given in nerdr's own
+// environment is passed on. Pinned to the one the folder is inside, as Env
+// would, git init would set that one up again and a commit after it go
+// there.
+func EnvNoRepo() []string {
+	var e []string
+	for _, kv := range envDirs(gitDirs{}, false, hookOff, false) {
+		k, _, _ := strings.Cut(kv, "=")
+		switch k {
+		case "GIT_DIR", "GIT_COMMON_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+			"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+			"GIT_NAMESPACE", "GIT_PREFIX":
+			continue
+		}
+		e = append(e, kv)
+	}
+	return e
+}
+
+// envDirs is envFor with the git directories found.
+func envDirs(d gitDirs, ok bool, mode hookMode, origin bool) []string {
+	e := os.Environ()
 	// A repository whose config.worktree a sandboxed agent can write is
 	// given no git at all: see guardWorktreeConfig.
 	sandboxed := ok && d.gitDir != untrustedDir && repoSandboxed(d.common)

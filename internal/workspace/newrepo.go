@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 )
 
 // cloneTimeout bounds a clone: a big repository over a slow line takes a
@@ -58,10 +60,15 @@ func InitRepo(parent, name string) (string, error) {
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", err
 	}
-	if _, err := git(parent, "init", "--quiet", "--initial-branch=main", name); err != nil {
+	if _, err := gitRunEnv(gitDefaultTimeout, gitsafe.EnvNoRepo(), parent, "init", "--quiet", "--initial-branch=main", name); err != nil {
 		return "", fmt.Errorf("git init: %w", err)
 	}
-	if _, err := git(p, "commit", "--quiet", "--allow-empty", "-m", "Initial commit"); err != nil {
+	// The commit goes to the repository git finds from the folder: this
+	// one, made just now, never one around it, even one nerdr trusts.
+	if st, err := os.Stat(filepath.Join(p, ".git")); err != nil || !st.IsDir() {
+		return "", fmt.Errorf("git init made no repository in %s", p)
+	}
+	if _, err := gitRunEnv(gitDefaultTimeout, gitsafe.EnvNoRepo(), p, "commit", "--quiet", "--allow-empty", "-m", "Initial commit"); err != nil {
 		return p, fmt.Errorf("made %s, but not its first commit: %w", p, err)
 	}
 	return p, nil
@@ -104,7 +111,7 @@ func CloneRepo(parent, name, url string) (string, error) {
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", err
 	}
-	if _, err := gitTimeout(cloneTimeout, parent, "clone", "--quiet", "--", url, name); err != nil {
+	if _, err := gitRunEnv(cloneTimeout, gitsafe.EnvNoRepo(), parent, "clone", "--quiet", "--", url, name); err != nil {
 		return "", fmt.Errorf("git clone: %w", err)
 	}
 	return p, nil

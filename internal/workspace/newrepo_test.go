@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 )
 
 // gitIdentity gives the commits made in a test an author, whatever the
@@ -42,6 +44,49 @@ func TestInitRepo(t *testing.T) {
 		if err := CheckNewRepo(root, bad); err == nil {
 			t.Errorf("%q taken for a name", bad)
 		}
+	}
+}
+
+// A repository made or cloned in a folder inside another repository's
+// work tree (a dotfiles repository in the home folder) is one of its own,
+// and the one around it is left as it was.
+func TestNewRepoInsideAnother(t *testing.T) {
+	gitIdentity(t)
+	home := t.TempDir()
+	run := func(dir string, args ...string) string {
+		t.Helper()
+		out, err := gitRunEnv(gitDefaultTimeout, gitsafe.EnvNoRepo(), dir, args...)
+		if err != nil {
+			t.Fatalf("git %v: %v", args, err)
+		}
+		return strings.TrimSpace(out)
+	}
+	run(home, "init", "--quiet", "--initial-branch=main")
+	run(home, "commit", "--quiet", "--allow-empty", "-m", "dotfiles")
+	head := run(home, "rev-parse", "HEAD")
+	parent := filepath.Join(home, "code")
+
+	p, err := InitRepo(parent, "fresh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isPrimary(p) {
+		t.Fatalf("%s is not a repository of its own", p)
+	}
+	if got := run(p, "rev-parse", "--show-toplevel"); got != p {
+		t.Fatalf("the new repository's top is %s", got)
+	}
+	if run(home, "rev-parse", "HEAD") != head {
+		t.Fatal("the repository around it got a commit")
+	}
+
+	src := newRepo(t, t.TempDir(), "lib")
+	c, err := CloneRepo(parent, "lib", src.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !isPrimary(c) || run(c, "rev-parse", "--show-toplevel") != c {
+		t.Fatalf("clone %s is not a repository of its own", c)
 	}
 }
 
