@@ -66,12 +66,12 @@ func TestMoveTabToServer(t *testing.T) {
 	}
 	h.keys(prefix + "a")
 	h.keys("m")
-	h.waitFor("Goes: branch crash", 15*time.Second)
+	h.waitFor("Branch      crash", 15*time.Second)
 	h.waitFor("moved.txt", 2*time.Second)
-	h.waitFor("it clones", 2*time.Second)
-	h.waitFor("Stays: .env", 2*time.Second)
+	h.waitFor("not there yet: cloned from", 2*time.Second)
+	h.waitFor("Stays       .env", 2*time.Second)
 	// The fake agent writes no handoff.
-	if strings.Contains(h.screen(), "for a handoff first") {
+	if strings.Contains(h.screen(), "writes one first") {
 		h.keys("h")
 	}
 	h.keys("\r")
