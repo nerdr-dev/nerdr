@@ -390,11 +390,11 @@ func (m *Model) groupBar() string {
 				bg = navActiveBg
 			}
 			st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
-			part = m.machineBadge(g) + st.Render(" ") + m.lightTip(m.fleet.GroupStatus(g), bg, "the tab here that most wants a look") + st.Render(" "+m.groupShown(g)+" ") +
+			part = m.machineBadge(g) + st.Render(" ") + m.lightTip(m.fleet.GroupStatus(g), bg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
 				lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("250")).Render("("+strconv.Itoa(n)+") ")
 		} else {
 			st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("250"))
-			part = m.machineBadge(g) + st.Render(" ") + m.lightTip(m.fleet.GroupStatus(g), tabBarBg, "the tab here that most wants a look") + st.Render(" "+m.groupShown(g)+" ") +
+			part = m.machineBadge(g) + st.Render(" ") + m.lightTip(m.fleet.GroupStatus(g), tabBarBg, "the tab here that most wants a look") + st.Render(" "+g+" ") +
 				lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("241")).Render("("+strconv.Itoa(n)+") ")
 		}
 		part = m.tip(part, g+": "+core.Plural(n, "tab")+" · click: go there · right-click: more")
@@ -488,14 +488,14 @@ func (m *Model) tabBar() string {
 		var part string
 		if i == m.Active {
 			st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
-			part = st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") +
+			part = m.tabBadge(t) + st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") +
 				lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("248")).Render(string(t.Agent)+" ") + extra
 		} else {
 			st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("250"))
 			if cold || grey(m.machineOf(t)) {
 				st = st.Foreground(lipgloss.Color("243"))
 			}
-			part = st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") + extra
+			part = m.tabBadge(t) + st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") + extra
 		}
 		if i == m.Active {
 			at = n
@@ -572,7 +572,7 @@ func (m *Model) repoLabel(g string) string {
 	if m.prefix && m.onGroups {
 		bg = navActiveBg
 	}
-	s := m.machineBadge(g) + lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("250")).Bold(true).Render(" "+m.groupShown(g)+" ") +
+	s := m.machineBadge(g) + lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("250")).Bold(true).Render(" "+g+" ") +
 		lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("241")).Render("› ")
 	return m.tip(m.onClick(s, func(m *Model) tea.Cmd {
 		m.hideGroups = false

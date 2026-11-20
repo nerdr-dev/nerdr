@@ -68,9 +68,9 @@ func TestZeroFleetIsOneMachine(t *testing.T) {
 	}
 }
 
-// TestGroupsByMachine: the tabs are grouped by machine first, a group of
-// another machine's named by it, and found again by that name.
-func TestGroupsByMachine(t *testing.T) {
+// TestGroupsAcrossMachines: the tabs of one repository are one group,
+// whatever machine they are on, one machine's after another's.
+func TestGroupsAcrossMachines(t *testing.T) {
 	here := &Machine{Core: core.Core{Tabs: []*core.Tab{tab("a"), tab("b")}}}
 	box := &Machine{Name: "box", Core: core.Core{ID: "box", Tabs: []*core.Tab{tab("c"), tab("d")}}}
 	for _, tb := range []*core.Tab{here.Core.Tabs[0], box.Core.Tabs[0]} {
@@ -78,22 +78,19 @@ func TestGroupsByMachine(t *testing.T) {
 	}
 	here.Core.Tabs[1].Dir, box.Core.Tabs[1].Dir = "/w/zed", "/w/api"
 	f := New(here, box)
-	if gs := f.Groups(); len(gs) != 4 || gs[0] != "app" || gs[1] != "zed" || gs[2] != "box:api" || gs[3] != "box:app" {
+	if gs := f.Groups(); len(gs) != 3 || gs[0] != "api" || gs[1] != "app" || gs[2] != "zed" {
 		t.Fatalf("groups %q", gs)
 	}
-	if g := f.Group(box.Core.Tabs[0]); g != "box:app" {
+	if g := f.Group(box.Core.Tabs[0]); g != "app" {
 		t.Fatalf("c is in %q", g)
 	}
-	if idx := f.GroupTabs("box:app"); len(idx) != 1 || idx[0] != 2 {
-		t.Fatalf("box:app holds %v", idx)
-	}
-	if idx := f.GroupTabs("app"); len(idx) != 1 || idx[0] != 0 {
+	if idx := f.GroupTabs("app"); len(idx) != 2 || idx[0] != 0 || idx[1] != 2 {
 		t.Fatalf("app holds %v", idx)
 	}
-	if mc, g := f.GroupOf("box:api"); mc != box || g != "api" {
-		t.Fatalf("box:api is %q's %q", mc.Name, g)
+	if ms := f.GroupMachines("app"); len(ms) != 2 || ms[0] != here || ms[1] != box {
+		t.Fatalf("app is on %d machines", len(ms))
 	}
-	if mc, g := f.GroupOf("api"); mc != here || g != "api" {
-		t.Fatalf("api is %q's %q", mc.Name, g)
+	if ms := f.GroupMachines("api"); len(ms) != 1 || ms[0] != box {
+		t.Fatalf("api is on %d machines", len(ms))
 	}
 }

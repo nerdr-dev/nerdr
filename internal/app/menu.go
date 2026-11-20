@@ -264,7 +264,8 @@ func (m *Model) openGroupMenu(g string, x, y int) tea.Cmd {
 	}
 	cmd := m.selectTab(m.groupTab(g))
 	var items []menuItem
-	if repo := tabRepo(m.fleet.Tabs()[idx[0]]); repo != "" && g != core.MultiGroup {
+	// A new tab is made on the machine of the tab gone to, in its checkout.
+	if repo := tabRepo(m.Cur()); repo != "" && g != core.MultiGroup {
 		items = append(items, menuItem{label: "New tab in " + g + "…",
 			run: func(m *Model) tea.Cmd { return m.openWizardFor(repo) }})
 	} else {
