@@ -379,14 +379,15 @@ func (m *Model) moveMachineGone(mc *fleet.Machine) tea.Cmd {
 }
 
 // moveFinish closes the tab on the source once it is on the target, its
-// worktrees deleted with remove, and with branch their branches too.
-func (m *Model) moveFinish(remove, branch bool) tea.Cmd {
+// worktrees deleted with remove, and with branch their branches too. With
+// keep it is not closed: it carries on there as well.
+func (m *Model) moveFinish(remove, branch, keep bool) tea.Cmd {
 	r := m.moving
 	if r == nil || r.stage != moveLanded {
 		return nil
 	}
 	m.moving, m.dialog = nil, nil
-	q := core.MoveDone{Job: r.job, T: r.ref, Remove: remove}
+	q := core.MoveDone{Job: r.job, T: r.ref, Remove: remove, Keep: keep}
 	if branch {
 		q.BranchHeads = r.heads
 	}
@@ -442,11 +443,13 @@ func (d *moveDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case moveLanded:
 		switch k {
 		case "1", "esc", "enter":
-			return m.moveFinish(false, false)
+			return m.moveFinish(false, false, false)
 		case "2":
-			return m.moveFinish(true, false)
+			return m.moveFinish(true, false, false)
 		case "3":
-			return m.moveFinish(true, true)
+			return m.moveFinish(true, true, false)
+		case "4":
+			return m.moveFinish(false, false, true)
 		}
 	case moveFailed:
 		switch k {
@@ -504,7 +507,8 @@ func (d *moveDialog) view(m *Model, w, h int) string {
 		lines = append(lines, "",
 			m.button("1", "leave them there"),
 			m.button("2", "delete the worktree there (the branch stays)"),
-			m.button("3", "delete the worktree and the branch there"))
+			m.button("3", "delete the worktree and the branch there"),
+			m.button("4", "keep the tab there too: its agent starts again, on the same branch"))
 	case moveFailed:
 		title = r.name + " was not moved"
 		lines = append(lines, warn(r.err), "", "It carries on on "+machineLabel(r.from)+".", "", m.button("enter", "close"))

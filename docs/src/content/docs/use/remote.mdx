@@ -234,6 +234,12 @@ to do with the worktree and branch left behind: leave them, delete the
 worktree (the branch stays), or delete both. The branch is deleted only
 if it has not moved since.
 
+You can also keep the tab where it was: its agents start again and
+resume, and the tab is then on both machines, on the same branch. Its
+terminals and code review, which the move stopped, are not started
+again. Nothing keeps the two in step from then on: each machine's branch
+goes its own way until you push and pull.
+
 A move is refused, with the reason, when:
 
 - it is larger than 100 MB;
