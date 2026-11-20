@@ -493,3 +493,47 @@ func TestSpawnKeepsTheSpecsIDAndMark(t *testing.T) {
 		t.Errorf("with none: %+v", p)
 	}
 }
+
+// Writes to a program that reads none are all answered once it is
+// closed: the one out and those queued behind it, and the holder lives.
+func TestCloseAnswersWritesStillQueued(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	p, err := cl.Spawn(spawn.Spec{Argv: []string{"sh", "-c", "stty raw -echo; echo ready; exec sleep 30"}, PTY: true, W: 80, H: 24})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readUntil(t, p, "ready")
+	big := bytes.Repeat([]byte("x"), MaxBody)
+	errs := make(chan error, 4)
+	for range cap(errs) {
+		go func() {
+			_, err := p.Write(big)
+			errs <- err
+		}()
+	}
+	// Let the writer fill the terminal and block, with the rest queued.
+	within(t, 5*time.Second, "the writes to queue", func() {
+		for {
+			h.mu.Lock()
+			pr := h.progs[p.(*Proc).id]
+			n, out := len(pr.writes), pr.writing != nil
+			h.mu.Unlock()
+			if n == cap(errs) && out {
+				return
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	})
+	p.Close()
+	within(t, 5*time.Second, "every write to be answered", func() {
+		for range cap(errs) {
+			if err := <-errs; err == nil {
+				t.Error("a write not written came back without an error")
+			}
+		}
+	})
+	if _, err := cl.List(); err != nil {
+		t.Fatalf("the holder is gone: %v", err)
+	}
+}
