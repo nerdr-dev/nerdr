@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"syscall"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/api"
 	"github.com/nerdr-dev/nerdr/internal/attach"
@@ -104,10 +105,18 @@ func dialAPI(root string) (net.Conn, error) {
 // dialAPIAt connects to the API socket sock, and says hello with the key
 // in keyFile.
 func dialAPIAt(sock, keyFile string) (net.Conn, error) {
-	c, err := net.Dial("unix", sock)
+	return dialAPIBy(sock, keyFile, time.Time{})
+}
+
+// dialAPIBy is dialAPIAt giving up at deadline, the zero time for none;
+// the connection keeps deadline for what is read and written on it.
+func dialAPIBy(sock, keyFile string, deadline time.Time) (net.Conn, error) {
+	d := net.Dialer{Deadline: deadline}
+	c, err := d.Dial("unix", sock)
 	if err != nil {
 		return nil, err
 	}
+	_ = c.SetDeadline(deadline)
 	key, err := attach.ReadKey(keyFile)
 	if err != nil {
 		_ = c.Close()
