@@ -128,7 +128,8 @@ func (m *Core) SpinoffKinds(pt spinoff.Part) []agents.Kind {
 	if !pt.Sandboxed {
 		return all
 	}
-	return slices.DeleteFunc(all, func(k agents.Kind) bool { return !m.SandboxedKind(k) })
+	// A copy: all is the core's own list.
+	return slices.DeleteFunc(slices.Clone(all), func(k agents.Kind) bool { return !m.SandboxedKind(k) })
 }
 
 // MarkSandboxed records on t's tab and in m.sandboxedDirs when any of its

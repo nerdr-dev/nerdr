@@ -268,6 +268,37 @@ The other machine's agent settings apply there. If the tab's agent runs
 in a sandbox here and the agent there does not, nerdr asks for an extra
 yes before moving: a move never takes away a sandbox without asking.
 
+## Splitting work onto another machine
+
+When an agent [splits its work into new tabs](../agents-together/#splitting-work-into-new-tabs),
+each part can be made on any machine that is connected, not only the
+tab's own. In the dialog, press `ctrl+t` to go to the next machine; the
+*Machine* line says which one is chosen, and the agents, repositories and
+tab limit then come from there. The next part starts on the same machine.
+
+The other machine finds each of the tab's repositories by its `origin`,
+as for a move, and the dialog shows where it is there. If that machine
+has none, the dialog says so, and nerdr clones it from `origin` there
+when you press `enter`. A repository with no `origin` cannot be used
+there. `ctrl+r` lists the other machine's own repositories.
+
+The branch is made from `origin`'s main on the other machine. If you
+start it with the part's commits, nerdr bundles those commits here and
+carries them over, as a move does: nothing is pushed. The commits must
+build on `origin`'s main. If they do not come over, or do not apply,
+the tab is still made, and its agent is told to bring them in or write
+the change from its prompt.
+
+The new agent is told which machine the work came from, and that it
+cannot look at that worktree. The agent that split the work is told
+which machine each tab is on.
+
+If the tab cannot be made there, for example because the branch name is
+taken or the machine goes away, the dialog says why and keeps the part.
+You can change it, pick another machine, or skip it. If the machine goes
+away while you are choosing, the dialog switches back to the tab's own
+machine.
+
 ## Tips for servers
 
 ### Log in once

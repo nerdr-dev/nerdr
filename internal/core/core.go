@@ -134,6 +134,9 @@ type Core struct {
 	// folders the packs of moves to here are put in, by job; see move.go.
 	movesOut map[string]*moveOut
 	movesIn  map[string]string
+	// packsOut are the folders of the packs of parts' commits for tabs
+	// made on another machine, by job; see spinoffremote.go.
+	packsOut map[string]string
 	// Plugins are the user's plugins as last looked for, for a client's
 	// copy; see LookForPlugins.
 	Plugins PluginsLook

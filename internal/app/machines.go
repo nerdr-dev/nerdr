@@ -53,7 +53,7 @@ func (m *Model) goneFor(mc *fleet.Machine, why, err string) tea.Cmd {
 	}
 	mc.Gone = why
 	mc.Tries.Add(1) // a try under way gives up
-	moved := m.moveMachineGone(mc)
+	moved := tea.Batch(m.moveMachineGone(mc), m.spinoffMachineGone(mc))
 	// What the review panel asked of it will not be answered.
 	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
 	m.fleet.Bump()

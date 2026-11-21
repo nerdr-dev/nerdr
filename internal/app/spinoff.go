@@ -8,6 +8,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -55,7 +56,26 @@ type spinoffDialog struct {
 	others   bool
 	repoNote string
 	err      string
+	// on is the machine to make the tab on, picked with ctrl+t; nil for
+	// the tab's own (see target). On another, found is where it has the
+	// tab's repositories, by its answer to find, nil while it is asked.
+	on    *fleet.Machine
+	find  string
+	found *core.SpinoffFoundMsg
 }
+
+// target is the machine the new tab is to be made on: the one picked,
+// while it can be reached, else the tab's own.
+func (d *spinoffDialog) target(m *Model) *fleet.Machine {
+	if mc := d.on; mc != nil && m.fleet.Named(mc.Name) == mc && !grey(mc) && !mc.Away {
+		return mc
+	}
+	return m.machineOf(d.t)
+}
+
+// remote reports whether the new tab is to be made on another machine
+// than the tab's.
+func (d *spinoffDialog) remote(m *Model) bool { return d.target(m) != m.machineOf(d.t) }
 
 // openSpinoff opens the dialog for t's next part, if it has one.
 func (m *Model) openSpinoff(t *core.Tab) tea.Cmd {
@@ -92,26 +112,53 @@ func (m *Model) spinoffNoAgent(t *core.Tab) tea.Cmd {
 // when the part is to be made.
 func (d *spinoffDialog) reset(m *Model) bool {
 	pt := d.t.Spinoff.Next[0]
+	d.branch.SetValue(pt.Branch)
+	d.branch.CursorEnd()
+	d.rewrite, d.showPrompt, d.promptTop, d.err = false, false, 0, ""
+	return d.resetTarget(m)
+}
+
+// resetTarget fills in what the dialog offers of the machine the tab is
+// to be made on: the agents, the one picked kept where it can be, and the
+// repositories. It reports false as reset does: only on the tab's own
+// machine, where nothing else is to be had.
+func (d *spinoffDialog) resetTarget(m *Model) bool {
+	pt := d.t.Spinoff.Next[0]
+	tc := &d.target(m).Core
 	picked := d.t.Agent
 	if d.agentIdx < len(d.agents) {
 		picked = d.agents[d.agentIdx]
 	}
-	d.agents, d.agentIdx = m.machineOf(d.t).Core.SpinoffKinds(pt), 0
-	if len(d.agents) == 0 && pt.Sandboxed && len(m.machineOf(d.t).Core.Available()) > 0 {
+	d.agents, d.agentIdx = tc.SpinoffKinds(pt), 0
+	if len(d.agents) == 0 && pt.Sandboxed && len(tc.Available()) > 0 && !d.remote(m) {
 		return false
 	}
 	if i := slices.Index(d.agents, picked); i >= 0 {
 		d.agentIdx = i
 	}
-	d.branch.SetValue(pt.Branch)
-	d.branch.CursorEnd()
-	d.rewrite, d.showPrompt, d.promptTop, d.err = false, false, 0, ""
 	d.repos, d.others, d.repoNote = nil, false, ""
-	for _, w := range d.t.Worktrees {
-		d.repos = append(d.repos, core.SpinoffRepo{Repo: workspace.Repo{Name: filepath.Base(w.Repo), Path: filepath.Clean(w.Repo)},
-			Label: core.RepoName(w), Own: true})
-	}
 	d.repoOn = core.SpinoffRepos(d.t.Worktrees, pt)
+	for i, w := range d.t.Worktrees {
+		r := core.SpinoffRepo{Repo: workspace.Repo{Name: filepath.Base(w.Repo), Path: filepath.Clean(w.Repo)},
+			Label: core.RepoName(w), Own: true}
+		if d.remote(m) {
+			// There, the repository with its origin, as found.
+			r.From, r.Origin, r.Path = r.Path, w.Origin, ""
+			switch {
+			case d.found == nil:
+				r.Err = "being looked for"
+			case i < len(d.found.Repos):
+				f := d.found.Repos[i]
+				r.Path, r.CloneInto, r.Err = f.Path, f.CloneInto, f.Err
+			default:
+				r.Err = "not found"
+			}
+			if r.Err != "" {
+				d.repoOn[i] = false
+			}
+		}
+		d.repos = append(d.repos, r)
+	}
 	// Those the agent named that the tab does not have are looked for
 	// among the rest; an agent in a sandbox gets the tab's alone, as with
 	// nerdr tab new, and the user can still tick another.
@@ -120,7 +167,7 @@ func (d *spinoffDialog) reset(m *Model) bool {
 		// Named none of the tab's, and found another: not the tab's as
 		// well.
 		noneOwn := len(names) == len(pt.Repos)
-		all := m.machineOf(d.t).Core.OtherRepos(d.repos)
+		all := tc.OtherRepos(d.repos)
 		for _, n := range names {
 			i := slices.IndexFunc(all, func(r workspace.Repo) bool { return r.Name == n })
 			switch {
@@ -163,7 +210,7 @@ func (d *spinoffDialog) showOthers(m *Model) {
 		d.onRepos = d.onRepos && d.pickRepos()
 		return
 	}
-	more := m.machineOf(d.t).Core.OtherRepos(d.repos)
+	more := d.target(m).Core.OtherRepos(d.repos)
 	if len(more) == 0 {
 		d.err = "nerdr has no other repository: repo_dirs says where it looks"
 		return
@@ -196,6 +243,20 @@ func (d *spinoffDialog) othersTicked() bool {
 	return false
 }
 
+// whereNote says, for repository r of the tab's on another machine,
+// where it is there: "" for another.
+func (d *spinoffDialog) whereNote(r core.SpinoffRepo) string {
+	switch {
+	case r.From == "":
+		return ""
+	case r.Err != "":
+		return warn("  " + r.Err)
+	case r.CloneInto != "":
+		return warn("  cloned from " + r.Origin + " into " + r.CloneInto)
+	}
+	return dim("  " + r.Path)
+}
+
 // pickRepos reports whether the dialog asks which repositories: when
 // there are several to pick from.
 func (d *spinoffDialog) pickRepos() bool { return len(d.repos) > 1 }
@@ -207,7 +268,7 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		m.dialog = nil
 		return nil
 	}
-	if d.t.SpinoffBusy != "" {
+	if d.busy(m) != "" {
 		if k := msg.String(); k == "esc" || k == "ctrl+c" {
 			m.dialog = nil
 		}
@@ -252,6 +313,8 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case "ctrl+r":
 		d.showOthers(m)
 		return nil
+	case "ctrl+t":
+		return d.nextMachine(m)
 	case "pgup":
 		d.promptTop = max(d.promptTop-10, 0)
 		return nil
@@ -265,7 +328,7 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	case " ":
 		// No branch name has a space: it is for the repositories.
 		if d.onRepos {
-			d.repoOn[d.repoAt] = !d.repoOn[d.repoAt]
+			d.tick(d.repoAt)
 			return nil
 		}
 	}
@@ -274,19 +337,49 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	return cmd
 }
 
+// tick turns repository i on or off, when it can be had.
+func (d *spinoffDialog) tick(i int) {
+	if r := d.repos[i]; r.Err != "" && !d.repoOn[i] {
+		d.err = r.Label + ": " + r.Err
+		return
+	}
+	d.err = ""
+	d.repoOn[i] = !d.repoOn[i]
+}
+
+// busy is what is being done about the part asked about, "" while
+// nothing is.
+func (d *spinoffDialog) busy(m *Model) string {
+	if d.t.SpinoffBusy != "" {
+		return d.t.SpinoffBusy
+	}
+	if r := m.spinoffRun; r != nil && m.fleet.ByRef(r.ref) == d.t {
+		return r.busy
+	}
+	return ""
+}
+
 // spinoffMake makes the branch and worktrees for the part asked about, in
 // the background.
 func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
-	if m.machineOf(d.t).Core.TabLimitReached() {
-		d.err = "the tab limit (max_tabs) is reached: close a tab first, or skip this part"
+	on := ""
+	if d.remote(m) {
+		on = " there"
+	}
+	if d.target(m).Core.TabLimitReached() {
+		d.err = "the tab limit (max_tabs) is reached" + on + ": close a tab" + on + " first, or skip this part"
 		return nil
 	}
-	if len(d.agents) == 0 {
-		d.err = "found no agent on PATH"
+	switch {
+	case len(d.agents) == 0 && d.part().Sandboxed && len(d.target(m).Core.Available()) > 0:
+		d.err = "an agent in a sandbox sent this part, and no agent" + on + " is set sandboxed = true: pick another machine, or skip it"
+		return nil
+	case len(d.agents) == 0:
+		d.err = "found no agent on PATH" + on
 		return nil
 	}
 	t, pt, kind := d.t, d.part(), d.agents[d.agentIdx]
-	if pt.Sandboxed && !m.machineOf(t).Core.SandboxedKind(kind) {
+	if pt.Sandboxed && !d.target(m).Core.SandboxedKind(kind) {
 		d.err = "an agent in a sandbox sent this part: pick one set sandboxed"
 		return nil
 	}
@@ -315,6 +408,9 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 		return nil
 	}
 	d.err = ""
+	if d.remote(m) {
+		return m.spinoffRemote(d, kind, name, reuse, elsewhere, group)
+	}
 	return m.do(core.SpinoffCreate{T: m.fleet.Ref(t), Part: pt, Kind: kind, Name: name, Reuse: reuse, Elsewhere: elsewhere,
 		Group: group, Repos: repos, Own: own})
 }
@@ -399,17 +495,32 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		lines = append(lines, wrapLines(pt.Summary, inner, 8)...)
 	}
 	lines = append(lines, "", d.branch.View(), "")
+	remote, there := d.remote(m), machineLabel(d.target(m))
+	if len(m.spinoffMachines()) > 1 || remote {
+		label := "Machine: " + there
+		if !remote {
+			label += dim("  (the tab's own)")
+		}
+		lines = append(lines, m.onClick(label, func(m *Model) tea.Cmd { return d.nextMachine(m) }), "")
+	}
+	if remote && d.found == nil {
+		lines = append(lines, dim("Asking "+there+" where it has the repositories…"), "")
+	}
 	if len(pt.Commits) > 0 {
 		var short []string
 		for _, c := range pt.Commits {
 			short = append(short, c[:min(len(c), 7)])
+		}
+		carried := ""
+		if remote {
+			carried = dim("  (carried over to " + there + ")")
 		}
 		code := "Code already written in " + parentBranch + " " + dim("("+strings.Join(short, " ")+")") + ":"
 		if !d.ownTicked() {
 			lines = append(lines, code, dim("  in this tab's repositories, none of them ticked: the new agent writes it anew"), "")
 		} else {
 			lines = append(lines, code,
-				m.onClick(cursorLine(!d.rewrite, "Start the branch with its "+core.Plural(len(pt.Commits), "commit"), sel), func(m *Model) tea.Cmd {
+				m.onClick(cursorLine(!d.rewrite, "Start the branch with its "+core.Plural(len(pt.Commits), "commit")+carried, sel), func(m *Model) tea.Cmd {
 					d.rewrite = false
 					return nil
 				}),
@@ -430,8 +541,12 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 			if !r.Own {
 				label += dim("  not in this tab")
 			}
+			if note := d.whereNote(r); note != "" {
+				label += note
+			}
 			rows = append(rows, m.onClick(cursorLine(d.onRepos && i == d.repoAt, label, sel), func(m *Model) tea.Cmd {
-				d.onRepos, d.repoAt, d.repoOn[i] = true, i, !d.repoOn[i]
+				d.onRepos, d.repoAt = true, i
+				d.tick(i)
 				return nil
 			}))
 		}
@@ -447,6 +562,9 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		// With no list, what the agent asked for and did not get is to be
 		// seen all the same.
 		lines = append(lines, warn("Repository: "+d.repoNote), "")
+	} else if remote && d.found != nil && len(d.repos) == 1 {
+		// As where it lands there is.
+		lines = append(lines, "Repository: "+d.repos[0].Label+d.whereNote(d.repos[0]), "")
 	}
 	if len(d.agents) == 0 {
 		lines = append(lines, warn("Found no agent on PATH: claude, opencode, copilot, codex, cursor-agent, gemini or agy."), "")
@@ -467,9 +585,12 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 	case d.pickRepos():
 		where = "in the repositories ticked"
 	}
+	if remote {
+		where += " on " + there
+	}
 	lines = append(lines, dim(fmt.Sprintf("A new branch from origin's main %s; the agent is given a prompt of %s.", where, core.Plural(len(pt.Prompt), "character"))))
-	if t.SpinoffBusy != "" {
-		lines = append(lines, "", warn(t.SpinoffBusy), dim("esc hides this; the tab opens when it is ready"))
+	if busy := d.busy(m); busy != "" {
+		lines = append(lines, "", warn(busy), dim("esc hides this; the tab opens when it is ready"))
 	} else {
 		pairs := []string{"enter", "make tab"}
 		if len(pt.Commits) > 0 && d.ownTicked() {
@@ -490,6 +611,9 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 			others = "fewer repositories"
 		}
 		pairs = append(pairs, "ctrl+o", prompt, "ctrl+r", others)
+		if len(m.spinoffMachines()) > 1 {
+			pairs = append(pairs, "ctrl+t", "machine")
+		}
 		if n-i > 0 {
 			pairs = append(pairs, "ctrl+x", "skip", "esc", "skip all")
 		} else {

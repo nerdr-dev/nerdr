@@ -378,6 +378,10 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.onSetupProgress(ev), true
 	case moveLanded:
 		return m.onMoveLanded(ev), true
+	case spinoffCloned:
+		return m.onSpinoffCloned(ev), true
+	case spinoffLanded:
+		return m.onSpinoffLanded(ev), true
 	case repoMadeMsg:
 		return m.onRepoMade(ev), true
 	case RepoScanMsg:

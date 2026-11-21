@@ -75,8 +75,15 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		if t := m.fleet.ByRef(ev.T); t != nil && t == m.Cur() {
 			m.review = m.review.SetUnseen(t.Unseen)
 		}
-	case core.MoveCheckMsg, core.MoveLookMsg, core.MovePackedMsg, core.MoveChunkMsg, core.MovePutMsg, core.MoveLandedMsg:
+	case core.MoveChunkMsg, core.MovePutMsg:
+		// A move's, or a part's commits carried to another machine.
+		return toCore(tea.Batch(m.onMove(ev), m.onSpinoffRun(ev)))
+	case core.MoveCheckMsg, core.MoveLookMsg, core.MovePackedMsg, core.MoveLandedMsg:
 		return toCore(m.onMove(ev))
+	case core.SpinoffPackedMsg, core.SpinoffLandedMsg:
+		return toCore(m.onSpinoffRun(ev))
+	case core.SpinoffFoundMsg:
+		return toCore(m.spinoffFound(ev))
 	case core.ChangesMsg:
 		m.onCommitFiles(ev)
 	case core.ReposScannedMsg:
