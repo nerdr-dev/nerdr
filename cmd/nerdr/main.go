@@ -42,6 +42,7 @@ usage:
                      there too); FOLDER is ~ when not given
   nerdr list         the nerdrs running on this machine, a folder each,
                      and how many agents wait for you (--json)
+  nerdr tabs [FOLDER] the tabs of the nerdr running for FOLDER, as JSON
   nerdr sandbox      the repositories nerdr holds back in, an agent having
                      run in a sandbox there; clear forgets it (takes -h)
   nerdr api [FOLDER] the API of the nerdr running for FOLDER, for your own

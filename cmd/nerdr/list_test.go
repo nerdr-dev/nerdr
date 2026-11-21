@@ -4,11 +4,13 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/api"
+	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -76,5 +78,46 @@ func TestListRunning(t *testing.T) {
 
 	if all, failed := listRunning(t.TempDir()); all == nil || len(all) != 0 || failed != nil {
 		t.Errorf("an empty folder: %+v, %q", all, failed)
+	}
+}
+
+// TestAPITabs: outside nerdr, nerdr tabs FOLDER asks the API of the core
+// running for the folder; with none, it says to start one.
+func TestAPITabs(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("NERDR_CLIENT_DIR", dir)
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := apiTabs(root); err == nil || !strings.Contains(err.Error(), "no nerdr runs") {
+		t.Fatalf("no core: %v", err)
+	}
+	sock, _, err := attach.APIPaths(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	listCore(t, dir, strings.TrimSuffix(filepath.Base(sock), ".sock"), root, 2, "")
+	tabs, err := apiTabs(root)
+	if err != nil || len(tabs) != 2 || tabs[0].ID != "t1" {
+		t.Fatalf("tabs %+v, %v", tabs, err)
+	}
+}
+
+// TestTabsInATabTakesNoFolder: in a tab, nerdr tabs goes by the tab's
+// socket alone, never by the API, and takes no FOLDER.
+func TestTabsInATabTakesNoFolder(t *testing.T) {
+	t.Setenv("NERDR", "1")
+	t.Setenv("NERDR_TAB", "")
+	t.Setenv("NERDR_SOCKET", "")
+	if !inNerdr() {
+		t.Fatal("NERDR=1 is in nerdr")
+	}
+	if got := runTabs([]string{"/tmp"}); got != 2 {
+		t.Fatalf("a FOLDER in a tab: exit %d", got)
+	}
+	// Without the tab's socket it fails, rather than ask the API.
+	if got := runTabs(nil); got != 1 {
+		t.Fatalf("no socket: exit %d", got)
 	}
 }
