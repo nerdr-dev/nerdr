@@ -37,7 +37,7 @@ func TestSocketsCheck(t *testing.T) {
 // TestRunningCheck: no nerdr is no fault; one of this version is ok, of
 // another a warning; in a tab it is not asked, and says why.
 func TestRunningCheck(t *testing.T) {
-	dir := t.TempDir()
+	dir := sockDir(t)
 	t.Setenv("NERDR_CLIENT_DIR", dir)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -63,7 +63,7 @@ func TestRunningCheck(t *testing.T) {
 // TestRunningCheckRefusedUnderNerdr: a core refusing a program under a
 // nerdr is said plainly, not as a fault.
 func TestRunningCheckRefusedUnderNerdr(t *testing.T) {
-	dir := t.TempDir()
+	dir := sockDir(t)
 	t.Setenv("NERDR_CLIENT_DIR", dir)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -75,4 +75,16 @@ func TestRunningCheckRefusedUnderNerdr(t *testing.T) {
 	if c := runningCheck(root, false); c.Status != checkOK || !strings.Contains(c.Text, "your own terminal") {
 		t.Fatalf("refused: %+v", c)
 	}
+}
+
+// sockDir is a folder for sockets with a short path: t.TempDir's has the
+// test's name in it, and a socket's path on macOS is at most 104 bytes.
+func sockDir(t *testing.T) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", "nsock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	return dir
 }

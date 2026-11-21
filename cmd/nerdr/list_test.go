@@ -91,7 +91,7 @@ func TestListRunning(t *testing.T) {
 // TestAPITabs: outside nerdr, nerdr tabs FOLDER asks the API of the core
 // running for the folder; with none, it says to start one.
 func TestAPITabs(t *testing.T) {
-	dir := t.TempDir()
+	dir := sockDir(t)
 	t.Setenv("NERDR_CLIENT_DIR", dir)
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
