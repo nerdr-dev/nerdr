@@ -505,7 +505,7 @@ func (d *moveDialog) view(m *Model, w, h int) string {
 	case moveLooking:
 		lines = append(lines, "Looking at what would go…", "", m.button("esc", "cancel"))
 	case moveAsking, moveWeaker:
-		lines = append(lines, r.askLines(m)...)
+		lines = append(lines, r.askLines(m, w, h)...)
 	case moveCloning:
 		lines = append(lines, "Cloning on "+to+": "+strings.Join(r.clones(), ", ")+"…", "", m.button("esc", "cancel"))
 	case movePacking:
@@ -540,8 +540,12 @@ func (d *moveDialog) view(m *Model, w, h int) string {
 
 // askLines are what the user is asked before the move, in parts with a
 // heading each: what goes, where it lands, what stays and stops here, and
-// the agent there; then the keys.
-func (r *moveRun) askLines(m *Model) []string {
+// the agent there; then the keys. In a box w wide, a path too long for
+// its line is cut in the middle, so the column stays; and in one too low
+// for it all, the parts lose the blank lines between them, so the keys
+// are still shown.
+func (r *moveRun) askLines(m *Model, w, h int) []string {
+	room := boxInner(w) - moveCol - 2 // what a row has after its label
 	changed := 0
 	var newFiles, ignored []string
 	more, ignMore := 0, 0
@@ -567,23 +571,24 @@ func (r *moveRun) askLines(m *Model) []string {
 	lines = append(lines,
 		moveRow("With it", "the conversation, the queue and the note"),
 		moveRow("Size", move.Size(r.look.Size)),
-		"", moveHead("Where it lands on "+to))
+		moveSep, moveHead("Where it lands on "+to))
 	for i, t := range r.check.Repos {
 		label := "Repository"
 		if len(r.check.Repos) > 1 {
 			label = r.repos[i].Name
 		}
 		if t.CloneInto != "" {
-			lines = append(lines, moveRow(label, warn("not there yet: cloned from "+r.repos[i].Origin)),
-				moveRow("", warn("into "+t.CloneInto)))
+			from := "not there yet: cloned from "
+			lines = append(lines, moveRow(label, warn(from+cutMiddle(r.repos[i].Origin, room-len(from)))),
+				moveRow("", warn("into "+cutMiddle(t.CloneInto, room-len("into ")))))
 		} else {
-			lines = append(lines, moveRow(label, t.Path))
+			lines = append(lines, moveRow(label, cutMiddle(t.Path, room)))
 		}
 	}
-	lines = append(lines, moveRow("Worktree", r.check.Dir))
+	lines = append(lines, moveRow("Worktree", cutMiddle(r.check.Dir, room)))
 
 	if len(ignored) > 0 || len(r.stops) > 0 {
-		lines = append(lines, "", moveHead("Left here"))
+		lines = append(lines, moveSep, moveHead("Left here"))
 		if len(ignored) > 0 {
 			lines = append(lines, moveRow("Stays", listSome(ignored, ignMore, 6)+dim("  (git ignores them)")))
 		}
@@ -596,7 +601,7 @@ func (r *moveRun) askLines(m *Model) []string {
 		}
 	}
 
-	lines = append(lines, "", moveHead("The agent on "+to))
+	lines = append(lines, moveSep, moveHead("The agent on "+to))
 	agent := string(r.kind)
 	if len(r.kinds) > 1 {
 		agent += "   " + m.button("a", "another")
@@ -613,14 +618,43 @@ func (r *moveRun) askLines(m *Model) []string {
 		}
 	}
 
-	lines = append(lines, "", dim("Until "+to+" has the tab, it stays here."), "")
+	lines = append(lines, moveSep, dim("Until "+to+" has the tab, it stays here."), "")
 	if r.stage == moveWeaker {
-		lines = append(lines, warn(string(r.kind)+" on "+to+" runs without a sandbox. Move anyway?"), "",
+		lines = append(lines, warn(string(r.kind)+" on "+to+" runs without a sandbox. Move anyway?"), moveSep,
 			m.button("y", "yes, without a sandbox")+"   "+m.button("n", "no"))
-		return lines
+	} else {
+		lines = append(lines, m.button("enter", "move")+"   "+m.button("esc", "cancel"))
 	}
-	lines = append(lines, m.button("enter", "move")+"   "+m.button("esc", "cancel"))
-	return lines
+	// The box's border, title and the blank line under it take 4 rows.
+	tight := len(lines)+4 > h
+	out := lines[:0]
+	for _, l := range lines {
+		switch {
+		case l != moveSep:
+			out = append(out, l)
+		case !tight:
+			out = append(out, "")
+		}
+	}
+	return out
+}
+
+// moveSep is a blank line between the parts of the move's question, left
+// out when the box is too low for them.
+const moveSep = "\x00"
+
+// moveCol is how wide the labels' column of the move's question is.
+const moveCol = 12
+
+// cutMiddle is s, if it is wider than n, with its middle cut out for an
+// ellipsis: the start and the end of a path are what tell it apart.
+func cutMiddle(s string, n int) string {
+	rs := []rune(s)
+	if len(rs) <= n || n < 3 {
+		return s
+	}
+	head := (n - 1) / 2
+	return string(rs[:head]) + "…" + string(rs[len(rs)-(n-1-head):])
 }
 
 // moveHead heads a part of the move's question.
@@ -631,8 +665,7 @@ func moveHead(s string) string {
 // moveRow is a line of a part of the move's question: label, dim, in a
 // column of its own, then what it says.
 func moveRow(label, s string) string {
-	const col = 12
-	return "  " + dim(label) + strings.Repeat(" ", max(col-lipgloss.Width(label), 1)) + s
+	return "  " + dim(label) + strings.Repeat(" ", max(moveCol-lipgloss.Width(label), 1)) + s
 }
 
 // listSome is up to n of names, and how many more there are.

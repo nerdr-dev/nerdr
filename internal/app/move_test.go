@@ -415,3 +415,33 @@ func TestFleetMoveWaitsBeforeShowingSteps(t *testing.T) {
 		t.Fatalf("a slow step not drawn after moveWait:\n%s", v)
 	}
 }
+
+// TestFleetMoveQuestionFitsItsBox covers paths longer than the box, as a
+// Mac's temporary folders are, and a screen too low for the whole of the
+// question: the paths are cut in the middle, each on its line, and the
+// parts lose the blank lines between them, so the question and its keys
+// are still shown.
+func TestFleetMoveQuestionFitsItsBox(t *testing.T) {
+	m := testModel(t)
+	long := "/private/var/folders/q2/p1t6rgxj5fj32g1dc7dmd49r0000gn/T/TestFleetMoveAsksForAWeakerSandbox103544879/007/box/proj"
+	r := &moveRun{name: "login", from: m.home(), to: m.home(), stage: moveWeaker, running: true,
+		agent: agents.Codex, kind: agents.Codex, sandboxed: true,
+		repos: []core.MoveRepo{{Name: "proj", Branch: "feat"}},
+		stops: []string{"1 terminal (dev servers in them too)"}}
+	r.look = core.MoveLookMsg{Repos: []move.Look{{Changed: 3, New: []string{"new.txt"}, Ignored: []string{".env"}}}}
+	r.check = core.MoveCheckMsg{Dir: long + "/wt/feat-proj", Repos: []core.MoveTarget{{Path: long}}}
+	m.moving = r
+	d := &moveDialog{shown: true}
+	for _, h := range []int{60, 24} {
+		v := ansi.Strip(d.view(m, 100, h))
+		rows := strings.Split(v, "\n")
+		if len(rows) > h {
+			t.Fatalf("%d rows in %d:\n%s", len(rows), h, v)
+		}
+		for _, want := range []string{"Repository  /private/var/", "…", "/007/box/proj │", "runs without a sandbox. Move anyway?", "y yes, without a sandbox"} {
+			if !strings.Contains(v, want) {
+				t.Fatalf("%q missing in %d rows:\n%s", want, h, v)
+			}
+		}
+	}
+}
