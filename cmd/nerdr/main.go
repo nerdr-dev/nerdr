@@ -40,11 +40,14 @@ usage:
   nerdr connect HOST:FOLDER
                      the tabs of FOLDER on HOST, over ssh (nerdr installed
                      there too); FOLDER is ~ when not given
+  nerdr list         the nerdrs running on this machine, a folder each,
+                     and how many agents wait for you (--json)
   nerdr sandbox      the repositories nerdr holds back in, an agent having
                      run in a sandbox there; clear forgets it (takes -h)
   nerdr api [FOLDER] the API of the nerdr running for FOLDER, for your own
                      programs: JSON lines on stdin and stdout (takes -h)
-  nerdr help         this text
+  nerdr help [COMMAND]
+                     this text, or how to use COMMAND
   nerdr version      which nerdr this is
 
 For the agents in its tabs (each takes -h):
@@ -76,6 +79,20 @@ Press ctrl+q ? inside for the keys.
 config: %s
 `
 
+// usages are how to use each command: what nerdr COMMAND -h and nerdr help
+// COMMAND print.
+var usages = map[string]string{
+	"list": listUsage, "sandbox": sandboxUsage, "api": apiUsage,
+	"why": whyUsage, "order": orderUsage, "walkthrough": walkthroughUsage,
+	"spinoff": spinoffUsage, "handoff": handoffUsage,
+	"post-review": reviewUsage, "request-review": requestReviewUsage,
+	"send": sendUsage, "agent": agentUsage, "agents": agentsUsage,
+	"wait": waitUsage, "read": readUsage, "terminal": terminalUsage,
+	"close": closeUsage, "tabs": tabsUsage, "status": statusUsage,
+	"tab": tabUsage, "search": searchUsage, "usage": usageUsage,
+	"plugin": pluginUsage, "plugins": pluginUsage,
+}
+
 func main() {
 	profile()
 	// A nerdr that runs its programs itself, as it runs; see localExec.
@@ -105,6 +122,10 @@ func main() {
 	if len(os.Args) > 1 {
 		// These commands run in the caller's process/sandbox, not in the
 		// host core. They exit below and must discover their own worktree.
+		if u, ok := usages[os.Args[1]]; ok && helpAsked(os.Args[2:]) {
+			fmt.Print(u)
+			return
+		}
 		switch os.Args[1] {
 		case "why", "order", "walkthrough", "spinoff":
 			gitsafe.UseCallerRepository()
@@ -154,6 +175,8 @@ func main() {
 			os.Exit(runSandbox(os.Args[2:]))
 		case "api":
 			os.Exit(runAPI(os.Args[2:]))
+		case "list":
+			os.Exit(runList(os.Args[2:]))
 		case "hook":
 			// nerdr's own hooks in claude; see hooks.ClaudeSettings.
 			if len(os.Args) > 2 && os.Args[2] == "claude" {
@@ -188,6 +211,15 @@ func main() {
 			// internal/hooks.
 			os.Exit(hooks.Command(os.Args[2:], os.Stderr))
 		case "help":
+			if len(os.Args) > 2 {
+				u, ok := usages[os.Args[2]]
+				if !ok {
+					fmt.Fprintf(os.Stderr, "nerdr: no command %q; nerdr help lists them\n", os.Args[2])
+					os.Exit(2)
+				}
+				fmt.Print(u)
+				return
+			}
 			fmt.Printf(usage, config.DefaultWorktreesDir, config.Path())
 			return
 		case "version":
