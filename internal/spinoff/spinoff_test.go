@@ -115,3 +115,33 @@ func TestReportTellsTheAgentWhatBecameOfEachPart(t *testing.T) {
 		}
 	}
 }
+
+// A part made on another machine: its agent is told the tab it came from
+// is there, out of reach, and the agent that sent it where the tab is.
+func TestPromptAndReportOnAnotherMachine(t *testing.T) {
+	pt := Part{Branch: "fix-a", Prompt: "Do A.", Commits: []string{"abc1234"}}
+	from := Parent{Name: "login", Branch: "feat", Dir: "/home/u/wt/feat", Machine: "laptop"}
+	cases := []struct {
+		o    Outcome
+		want string
+	}{
+		{Outcome{Reused: true}, "were brought over and are already on this one"},
+		{Outcome{Reused: true, PickFailed: "conflict"}, "could not (conflict)"},
+		{Outcome{}, "they are not on this machine"},
+		{Outcome{Elsewhere: true}, "cannot be brought into this repository: write what this repository needs, from the prompt"},
+	}
+	for _, c := range cases {
+		p := Prompt(pt, from, c.o)
+		if !strings.Contains(p, "on the machine laptop. That is another machine") || !strings.Contains(p, c.want) {
+			t.Errorf("%+v:\n%s", c.o, p)
+		}
+		if strings.Contains(p, "git -C") || strings.Contains(p, "shares the repository") {
+			t.Errorf("%+v: tells the agent to look at what it cannot reach:\n%s", c.o, p)
+		}
+	}
+	r := Report([]Outcome{{Part: pt, Branch: "fix-a", Dir: "/srv/wt/fix-a", Machine: "box", Reused: true}}, "feat")
+	if !strings.Contains(r, "in /srv/wt/fix-a on the machine box.") || !strings.Contains(r, "another machine than yours") ||
+		!strings.Contains(r, "It starts with commits abc1234") {
+		t.Errorf("report:\n%s", r)
+	}
+}

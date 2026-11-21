@@ -70,6 +70,9 @@ type Model struct {
 	// moving is the move of a tab to another machine going on; see
 	// move.go.
 	moving *moveRun
+	// spinoffRun is a part being made on another machine than its tab's;
+	// see spinoffremote.go.
+	spinoffRun *spinoffRun
 	// tellFn gives the program what comes of a connection to a machine's
 	// core, as NewRemote was given it: for the machines connected to
 	// later.
@@ -609,7 +612,7 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		// What a move asked of it will not be answered; the core gives
 		// the move up itself (see core's movesGone).
 		moved := m.moveMachineGone(mc)
-		return tea.Batch(moved, m.coreGone(mc, msg.Why))
+		return tea.Batch(moved, m.spinoffMachineGone(mc), m.coreGone(mc, msg.Why))
 
 	case coreBackMsg:
 		return m.coreBack(mc, msg.conn, msg.try)

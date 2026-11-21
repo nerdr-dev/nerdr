@@ -444,6 +444,12 @@ func checkMovedObjects(repo string, p Part) error {
 			roots = append(roots, c)
 		}
 	}
+	return checkObjects(repo, roots)
+}
+
+// checkObjects checks every object reachable from roots in the repository
+// at repo, as checkMovedObjects.
+func checkObjects(repo string, roots []string) error {
 	validate := func(args ...string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cancel()

@@ -164,6 +164,10 @@ type Outcome struct {
 	// Elsewhere is set when the tab was made in other repositories than
 	// those of the tab the part came from, none of them shared.
 	Elsewhere bool `json:"elsewhere,omitempty"`
+	// Machine is the machine the tab was made on, as the user's nerdr
+	// names it, when it is another than that of the tab the part came
+	// from; "" when it is the same.
+	Machine string `json:"machine,omitempty"`
 	// Err is why the tab could not be made.
 	Err string `json:"err,omitempty"`
 	// Tab is the id of the tab made, and Start what became of its agent
@@ -197,6 +201,9 @@ type Parent struct {
 	Name   string
 	Branch string
 	Dir    string
+	// Machine is the machine the tab is on, when the new one is on
+	// another; "" when it is on the same.
+	Machine string
 }
 
 // Prompt is what the new tab's agent is given: the part's prompt, and
@@ -209,14 +216,25 @@ func Prompt(pt Part, from Parent, o Outcome) string {
 	if from.Branch != "" {
 		fmt.Fprintf(&b, ", on branch %s", from.Branch)
 	}
-	if o.Elsewhere {
+	switch {
+	case from.Machine != "":
+		fmt.Fprintf(&b, ", in %s on the machine %s. That is another machine than this one: its worktree and commits cannot be looked at from here.", from.Dir, from.Machine)
+	case o.Elsewhere:
 		fmt.Fprintf(&b, ", in %s. That is another repository than this one: look at its commits there, with git -C and the folder.", from.Dir)
-	} else {
+	default:
 		fmt.Fprintf(&b, ", in %s. Its worktree shares the repository with this one, so its commits can be looked at here with git show.", from.Dir)
 	}
 	if len(pt.Commits) > 0 {
 		list := strings.Join(pt.Commits, " ")
 		switch {
+		case from.Machine != "" && o.Elsewhere:
+			fmt.Fprintf(&b, "\n\nThe work was started there, in commits %s, which cannot be brought into this repository: write what this repository needs, from the prompt above.", list)
+		case from.Machine != "" && o.PickFailed != "":
+			fmt.Fprintf(&b, "\n\nThe work was started there, in commits %s. nerdr tried to bring them over onto this branch, but could not (%s), so this branch starts from the base without them. If git show finds them here, bring them in yourself (git cherry-pick, resolving the conflicts); else write the change again from the prompt above.", list, o.PickFailed)
+		case from.Machine != "" && o.Reused:
+			fmt.Fprintf(&b, "\n\nThe work was started there, and commits %s from that branch were brought over and are already on this one: carry on from them.", list)
+		case from.Machine != "":
+			fmt.Fprintf(&b, "\n\nThe work was started there, in commits %s, but the user chose to have it written anew: this branch starts from the base without them, and they are not on this machine. Write it from the prompt above.", list)
 		case o.Elsewhere:
 			fmt.Fprintf(&b, "\n\nThe work was started there, in commits %s, which cannot be brought into this repository: write what this repository needs, with them as a guide.", list)
 		case o.PickFailed != "":
@@ -248,6 +266,9 @@ func Report(done []Outcome, branch string) string {
 			fmt.Fprintf(&b, "\n- %s: could not be made (%s); it is still yours.", name, o.Err)
 		default:
 			fmt.Fprintf(&b, "\n- %s: made as a new tab on branch %s, in %s", name, o.Branch, o.Dir)
+			if o.Machine != "" {
+				fmt.Fprintf(&b, " on the machine %s", o.Machine)
+			}
 			if o.Agent != "" {
 				fmt.Fprintf(&b, ", with %s", o.Agent)
 			}
@@ -255,10 +276,15 @@ func Report(done []Outcome, branch string) string {
 			if o.Branch != name {
 				b.WriteString(" The user renamed the branch.")
 			}
-			if o.Elsewhere {
+			switch {
+			case o.Machine != "":
+				b.WriteString(" That is another machine than yours: you cannot look at its worktree from here.")
+			case o.Elsewhere:
 				b.WriteString(" It is in another repository than yours.")
 			}
-			if len(o.Part.Commits) > 0 && o.Elsewhere {
+			if len(o.Part.Commits) > 0 && o.Elsewhere && o.Machine != "" {
+				fmt.Fprintf(&b, " Commits %s could not go there; its agent writes it from the prompt, and they are still yours.", strings.Join(o.Part.Commits, " "))
+			} else if len(o.Part.Commits) > 0 && o.Elsewhere {
 				fmt.Fprintf(&b, " Commits %s could not go there; its agent has them as a guide, and they are still yours.", strings.Join(o.Part.Commits, " "))
 			} else if len(o.Part.Commits) > 0 {
 				moved = append(moved, o.Part.Commits...)

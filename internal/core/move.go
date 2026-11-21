@@ -110,13 +110,7 @@ type MoveCheckMsg struct {
 }
 
 func (q MoveCheck) Do(m *Core) Cmd {
-	var paths []string
-	for _, r := range m.Scan.Repos {
-		paths = append(paths, r.Path)
-	}
-	if m.Root != "" && !slices.Contains(paths, m.Root) {
-		paths = append(paths, m.Root)
-	}
+	paths := m.repoPaths()
 	wtRoot, cloneDir := m.WtRoot, m.Scan.NewRepoDir
 	cmd := Later(func() Event { return checkMove(q, paths, wtRoot, cloneDir) })
 	if q.Clone {
@@ -134,35 +128,10 @@ func checkMove(q MoveCheck, paths []string, wtRoot, cloneDir string) MoveCheckMs
 	var repos []workspace.Repo
 	for _, r := range q.Repos {
 		var t MoveTarget
-		switch {
-		case workspace.ValidBranch(r.Branch) != nil:
+		if workspace.ValidBranch(r.Branch) != nil {
 			t.Err = "no branch to move"
-		case move.OriginKey(r.Origin) == "":
-			t.Err = r.Name + " has no origin, so nerdr cannot tell which repository it is there"
-		}
-		if t.Err == "" {
-			for _, p := range paths {
-				if move.SameOrigin(p, r.Origin) {
-					t.Path = p
-					break
-				}
-			}
-		}
-		if t.Err == "" && t.Path == "" {
-			switch {
-			case cloneDir == "":
-				t.Err = "there is no repository with origin " + r.Origin + ", and no folder to clone it into"
-			case workspace.CheckNewRepo(cloneDir, r.Name) != nil:
-				t.Err = "there is no repository with origin " + r.Origin + ", and " + workspace.CheckNewRepo(cloneDir, r.Name).Error()
-			case q.Clone:
-				p, err := workspace.CloneRepo(cloneDir, r.Name, r.Origin)
-				if err != nil {
-					t.Err = err.Error()
-				}
-				t.Path = p
-			default:
-				t.CloneInto = filepath.Join(cloneDir, r.Name)
-			}
+		} else {
+			t = findRepo(r, paths, cloneDir, q.Clone)
 		}
 		if t.Path != "" && t.Err == "" {
 			t.Err = move.CanLand(t.Path, move.Part{Branch: r.Branch})
@@ -180,6 +149,56 @@ func checkMove(q MoveCheck, paths []string, wtRoot, cloneDir string) MoveCheckMs
 		msg.Err = msg.Dir + " already exists there"
 	}
 	return msg
+}
+
+// findRepo is where the repository of r is among paths, the repositories
+// here: the one with r's origin; or, with none, the folder in cloneDir
+// it would be cloned into, cloned there with clone. Err is why there is
+// none and none can be.
+func findRepo(r MoveRepo, paths []string, cloneDir string, clone bool) MoveTarget {
+	var t MoveTarget
+	if move.OriginKey(r.Origin) == "" {
+		t.Err = r.Name + " has no origin, so nerdr cannot tell which repository it is there"
+		return t
+	}
+	for _, p := range paths {
+		if move.SameOrigin(p, r.Origin) {
+			t.Path = p
+			return t
+		}
+	}
+	// One cloned there since the repositories were last looked for.
+	if p := filepath.Join(cloneDir, r.Name); cloneDir != "" && workspace.CheckNewRepo(cloneDir, r.Name) != nil && move.SameOrigin(p, r.Origin) {
+		t.Path = p
+		return t
+	}
+	switch {
+	case cloneDir == "":
+		t.Err = "there is no repository with origin " + r.Origin + ", and no folder to clone it into"
+	case workspace.CheckNewRepo(cloneDir, r.Name) != nil:
+		t.Err = "there is no repository with origin " + r.Origin + ", and " + workspace.CheckNewRepo(cloneDir, r.Name).Error()
+	case clone:
+		p, err := workspace.CloneRepo(cloneDir, r.Name, r.Origin)
+		if err != nil {
+			t.Err = err.Error()
+		}
+		t.Path = p
+	default:
+		t.CloneInto = filepath.Join(cloneDir, r.Name)
+	}
+	return t
+}
+
+// repoPaths are the repositories core has, to find one by its origin.
+func (m *Core) repoPaths() []string {
+	var paths []string
+	for _, r := range m.Scan.Repos {
+		paths = append(paths, r.Path)
+	}
+	if m.Root != "" && !slices.Contains(paths, m.Root) {
+		paths = append(paths, m.Root)
+	}
+	return paths
 }
 
 // MoveLook asks the source what moving tab T would carry and leave, with
@@ -517,11 +536,15 @@ type MoveChunkMsg struct {
 }
 
 func (q MoveChunk) Do(m *Core) Cmd {
-	o := m.movesOut[q.Job]
-	if o == nil || o.t.Moving == nil || !o.t.Moving.Packing {
+	var file string
+	if o := m.movesOut[q.Job]; o != nil && o.t.Moving != nil && o.t.Moving.Packing {
+		file = filepath.Join(o.dir, "pack")
+	} else if dir := m.packsOut[q.Job]; dir != "" {
+		// A part's commits, for a tab made on another machine.
+		file = filepath.Join(dir, "pack")
+	} else {
 		return m.Tell(MoveChunkMsg{Job: q.Job, Off: q.Off, Err: "no pack for the move"})
 	}
-	file := filepath.Join(o.dir, "pack")
 	return Later(func() Event {
 		msg := MoveChunkMsg{Job: q.Job, Off: q.Off}
 		f, err := os.Open(file)
@@ -684,10 +707,7 @@ func (q MovePut) Do(m *Core) Cmd {
 type MoveDrop struct{ Job string }
 
 func (q MoveDrop) Do(m *Core) Cmd {
-	if dir := m.movesIn[q.Job]; dir != "" {
-		delete(m.movesIn, q.Job)
-		go os.RemoveAll(dir)
-	}
+	m.dropMoveIn(q.Job)
 	return nil
 }
 
@@ -1009,7 +1029,10 @@ func (m *Core) movesGone() Cmd {
 		cmds = append(cmds, m.moveAbort(job, "the client went"))
 	}
 	for job := range m.movesIn {
-		MoveDrop{Job: job}.Do(m)
+		m.dropMoveIn(job)
+	}
+	for job := range m.packsOut {
+		SpinoffPackDrop{Job: job}.Do(m)
 	}
 	return Batch(cmds...)
 }

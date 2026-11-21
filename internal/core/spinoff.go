@@ -23,11 +23,24 @@ type SpinoffRepo struct {
 	// Own is set for one of the tab's: the part's commits can be brought
 	// into it, and the new worktree shares the repository with the tab's.
 	Own bool
+	// For a part made on another machine than the tab's, one of the tab's
+	// is the repository with its origin there: From is its path on the
+	// tab's machine, Origin the origin. Path is "" when the machine has
+	// none, and CloneInto is where it would be cloned, or Err why it
+	// cannot be.
+	From, Origin, CloneInto, Err string
 }
 
 // OtherRepos are the repositories nerdr has that are none of have.
 func (m *Core) OtherRepos(have []SpinoffRepo) []workspace.Repo {
-	all, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
+	var all []workspace.Repo
+	if m.Copy {
+		// Those of another machine's core are on its disk, not this one's:
+		// its last look at them.
+		all = slices.Clone(m.Scan.Repos)
+	} else {
+		all, _ = workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
+	}
 	var out []workspace.Repo
 	for _, r := range all {
 		r.Path = filepath.Clean(r.Path)
@@ -142,7 +155,9 @@ func (m *Core) ReportWhenBegun(t *Tab, now time.Time) {
 	done := t.SpinoffReport
 	for i := range done {
 		o := &done[i]
-		if o.Tab == "" || o.Start != "" {
+		// One made on another machine is that core's: this one cannot
+		// see it start.
+		if o.Tab == "" || o.Start != "" || o.Machine != "" {
 			continue
 		}
 		if o.Start = m.SpinoffStart(o.Tab); o.Start == "" {
@@ -260,49 +275,68 @@ func (m *Core) SpinoffCreate(t *Tab, pt spinoff.Part, kind agents.Kind, name str
 	return func() Event {
 		res := SpinoffMsg{T: t, Kind: kind, Group: group,
 			Outcome: spinoff.Outcome{Part: pt, Branch: name, Agent: string(kind), Reused: reuse, Elsewhere: elsewhere}}
-		if err := workspace.ValidBranch(name); err != nil {
-			res.Err = err
-			return res
-		}
-		plan, err := workspace.MakePlan(wtRoot, name, repos)
-		// An unpinned base is one the agent that sent the part could have moved.
-		plan.Sandboxed = pt.Sandboxed
-		if err == nil {
-			for _, it := range plan.Items {
-				switch it.Mode {
-				case "local":
-					err = fmt.Errorf("%s: branch %s already exists; pick another name", it.Repo.Name, name)
-				case "remote":
-					err = fmt.Errorf("%s: origin already has a branch %s; pick another name", it.Repo.Name, name)
-				}
-			}
-		}
-		if err != nil {
-			res.Err = err
-			return res
-		}
-		res.Warnings, err = plan.Sync()
-		if err == nil {
-			res.Wts, err = plan.Execute()
-		}
-		if err != nil {
-			res.Err = err
-			return res
-		}
-		res.Plan, res.Outcome.Dir = plan, plan.Dir
-		// Made ready before the agent's commits are brought in: setup runs
-		// the code it finds as the user, and theirs is the agent's to run.
-		res.Warnings = append(res.Warnings, workspace.Prepare(res.Wts, plan.SetupIn(), allowed, func(string) {})...)
+		var pick func(workspace.Worktree) error
 		if reuse {
-			for _, w := range res.Wts {
+			pick = func(w workspace.Worktree) error {
 				if !own[filepath.Clean(w.Repo)] {
-					continue
+					return nil
 				}
-				if _, err := workspace.Pick(w, pt.Commits); err != nil {
-					res.Outcome.PickFailed = err.Error()
-				}
+				_, err := workspace.Pick(w, pt.Commits)
+				return err
 			}
 		}
+		makePart(&res, wtRoot, allowed, repos, pick)
 		return res
+	}
+}
+
+// makePart makes the branch res.Outcome.Branch and its worktrees in repos
+// under wtRoot, for part res.Outcome.Part, and gets them ready with the
+// setup allowed in the file allowed; then, with pick set, has it bring the
+// part's commits into each worktree. What it made, and why it did not, go
+// in res: Err when nothing was made, Outcome.PickFailed when a pick did
+// not apply.
+func makePart(res *SpinoffMsg, wtRoot, allowed string, repos []workspace.Repo, pick func(workspace.Worktree) error) {
+	name, pt := res.Outcome.Branch, res.Outcome.Part
+	if err := workspace.ValidBranch(name); err != nil {
+		res.Err = err
+		return
+	}
+	plan, err := workspace.MakePlan(wtRoot, name, repos)
+	// An unpinned base is one the agent that sent the part could have moved.
+	plan.Sandboxed = pt.Sandboxed
+	if err == nil {
+		for _, it := range plan.Items {
+			switch it.Mode {
+			case "local":
+				err = fmt.Errorf("%s: branch %s already exists; pick another name", it.Repo.Name, name)
+			case "remote":
+				err = fmt.Errorf("%s: origin already has a branch %s; pick another name", it.Repo.Name, name)
+			}
+		}
+	}
+	if err != nil {
+		res.Err = err
+		return
+	}
+	res.Warnings, err = plan.Sync()
+	if err == nil {
+		res.Wts, err = plan.Execute()
+	}
+	if err != nil {
+		res.Err = err
+		return
+	}
+	res.Plan, res.Outcome.Dir = plan, plan.Dir
+	// Made ready before the agent's commits are brought in: setup runs
+	// the code it finds as the user, and theirs is the agent's to run.
+	res.Warnings = append(res.Warnings, workspace.Prepare(res.Wts, plan.SetupIn(), allowed, func(string) {})...)
+	if pick == nil {
+		return
+	}
+	for _, w := range res.Wts {
+		if err := pick(w); err != nil {
+			res.Outcome.PickFailed = err.Error()
+		}
 	}
 }
