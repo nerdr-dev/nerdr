@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -29,7 +30,11 @@ func TestStopCore(t *testing.T) {
 	if err := proc.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = proc.Process.Kill(); _ = proc.Wait() })
+	// The test's cleanup and the quit below both end it; Wait may be called
+	// only once.
+	var endOnce sync.Once
+	end := func() { endOnce.Do(func() { _ = proc.Process.Kill(); _ = proc.Wait() }) }
+	t.Cleanup(end)
 	pid := proc.Process.Pid
 	peerOf = func(net.Conn) hooks.Peer {
 		return hooks.Peer{Known: true, Chain: []int{pid}, Starts: []uint64{hooks.Started(pid)}}
@@ -46,8 +51,7 @@ func TestStopCore(t *testing.T) {
 		go func() {
 			time.Sleep(200 * time.Millisecond)
 			ended.Store(true)
-			_ = proc.Process.Kill()
-			_ = proc.Wait()
+			end()
 		}()
 	}
 	s, err := api.Listen(sock, key, api.Config{Version: "test", Root: dir,
