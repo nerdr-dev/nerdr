@@ -244,17 +244,20 @@ func (d *spinoffDialog) othersTicked() bool {
 }
 
 // whereNote says, for repository r of the tab's on another machine,
-// where it is there: "" for another.
-func (d *spinoffDialog) whereNote(r core.SpinoffRepo) string {
+// where it is there, in room columns: "" for another. A path too long
+// for them is cut in the middle, so the row stays one line: a Mac's
+// temporary folders are long.
+func (d *spinoffDialog) whereNote(r core.SpinoffRepo, room int) string {
 	switch {
 	case r.From == "":
 		return ""
 	case r.Err != "":
 		return warn("  " + r.Err)
 	case r.CloneInto != "":
-		return warn("  cloned from " + r.Origin + " into " + r.CloneInto)
+		const say = "  cloned from origin into "
+		return warn(say + cutMiddle(r.CloneInto, room-len(say)))
 	}
-	return dim("  " + r.Path)
+	return dim("  " + cutMiddle(r.Path, room-2))
 }
 
 // pickRepos reports whether the dialog asks which repositories: when
@@ -541,7 +544,7 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 			if !r.Own {
 				label += dim("  not in this tab")
 			}
-			if note := d.whereNote(r); note != "" {
+			if note := d.whereNote(r, inner-lipgloss.Width(label)); note != "" {
 				label += note
 			}
 			rows = append(rows, m.onClick(cursorLine(d.onRepos && i == d.repoAt, label, sel), func(m *Model) tea.Cmd {
@@ -564,7 +567,8 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		lines = append(lines, warn("Repository: "+d.repoNote), "")
 	} else if remote && d.found != nil && len(d.repos) == 1 {
 		// As where it lands there is.
-		lines = append(lines, "Repository: "+d.repos[0].Label+d.whereNote(d.repos[0]), "")
+		head := "Repository: " + d.repos[0].Label
+		lines = append(lines, head+d.whereNote(d.repos[0], inner-lipgloss.Width(head)), "")
 	}
 	if len(d.agents) == 0 {
 		lines = append(lines, warn("Found no agent on PATH: claude, opencode, copilot, codex, cursor-agent, gemini or agy."), "")
