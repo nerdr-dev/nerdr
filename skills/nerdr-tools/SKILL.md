@@ -41,6 +41,7 @@ or to follow a tab you made.
 
 ```sh
 "${NERDR_BIN:-nerdr}" terminal npm run dev
+"${NERDR_BIN:-nerdr}" read terminal --wait-for "ready in" # until it is up
 "${NERDR_BIN:-nerdr}" read --lines 40 terminal      # what the newest shows
 "${NERDR_BIN:-nerdr}" terminal --restart terminal 2 # stop it, run it again
 ```
@@ -48,6 +49,12 @@ or to follow a tab you made.
 For what should keep running or be watched — a dev server, a file watcher,
 a long test or build — instead of running it out of sight in your own
 shell. Not for commands you only want the output of; run those yourself.
+
+To go on once a server is up, wait with `read --wait-for TEXT` rather
+than reading again and again yourself: it prints what the terminal shows
+once TEXT is there, and exits 3 after `--timeout` (2m) when it never
+comes; then read what it shows to see why. Text already on the screen
+counts, from before a restart too.
 
 ## Closing a pane: `nerdr close`
 
