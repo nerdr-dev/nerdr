@@ -528,8 +528,19 @@ func (c *conn) do(r Request) (any, error) {
 			}
 			return map[string]string{"branch": q.Branch}, cmd, nil
 		})
+	case "quit":
+		// As the user quitting in the TUI: every program stops, and the
+		// core ends, the tabs kept for next time. The answer comes before
+		// the connection closes, as a rule; a client sees the core gone
+		// either way.
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			if m.Quitting {
+				return nil, nil, core.ErrAPIQuitting
+			}
+			return nil, core.QuitAll{}.Do(m), nil
+		})
 	case "":
 		return nil, errors.New("a request needs an op")
 	}
-	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, answer, seen, wake, repos and new_tab", r.Op)
+	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, answer, seen, wake, repos, new_tab and quit", r.Op)
 }

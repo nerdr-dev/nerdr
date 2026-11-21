@@ -43,6 +43,8 @@ usage:
   nerdr list         the nerdrs running on this machine, a folder each,
                      and how many agents wait for you (--json)
   nerdr tabs [FOLDER] the tabs of the nerdr running for FOLDER, as JSON
+  nerdr stop [FOLDER] stop the nerdr running for FOLDER and its agents,
+                     as quitting in its window does
   nerdr sandbox      the repositories nerdr holds back in, an agent having
                      run in a sandbox there; clear forgets it (takes -h)
   nerdr api [FOLDER] the API of the nerdr running for FOLDER, for your own
@@ -83,7 +85,7 @@ config: %s
 // usages are how to use each command: what nerdr COMMAND -h and nerdr help
 // COMMAND print.
 var usages = map[string]string{
-	"list": listUsage, "sandbox": sandboxUsage, "api": apiUsage,
+	"list": listUsage, "stop": stopUsage, "sandbox": sandboxUsage, "api": apiUsage,
 	"why": whyUsage, "order": orderUsage, "walkthrough": walkthroughUsage,
 	"spinoff": spinoffUsage, "handoff": handoffUsage,
 	"post-review": reviewUsage, "request-review": requestReviewUsage,
@@ -178,6 +180,8 @@ func main() {
 			os.Exit(runAPI(os.Args[2:]))
 		case "list":
 			os.Exit(runList(os.Args[2:]))
+		case "stop":
+			os.Exit(runStop(os.Args[2:]))
 		case "hook":
 			// nerdr's own hooks in claude; see hooks.ClaudeSettings.
 			if len(os.Args) > 2 && os.Args[2] == "claude" {

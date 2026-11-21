@@ -290,3 +290,26 @@ func TestCloseRemovesSocketAndKey(t *testing.T) {
 		}
 	}
 }
+
+// TestQuitStopsTheCore: quit has the core quit, as the user quitting in
+// the TUI does, and a second is told it is quitting already.
+func TestQuitStopsTheCore(t *testing.T) {
+	m := testCore()
+	_, sock, keyFile := serve(t, m, nil)
+	c := dial(t, sock)
+	c.hello(keyFile)
+	c.send(map[string]any{"id": 1, "op": "quit"})
+	if a := c.line(); a["id"] != float64(1) || a["error"] != nil {
+		t.Fatalf("answer %v", a)
+	}
+	m.Mu.Lock()
+	quitting := m.Quitting
+	m.Mu.Unlock()
+	if !quitting {
+		t.Fatal("the core is not quitting")
+	}
+	c.send(map[string]any{"id": 2, "op": "quit"})
+	if a := c.line(); a["error"] != core.ErrAPIQuitting.Error() {
+		t.Fatalf("a second quit: %v", a)
+	}
+}

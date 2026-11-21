@@ -1,6 +1,6 @@
 ---
 title: Requests
-description: Everything a program can ask of nerdr's API — the state, an agent's screen, messages, keys, answers and new tabs.
+description: Everything a program can ask of nerdr's API — the state, an agent's screen, messages, keys, answers, new tabs and quitting.
 ---
 
 A request is one line of JSON with an `op`, what to do, and the
@@ -33,6 +33,7 @@ as nerdr runs. A tab's ID is also the ID of its first agent.
 | [`wake`](#wake) | `tab` | Wake a sleeping tab |
 | [`repos`](#repos) | | The repositories a tab can be made in |
 | [`new_tab`](#new_tab) | `repos`, `branch`, `agent`, `model`, `task` | Make a tab |
+| [`quit`](#quit) | | Stop nerdr and its agents |
 
 ## state
 
@@ -239,3 +240,19 @@ started with `task`.
 The request is refused at once if the branch name is not valid, a
 repository or agent is not there, or the tab limit (`max_tabs`) is
 reached.
+
+## quit
+
+Stops nerdr for its folder, as quitting in its window does: every agent,
+terminal and plugin stops, and the tabs are kept for the next time nerdr
+starts there. A window open on it closes. `nerdr stop` sends this.
+
+```json
+{"id":12,"op":"quit"}
+```
+
+The answer, `{"id":12,"result":{}}`, says nerdr is quitting, and the
+connection then closes. While the agents stop it can close before the
+answer comes: a program that sent `quit` can take the connection closing
+as the same answer. A `quit` to a nerdr already quitting is answered
+with an error, `nerdr is quitting`.
