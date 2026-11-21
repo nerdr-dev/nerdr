@@ -94,11 +94,18 @@ func dialAPI(root string) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
+	c, err := dialAPIAt(sock, keyFile)
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
+		return nil, fmt.Errorf("no nerdr runs for %s: start nerdr there first", root)
+	}
+	return c, err
+}
+
+// dialAPIAt connects to the API socket sock, and says hello with the key
+// in keyFile.
+func dialAPIAt(sock, keyFile string) (net.Conn, error) {
 	c, err := net.Dial("unix", sock)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ECONNREFUSED) {
-			return nil, fmt.Errorf("no nerdr runs for %s: start nerdr there first", root)
-		}
 		return nil, err
 	}
 	key, err := attach.ReadKey(keyFile)

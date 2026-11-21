@@ -35,6 +35,14 @@ Every line after that is passed through unchanged.
 `nerdr api` does not start nerdr. Start nerdr in the folder first; after
 that, closing its window leaves the API running.
 
+To find the folders nerdr runs in, ask `nerdr list --json`: each one's
+`root` is a `FOLDER` to give `nerdr api`.
+
+```json
+[{"root":"/home/you/develop","version":"v0.9.0","api":1,
+  "tabs":3,"agents":4,"waiting":1,"questions":0}]
+```
+
 ## From another machine
 
 Run `nerdr api` over SSH. Nothing more is needed on either side:
