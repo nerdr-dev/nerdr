@@ -73,8 +73,10 @@ func TestNewRepoInsideAnother(t *testing.T) {
 	if !isPrimary(p) {
 		t.Fatalf("%s is not a repository of its own", p)
 	}
-	if got := run(p, "rev-parse", "--show-toplevel"); got != p {
-		t.Fatalf("the new repository's top is %s", got)
+	// git names the top with the links resolved: on a Mac, /var is
+	// /private/var.
+	if got, want := run(p, "rev-parse", "--show-toplevel"), resolved(t, p); got != want {
+		t.Fatalf("the new repository's top is %s, not %s", got, want)
 	}
 	if run(home, "rev-parse", "HEAD") != head {
 		t.Fatal("the repository around it got a commit")
@@ -85,7 +87,7 @@ func TestNewRepoInsideAnother(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isPrimary(c) || run(c, "rev-parse", "--show-toplevel") != c {
+	if !isPrimary(c) || run(c, "rev-parse", "--show-toplevel") != resolved(t, c) {
 		t.Fatalf("clone %s is not a repository of its own", c)
 	}
 }
@@ -138,4 +140,14 @@ func TestNewRepoDir(t *testing.T) {
 	if d := NewRepoDir(repo, []string{"../code"}); d != filepath.Join(root, "code") {
 		t.Fatalf("%s, want the first of repo_dirs", d)
 	}
+}
+
+// resolved is path with its links resolved.
+func resolved(t *testing.T, path string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
 }
