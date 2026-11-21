@@ -1,9 +1,16 @@
 package main
 
 import (
+	"errors"
 	"flag"
+	"net"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 func TestWaitFor(t *testing.T) {
@@ -115,5 +122,83 @@ func TestShellCommand(t *testing.T) {
 		if got := shellCommand(c.args); got != c.want {
 			t.Errorf("%q: %s, want %s", c.args, got, c.want)
 		}
+	}
+}
+
+// TestReadUntil: nerdr read --wait-for reads until the text is shown, or
+// the time is up, and stops at once when a read fails.
+func TestReadUntil(t *testing.T) {
+	screens := []string{"starting", "compiling", "ready on :3000"}
+	n := 0
+	read := func(time.Time) (string, error) {
+		s := screens[min(n, len(screens)-1)]
+		n++
+		return s, nil
+	}
+	if shown, found, err := readUntil(read, "ready", time.Second, time.Millisecond); err != nil || !found || shown != "ready on :3000" || n != 3 {
+		t.Fatalf("got %q found %v err %v after %d reads", shown, found, err, n)
+	}
+	n = 0
+	if shown, found, err := readUntil(read, "listening", 20*time.Millisecond, time.Millisecond); err != nil || found || shown != "ready on :3000" {
+		t.Fatalf("a timeout: got %q found %v err %v", shown, found, err)
+	}
+	calls := 0
+	fail := func(time.Time) (string, error) { calls++; return "", errors.New("no terminal 9") }
+	if _, _, err := readUntil(fail, "x", time.Second, time.Millisecond); err == nil || calls != 1 {
+		t.Fatalf("a failed read: err %v after %d", err, calls)
+	}
+}
+
+// TestReadUntilRetriesATimedOutRead: a read that times out before the
+// --timeout does, at the socket's own wait, is tried again, not taken for
+// the end.
+func TestReadUntilRetriesATimedOutRead(t *testing.T) {
+	n := 0
+	read := func(time.Time) (string, error) {
+		n++
+		if n < 3 {
+			return "", os.ErrDeadlineExceeded
+		}
+		return "ready", nil
+	}
+	if shown, found, err := readUntil(read, "ready", time.Second, time.Millisecond); err != nil || !found || shown != "ready" || n != 3 {
+		t.Fatalf("got %q found %v err %v after %d reads", shown, found, err, n)
+	}
+}
+
+// TestReadUntilStalled: a nerdr that does not answer is a timeout at
+// --timeout, not at the socket's own longer wait, with the last screen
+// read before it.
+func TestReadUntilStalled(t *testing.T) {
+	sock := filepath.Join(t.TempDir(), "s.sock")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	go func() {
+		for {
+			c, err := ln.Accept()
+			if err != nil {
+				return
+			}
+			t.Cleanup(func() { _ = c.Close() }) // reads, never answers
+		}
+	}()
+	first := true
+	read := func(deadline time.Time) (string, error) {
+		if first {
+			first = false
+			return "compiling", nil
+		}
+		return hooks.RequestBefore(sock, hooks.Query, map[string]any{}, deadline)
+	}
+	start := time.Now()
+	shown, found, err := readUntil(read, "ready", 300*time.Millisecond, time.Millisecond)
+	if err != nil || found || shown != "compiling" {
+		t.Fatalf("got %q found %v err %v", shown, found, err)
+	}
+	if took := time.Since(start); took > 2*time.Second {
+		t.Fatalf("took %s for a 300ms timeout", took)
 	}
 }

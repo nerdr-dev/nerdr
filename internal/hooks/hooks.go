@@ -1003,6 +1003,16 @@ func RequestWithin(path, method string, p map[string]any, wait time.Duration) (s
 	return roundTrip(path, method, p, 2*time.Second, wait+5*time.Second)
 }
 
+// RequestBefore is Request giving up at deadline, which bounds connecting
+// as well as the answer: a timeout error once it has passed.
+func RequestBefore(path, method string, p map[string]any, deadline time.Time) (string, error) {
+	left := time.Until(deadline)
+	if left <= 0 {
+		return "", os.ErrDeadlineExceeded
+	}
+	return roundTrip(path, method, p, min(2*time.Second, left), min(answerWait+5*time.Second, left))
+}
+
 // SendReport is Send for what an agent's hook reports: what it is doing, its
 // conversation. nerdr answers those at once, with nothing the hook uses,
 // and takes the report as soon as it is written; a hook waits only

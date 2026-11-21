@@ -35,6 +35,7 @@ you ask in plain words. They work only inside a tab, apart from
 | `nerdr agent TASK` | Start another agent in the tab with a task (`--kind`, `--model`) |
 | `nerdr wait N…` | Wait until those agents are done or ask something (`--timeout 10m`) |
 | `nerdr read N` / `read terminal [K]` | What agent N or a terminal shows, as text (`--lines 80`) |
+| `nerdr read terminal [K] --wait-for TEXT` | Wait until a terminal shows TEXT, such as a dev server saying it is ready, then print what it shows; exits 3 at the timeout (`--timeout 2m`) |
 | `nerdr terminal CMD` | Run a command in a new terminal pane, which you see and keep |
 | `nerdr terminal --restart [terminal [K]] [CMD]` | Stop what runs in a terminal and run it, or CMD, again |
 | `nerdr close N` / `close terminal [K]` | Close agent N's pane or a terminal, when you ask for it |

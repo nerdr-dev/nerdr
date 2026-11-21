@@ -2,10 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -42,10 +44,18 @@ keep --timeout under it, or run nerdr wait in the background.
 `
 
 const readUsage = `usage: nerdr read [--lines 80] N | terminal [K]
+       nerdr read terminal [K] --wait-for TEXT [--timeout 2m]
 
 Prints what agent N of this tab shows, or the terminal pane named
 (terminal, terminal 2: the newest without a number), as plain text: the
 last lines of its screen and what scrolled off it.
+
+--wait-for waits until TEXT, as it is (not a pattern), is among those
+lines, then prints them: a dev server you started with nerdr terminal,
+until it says it is ready. Exits 0 once TEXT is there, 3 when the timeout
+comes first, printing what the pane shows then. Text already shown
+counts, from before a --restart too: wait for what only the new run
+prints. Mind your own tool's time limit: keep --timeout under it.
 `
 
 const terminalUsage = `usage: nerdr terminal COMMAND…
@@ -152,6 +162,8 @@ func runRead(args []string) int {
 	fs := flag.NewFlagSet("read", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	lines := fs.Int("lines", 0, "")
+	waitText := fs.String("wait-for", "", "")
+	timeout := fs.Duration("timeout", 2*time.Minute, "")
 	if helpAsked(args) || parseAnywhere(fs, args) != nil || fs.NArg() == 0 {
 		fmt.Fprint(os.Stderr, readUsage)
 		return 2
@@ -166,7 +178,56 @@ func runRead(args []string) int {
 	} else {
 		p["name"] = strings.Join(fs.Args(), " ")
 	}
-	return query("nerdr read", p)
+	if *waitText == "" {
+		return query("nerdr read", p)
+	}
+	tab, sock, ok := tabSocket("nerdr read", "not running in a nerdr tab")
+	if !ok {
+		return 1
+	}
+	p["pane_id"] = tab
+	read := func(deadline time.Time) (string, error) {
+		answer, err := hooks.RequestBefore(sock, hooks.Query, p, deadline)
+		return answer, explain(sock, err)
+	}
+	shown, found, err := readUntil(read, *waitText, *timeout, waitEvery)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "nerdr read:", err)
+		return 1
+	}
+	if shown != "" {
+		fmt.Println(shown)
+	}
+	if !found {
+		fmt.Fprintf(os.Stderr, "nerdr read: timed out; %q is not shown yet\n", *waitText)
+		return 3
+	}
+	return 0
+}
+
+// readUntil reads with read, every so often, until what it gives holds
+// text or timeout has passed: what it gave last, and whether text was in
+// it. Each read is given what is left of the timeout; one that runs out
+// before it, at the socket's own shorter wait, is tried again. err is a
+// read that failed otherwise.
+func readUntil(read func(deadline time.Time) (string, error), text string, timeout, every time.Duration) (shown string, found bool, err error) {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		got, err := read(deadline)
+		var ne net.Error
+		switch {
+		case errors.Is(err, os.ErrDeadlineExceeded) || errors.As(err, &ne) && ne.Timeout():
+			continue
+		case err != nil:
+			return "", false, err
+		}
+		shown = got
+		if strings.Contains(shown, text) {
+			return shown, true, nil
+		}
+		time.Sleep(min(every, time.Until(deadline)))
+	}
+	return shown, false, nil
 }
 
 // query asks the nerdr running this tab what p asks, and prints its
