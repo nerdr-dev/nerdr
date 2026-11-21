@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"net"
 	"os"
 	"path/filepath"
@@ -65,7 +66,7 @@ func TestListRunning(t *testing.T) {
 	dead.SetUnlinkOnClose(false)
 	_ = dead.Close()
 
-	all, failed := listRunning(dir)
+	all, alive, failed := listRunning(dir)
 	if len(all) != 2 || all[0].Root != "/w/a" || all[1].Root != "/w/b" {
 		t.Fatalf("listed %+v", all)
 	}
@@ -75,8 +76,14 @@ func TestListRunning(t *testing.T) {
 	if len(failed) != 1 || failed[0] != "not you" {
 		t.Errorf("failed %q", failed)
 	}
+	// The one that refused runs all the same; the dead one does not.
+	for name, want := range map[string]bool{"api-1": true, "api-2": true, "api-3": true, "api-4": false} {
+		if alive[filepath.Join(dir, name+".sock")] != want {
+			t.Errorf("%s alive: %v", name, !want)
+		}
+	}
 
-	if all, failed := listRunning(t.TempDir()); all == nil || len(all) != 0 || failed != nil {
+	if all, alive, failed := listRunning(t.TempDir()); all == nil || len(all) != 0 || len(alive) != 0 || failed != nil {
 		t.Errorf("an empty folder: %+v, %q", all, failed)
 	}
 }
@@ -119,5 +126,102 @@ func TestTabsInATabTakesNoFolder(t *testing.T) {
 	// Without the tab's socket it fails, rather than ask the API.
 	if got := runTabs(nil); got != 1 {
 		t.Fatalf("no socket: exit %d", got)
+	}
+}
+
+// TestListSaved: a folder with saved tabs is listed while no nerdr runs
+// for it; not one with no tabs, one gone, one that runs, nor a file that
+// is not a session nerdr saved for its folder.
+func TestListSaved(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	sessions := state.Dir()
+	if err := os.MkdirAll(sessions, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, root string, tabs int) {
+		s := state.Session{Root: root, Tabs: []state.Tab{}}
+		for i := 0; i < tabs; i++ {
+			s.Tabs = append(s.Tabs, state.Tab{ID: "t", Name: "tab", Dir: root})
+		}
+		b, _ := json.Marshal(s)
+		if err := os.WriteFile(path, b, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stopped, empty, runs, copied := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	write(state.Path(stopped), stopped, 2)
+	write(state.Path(empty), empty, 0)
+	write(state.Path(runs), runs, 1)
+	write(state.Path("/no/such/folder"), "/no/such/folder", 3)
+	write(filepath.Join(sessions, "copy.json"), copied, 1)
+	if err := os.WriteFile(filepath.Join(sessions, "claude-limits.json"), []byte(`{"five_hour":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sessions, "bad-1234.json"), []byte(`{`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got := listSaved(sessions, func(root string) bool { return root == runs })
+	if len(got) != 1 || got[0].Root != stopped || got[0].Tabs != 2 || got[0].Running || got[0].Saved == nil {
+		t.Fatalf("listed %+v", got)
+	}
+	b, _ := json.Marshal(got[0])
+	var m map[string]any
+	_ = json.Unmarshal(b, &m)
+	if _, ok := m["version"]; ok || m["running"] != false || m["saved"] == nil {
+		t.Errorf("a stopped folder as JSON: %s", b)
+	}
+
+	if got := listSaved(filepath.Join(sessions, "none"), func(string) bool { return false }); got == nil || len(got) != 0 {
+		t.Errorf("no sessions folder: %+v", got)
+	}
+}
+
+// TestCoreRuns: a folder is running when its API socket is alive, when
+// its core listens at the client socket with no API socket, and stopped
+// only when neither is there.
+func TestCoreRuns(t *testing.T) {
+	dir, err := os.MkdirTemp("", "nruns")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	t.Setenv(attach.EnvDir, dir)
+	if coreRuns("/w/a", map[string]bool{}) {
+		t.Error("nothing there, and it runs")
+	}
+	apiSock, _, _ := attach.APIPaths("/w/a")
+	if !coreRuns("/w/a", map[string]bool{apiSock: true}) {
+		t.Error("its API socket is alive, and it does not run")
+	}
+	sock, _, _ := attach.Paths("/w/a")
+	ln, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = ln.Close() })
+	if !coreRuns("/w/a", map[string]bool{}) {
+		t.Error("its core listens with no API socket, and it does not run")
+	}
+}
+
+// TestListRunningWithNoKey: an API socket listened at, with its key file
+// gone, is a core alive, not one dead.
+func TestListRunningWithNoKey(t *testing.T) {
+	dir, err := os.MkdirTemp("", "nlist")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(dir) })
+	if err := os.Chmod(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	listCore(t, dir, "api-1", "/w/a", 1, "")
+	if err := os.Remove(filepath.Join(dir, "api-1.key")); err != nil {
+		t.Fatal(err)
+	}
+	all, alive, failed := listRunning(dir)
+	if len(all) != 0 || !alive[filepath.Join(dir, "api-1.sock")] || len(failed) != 1 {
+		t.Fatalf("listed %+v, alive %v, failed %q", all, alive, failed)
 	}
 }

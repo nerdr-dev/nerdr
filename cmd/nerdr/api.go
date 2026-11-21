@@ -129,8 +129,9 @@ func dialAPIBy(sock, keyFile string, deadline time.Time) (net.Conn, error) {
 	_ = c.SetDeadline(deadline)
 	key, err := attach.ReadKey(keyFile)
 	if err != nil {
+		// Not wrapped: a core listens, so this is not a socket missing.
 		_ = c.Close()
-		return nil, err
+		return nil, fmt.Errorf("cannot read the API's key: %v", err)
 	}
 	b, _ := json.Marshal(api.Hello{Key: key, API: core.APIVersion})
 	if _, err := c.Write(append(b, '\n')); err != nil {

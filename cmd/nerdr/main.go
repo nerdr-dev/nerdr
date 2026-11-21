@@ -41,7 +41,8 @@ usage:
                      the tabs of FOLDER on HOST, over ssh (nerdr installed
                      there too); FOLDER is ~ when not given
   nerdr list         the nerdrs running on this machine, a folder each,
-                     and how many agents wait for you (--json)
+                     and how many agents wait for you; --all adds the
+                     folders with saved tabs (--json)
   nerdr tabs [FOLDER] the tabs of the nerdr running for FOLDER, as JSON
   nerdr stop [FOLDER] stop the nerdr running for FOLDER and its agents,
                      as quitting in its window does

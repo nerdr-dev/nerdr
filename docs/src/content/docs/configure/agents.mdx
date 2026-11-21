@@ -388,6 +388,8 @@ For read access:
   for the Claude plan's limits and `~/.codex/sessions` for Codex's
   (without them, it reports the limits as unknown). Allow only
   `claude-limits.json`, not the rest of `sessions/`.
+- `nerdr list` needs nothing of `sessions/`: run by an agent, it leaves
+  out the folders with saved tabs (`--all`).
 - `nerdr plugin` reads `~/.config/nerdr/plugins`.
 - `nerdr search` reads conversation logs in `~/.claude/projects` and
   `~/.codex/sessions`.
