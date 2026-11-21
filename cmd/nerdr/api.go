@@ -135,8 +135,26 @@ func dialAPIBy(sock, keyFile string, deadline time.Time) (net.Conn, error) {
 	}
 	b, _ := json.Marshal(api.Hello{Key: key, API: core.APIVersion})
 	if _, err := c.Write(append(b, '\n')); err != nil {
+		// A core that refuses who connects says why and closes without
+		// reading the hello, so the write can fail with the reason still
+		// waiting to be read.
+		if why := refusalOn(c); why != "" {
+			err = errors.New(why)
+		}
 		_ = c.Close()
 		return nil, err
 	}
 	return c, nil
+}
+
+// refusalOn reads the reason a core gave for closing c, if it sent one.
+func refusalOn(c net.Conn) string {
+	_ = c.SetReadDeadline(time.Now().Add(time.Second))
+	var answer struct {
+		Error string `json:"error"`
+	}
+	if readLine(bufio.NewReader(c), &answer) != nil {
+		return ""
+	}
+	return answer.Error
 }
