@@ -18,6 +18,7 @@ import (
 )
 
 const apiUsage = `usage: nerdr api [FOLDER]
+       nerdr api --schema
 
 Connects standard input and output to the API of the nerdr running for
 FOLDER (this folder when not given): JSON, one object a line. It says
@@ -32,6 +33,9 @@ it ends, unless it subscribed: then the events go on. For example:
 Over ssh: ssh HOST nerdr api FOLDER. A nerdr must already run for the
 folder. Programs nerdr runs, its agents among them, are refused.
 See https://nerdr.app/api/requests/ for the requests and events.
+
+--schema prints the API as JSON Schema, to generate a client's types
+from; no nerdr need run. See https://nerdr.app/api/schema/.
 `
 
 // runAPI is `nerdr api`.
@@ -42,6 +46,12 @@ func runAPI(args []string) int {
 			return 0
 		}
 		return 2
+	}
+	if len(args) == 1 && args[0] == "--schema" {
+		if _, err := os.Stdout.Write(api.Schema); err != nil {
+			return 1
+		}
+		return 0
 	}
 	folder := "."
 	if len(args) == 1 {

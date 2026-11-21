@@ -49,7 +49,8 @@ usage:
   nerdr sandbox      the repositories nerdr holds back in, an agent having
                      run in a sandbox there; clear forgets it (takes -h)
   nerdr api [FOLDER] the API of the nerdr running for FOLDER, for your own
-                     programs: JSON lines on stdin and stdout (takes -h)
+                     programs: JSON lines on stdin and stdout; --schema
+                     prints it as JSON Schema (takes -h)
   nerdr help [COMMAND]
                      this text, or how to use COMMAND
   nerdr version      which nerdr this is

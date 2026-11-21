@@ -89,6 +89,16 @@ type Answer struct {
 	Error  string          `json:"error,omitempty"`
 }
 
+// ReadResult is read's result: what the agent or terminal shows.
+type ReadResult struct {
+	Text string `json:"text"`
+}
+
+// NewTabResult is new_tab's result: the branch of the tab being made.
+type NewTabResult struct {
+	Branch string `json:"branch"`
+}
+
 // Config is what the API socket goes by.
 type Config struct {
 	// Version is nerdr's, Root the folder its core runs for.
@@ -484,7 +494,7 @@ func (c *conn) do(r Request) (any, error) {
 		}
 		return s.call(false, func(m *core.Core) (any, core.Cmd, error) {
 			text, err := m.APIRead(id, r.Lines)
-			return map[string]string{"text": text}, nil, err
+			return ReadResult{Text: text}, nil, err
 		})
 	case "send":
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
@@ -526,7 +536,7 @@ func (c *conn) do(r Request) (any, error) {
 			if err != nil {
 				return nil, nil, err
 			}
-			return map[string]string{"branch": q.Branch}, cmd, nil
+			return NewTabResult{Branch: q.Branch}, cmd, nil
 		})
 	case "quit":
 		// As the user quitting in the TUI: every program stops, and the
