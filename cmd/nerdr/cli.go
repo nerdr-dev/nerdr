@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	limits "github.com/nerdr-dev/nerdr/internal/usage"
@@ -90,6 +91,7 @@ longer needed and the user has not said, ask the user first.
 `
 
 const tabsUsage = `usage: nerdr tabs
+       nerdr tabs [FOLDER]    (outside nerdr)
 
 Lists every nerdr tab, as JSON: its name and folder, yours for your own,
 its branches (commits ahead and behind main, lines and files changed,
@@ -99,6 +101,11 @@ pushed, pr, pr_state, ci), its status line, its agents with their state
 ci is pass, fail, pending, or empty when there is none. When a branch has
 commits after its merged or closed pull request, commits_after_pr says how
 many; they are not in any pull request yet.
+
+Run outside nerdr — in your own terminal, or over ssh — it lists the tabs
+of the nerdr running for FOLDER (this folder when not given), as its API's
+state has them: each tab, agent and terminal with its id too, terminals as
+objects (name, command, running), and no yours or you.
 `
 
 const tabUsage = `usage: nerdr tab new --branch NAME [--repo REPO] [--kind KIND] [--model MODEL] TASK
@@ -148,13 +155,70 @@ func runAgents(args []string) int {
 	return query("nerdr agents", map[string]any{"what": hooks.QueryAgents})
 }
 
-// runTabs is `nerdr tabs`.
+// runTabs is `nerdr tabs`. In a tab it asks the nerdr running the tab,
+// which shows an agent in a sandbox its own tab alone; it never turns to
+// the API there, which would show it all. Outside nerdr it asks the API
+// of the nerdr running for FOLDER.
 func runTabs(args []string) int {
 	if helpAsked(args) {
 		fmt.Fprint(os.Stderr, tabsUsage)
 		return 2
 	}
-	return query("nerdr tabs", map[string]any{"what": hooks.QueryTabs})
+	if inNerdr() {
+		if len(args) > 0 {
+			fmt.Fprintf(os.Stderr, "nerdr tabs: in a nerdr tab it takes no FOLDER: it lists the tabs of the nerdr running this one\n\n%s", tabsUsage)
+			return 2
+		}
+		return query("nerdr tabs", map[string]any{"what": hooks.QueryTabs})
+	}
+	if len(args) > 1 || len(args) == 1 && strings.HasPrefix(args[0], "-") {
+		fmt.Fprint(os.Stderr, tabsUsage)
+		return 2
+	}
+	folder := "."
+	if len(args) == 1 {
+		folder = args[0]
+	}
+	tabs, err := apiTabs(folder)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, "nerdr tabs:", err)
+		return 1
+	}
+	b, _ := json.MarshalIndent(tabs, "", "  ")
+	fmt.Println(string(b))
+	return 0
+}
+
+// inNerdr is whether this runs in a nerdr tab, or in anything nerdr
+// started: what nerdr gives its programs is there, all or some of it.
+func inNerdr() bool {
+	for _, v := range []string{"NERDR", "NERDR_TAB", "NERDR_SOCKET"} {
+		if os.Getenv(v) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// apiTabs are the tabs of the nerdr running for folder, from its API.
+func apiTabs(folder string) ([]core.APITab, error) {
+	root, err := bridgeRoot(folder)
+	if err != nil {
+		return nil, err
+	}
+	c, err := dialAPI(root)
+	if err != nil {
+		return nil, err
+	}
+	defer c.Close()
+	_, st, err := askState(c)
+	if err != nil {
+		return nil, err
+	}
+	if st.Tabs == nil {
+		st.Tabs = []core.APITab{}
+	}
+	return st.Tabs, nil
 }
 
 // runRead is `nerdr read`.

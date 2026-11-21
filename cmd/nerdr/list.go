@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"net"
 	"os"
 	"path/filepath"
 	"sort"
@@ -120,37 +121,57 @@ func askRunning(sock, keyFile string) (running, error) {
 		return running{}, err
 	}
 	defer c.Close()
+	welcome, st, err := askState(c)
+	if err != nil {
+		return running{}, err
+	}
+	r := running{Root: welcome.Root, Version: welcome.Version, API: welcome.API,
+		Tabs: len(st.Tabs), Waiting: len(st.Waiting), Questions: len(st.Questions)}
+	for _, t := range st.Tabs {
+		r.Agents += len(t.Agents)
+	}
+	return r, nil
+}
+
+// askState reads the welcome of the core c has said hello to, or why it
+// refused, and asks it for its state.
+func askState(c net.Conn) (api.Welcome, core.APIState, error) {
 	_ = c.SetDeadline(time.Now().Add(listTimeout))
 	in := bufio.NewReaderSize(c, 64<<10)
-	var welcome struct {
-		api.Welcome
-		Error string `json:"error"`
-	}
-	if err := readLine(in, &welcome); err != nil {
-		return running{}, err
-	}
-	if welcome.Error != "" {
-		return running{}, errors.New(welcome.Error)
+	welcome, err := readWelcome(in)
+	if err != nil {
+		return api.Welcome{}, core.APIState{}, err
 	}
 	if _, err := c.Write([]byte(`{"op":"state"}` + "\n")); err != nil {
-		return running{}, err
+		return welcome, core.APIState{}, err
 	}
 	var answer struct {
 		Result core.APIState `json:"result"`
 		Error  string        `json:"error"`
 	}
 	if err := readLine(in, &answer); err != nil {
-		return running{}, err
+		return welcome, core.APIState{}, err
 	}
 	if answer.Error != "" {
-		return running{}, errors.New(answer.Error)
+		return welcome, core.APIState{}, errors.New(answer.Error)
 	}
-	r := running{Root: welcome.Root, Version: welcome.Version, API: welcome.API,
-		Tabs: len(answer.Result.Tabs), Waiting: len(answer.Result.Waiting), Questions: len(answer.Result.Questions)}
-	for _, t := range answer.Result.Tabs {
-		r.Agents += len(t.Agents)
+	return welcome, answer.Result, nil
+}
+
+// readWelcome reads a core's welcome, the first line it sends, or why it
+// refused.
+func readWelcome(in *bufio.Reader) (api.Welcome, error) {
+	var welcome struct {
+		api.Welcome
+		Error string `json:"error"`
 	}
-	return r, nil
+	if err := readLine(in, &welcome); err != nil {
+		return api.Welcome{}, err
+	}
+	if welcome.Error != "" {
+		return api.Welcome{}, errors.New(welcome.Error)
+	}
+	return welcome.Welcome, nil
 }
 
 // readLine reads the next line a core sends into v.
