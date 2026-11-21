@@ -75,7 +75,7 @@ func TestFleetSpinoffOnAnotherMachine(t *testing.T) {
 	})
 	pressOn(m, "ctrl+t")
 	pump(t, m, told, "box's repository", func(v string) bool {
-		return strings.Contains(v, "Machine: box") && strings.Contains(v, boxRepo) && strings.Contains(v, "carried over to box")
+		return strings.Contains(v, "Machine: box") && strings.Contains(v, filepath.Join("box", "proj")) && strings.Contains(v, "carried over to box")
 	})
 	pressOn(m, "enter")
 	pumpUntil(t, m, told, "the tab on box", func() bool {
@@ -133,7 +133,8 @@ func TestFleetSpinoffOnAnotherMachineClonesAndFails(t *testing.T) {
 	os.Rename(boxRepo, boxRepo+"-old")
 	pressOn(m, "ctrl+t")
 	pump(t, m, told, "the clone", func(v string) bool {
-		return strings.Contains(v, "Machine: box") && strings.Contains(v, "cloned from ") && strings.Contains(v, filepath.Join(filepath.Dir(boxRepo), "proj"))
+		// The path cut in the middle, should it be long.
+		return strings.Contains(v, "Machine: box") && strings.Contains(v, "cloned from origin into ") && strings.Contains(v, filepath.Join("box", "proj"))
 	})
 	// The folder it would be cloned into is taken meanwhile.
 	os.MkdirAll(filepath.Join(boxRepo, "x"), 0o755)
