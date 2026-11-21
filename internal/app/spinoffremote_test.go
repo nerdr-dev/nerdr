@@ -195,7 +195,9 @@ func TestFleetSpinoffTwoPartsCloneOnce(t *testing.T) {
 	pump(t, m, told, "the clone", func(v string) bool { return strings.Contains(v, "Machine: box") && strings.Contains(v, "cloned from ") })
 	pressOn(m, "tab")
 	pressOn(m, "enter")
-	pump(t, m, told, "part B", func(v string) bool { return strings.Contains(v, "branch: part-b") && strings.Contains(v, "Machine: box") })
+	pump(t, m, told, "part B", func(v string) bool {
+		return strings.Contains(v, "branch: part-b") && strings.Contains(v, "Machine: box")
+	})
 	pressOn(m, "enter")
 	pumpUntil(t, m, told, "both tabs on box", func() bool {
 		a, _, _ := boxTabNamed(box, "part-a")
