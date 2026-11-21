@@ -1,0 +1,59 @@
+---
+title: Schema
+description: nerdr's API as JSON Schema, to generate a client's types from in TypeScript, Swift, Kotlin or any other language.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+The API is also described as [JSON Schema](https://json-schema.org/)
+(draft 2020-12), so a program in another language can generate its
+types instead of copying them from these pages. Get it from nerdr:
+
+```sh
+nerdr api --schema > nerdr-api.schema.json
+```
+
+or from [nerdr.app/api/schema.json](https://nerdr.app/api/schema.json),
+which follows nerdr's main branch and so may have what a release does
+not yet. `nerdr api --schema` gives the schema of the nerdr you have,
+and needs no nerdr running.
+
+## What it has
+
+Every type is in `$defs`:
+
+| Definition | Is |
+|---|---|
+| `ClientLine` | A line a program sends: `Hello`, then a `Request` |
+| `CoreLine` | A line nerdr sends: `Welcome`, an `Answer`, or an `Event` |
+| `Request` | One of the [requests](../requests/), told apart by `op`: `StateRequest`, `ReadRequest`, `NewTabRequest` and so on |
+| `Event` | One of the [events](../events/), told apart by `event`: `AgentEvent`, `TabOpenedEvent` and so on |
+| `State`, `Tab`, `Agent`, `Terminal`, `Branch`, `Question`, `Repo` | What `state`, `repos` and the events carry |
+
+`Answer.result` is a different type for each request, which JSON Schema
+cannot tie to the request. `x-nerdr-ops` does, for each `op`:
+
+```json
+"x-nerdr-ops": {
+  "read": {"request": {"$ref": "#/$defs/ReadRequest"}, "result": {"$ref": "#/$defs/ReadResult"}},
+  "repos": {"request": {"$ref": "#/$defs/ReposRequest"}, "result": {"type": "array", "items": {"$ref": "#/$defs/Repo"}}},
+  …
+}
+```
+
+A request with nothing to give back has an empty object as its result.
+
+## Versions
+
+`x-nerdr-api` is the [API version](../overview/#versions) the schema
+describes, the same number nerdr sends in the welcome. Within a version
+the schema only grows: new fields, requests and events. No object in it
+forbids properties it does not list, and a program should not either:
+pass by fields, events and `op`s it does not know, so it keeps working
+with a newer nerdr. Generate the types again to use what is new.
+
+<Aside>
+The schema is made from the types nerdr's code sends and takes, and
+nerdr's tests fail when one of them changes and the schema does not, so
+it cannot fall behind the API.
+</Aside>

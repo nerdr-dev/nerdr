@@ -1,0 +1,909 @@
+{
+  "$defs": {
+    "Agent": {
+      "description": "Agent is an agent of a tab: Num is its number in the tab, as the user sees it (\"1:claude\"); State as `nerdr agents` says it; Messages how many messages wait to be typed in to it.",
+      "properties": {
+        "context_percent": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "messages_waiting": {
+          "type": "integer"
+        },
+        "model": {
+          "type": "string"
+        },
+        "num": {
+          "type": "integer"
+        },
+        "reviewer": {
+          "type": "boolean"
+        },
+        "state": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "num",
+        "kind",
+        "state"
+      ],
+      "type": "object"
+    },
+    "AgentEvent": {
+      "description": "An agent's state changed: was is the state before, left out for an agent just come; agent.state is \"gone\" for one gone. name is its tab's.",
+      "properties": {
+        "agent": {
+          "$ref": "#/$defs/Agent"
+        },
+        "event": {
+          "const": "agent"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tab_id": {
+          "type": "string"
+        },
+        "was": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event",
+        "tab_id",
+        "name",
+        "agent"
+      ],
+      "type": "object"
+    },
+    "Answer": {
+      "description": "Answer is the core's answer to a request, with the request's id: result, or error, a sentence for people. A line with only an error, before the welcome, is why the core refused the client. x-nerdr-ops gives each op's result.",
+      "properties": {
+        "error": {
+          "type": "string"
+        },
+        "id": {},
+        "result": {}
+      },
+      "type": "object"
+    },
+    "AnswerRequest": {
+      "description": "Answer one of nerdr's questions by its ID; yes left out is no.",
+      "properties": {
+        "id": {},
+        "op": {
+          "const": "answer"
+        },
+        "question": {
+          "type": "integer"
+        },
+        "yes": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "op",
+        "question"
+      ],
+      "type": "object"
+    },
+    "AnsweredEvent": {
+      "description": "A question is answered, here or in another client, or its time ran out.",
+      "properties": {
+        "event": {
+          "const": "answered"
+        },
+        "question_id": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "event",
+        "question_id"
+      ],
+      "type": "object"
+    },
+    "Branch": {
+      "properties": {
+        "ahead": {
+          "type": "integer"
+        },
+        "behind": {
+          "type": "integer"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "ci": {
+          "type": "string"
+        },
+        "commits_after_pr": {
+          "description": "commits_after_pr is how many commits the branch has on top of its merged or closed PR: work that went on after it, in no PR.",
+          "type": "integer"
+        },
+        "files_changed": {
+          "type": "integer"
+        },
+        "lines_added": {
+          "type": "integer"
+        },
+        "lines_deleted": {
+          "type": "integer"
+        },
+        "pr": {
+          "type": "integer"
+        },
+        "pr_state": {
+          "type": "string"
+        },
+        "pr_url": {
+          "type": "string"
+        },
+        "pushed": {
+          "type": "boolean"
+        },
+        "repo": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "repo",
+        "branch",
+        "ahead",
+        "behind",
+        "lines_added",
+        "lines_deleted",
+        "files_changed",
+        "pushed"
+      ],
+      "type": "object"
+    },
+    "ClientLine": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Hello"
+        },
+        {
+          "$ref": "#/$defs/Request"
+        }
+      ],
+      "description": "A line a client sends: hello first, then requests."
+    },
+    "CoreLine": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Welcome"
+        },
+        {
+          "$ref": "#/$defs/Answer"
+        },
+        {
+          "$ref": "#/$defs/Event"
+        }
+      ],
+      "description": "A line the core sends: the welcome first, then answers and, once subscribed, events."
+    },
+    "Event": {
+      "description": "What a subscribed client is told as it happens: a line with an event and no id.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/TabOpenedEvent"
+        },
+        {
+          "$ref": "#/$defs/TabClosedEvent"
+        },
+        {
+          "$ref": "#/$defs/TabEvent"
+        },
+        {
+          "$ref": "#/$defs/AgentEvent"
+        },
+        {
+          "$ref": "#/$defs/WaitingEvent"
+        },
+        {
+          "$ref": "#/$defs/QuestionEvent"
+        },
+        {
+          "$ref": "#/$defs/AnsweredEvent"
+        },
+        {
+          "$ref": "#/$defs/NoticeEvent"
+        },
+        {
+          "$ref": "#/$defs/LostEvent"
+        }
+      ]
+    },
+    "Hello": {
+      "description": "Hello is what a client says first.",
+      "properties": {
+        "api": {
+          "description": "api is the version of the API the client was written for; 0 is taken as 1. A core of an older one refuses it.",
+          "type": "integer"
+        },
+        "key": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "key",
+        "api"
+      ],
+      "type": "object"
+    },
+    "LostEvent": {
+      "description": "The client read too slowly and events were dropped: get the state afresh.",
+      "properties": {
+        "event": {
+          "const": "lost"
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "type": "object"
+    },
+    "NewTabRequest": {
+      "description": "Make a tab on a new branch in the repositories named, its agent (the first of state's agents when not given) started with task. The tab comes with a tab_opened event once its worktrees are made, or a notice says why not.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "branch": {
+          "type": "string"
+        },
+        "id": {},
+        "model": {
+          "type": "string"
+        },
+        "op": {
+          "const": "new_tab"
+        },
+        "repos": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "task": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "repos",
+        "branch"
+      ],
+      "type": "object"
+    },
+    "NewTabResult": {
+      "description": "NewTabResult is new_tab's result: the branch of the tab being made.",
+      "properties": {
+        "branch": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "branch"
+      ],
+      "type": "object"
+    },
+    "NoticeEvent": {
+      "description": "What nerdr tells the user in its status bar; important for what it keeps on screen until seen.",
+      "properties": {
+        "event": {
+          "const": "notice"
+        },
+        "important": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event",
+        "text"
+      ],
+      "type": "object"
+    },
+    "Question": {
+      "description": "Question is something nerdr asks the user, to answer yes or no by its ID. Kind is \"repo_setup\" (may the setup of Repos run in new worktrees) or \"plugin_run\" (may Agent run Plugin with Values, in Dir; unanswered by Until, it is no).",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "id": {
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "plugin": {
+          "type": "string"
+        },
+        "repos": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "text": {
+          "type": "string"
+        },
+        "until": {
+          "format": "date-time",
+          "type": "string"
+        },
+        "values": {
+          "additionalProperties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "kind",
+        "text"
+      ],
+      "type": "object"
+    },
+    "QuestionEvent": {
+      "description": "nerdr asks the user something.",
+      "properties": {
+        "event": {
+          "const": "question"
+        },
+        "question": {
+          "$ref": "#/$defs/Question"
+        }
+      },
+      "required": [
+        "event",
+        "question"
+      ],
+      "type": "object"
+    },
+    "QuitRequest": {
+      "description": "Stop nerdr for its folder, as quitting in its window does: every agent, terminal and plugin stops, and the tabs are kept. The connection then closes, maybe before the answer comes.",
+      "properties": {
+        "id": {},
+        "op": {
+          "const": "quit"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "ReadRequest": {
+      "description": "The last lines (80 if not given) of what an agent or a terminal shows, as plain text. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "lines": {
+          "type": "integer"
+        },
+        "op": {
+          "const": "read"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "ReadResult": {
+      "description": "ReadResult is read's result: what the agent or terminal shows.",
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text"
+      ],
+      "type": "object"
+    },
+    "Repo": {
+      "description": "Repo is a repository a tab can be made in.",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "path"
+      ],
+      "type": "object"
+    },
+    "ReposRequest": {
+      "description": "The repositories a tab can be made in.",
+      "properties": {
+        "id": {},
+        "op": {
+          "const": "repos"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "Request": {
+      "description": "A line a client sends after hello: op, what to do, and the parameters it takes. id is any JSON value, sent back with the answer.",
+      "oneOf": [
+        {
+          "$ref": "#/$defs/StateRequest"
+        },
+        {
+          "$ref": "#/$defs/SubscribeRequest"
+        },
+        {
+          "$ref": "#/$defs/ReadRequest"
+        },
+        {
+          "$ref": "#/$defs/SendRequest"
+        },
+        {
+          "$ref": "#/$defs/TypeRequest"
+        },
+        {
+          "$ref": "#/$defs/AnswerRequest"
+        },
+        {
+          "$ref": "#/$defs/SeenRequest"
+        },
+        {
+          "$ref": "#/$defs/WakeRequest"
+        },
+        {
+          "$ref": "#/$defs/ReposRequest"
+        },
+        {
+          "$ref": "#/$defs/NewTabRequest"
+        },
+        {
+          "$ref": "#/$defs/QuitRequest"
+        }
+      ]
+    },
+    "SeenRequest": {
+      "description": "Count as the user looking at the agent, as visiting its tab does.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "op": {
+          "const": "seen"
+        }
+      },
+      "required": [
+        "op",
+        "agent"
+      ],
+      "type": "object"
+    },
+    "SendRequest": {
+      "description": "Queue text as a message for agent, typed in once it is at its prompt.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "op": {
+          "const": "send"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "agent",
+        "text"
+      ],
+      "type": "object"
+    },
+    "State": {
+      "description": "State is what the API's state gives: every tab, the agents that want the user, neediest first (as the waiting list has them), what nerdr asks the user, and the agents there are to start.",
+      "properties": {
+        "agents": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "questions": {
+          "items": {
+            "$ref": "#/$defs/Question"
+          },
+          "type": "array"
+        },
+        "root": {
+          "type": "string"
+        },
+        "tabs": {
+          "items": {
+            "$ref": "#/$defs/Tab"
+          },
+          "type": "array"
+        },
+        "waiting": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "root",
+        "tabs",
+        "waiting",
+        "questions",
+        "agents"
+      ],
+      "type": "object"
+    },
+    "StateRequest": {
+      "description": "Every tab with its agents, terminals and branches, the agents that need the user, nerdr's open questions, and the agents that can be started.",
+      "properties": {
+        "id": {},
+        "op": {
+          "const": "state"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "SubscribeRequest": {
+      "description": "Have the core send events from now on.",
+      "properties": {
+        "id": {},
+        "op": {
+          "const": "subscribe"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "Tab": {
+      "description": "Tab is a tab. Status is what its agent last said of where the work stands (nerdr status); Task what it was asked to do.",
+      "properties": {
+        "agents": {
+          "items": {
+            "$ref": "#/$defs/Agent"
+          },
+          "type": "array"
+        },
+        "branches": {
+          "items": {
+            "$ref": "#/$defs/Branch"
+          },
+          "type": "array"
+        },
+        "dir": {
+          "type": "string"
+        },
+        "group": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "status": {
+          "type": "string"
+        },
+        "task": {
+          "type": "string"
+        },
+        "terminals": {
+          "items": {
+            "$ref": "#/$defs/Terminal"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "dir",
+        "agents"
+      ],
+      "type": "object"
+    },
+    "TabClosedEvent": {
+      "description": "A tab is gone.",
+      "properties": {
+        "event": {
+          "const": "tab_closed"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tab_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "event",
+        "tab_id",
+        "name"
+      ],
+      "type": "object"
+    },
+    "TabEvent": {
+      "description": "A tab's name, task, status, branches or terminals changed.",
+      "properties": {
+        "event": {
+          "const": "tab"
+        },
+        "tab": {
+          "$ref": "#/$defs/Tab"
+        }
+      },
+      "required": [
+        "event",
+        "tab"
+      ],
+      "type": "object"
+    },
+    "TabOpenedEvent": {
+      "description": "A tab is there, made by anyone. Its agents each get an agent event too.",
+      "properties": {
+        "event": {
+          "const": "tab_opened"
+        },
+        "tab": {
+          "$ref": "#/$defs/Tab"
+        }
+      },
+      "required": [
+        "event",
+        "tab"
+      ],
+      "type": "object"
+    },
+    "Terminal": {
+      "description": "Terminal is a terminal pane of a tab: Name as `nerdr read` calls it, Command the last an agent ran in it.",
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "running": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "running"
+      ],
+      "type": "object"
+    },
+    "TypeRequest": {
+      "description": "Type into an agent or a terminal now: text as a paste, then keys. Give text, keys or both.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "op": {
+          "const": "type"
+        },
+        "target": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "WaitingEvent": {
+      "description": "The agents that need the user changed: their IDs, neediest first.",
+      "properties": {
+        "event": {
+          "const": "waiting"
+        },
+        "waiting": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "event",
+        "waiting"
+      ],
+      "type": "object"
+    },
+    "WakeRequest": {
+      "description": "Wake the agents of a tab put to sleep while it was not looked at.",
+      "properties": {
+        "id": {},
+        "op": {
+          "const": "wake"
+        },
+        "tab": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "tab"
+      ],
+      "type": "object"
+    },
+    "Welcome": {
+      "description": "Welcome is the core's answer to a hello it takes.",
+      "properties": {
+        "api": {
+          "type": "integer"
+        },
+        "root": {
+          "type": "string"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "api",
+        "version",
+        "root"
+      ],
+      "type": "object"
+    }
+  },
+  "$id": "https://nerdr.app/api/schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "anyOf": [
+    {
+      "$ref": "#/$defs/ClientLine"
+    },
+    {
+      "$ref": "#/$defs/CoreLine"
+    }
+  ],
+  "description": "nerdr's API, version 1: JSON, one object a line, over nerdr api FOLDER or the API socket. What is added to a version (fields, ops, events) does not raise it, so a client must pass by what it does not know.",
+  "title": "nerdr API",
+  "x-nerdr-api": 1,
+  "x-nerdr-ops": {
+    "answer": {
+      "request": {
+        "$ref": "#/$defs/AnswerRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "new_tab": {
+      "request": {
+        "$ref": "#/$defs/NewTabRequest"
+      },
+      "result": {
+        "$ref": "#/$defs/NewTabResult"
+      }
+    },
+    "quit": {
+      "request": {
+        "$ref": "#/$defs/QuitRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "read": {
+      "request": {
+        "$ref": "#/$defs/ReadRequest"
+      },
+      "result": {
+        "$ref": "#/$defs/ReadResult"
+      }
+    },
+    "repos": {
+      "request": {
+        "$ref": "#/$defs/ReposRequest"
+      },
+      "result": {
+        "items": {
+          "$ref": "#/$defs/Repo"
+        },
+        "type": "array"
+      }
+    },
+    "seen": {
+      "request": {
+        "$ref": "#/$defs/SeenRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "send": {
+      "request": {
+        "$ref": "#/$defs/SendRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "state": {
+      "request": {
+        "$ref": "#/$defs/StateRequest"
+      },
+      "result": {
+        "$ref": "#/$defs/State"
+      }
+    },
+    "subscribe": {
+      "request": {
+        "$ref": "#/$defs/SubscribeRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "type": {
+      "request": {
+        "$ref": "#/$defs/TypeRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "wake": {
+      "request": {
+        "$ref": "#/$defs/WakeRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    }
+  }
+}

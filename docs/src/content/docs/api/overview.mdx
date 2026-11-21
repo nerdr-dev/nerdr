@@ -82,6 +82,8 @@ come in.
 - [Requests](../requests/): everything a program can ask, with
   examples.
 - [Events](../events/): what a subscribed program is told.
+- [Schema](../schema/): all of it as JSON Schema, to generate a
+  program's types from.
 - [Examples](../examples/): a notifier in shell and a client in Python
   to start from.
 
@@ -99,4 +101,5 @@ The API's version is 1, and nerdr sends it in the welcome. New requests,
 fields and events may be added without changing the version, so ignore
 what you do not know. A change that would break a program written for
 version 1 raises the version, and a program says which version it was
-written for when it connects.
+written for when it connects. The [schema](../schema/#versions) says
+which version it describes.
