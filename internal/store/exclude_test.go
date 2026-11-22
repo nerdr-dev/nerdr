@@ -89,6 +89,33 @@ func TestExcludeConcurrentWritesKeepAllPatterns(t *testing.T) {
 	}
 }
 
+// TestExcludeRefusesGrowthPastLimit: an info/exclude already at
+// maxExcludeBytes must not be grown past the limit and break later calls;
+// the file stays untouched on disk.
+func TestExcludeRefusesGrowthPastLimit(t *testing.T) {
+	repo := gitRepo(t)
+	file := filepath.Join(repo, ".git", "info", "exclude")
+	orig := make([]byte, maxExcludeBytes)
+	for i := range orig {
+		orig[i] = 'a'
+	}
+	orig[len(orig)-1] = '\n'
+	if err := os.WriteFile(file, orig, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	err := Exclude(repo, "/.nerdr/")
+	if err == nil || !strings.Contains(err.Error(), "too large") {
+		t.Fatalf("Exclude at maxExcludeBytes = %v, want too large error", err)
+	}
+	after, err := os.ReadFile(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != maxExcludeBytes {
+		t.Fatalf("exclude size = %d, want untouched %d", len(after), maxExcludeBytes)
+	}
+}
+
 // TestExcludeRefusesALinkedExcludeFile covers an agent replacing
 // info/exclude with a link to a file it may not write, such as git's
 // config: nerdr must not append to the file the link names.

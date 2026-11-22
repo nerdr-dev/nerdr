@@ -303,9 +303,18 @@ func (w *Watcher) addNewDir(dir string) {
 	if ctx.Err() != nil {
 		return // timed out, or closed: whether it is ignored is not known
 	}
-	counts, _, err := sourceDirs(ctx, w.worktree, rel)
+	counts, subTotal, err := sourceDirs(ctx, w.worktree, rel)
 	if err != nil {
-		counts = map[string]int{filepath.Clean(dir): 0}
+		n := 0
+		if kqueueGOOS {
+			n = dirEntryCount(dir, kqueueMax)
+		}
+		counts = map[string]int{filepath.Clean(dir): n}
+		subTotal = 1 + n
+	}
+	if overKqueue(subTotal) {
+		w.Close()
+		return
 	}
 	if w.dirs == nil {
 		w.dirs = map[string]int{}
@@ -319,6 +328,10 @@ func (w *Watcher) addNewDir(dir string) {
 		}
 	}
 	if overKqueue(w.watched + delta) {
+		// Adding this directory would exceed kqueueMax: release the watch
+		// so core tells the client to fall back to polling rather than
+		// silently missing edits inside the new directory.
+		w.Close()
 		return
 	}
 	for d, files := range counts {
@@ -347,7 +360,10 @@ var kqueueGOOS = runtime.GOOS != "linux"
 
 // sourceDirs maps each directory under sub (relative to the worktree) that
 // holds a file git would list (tracked, or new and not ignored) to how many
-// such files live directly in it, and returns the total directories + files.
+// entries are counted in it, and returns the total directories + entries.
+// Where kqueue watches, fsnotify opens every direct entry in a watched
+// directory (including git-ignored files), so each directory's actual
+// direct entry count is used rather than git ls-files alone.
 func sourceDirs(ctx context.Context, worktree, sub string) (map[string]int, int, error) {
 	out, err := proc.Output(gitsafe.CommandContext(ctx, worktree, "ls-files", "-z",
 		"--cached", "--others", "--exclude-standard", "--", sub))
@@ -376,5 +392,36 @@ func sourceDirs(ctx context.Context, worktree, sub string) (map[string]int, int,
 			counts[abs] = 0
 		}
 	}
-	return counts, files + len(counts), nil
+	if !kqueueGOOS {
+		return counts, files + len(counts), nil
+	}
+	total := 0
+	for d := range counts {
+		n := dirEntryCount(d, kqueueMax)
+		counts[d] = n
+		total += 1 + n
+		if total > kqueueMax {
+			return counts, total, nil
+		}
+	}
+	return counts, total, nil
+}
+
+// dirEntryCount counts direct entries in d, stopping once count passes limit
+// so a directory full of ignored build files cannot allocate unboundedly.
+func dirEntryCount(d string, limit int) int {
+	f, err := os.Open(d)
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	n := 0
+	for n <= limit {
+		names, err := f.Readdirnames(256)
+		n += len(names)
+		if err != nil {
+			break
+		}
+	}
+	return n
 }

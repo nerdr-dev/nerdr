@@ -2,6 +2,7 @@ package watch
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -194,7 +195,8 @@ func bareWatcher(t *testing.T, dir string) *Watcher {
 }
 
 // TestAddNewDirKeepsUnderKqueueMax: where kqueue watches, a directory that
-// would take the watch past kqueueMax is not added; one that fits is.
+// would take the watch past kqueueMax closes the watch so the caller falls
+// back to polling; one that fits is watched.
 func TestAddNewDirKeepsUnderKqueueMax(t *testing.T) {
 	was := kqueueGOOS
 	kqueueGOOS = true
@@ -209,10 +211,15 @@ func TestAddNewDirKeepsUnderKqueueMax(t *testing.T) {
 	if slices.Contains(w.fs.WatchList(), newpkg) || w.watched != kqueueMax-1 {
 		t.Fatalf("past kqueueMax: watching %v, %d counted", w.fs.WatchList(), w.watched)
 	}
-	w.watched = 0
-	w.addNewDir(newpkg)
-	if !slices.Contains(w.fs.WatchList(), filepath.Join(newpkg, "sub")) || w.watched != 3 {
-		t.Fatalf("under kqueueMax: watching %v, %d counted", w.fs.WatchList(), w.watched)
+	if w.Wait() {
+		t.Fatal("watcher stayed open after addNewDir exceeded kqueueMax")
+	}
+
+	w2 := bareWatcher(t, dir)
+	w2.addNewDir(newpkg)
+	// newpkg (1 dir + 1 entry "sub") + sub (1 dir + 1 entry "b.go") = 4
+	if !slices.Contains(w2.fs.WatchList(), filepath.Join(newpkg, "sub")) || w2.watched != 4 {
+		t.Fatalf("under kqueueMax: watching %v, %d counted", w2.fs.WatchList(), w2.watched)
 	}
 }
 
@@ -243,28 +250,52 @@ func TestAddNewDirDeduplicatesAndDropsRemovedDirs(t *testing.T) {
 
 	w := bareWatcher(t, dir)
 	w.addNewDir(newpkg)
-	if w.watched != 3 || len(w.dirs) != 2 {
-		t.Fatalf("first add: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	if w.watched != 4 || len(w.dirs) != 2 {
+		t.Fatalf("first add: watched=%d dirs=%v, want 4 / 2 dirs", w.watched, w.dirs)
 	}
 	// Duplicate create event on the same directory must not inflate count.
 	w.addNewDir(newpkg)
-	if w.watched != 3 || len(w.dirs) != 2 {
-		t.Fatalf("duplicate add: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	if w.watched != 4 || len(w.dirs) != 2 {
+		t.Fatalf("duplicate add: watched=%d dirs=%v, want 4 / 2 dirs", w.watched, w.dirs)
 	}
 	// A non-existent directory fails fs.Add and must not consume capacity.
 	w.addNewDir(filepath.Join(dir, "gone"))
-	if w.watched != 3 || len(w.dirs) != 2 {
-		t.Fatalf("failed add: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	if w.watched != 4 || len(w.dirs) != 2 {
+		t.Fatalf("failed add: watched=%d dirs=%v, want 4 / 2 dirs", w.watched, w.dirs)
 	}
 	// Removing newpkg releases both newpkg and newpkg/sub from watched.
 	w.relevant(fsnotify.Event{Name: newpkg, Op: fsnotify.Remove})
 	if w.watched != 0 || len(w.dirs) != 0 {
 		t.Fatalf("after remove: watched=%d dirs=%v, want 0 / empty", w.watched, w.dirs)
 	}
-	// Re-adding after removal succeeds and returns to 3.
+	// Re-adding after removal succeeds and returns to 4.
 	w.addNewDir(newpkg)
-	if w.watched != 3 || len(w.dirs) != 2 {
-		t.Fatalf("re-add after remove: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	if w.watched != 4 || len(w.dirs) != 2 {
+		t.Fatalf("re-add after remove: watched=%d dirs=%v, want 4 / 2 dirs", w.watched, w.dirs)
+	}
+}
+
+// TestNewRefusesIgnoredFilesOverKqueueMax: on kqueue, fsnotify opens every
+// direct entry in each watched directory (including git-ignored files). A
+// root directory containing more ignored files than kqueueMax must be
+// refused by New before fs.Add opens descriptors for them.
+func TestNewRefusesIgnoredFilesOverKqueueMax(t *testing.T) {
+	was := kqueueGOOS
+	kqueueGOOS = true
+	defer func() { kqueueGOOS = was }()
+	dir, common := repo(t)
+	write(t, filepath.Join(dir, ".gitignore"), "build/\n*.ign\n")
+	for i := range kqueueMax + 10 {
+		f, err := os.Create(filepath.Join(dir, fmt.Sprintf("f%05d.ign", i)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = f.Close()
+	}
+	w, err := New(dir, common)
+	if err == nil {
+		w.Close()
+		t.Fatal("New watched a directory with >kqueueMax ignored files")
 	}
 }
 

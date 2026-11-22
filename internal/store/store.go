@@ -190,6 +190,9 @@ func Exclude(worktreePath, pattern string) error {
 		prefix = "\n"
 	}
 	out := append(data, prefix+"# kept out of the change by nerdr\n"+pattern+"\n"...)
+	if int64(len(out)) > maxExcludeBytes {
+		return fmt.Errorf("%s is too large (%d bytes)", file, len(out))
+	}
 	return writeRegularAt(dirFD, base, file, out, perm)
 }
 
