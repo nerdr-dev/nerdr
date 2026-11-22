@@ -118,6 +118,26 @@ func TestApprovalWithoutRemarksDoesNotQueueMessage(t *testing.T) {
 	}
 }
 
+// TestAskedApprovalIsToldToTheAgent: an agent that asked for a review is
+// told when it is approved with nothing to fix, as it is of findings,
+// first, ahead of what waited, and not as findings.
+func TestAskedApprovalIsToldToTheAgent(t *testing.T) {
+	m := testModel(t)
+	tb := m.Cur()
+	tb.Messages = []state.Message{{Text: "queued task"}}
+	r := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "asked-approver", Agent: "codex"}}, ReviewOf: tb}
+	tb.Review = &core.ReviewRun{Seats: []*core.Seat{{R: r}}, Round: 1, Rounds: 1, Asked: true, Tree: "asked-tree"}
+	m.home().Core.OnReview(hooks.Report{Pane: r.HookKey(), Review: &codereview.Result{Verdict: codereview.Approve, Summary: "fine"}})
+	if tb.Review != nil || len(tb.Messages) != 2 || tb.Messages[1].Text != "queued task" {
+		t.Fatalf("review %v, messages %+v", tb.Review != nil, tb.Messages)
+	}
+	msg := tb.Messages[0]
+	if !msg.Auto || msg.Sandboxed || !strings.Contains(msg.Text, "codex approved your change (review round 1 of 1), with no findings") ||
+		codereview.IsFixPrompt(msg.Text) {
+		t.Fatalf("message %+v", msg)
+	}
+}
+
 func TestAutoApprovalWithoutRemarksDoesNotAsk(t *testing.T) {
 	m := testModel(t)
 	m.home().Core.Cfg.Review.SendFindings = config.FindingsAuto

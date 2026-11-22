@@ -353,6 +353,14 @@ func FixPrompt(rs []Review, round, rounds int) string {
 // AskedFixPrompt is FixPrompt for a review the agent asked for: it has
 // all the reviewers' findings at once, and asks for another review with
 // again, the command for it, when it wants one.
+// ApprovedPrompt tells an agent that asked for a review that the
+// reviewers who approved its change, in round of rounds, found nothing to
+// fix. It is not a FixPrompt: there is nothing in it to send back.
+func ApprovedPrompt(who []string, round, rounds int) string {
+	return fmt.Sprintf("nerdr: %s approved your change (review round %d of %d), with no findings. "+
+		"Nothing is left to fix from the review: finish as you would.", strings.Join(who, " and "), round, rounds)
+}
+
 func AskedFixPrompt(rs []Review, round, rounds int, again string) string {
 	return fixPrompt(rs, round, rounds, again)
 }

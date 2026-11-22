@@ -58,7 +58,8 @@ look for, build or run another nerdr.
 
 Then end your turn. Do not start more work: the review starts when your
 turn ends. nerdr waits until every reviewer has sent theirs, and their
-findings come to you together as one message. Read all of it before you
+findings come to you together as one message; when they all approve with
+nothing to fix, the message says so, and you finish as you would. Read all of it before you
 change anything, then work on it as you would on the user's. nerdr does
 not have it reviewed again by itself: when you are done, decide whether
 what you changed needs another look, and if it does, run the command the
