@@ -125,9 +125,12 @@ type APIClosing struct {
 	Name   string
 	Remove bool
 	wts    []workspace.Worktree
-	// heads are the branches' heads, by worktree path, when every one is
-	// merged with that head on GitHub: the branches go too then.
-	heads map[string]string
+	// heads are the worktrees' heads, by path, as Look found them: what
+	// each must still have once the programs have stopped, a commit made
+	// since being on no remote, maybe on no branch. With merged, every one
+	// is merged with that head on GitHub, and the branches go too.
+	heads  map[string]string
+	merged bool
 }
 
 // APIStartClose begins closing tab id, its worktrees deleted with remove.
@@ -165,9 +168,16 @@ func (c *APIClosing) Look() error {
 	if len(unpushed) > 0 {
 		return fmt.Errorf("not closed: commits not pushed in %s; push them, or close without remove", strings.Join(unpushed, ", "))
 	}
-	if len(c.wts) > 0 && len(merged) == len(c.wts) {
-		c.heads = merged
+	heads := make(map[string]string, len(c.wts))
+	for _, w := range c.wts {
+		h := workspace.Head(w)
+		if h == "" {
+			return fmt.Errorf("not closed: git could not say what %s has checked out", filepath.Base(w.Path))
+		}
+		heads[w.Path] = h
 	}
+	c.heads = heads
+	c.merged = len(c.wts) > 0 && len(merged) == len(c.wts)
 	return nil
 }
 
@@ -188,5 +198,8 @@ func (m *Core) APIClose(c *APIClosing) (Cmd, error) {
 	if c.Remove && !slices.EqualFunc(t.Worktrees, c.wts, func(a, b workspace.Worktree) bool { return a.Path == b.Path }) {
 		return nil, fmt.Errorf("not closed: the repositories of %s changed while it was looked at; ask again", t.Name)
 	}
-	return m.CloseTab(t, c.Remove, false, c.heads), nil
+	if c.Remove && c.heads == nil {
+		return nil, errors.New("not closed: the worktrees were not looked at")
+	}
+	return m.closeTab(t, c.Remove, false, c.heads, c.merged), nil
 }

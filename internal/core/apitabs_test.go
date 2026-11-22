@@ -231,3 +231,51 @@ func TestAPICloseTabRemovesOnlyWhatIsSafe(t *testing.T) {
 		t.Fatalf("branch gone: %v %s", err, out)
 	}
 }
+
+// TestAPICloseTabKeepsACommitMadeAfterTheLook: a commit the agent makes
+// once the worktree was looked at, on a detached HEAD where no branch
+// keeps it, stops the worktree being deleted: git would delete it, clean
+// as it is, and the commit with it.
+func TestAPICloseTabKeepsACommitMadeAfterTheLook(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	m := paneCore(t)
+	root := t.TempDir()
+	repo := gitRepo(t, root, "web")
+	bare := filepath.Join(root, "web.git")
+	gitIn(t, root, "clone", "-q", "--bare", repo.Path, bare)
+	gitIn(t, repo.Path, "remote", "add", "origin", bare)
+	gitIn(t, repo.Path, "fetch", "-q", "origin")
+	plan, err := workspace.MakePlan(filepath.Join(root, "worktrees"), "fix-login", []workspace.Repo{repo})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wts, err := plan.Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Tabs[0].Dir, m.Tabs[0].Worktrees = plan.Dir, wts
+	wt := wts[0].Path
+	gitIn(t, wt, "checkout", "-q", "--detach")
+
+	c, err := m.APIStartClose("t1", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Look(); err != nil {
+		t.Fatalf("pushed: %v", err)
+	}
+	gitIn(t, wt, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "late")
+	late := gitIn(t, wt, "rev-parse", "HEAD")
+	cmd, err := m.APIClose(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ev, ok := cmd().(TabClosedMsg); !ok || !strings.Contains(ev.Err, "kept the worktree") {
+		t.Fatalf("event %+v", ev)
+	}
+	if got := gitIn(t, wt, "rev-parse", "HEAD"); got != late {
+		t.Fatalf("worktree at %s, want the late commit %s", got, late)
+	}
+}

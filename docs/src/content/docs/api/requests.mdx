@@ -333,7 +333,9 @@ TUI's close dialog does.
 
 The answer comes once the tab's programs have stopped and its worktrees
 are gone; `text` says what was done. A `tab_closed` [event](../events/)
-follows.
+follows. If an agent committed after the worktrees were looked at, and
+before it was stopped, the tab is closed but the worktrees are kept, and
+the answer is an error saying so.
 
 ## quit
 
