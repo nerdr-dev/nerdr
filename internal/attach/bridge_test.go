@@ -5,8 +5,10 @@ import (
 	"errors"
 	"io"
 	"net"
+	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -111,5 +113,124 @@ func TestRefuseIsAFrameAClientReads(t *testing.T) {
 	typ, _, err := readFrame(&b)
 	if err != nil || typ != frameRefused {
 		t.Fatalf("%q %v", typ, err)
+	}
+}
+
+// fakeCore is a core at a socket of its own that does what serve does
+// with the one connection it takes.
+func fakeCore(t *testing.T, serve func(net.Conn)) net.Conn {
+	t.Helper()
+	sock := filepath.Join(filepath.Dir(dir(t)), "f.sock")
+	l, err := net.Listen("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { l.Close() })
+	go func() {
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		defer c.Close()
+		serve(c)
+	}()
+	core, err := net.Dial("unix", sock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { core.Close() })
+	return core
+}
+
+func helloFrame(t *testing.T) []byte {
+	t.Helper()
+	var b bytes.Buffer
+	if err := writeJSON(&b, frameHello, Hello{Gen: Generation}); err != nil {
+		t.Fatal(err)
+	}
+	return b.Bytes()
+}
+
+// lockedBuffer is a bytes.Buffer two goroutines may use.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+// TestBridgePassesOnTheLastWordAfterTheClientIsDone: a client that has
+// said all it will still hears the Bye the core says to that.
+func TestBridgePassesOnTheLastWordAfterTheClientIsDone(t *testing.T) {
+	_, _, key, _ := listen(t, takeAll)
+	core := fakeCore(t, func(c net.Conn) {
+		_, _ = io.Copy(io.Discard, c) // the hello, then the client's end
+		time.Sleep(50 * time.Millisecond)
+		_ = writeJSON(c, frameBye, Bye{Reason: ByeQuit})
+	})
+	var out lockedBuffer
+	if err := Bridge(bytes.NewReader(helloFrame(t)), &out, core, key, nil); err != nil {
+		t.Fatal(err)
+	}
+	out.mu.Lock()
+	defer out.mu.Unlock()
+	if typ, _, err := readFrame(&out.b); err != nil || typ != frameBye {
+		t.Fatalf("the client was told %q %v", typ, err)
+	}
+}
+
+// TestBridgeStopsReadingTheClientOnceTheCoreHasGone: once the core hangs
+// up, nothing is left reading what the client says.
+func TestBridgeStopsReadingTheClientOnceTheCoreHasGone(t *testing.T) {
+	_, _, key, _ := listen(t, takeAll)
+	core := fakeCore(t, func(c net.Conn) {
+		_, _, _ = readFrame(c)
+	})
+	client, far := net.Pipe()
+	defer client.Close()
+	defer far.Close()
+	returned := make(chan struct{})
+	go func() {
+		defer close(returned)
+		_ = Bridge(far, far, core, key, nil)
+	}()
+	if _, err := client.Write(helloFrame(t)); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the bridge did not return")
+	}
+	_ = client.SetWriteDeadline(time.Now().Add(100 * time.Millisecond))
+	if _, err := client.Write([]byte("more")); err == nil {
+		t.Fatal("something still reads the client")
+	}
+}
+
+// TestBridgeGivesUpOnASilentClient: a client that never says hello is
+// not waited for forever.
+func TestBridgeGivesUpOnASilentClient(t *testing.T) {
+	was := handshakeTimeout
+	handshakeTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { handshakeTimeout = was })
+	_, _, key, _ := listen(t, takeAll)
+	core := fakeCore(t, func(c net.Conn) { _, _ = io.Copy(io.Discard, c) })
+	client, far := net.Pipe()
+	defer client.Close()
+	defer far.Close()
+	returned := make(chan error, 1)
+	go func() { returned <- Bridge(far, far, core, key, nil) }()
+	select {
+	case err := <-returned:
+		if err == nil {
+			t.Fatal("no error for a silent client")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the bridge waits for a silent client")
 	}
 }

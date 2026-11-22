@@ -94,3 +94,30 @@ func TestGroupsAcrossMachines(t *testing.T) {
 		t.Fatalf("api is on %d machines", len(ms))
 	}
 }
+
+// TestAddToZeroFleet: a machine Added to the zero Fleet is its one
+// machine, no zero one before it.
+func TestAddToZeroFleet(t *testing.T) {
+	var f Fleet
+	box := &Machine{Name: "box"}
+	f.Add(box)
+	if ms := f.Machines(); len(ms) != 1 || ms[0] != box {
+		t.Fatalf("machines %v, want only box", ms)
+	}
+	f.Lock()
+	f.Unlock()
+}
+
+// TestUnlockOfZeroFleet: Unlock of the zero Fleet unlocks nothing, not a
+// machine it made only then, which would panic.
+func TestUnlockOfZeroFleet(t *testing.T) {
+	var f Fleet
+	f.Unlock()
+	if len(f.machines) != 0 {
+		t.Fatalf("Unlock made %d machines", len(f.machines))
+	}
+	f.Remove(&Machine{})
+	if len(f.machines) != 0 {
+		t.Fatalf("Remove made %d machines", len(f.machines))
+	}
+}

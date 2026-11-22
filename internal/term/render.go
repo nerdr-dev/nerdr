@@ -46,6 +46,15 @@ func (s *Screen) ScrollbackLen() int {
 // that ends replyLoop, and only then is the emulator closed.
 func (p *Pane) Close() {
 	p.Stop(2 * time.Second)
+	// The terminal let go of first, so the reader stops feeding the
+	// screen before the emulator is closed under it.
+	if p.proc != nil {
+		_ = p.proc.Close()
+		select {
+		case <-p.readDone:
+		case <-time.After(time.Second):
+		}
+	}
 	p.CloseReplies()
 	select {
 	case <-p.replyDone:

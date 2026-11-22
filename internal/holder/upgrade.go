@@ -221,13 +221,18 @@ func (h *Holder) exec(argv []string, st *state, keep []int) error {
 		return err
 	}
 	keep = append(keep, sfd)
+	argv = append(argv, resumeArg, strconv.Itoa(sfd))
+	// While keep are open across exec, no fork may run, or its child
+	// (a watch, say) would be born holding the programs' terminals and
+	// the state: ForkLock is what every fork takes first.
+	syscall.ForkLock.Lock()
+	defer syscall.ForkLock.Unlock()
 	for _, fd := range keep {
 		if _, err := unix.FcntlInt(uintptr(fd), unix.F_SETFD, 0); err != nil {
 			cloexec(keep)
 			return err
 		}
 	}
-	argv = append(argv, resumeArg, strconv.Itoa(sfd))
 	err = syscall.Exec(argv[0], argv, os.Environ())
 	cloexec(keep)
 	return fmt.Errorf("exec %s: %w", argv[0], err)

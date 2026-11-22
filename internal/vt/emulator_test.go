@@ -1473,7 +1473,7 @@ var cases = []struct {
 		},
 		want: []string{
 			"        ",
-			"        ",
+			"  F     ", // only up to and with the cursor
 			"GHI     ",
 		},
 		pos: uv.Pos(1, 1),

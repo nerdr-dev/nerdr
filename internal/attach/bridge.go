@@ -9,6 +9,7 @@ import (
 	"net"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // A client on another machine reaches a core through a bridge: `nerdr
@@ -73,12 +74,15 @@ func ReadPreamble(r io.Reader) (gen int, version string, err error) {
 // says back to out. The client's first frame is its Hello: the key in
 // keyFile and env, the environment of this machine for the programs core
 // starts, take the place of whatever it gave. It returns once either end
-// has closed.
+// has closed, and core has said its last: a client that hangs up still
+// hears the Bye or Refused the core says as it closes.
 func Bridge(in io.Reader, out io.Writer, core net.Conn, keyFile string, env []string) error {
+	setReadDeadline(in, time.Now().Add(handshakeTimeout))
 	typ, body, err := readFrame(in)
 	if err != nil {
 		return err
 	}
+	setReadDeadline(in, time.Time{})
 	var h Hello
 	if typ != frameHello || json.Unmarshal(body, &h) != nil {
 		err := errors.New("a client must say hello first")
@@ -90,22 +94,55 @@ func Bridge(in io.Reader, out io.Writer, core net.Conn, keyFile string, env []st
 		return err
 	}
 	h.Env = env
+	_ = core.SetDeadline(time.Now().Add(handshakeTimeout))
 	if err := writeJSON(core, frameHello, h); err != nil {
+		// A core that refuses the peer says why before it reads
+		// anything, and hangs up, as Handshake has it: pass it on.
+		if typ, body, rerr := readFrame(core); rerr == nil && typ == frameRefused {
+			_ = writeFrame(out, frameRefused, body)
+		}
 		return err
 	}
-	done := make(chan error, 2)
+	_ = core.SetDeadline(time.Time{})
+	toCore, toOut := make(chan error, 1), make(chan error, 1)
 	go func() {
 		_, err := io.Copy(core, in)
 		if c, ok := core.(interface{ CloseWrite() error }); ok {
 			_ = c.CloseWrite()
 		}
-		done <- err
+		toCore <- err
 	}()
 	go func() {
 		_, err := io.Copy(out, core)
-		done <- err
+		toOut <- err
 	}()
-	return <-done
+	select {
+	case err := <-toCore:
+		// The client is done saying: what the core says to that, its
+		// Bye, goes on to the client until it closes, or a while.
+		select {
+		case <-toOut:
+		case <-time.After(byeTimeout):
+			_ = core.Close()
+			<-toOut
+		}
+		return err
+	case err := <-toOut:
+		// The core has gone: the copy to it ends too, if in can be
+		// told to stop waiting for the client.
+		_ = core.Close()
+		if setReadDeadline(in, time.Now()) {
+			<-toCore
+		}
+		return err
+	}
+}
+
+// setReadDeadline sets r's read deadline, if it has one, and says whether
+// it did.
+func setReadDeadline(r io.Reader, t time.Time) bool {
+	d, ok := r.(interface{ SetReadDeadline(time.Time) error })
+	return ok && d.SetReadDeadline(t) == nil
 }
 
 // Refuse says to a client, which has said or is about to say its Hello,

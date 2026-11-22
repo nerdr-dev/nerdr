@@ -316,6 +316,10 @@ func parseRights(oob []byte) ([]*os.File, error) {
 			continue
 		}
 		for _, fd := range fds {
+			// net already has them closed on exec as they come: with
+			// MSG_CMSG_CLOEXEC on Linux, in the read itself elsewhere.
+			// This is for a net that does not; taking ForkLock about
+			// the read instead would stop every fork while it waits.
 			syscall.CloseOnExec(fd)
 			files = append(files, os.NewFile(uintptr(fd), "holder file"))
 		}
