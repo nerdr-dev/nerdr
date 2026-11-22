@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -176,9 +177,52 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	defer unix.Close(dirFD)
+	return writeRegularAt(dirFD, base, path, data, perm)
+}
+
+// readRegularAt reads name inside the pinned directory descriptor dirFD
+// without following a link, blocking on a FIFO, or exceeding limit bytes.
+// When name does not exist, it returns nil, 0, fs.ErrNotExist.
+func readRegularAt(dirFD int, name, path string, limit int64) ([]byte, os.FileMode, error) {
+	var info unix.Stat_t
+	if err := unix.Fstatat(dirFD, name, &info, unix.AT_SYMLINK_NOFOLLOW); err != nil {
+		return nil, 0, &os.PathError{Op: "lstat", Path: path, Err: err}
+	}
+	if info.Mode&unix.S_IFMT != unix.S_IFREG {
+		return nil, 0, errLink(path)
+	}
+	ofd, err := unix.Openat(dirFD, name, unix.O_RDONLY|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		if errors.Is(err, unix.ELOOP) {
+			return nil, 0, errLink(path)
+		}
+		return nil, 0, &os.PathError{Op: "open", Path: path, Err: err}
+	}
+	f := os.NewFile(uintptr(ofd), path)
+	defer f.Close()
+	var st unix.Stat_t
+	if err := unix.Fstat(ofd, &st); err != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || st.Dev != info.Dev || st.Ino != info.Ino {
+		return nil, 0, errLink(path)
+	}
+	if st.Size > limit {
+		return nil, 0, fmt.Errorf("%s is too large (%d bytes)", path, st.Size)
+	}
+	b, err := io.ReadAll(io.LimitReader(f, limit+1))
+	if err != nil {
+		return nil, 0, err
+	}
+	if int64(len(b)) > limit {
+		return nil, 0, fmt.Errorf("%s is too large", path)
+	}
+	return b, os.FileMode(st.Mode & 0o777), nil
+}
+
+// writeRegularAt atomically creates a temporary file inside the pinned
+// directory descriptor dirFD and renames it onto name.
+func writeRegularAt(dirFD int, name, path string, data []byte, perm os.FileMode) error {
 	var b [8]byte
 	_, _ = rand.Read(b[:])
-	tmp := "." + base + "-" + hex.EncodeToString(b[:])
+	tmp := "." + name + "-" + hex.EncodeToString(b[:])
 	tfd, err := unix.Openat(dirFD, tmp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, uint32(perm))
 	if err != nil {
 		return denied.Err(&os.PathError{Op: "open", Path: path, Err: err})
@@ -197,7 +241,7 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	if err := unix.Renameat(dirFD, tmp, dirFD, base); err != nil {
+	if err := unix.Renameat(dirFD, tmp, dirFD, name); err != nil {
 		return denied.Err(&os.PathError{Op: "rename", Path: path, Err: err})
 	}
 	renamed = true

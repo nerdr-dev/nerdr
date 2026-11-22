@@ -156,20 +156,29 @@ func Exclude(worktreePath, pattern string) error {
 	if common == "" {
 		return nil
 	}
-	root, err := os.OpenRoot(common)
-	if err != nil {
-		return denied.Err(err)
-	}
-	defer root.Close()
 	// An agent in a sandbox may write the git directory: info, or
 	// info/exclude, may be a symbolic link (to .git/config, or out of the
-	// repository), a named pipe or a huge file. Read only a regular file
-	// of bounded size, never through a link, and replace it with a new
-	// file rather than appending through whatever the path names.
+	// repository), a named pipe or a huge file. Pin info's directory
+	// descriptor with O_DIRECTORY|O_NOFOLLOW, lock it across processes for
+	// the whole read-modify-write, and perform the read, temp creation and
+	// rename relative to that pinned descriptor.
 	const rel = "info/exclude"
-	data, err := safefile.ReadRegularLimit(root, rel, maxExcludeBytes)
-	if err != nil && !errors.Is(err, fs.ErrNotExist) {
-		return denied.Err(err)
+	file := filepath.Join(common, rel)
+	dirFD, base, err := openParentDir(common, rel, file, true)
+	if err != nil {
+		return err
+	}
+	defer syscall.Close(dirFD)
+	if err := flockFD(dirFD, time.Now().Add(lockTimeout)); err != nil {
+		return fmt.Errorf("lock %s: %w", file, err)
+	}
+	defer func() { _ = syscall.Flock(dirFD, syscall.LOCK_UN) }()
+	data, perm, err := readRegularAt(dirFD, base, file, maxExcludeBytes)
+	if err != nil {
+		if !errors.Is(err, fs.ErrNotExist) {
+			return denied.Err(err)
+		}
+		perm = 0o644
 	}
 	for _, l := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(l) == pattern {
@@ -181,7 +190,7 @@ func Exclude(worktreePath, pattern string) error {
 		prefix = "\n"
 	}
 	out := append(data, prefix+"# kept out of the change by nerdr\n"+pattern+"\n"...)
-	return safefile.WriteRegular(root, rel, out, 0o644)
+	return writeRegularAt(dirFD, base, file, out, perm)
 }
 
 // maxExcludeBytes bounds the info/exclude file Exclude reads.
@@ -360,9 +369,14 @@ var errLockTimeout = errors.New("held by another process for too long")
 // flockUntil takes f's exclusive lock, trying without blocking until
 // deadline.
 func flockUntil(f *os.File, deadline time.Time) error {
+	return flockFD(int(f.Fd()), deadline)
+}
+
+// flockFD takes fd's exclusive lock, trying without blocking until deadline.
+func flockFD(fd int, deadline time.Time) error {
 	wait := time.Millisecond
 	for {
-		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		err := syscall.Flock(fd, syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
 			return nil
 		}

@@ -245,6 +245,13 @@ func (w *Watcher) relevant(ev fsnotify.Event) bool {
 			} else if _, ok := w.dirs[dir]; ok {
 				w.dirs[dir]++
 				w.watched++
+				if overKqueue(w.watched) {
+					// Creating files directly inside an already-watched
+					// directory on kqueue consumes a descriptor per file:
+					// release the watch so the caller falls back to polling.
+					w.Close()
+					return false
+				}
 			}
 		}
 	}
@@ -354,9 +361,14 @@ func sourceDirs(ctx context.Context, worktree, sub string) (map[string]int, int,
 			continue
 		}
 		files++
-		fileDir := filepath.Clean(filepath.Join(worktree, filepath.Dir(filepath.FromSlash(f))))
+		relDir := filepath.Dir(filepath.FromSlash(f))
+		fileDir := filepath.Clean(filepath.Join(worktree, relDir))
+		_, existed := counts[fileDir]
 		counts[fileDir]++
-		for d := filepath.Dir(filepath.FromSlash(f)); d != "." && d != string(filepath.Separator); d = filepath.Dir(d) {
+		if existed {
+			continue
+		}
+		for d := filepath.Dir(relDir); d != "." && d != string(filepath.Separator); d = filepath.Dir(d) {
 			abs := filepath.Clean(filepath.Join(worktree, d))
 			if _, ok := counts[abs]; ok {
 				break // its parents are in already

@@ -267,3 +267,46 @@ func TestAddNewDirDeduplicatesAndDropsRemovedDirs(t *testing.T) {
 		t.Fatalf("re-add after remove: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
 	}
 }
+
+// TestWatchReportsFileInIntermediateDirectory: when the only tracked file
+// sits under a/b/f (with no file directly in a), the intermediate folder a
+// is still watched, so creating a/new.go notifies the watcher.
+func TestWatchReportsFileInIntermediateDirectory(t *testing.T) {
+	dir, common := repo(t)
+	write(t, filepath.Join(dir, "a", "b", "f.go"), "package b\n")
+	w, err := New(dir, common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+
+	write(t, filepath.Join(dir, "a", "new.go"), "package a\n")
+	changed(t, w, "creating a file in an intermediate directory")
+}
+
+// TestWatchClosesWhenNewFilesPassKqueueMax: on kqueue, creating a file
+// directly inside an already-watched directory past kqueueMax closes the
+// watch so descriptors are released and the caller falls back to polling.
+func TestWatchClosesWhenNewFilesPassKqueueMax(t *testing.T) {
+	was := kqueueGOOS
+	kqueueGOOS = true
+	defer func() { kqueueGOOS = was }()
+	dir, _ := repo(t)
+	pkg := filepath.Join(dir, "pkg")
+
+	w := bareWatcher(t, dir)
+	if err := w.fs.Add(pkg); err != nil {
+		t.Fatal(err)
+	}
+	w.dirs = map[string]int{pkg: kqueueMax - 1}
+	w.watched = kqueueMax
+
+	extra := filepath.Join(pkg, "over.go")
+	write(t, extra, "package pkg\n")
+	if w.relevant(fsnotify.Event{Name: extra, Op: fsnotify.Create}) {
+		t.Fatal("relevant returned true after crossing kqueueMax")
+	}
+	if w.Wait() {
+		t.Fatal("watcher stayed open after files in watched dir passed kqueueMax")
+	}
+}
