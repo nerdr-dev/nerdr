@@ -60,8 +60,10 @@ var delegateSettings = [][2]string{
 //     repository of the agent's making behind it;
 //   - origin's URL must be in the config, not in the .git/remotes or
 //     .git/branches files of old, which are the agent's to write;
-//   - an ssh command or credential helper that names a file in the
-//     repository or one of its worktrees is the agent's code, and stops it;
+//   - an ssh command or credential helper, in the config or in nerdr's
+//     own GIT_SSH_COMMAND or GIT_SSH, that names a file in the repository
+//     or one of its worktrees is the agent's code, and stops it, as does
+//     one nerdr cannot read for certain (see namesFileIn);
 //   - the caller adds --no-recurse-submodules to a fetch: a submodule's
 //     config is in the worktree; hooks are off as for any other call.
 //
@@ -148,8 +150,16 @@ func OriginEnv(repo string) (env []string, why string) {
 	for _, entry := range strings.Split(set, "\x00") {
 		key, value, _ := strings.Cut(entry, "\n")
 		if namesFileIn(value, roots) {
-			return nil, key + " names a file in " + repo + " or its worktrees, which an agent in a sandbox may have written"
+			return nil, key + " may run or read a file in " + repo + " or its worktrees, which an agent in a sandbox may have written"
 		}
+	}
+	// originEnv keeps the ssh nerdr's own environment names: it is
+	// judged as the config's is.
+	if v := os.Getenv("GIT_SSH_COMMAND"); v != "" && namesFileIn(v, roots) {
+		return nil, "GIT_SSH_COMMAND may run or read a file in " + repo + " or its worktrees, which an agent in a sandbox may have written"
+	}
+	if v := os.Getenv("GIT_SSH"); v != "" && programIn(v, roots) {
+		return nil, "GIT_SSH names a file in " + repo + " or its worktrees, which an agent in a sandbox may have written"
 	}
 	return envFor(repo, hookOff, true), ""
 }
@@ -173,50 +183,29 @@ func transportOf(url string) string {
 
 // worktreesOf are the main checkout repo and the worktrees of it nerdr
 // was told of or its .git/worktrees names: the folders a sandboxed agent
-// there may have written.
+// there may have written. A worktree nerdr was told of is matched to repo
+// with links resolved as well, as either may be written through one
+// (/var and /private/var on macOS); namesFileIn resolves the roots'.
 func worktreesOf(repo, common string) []string {
 	roots := []string{clean(repo)}
+	type pair struct{ path, repo string }
+	var known []pair
 	mu.Lock()
 	for path, r := range trusted {
-		if r == clean(repo) {
-			roots = append(roots, path)
-		}
+		known = append(known, pair{path, r})
 	}
 	mu.Unlock()
+	real := canonical(repo)
+	for _, k := range known {
+		if k.repo == roots[0] || canonical(k.repo) == real {
+			roots = append(roots, k.path)
+		}
+	}
 	files, _ := filepath.Glob(filepath.Join(common, "worktrees", "*", "gitdir"))
 	for _, f := range files {
-		if b, err := os.ReadFile(f); err == nil {
+		if b, err := readAdmin(filepath.Dir(f), "gitdir"); err == nil {
 			roots = append(roots, filepath.Dir(strings.TrimSpace(string(b))))
 		}
 	}
 	return roots
-}
-
-// namesFileIn reports whether command, an ssh command or a credential
-// helper as git's config has it, names a file in one of roots, or one
-// relative to where git runs, which is in them.
-func namesFileIn(command string, roots []string) bool {
-	for _, w := range strings.Fields(strings.TrimPrefix(strings.TrimSpace(command), "!")) {
-		w = strings.Trim(w, `'"`)
-		if _, v, ok := strings.Cut(w, "="); ok && strings.HasPrefix(w, "-") {
-			w = v // --file=/path
-		}
-		if strings.HasPrefix(w, "./") || strings.HasPrefix(w, "../") {
-			return true
-		}
-		if strings.HasPrefix(w, "~/") {
-			if home, err := os.UserHomeDir(); err == nil {
-				w = filepath.Join(home, w[2:])
-			}
-		}
-		if !filepath.IsAbs(w) {
-			continue
-		}
-		for _, root := range roots {
-			if rel, err := filepath.Rel(root, filepath.Clean(w)); err == nil && filepath.IsLocal(rel) {
-				return true
-			}
-		}
-	}
-	return false
 }

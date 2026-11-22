@@ -10,8 +10,10 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"syscall"
 
 	"github.com/nerdr-dev/nerdr/internal/denied"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // The data folder is where agents write, and nerdr writes there too, as
@@ -73,8 +75,14 @@ func openFile(path string, flag int, perm os.FileMode) (*os.File, error) {
 		return nil, err
 	}
 	defer root.Close()
+	if err := noLinks(root, rel, path); err != nil {
+		return nil, err
+	}
 	if flag&os.O_CREATE != 0 {
 		if err := denied.Err(root.MkdirAll(filepath.Dir(rel), 0o755)); err != nil {
+			return nil, err
+		}
+		if err := noLinks(root, rel, path); err != nil {
 			return nil, err
 		}
 	}
@@ -88,21 +96,20 @@ func openFile(path string, flag int, perm os.FileMode) (*os.File, error) {
 		case err != nil && flag&os.O_CREATE == 0:
 			return nil, err
 		}
-		f, oerr := root.OpenFile(rel, openFlag(flag, err != nil), perm)
+		f, oerr := root.OpenFile(rel, openFlag(flag, err != nil)|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, perm)
 		if errors.Is(oerr, fs.ErrExist) {
 			continue // made meanwhile: looked at again
 		}
 		if denied.Err(oerr) != nil {
 			return nil, oerr
 		}
-		if err == nil {
-			// The file looked at is the one opened, not a link put in its
-			// place since.
-			st, serr := f.Stat()
-			if serr != nil || !os.SameFile(st, info) {
-				f.Close()
-				return nil, errLink(path)
-			}
+		// The file looked at is the one opened, not a link, a pipe or a
+		// device put in its place since: O_NONBLOCK keeps the open of a
+		// pipe from waiting, and this refuses it.
+		st, serr := f.Stat()
+		if serr != nil || !st.Mode().IsRegular() || (err == nil && !os.SameFile(st, info)) {
+			f.Close()
+			return nil, errLink(path)
 		}
 		return f, nil
 	}
@@ -131,7 +138,13 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 		return err
 	}
 	defer root.Close()
+	if err := noLinks(root, rel, path); err != nil {
+		return err
+	}
 	if err := denied.Err(root.MkdirAll(filepath.Dir(rel), 0o755)); err != nil {
+		return err
+	}
+	if err := noLinks(root, rel, path); err != nil {
 		return err
 	}
 	var b [8]byte
@@ -149,5 +162,20 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
+	// A folder on the way made a link since is not renamed through.
+	if err := noLinks(root, rel, path); err != nil {
+		return err
+	}
 	return denied.Err(root.Rename(tmp, rel))
+}
+
+// noLinks refuses rel, inside root, when a folder on the way to it is a
+// link. os.Root keeps to the anchor but follows a link inside it: in the
+// git directory an agent could make .git/nerdr a link to hooks, and have
+// nerdr write a file there that git would run as the user.
+func noLinks(root *os.Root, rel, path string) error {
+	if err := safefile.CheckNoLinks(root, rel); err != nil {
+		return fmt.Errorf("%s: %w: nerdr does not write through links", path, err)
+	}
+	return nil
 }

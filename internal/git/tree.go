@@ -50,7 +50,7 @@ func WorkTree(worktreePath string) (string, error) {
 
 // TreeOf is the id of the tree of commit ref, or "" when there is none.
 func TreeOf(worktreePath, ref string) string {
-	out, err := proc.Output(gitsafe.Command(worktreePath, "rev-parse", "--verify", "-q", ref+"^{tree}"))
+	out, err := proc.Output(gitsafe.Command(worktreePath, "rev-parse", "--verify", "-q", "--end-of-options", ref+"^{tree}"))
 	if err != nil {
 		return ""
 	}

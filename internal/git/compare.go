@@ -57,7 +57,7 @@ func (c Comparison) OldFile(file string) (string, error) {
 func (c Comparison) NumStat() map[string]LineCount {
 	against := []string{"HEAD"}
 	if c.Base != "" {
-		against = []string{"--merge-base", c.Base}
+		against = []string{"--merge-base", "--end-of-options", c.Base}
 	}
 	return NumStat(c.Worktree, against...)
 }

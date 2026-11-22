@@ -29,6 +29,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path"
 	"path/filepath"
@@ -41,6 +42,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // commonDirs caches each worktree's git common directory. The files are
@@ -154,31 +156,36 @@ func Exclude(worktreePath, pattern string) error {
 	if common == "" {
 		return nil
 	}
-	file := filepath.Join(common, "info", "exclude")
-	data, err := os.ReadFile(file)
-	if err != nil && !os.IsNotExist(err) {
-		return err
+	root, err := os.OpenRoot(common)
+	if err != nil {
+		return denied.Err(err)
+	}
+	defer root.Close()
+	// An agent in a sandbox may write the git directory: info, or
+	// info/exclude, may be a symbolic link (to .git/config, or out of the
+	// repository), a named pipe or a huge file. Read only a regular file
+	// of bounded size, never through a link, and replace it with a new
+	// file rather than appending through whatever the path names.
+	const rel = "info/exclude"
+	data, err := safefile.ReadRegularLimit(root, rel, maxExcludeBytes)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return denied.Err(err)
 	}
 	for _, l := range strings.Split(string(data), "\n") {
 		if strings.TrimSpace(l) == pattern {
 			return nil
 		}
 	}
-	if err := denied.Err(os.MkdirAll(filepath.Dir(file), 0o755)); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(file, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o644)
-	if denied.Err(err) != nil {
-		return err
-	}
-	defer f.Close()
 	prefix := ""
-	if len(data) > 0 && !strings.HasSuffix(string(data), "\n") {
+	if len(data) > 0 && !bytes.HasSuffix(data, []byte("\n")) {
 		prefix = "\n"
 	}
-	_, err = f.WriteString(prefix + "# kept out of the change by nerdr\n" + pattern + "\n")
-	return err
+	out := append(data, prefix+"# kept out of the change by nerdr\n"+pattern+"\n"...)
+	return safefile.WriteRegular(root, rel, out, 0o644)
 }
+
+// maxExcludeBytes bounds the info/exclude file Exclude reads.
+const maxExcludeBytes = 4 << 20
 
 // ExcludeData keeps a data folder inside the worktree (a relative
 // DataDir) out of git; with the folder anywhere else it does nothing.
@@ -311,15 +318,21 @@ func Append(path string, v any) error {
 // may hold the file that has just been replaced: it opens the new one and
 // waits again, or its line would go to a file nobody reads. It is opened
 // as openFile does, never through a link.
+//
+// An agent can open a file in the data folder and hold its lock as long
+// as it likes, and the core waits for it: so the lock is asked for
+// without blocking, again and again, for lockTimeout at most, and a file
+// replaced under it is opened again at most lockReopens times.
 func lock(path string, flag int) (*os.File, error) {
-	for {
+	deadline := time.Now().Add(lockTimeout)
+	for range lockReopens {
 		f, err := openFile(path, flag, 0o644)
 		if err != nil {
 			return nil, err
 		}
-		if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		if err := flockUntil(f, deadline); err != nil {
 			f.Close()
-			return nil, err
+			return nil, fmt.Errorf("lock %s: %w", path, err)
 		}
 		held, err1 := f.Stat()
 		named, err2 := os.Lstat(path)
@@ -330,6 +343,37 @@ func lock(path string, flag int) (*os.File, error) {
 		if err2 != nil && !os.IsNotExist(err2) {
 			return nil, err2
 		}
+	}
+	return nil, fmt.Errorf("lock %s: the file kept being replaced", path)
+}
+
+// lockTimeout is how long lock waits for another to let go of a file, and
+// lockReopens how often it opens one that was replaced while it waited.
+var (
+	lockTimeout = 5 * time.Second
+	lockReopens = 100
+)
+
+// errLockTimeout is what lock gives up with when the lock stays held.
+var errLockTimeout = errors.New("held by another process for too long")
+
+// flockUntil takes f's exclusive lock, trying without blocking until
+// deadline.
+func flockUntil(f *os.File, deadline time.Time) error {
+	wait := time.Millisecond
+	for {
+		err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EINTR) {
+			return err
+		}
+		if !time.Now().Before(deadline) {
+			return errLockTimeout
+		}
+		time.Sleep(min(wait, time.Until(deadline)))
+		wait = min(2*wait, 50*time.Millisecond)
 	}
 }
 
@@ -352,9 +396,19 @@ func Rewrite(path string, keep func([]byte) bool) (int, error) {
 	}
 	defer unlock(f)
 
+	// What is kept is held in memory until it is written: a file bigger
+	// than ReadLines would read is not rewritten, and no more than its
+	// size seen on the open descriptor is read, should it grow meanwhile.
+	st, err := f.Stat()
+	if err != nil {
+		return 0, err
+	}
+	if st.Size() > maxRecordsBytes {
+		return 0, fmt.Errorf("%s is too large to rewrite (%d bytes)", path, st.Size())
+	}
 	var out bytes.Buffer
 	dropped := 0
-	sc := bufio.NewScanner(f)
+	sc := bufio.NewScanner(io.LimitReader(f, st.Size()))
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for sc.Scan() {
 		b := bytes.TrimSpace(sc.Bytes())
@@ -406,12 +460,21 @@ func BranchCreated(worktreePath, branch string) (created time.Time, ok bool) {
 	if common == "" || branch == "" || !filepath.IsLocal(filepath.FromSlash(branch)) {
 		return time.Time{}, false
 	}
-	f, err := os.Open(filepath.Join(common, "logs", "refs", "heads", filepath.FromSlash(branch)))
+	// An agent in a sandbox may write the git directory: the reflog, or a
+	// folder on the way to it, may be a link (to /dev/zero, out of the
+	// repository), a named pipe or a huge file. Only the first line of a
+	// regular file reached without a link is read, and only so much of it.
+	root, err := os.OpenRoot(common)
+	if err != nil {
+		return time.Time{}, false
+	}
+	defer root.Close()
+	f, _, err := safefile.OpenRegular(root, filepath.Join("logs", "refs", "heads", filepath.FromSlash(branch)))
 	if err != nil {
 		return time.Time{}, false
 	}
 	defer f.Close()
-	line, _ := bufio.NewReader(f).ReadString('\n')
+	line, _ := bufio.NewReader(io.LimitReader(f, maxReflogLine)).ReadString('\n')
 	// "<old> <new> <name> <<email>> <unix> <zone>\t<message>"
 	head, _, _ := strings.Cut(line, "\t")
 	old, _, _ := strings.Cut(head, " ")
@@ -432,6 +495,9 @@ func BranchCreated(worktreePath, branch string) (created time.Time, ok bool) {
 	}
 	return time.Unix(secs, 0), true
 }
+
+// maxReflogLine bounds the first line of a reflog BranchCreated reads.
+const maxReflogLine = 64 << 10
 
 // ReadLines hands each non-empty line of the file at path to line. A
 // missing or unreadable file yields nothing rather than an error: these

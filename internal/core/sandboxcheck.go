@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -16,6 +18,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -370,10 +373,14 @@ var SandboxWrites = (*Core).sandboxWrites
 // the folder the tabs' worktrees are in, when t's own is in a folder of
 // its own there.
 //
-// The state folder's temporary folder is tried by itself, and made first,
-// the check passing by what is not there: a sandbox may deny the state
-// folder and still allow a folder in it, and nerdr checks a new worktree's
-// files out from a store in that one (see statedir).
+// The state folder's temporary folder is tried by itself, and made first:
+// a sandbox may deny the state folder and still allow a folder in it, and
+// nerdr checks a new worktree's files out from a store in that one (see
+// statedir). A main checkout's .git/hooks is made first too, when it is
+// not there (git init --template=, or removed): a sandbox that names it
+// in a rule may skip a rule for what is missing (bwrap --ro-bind-try),
+// and the agent could then make it and put hooks in it. The check tries
+// what is still missing by making it itself.
 func (m *Core) sandboxWrites(t *Tab) []string {
 	out := []string{filepath.Dir(config.Path()), filepath.Dir(state.Dir())}
 	if tmp, err := statedir.EnsureTempDir(); err == nil {
@@ -381,6 +388,7 @@ func (m *Core) sandboxWrites(t *Tab) []string {
 	}
 	for _, w := range t.Owner().Worktrees {
 		if w.Repo != "" {
+			ensureHooksDir(w.Repo)
 			out = append(out, filepath.Join(w.Repo, ".git", "config"), filepath.Join(w.Repo, ".git", "hooks"))
 		}
 	}
@@ -391,4 +399,27 @@ func (m *Core) sandboxWrites(t *Tab) []string {
 	}
 	slices.Sort(out)
 	return slices.Compact(out)
+}
+
+// ensureHooksDir makes the .git/hooks of the main checkout repo when it is
+// not there, as git init would have, from repo without following a link
+// on the way: an agent may have made .git, or hooks, one, and nerdr does
+// not make a folder wherever it points.
+func ensureHooksDir(repo string) {
+	root, err := os.OpenRoot(repo)
+	if err != nil {
+		return
+	}
+	defer root.Close()
+	const rel = ".git/hooks"
+	if err := safefile.CheckNoLinks(root, rel); err != nil {
+		return
+	}
+	if st, err := root.Lstat(".git"); err != nil || !st.IsDir() {
+		return // no .git folder: nothing of git's to make
+	}
+	if _, err := root.Lstat(rel); !errors.Is(err, fs.ErrNotExist) {
+		return // there, or a link or a file, which the check tries as it is
+	}
+	_ = root.Mkdir(rel, 0o755)
 }

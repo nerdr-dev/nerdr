@@ -178,28 +178,11 @@ func ReadRegularLimit(root *os.Root, rel string, limit int64) ([]byte, error) {
 	if limit < 0 {
 		return nil, fmt.Errorf("invalid file limit")
 	}
-	if err := CheckNoLinks(root, rel); err != nil {
-		return nil, err
-	}
-	info, err := root.Lstat(rel)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%s is not a regular file", rel)
-	}
-	f, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, st, err := OpenRegular(root, rel)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	st, err := f.Stat()
-	if err != nil {
-		return nil, err
-	}
-	if !st.Mode().IsRegular() || !os.SameFile(info, st) {
-		return nil, fmt.Errorf("%s is not a regular file", rel)
-	}
 	if st.Size() > limit {
 		return nil, fmt.Errorf("%s is too large (%d bytes)", rel, st.Size())
 	}
@@ -211,6 +194,51 @@ func ReadRegularLimit(root *os.Root, rel string, limit int64) ([]byte, error) {
 		return nil, fmt.Errorf("%s is too large", rel)
 	}
 	return b, nil
+}
+
+// OpenRegular opens rel inside root for reading after verifying that no
+// parent component is a symbolic link and that what is opened is the
+// regular file looked at, not a link, a named pipe or a device put in its
+// place. O_NONBLOCK keeps the open from blocking on a FIFO swapped in
+// between the look and the open. The caller bounds what it reads.
+func OpenRegular(root *os.Root, rel string) (*os.File, os.FileInfo, error) {
+	if err := CheckNoLinks(root, rel); err != nil {
+		return nil, nil, err
+	}
+	info, err := root.Lstat(rel)
+	if err != nil {
+		return nil, nil, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+	f, err := root.OpenFile(rel, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	if !st.Mode().IsRegular() || !os.SameFile(info, st) {
+		f.Close()
+		return nil, nil, fmt.Errorf("%s is not a regular file", rel)
+	}
+	return f, st, nil
+}
+
+// ReadUnder is ReadRegularLimit for rel inside the folder anchor, which is
+// opened as an os.Root for the one read: nothing on the way from anchor
+// to rel may be a link, and rel itself must be a regular file of at most
+// limit bytes.
+func ReadUnder(anchor, rel string, limit int64) ([]byte, error) {
+	root, err := os.OpenRoot(anchor)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return ReadRegularLimit(root, rel, limit)
 }
 
 // WriteRegular writes data to a new temporary file in rel's directory

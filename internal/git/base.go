@@ -20,7 +20,7 @@ func DetectBase(worktreePath string) string {
 		refs = append([]string{d, "origin/" + d}, refs...)
 	}
 	for _, ref := range refs {
-		if err := proc.Run(gitsafe.Command(worktreePath, "rev-parse", "--verify", "-q", ref)); err == nil {
+		if err := proc.Run(gitsafe.Command(worktreePath, "rev-parse", "--verify", "-q", "--end-of-options", ref)); err == nil {
 			return ref
 		}
 	}
@@ -36,10 +36,21 @@ func DefaultBranch(dir string) string {
 		return ""
 	}
 	b, ok := strings.CutPrefix(strings.TrimSpace(string(out)), "origin/")
-	if !ok || b == "HEAD" {
+	if !ok || b == "HEAD" || !SafeRefName(b) {
 		return ""
 	}
 	return b
+}
+
+// SafeRefName reports whether name, a branch or ref read from the
+// repository, can be given to git as one. git lets a ref's name start
+// with a dash (refs/heads/--output=/some/file, made with update-ref), and
+// an agent can make one and point origin/HEAD, HEAD or a branch's
+// nerdrBase at it: given to git diff, it would be taken for an option
+// and write the file it names. Calls pass refs after --end-of-options
+// too; this keeps such a name from being the base at all.
+func SafeRefName(name string) bool {
+	return name != "" && !strings.HasPrefix(name, "-")
 }
 
 // stackedKey is the git config, per branch, that names the branch it was
@@ -57,10 +68,10 @@ func StackedBase(worktreePath string) string {
 	}
 	out, err := proc.Output(gitsafe.Command(worktreePath, "config", "--get", stackedKey(b)))
 	base := strings.TrimSpace(string(out))
-	if err != nil || base == "" || base == b {
+	if err != nil || base == "" || base == b || !SafeRefName(base) {
 		return ""
 	}
-	if proc.Run(gitsafe.Command(worktreePath, "rev-parse", "--verify", "-q", "refs/heads/"+base)) != nil {
+	if proc.Run(gitsafe.Command(worktreePath, "rev-parse", "--verify", "-q", "--end-of-options", "refs/heads/"+base)) != nil {
 		return ""
 	}
 	return base
@@ -88,7 +99,7 @@ func CurrentBranch(worktreePath string) string {
 // MergeBase is the commit the worktree's branch forked from base at, or
 // base itself when git cannot tell.
 func MergeBase(worktreePath, base string) string {
-	out, err := proc.Output(gitsafe.Command(worktreePath, "merge-base", base, "HEAD"))
+	out, err := proc.Output(gitsafe.Command(worktreePath, "merge-base", "--end-of-options", base, "HEAD"))
 	if err != nil || len(strings.TrimSpace(string(out))) == 0 {
 		return base
 	}
@@ -99,7 +110,7 @@ func MergeBase(worktreePath, base string) string {
 // with base and the current worktree: committed work, uncommitted changes
 // and new files not yet added.
 func ChangedFilesBase(worktreePath, base string) ([]FileStatus, error) {
-	out, err := proc.Output(gitsafe.Command(worktreePath, "diff", "--find-renames", "--merge-base", base, "--name-status", "-z"))
+	out, err := proc.Output(gitsafe.Command(worktreePath, "diff", "--find-renames", "--name-status", "-z", "--merge-base", "--end-of-options", base))
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +130,7 @@ func ChangedFilesBase(worktreePath, base string) ([]FileStatus, error) {
 // DiffBase returns the diff of a single file against the merge base with
 // base.
 func DiffBase(worktreePath, base, file string, original ...string) (string, error) {
-	args := append([]string{"diff", "--find-renames", "--merge-base", base, "--"}, diffPaths(worktreePath, base, file, original)...)
+	args := append([]string{"diff", "--find-renames", "--merge-base", "--end-of-options", base, "--"}, diffPaths(worktreePath, base, file, original)...)
 	out, err := proc.Output(gitsafe.Command(worktreePath, args...))
 	if err != nil {
 		return "", err

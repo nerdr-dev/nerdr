@@ -243,7 +243,7 @@ func (it *PlanItem) SetPR(number int, state, head string) {
 	}
 	// Not revCount, which takes a failure for none: here that would call
 	// the branch safe to replace.
-	out, err := git(it.Repo.Path, "rev-list", "--count", head+"^{commit}.."+it.Tip)
+	out, err := git(it.Repo.Path, "rev-list", "--count", "--end-of-options", head+"^{commit}.."+it.Tip)
 	if err != nil {
 		return
 	}
@@ -403,7 +403,7 @@ func fetchBase(repo string) {
 }
 
 func revCount(repo, rng string) int {
-	n, err := git(repo, "rev-list", "--count", rng)
+	n, err := git(repo, "rev-list", "--count", "--end-of-options", rng)
 	if err != nil {
 		return 0
 	}
@@ -899,8 +899,12 @@ func defaultBase(repo string) string {
 			return b
 		}
 	}
+	// An agent may name HEAD's branch to start with a dash: see
+	// gitdata.SafeRefName.
 	if out, err := git(repo, "symbolic-ref", "--short", "HEAD"); err == nil {
-		return strings.TrimSpace(out)
+		if b := strings.TrimSpace(out); gitdata.SafeRefName(b) {
+			return b
+		}
 	}
 	return ""
 }
@@ -1055,16 +1059,23 @@ func Inspect(dir string, repos []Repo) (Worktree, bool) {
 // waiting.
 func currentBranch(dir string) string {
 	if gitDir, _, ok := gitsafe.Dirs(dir); ok {
-		if b, err := os.ReadFile(filepath.Join(gitDir, "HEAD")); err == nil {
-			ref, isRef := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
-			if !isRef {
-				return "" // detached
-			}
-			if branch, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
-				return branch
-			}
+		// An agent in the worktree writes HEAD: it is read as a small
+		// regular file, never through a link or from a pipe. One that is
+		// not such a file names no branch, and git is not asked either:
+		// it would read the same HEAD, and wait on a pipe until its
+		// timeout.
+		b, err := gitsafe.ReadGitFile(gitDir, "HEAD")
+		if err != nil {
 			return ""
 		}
+		ref, isRef := strings.CutPrefix(strings.TrimSpace(string(b)), "ref: ")
+		if !isRef {
+			return "" // detached
+		}
+		if branch, ok := strings.CutPrefix(ref, "refs/heads/"); ok {
+			return branch
+		}
+		return ""
 	}
 	branch, _ := git(dir, "branch", "--show-current")
 	return strings.TrimSpace(branch)
@@ -1144,7 +1155,7 @@ func CommitsSince(w Worktree, from string, limit int) ([]string, int) {
 	if from == "" {
 		return nil, 0
 	}
-	rng := []string{"--cherry-pick", "--right-only", "--no-merges", from + "...HEAD"}
+	rng := []string{"--cherry-pick", "--right-only", "--no-merges", "--end-of-options", from + "...HEAD"}
 	if b := baseRef(w.Path); b != "" && b != w.Branch {
 		rng = append(rng, "^"+b)
 	}
