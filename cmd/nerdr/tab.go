@@ -59,8 +59,10 @@ func request(sock, method string, p map[string]any) (string, error) {
 func explain(sock string, err error) error {
 	switch {
 	case errors.Is(err, syscall.EPERM), errors.Is(err, syscall.EACCES):
-		return fmt.Errorf("%w. A sandbox around the agent keeps it from nerdr's socket: "+
-			"allow connecting to %s. Another nerdr program, or talking to the socket yourself, will not help: tell the user", err, sock)
+		return fmt.Errorf("%w. A sandbox keeps this command from nerdr's socket. If your own tools ran it in "+
+			"their sandbox, run the same command again at once, asking to run it outside that sandbox the way your tools ask for that. "+
+			"If you cannot, or it fails there too, tell the user to allow connecting to %s. "+
+			"Another nerdr program, or talking to the socket yourself, will not help", err, sock)
 	case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ECONNREFUSED):
 		return fmt.Errorf("%w: nerdr is not listening at %s. It has quit, or a sandbox around the agent hides the socket. "+
 			"Another nerdr program, or talking to the socket yourself, will not help: tell the user", err, sock)
