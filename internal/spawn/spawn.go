@@ -7,7 +7,6 @@
 package spawn
 
 import (
-	"bytes"
 	"errors"
 	"os"
 	"os/exec"
@@ -141,17 +140,40 @@ func (Local) Spawn(s Spec) (Proc, error) {
 		return nil, err
 	}
 	cmd.Stdout, cmd.Stderr = pw, pw
+	var inR, inW *os.File
 	if s.Stdin != nil {
-		cmd.Stdin = bytes.NewReader(s.Stdin)
+		// Feed Stdin through an *os.File pipe of our own rather than a
+		// bytes.Reader: os/exec would otherwise wait on its stdin-copy
+		// goroutine inside cmd.Wait (while local.Wait holds l.mu),
+		// deadlocking Signal if a grandchild inherited stdin without
+		// reading it.
+		inR, inW, err = os.Pipe()
+		if err != nil {
+			pr.Close()
+			pw.Close()
+			return nil, err
+		}
+		cmd.Stdin = inR
 	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	if err := cmd.Start(); err != nil {
 		pr.Close()
 		pw.Close()
+		if inR != nil {
+			inR.Close()
+			inW.Close()
+		}
 		return nil, err
 	}
 	pw.Close()
-	return &local{cmd: cmd, out: pr, start: startOf(cmd)}, nil
+	if inR != nil {
+		inR.Close()
+		go func(w *os.File, data []byte) {
+			_, _ = w.Write(data)
+			_ = w.Close()
+		}(inW, s.Stdin)
+	}
+	return &local{cmd: cmd, out: pr, in: inW, start: startOf(cmd)}, nil
 }
 
 // startOf is when cmd's process started; it is not reaped before Wait.
@@ -172,6 +194,7 @@ type local struct {
 	cmd   *exec.Cmd
 	out   *os.File
 	tty   *os.File
+	in    *os.File // write end of Spec.Stdin pipe, nil when none
 	start uint64
 	// reaped is that Wait has reaped the process, pgGone that its group
 	// was then seen empty. A group's id is not reused while the group has
@@ -269,4 +292,9 @@ func (l *local) Signal(pg int, sig syscall.Signal) error {
 	return err
 }
 
-func (l *local) Close() error { return l.out.Close() }
+func (l *local) Close() error {
+	if l.in != nil {
+		_ = l.in.Close()
+	}
+	return l.out.Close()
+}

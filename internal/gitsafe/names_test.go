@@ -195,6 +195,49 @@ func TestOriginEnvChecksTheEnvironmentsSSH(t *testing.T) {
 	}
 }
 
+// TestNamesFileInResolvesSymlinksBeforeDotDot ensures ".." after a symbolic
+// link is resolved from the link's target (as the OS opens it), not
+// lexically cleaned away before EvalSymlinks runs, including under "~".
+func TestNamesFileInResolvesSymlinksBeforeDotDot(t *testing.T) {
+	base := t.TempDir()
+	repo := filepath.Join(base, "repo")
+	sub := filepath.Join(repo, "sub")
+	outside := filepath.Join(base, "outside")
+	home := filepath.Join(base, "home")
+	for _, d := range []string{sub, outside, home} {
+		if err := os.MkdirAll(d, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	linkOut := filepath.Join(outside, "link")
+	if err := os.Symlink(sub, linkOut); err != nil {
+		t.Fatal(err)
+	}
+	linkHome := filepath.Join(home, "link")
+	if err := os.Symlink(sub, linkHome); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("HOME", home)
+	roots := []string{repo}
+
+	// Lexically outside/link/../ssh.sh cleans to outside/ssh.sh, but the OS
+	// opens repo/sub/../ssh.sh == repo/ssh.sh (inside the repo).
+	for _, cmd := range []string{
+		"ssh -F " + linkOut + "/../ssh_config",
+		"ssh -F ~/link/../ssh_config",
+		// Ambiguous ".." after a non-existent component fails closed.
+		"ssh -F " + filepath.Join(outside, "missing") + "/../ssh_config",
+	} {
+		if !namesFileIn(cmd, roots) {
+			t.Errorf("%q: allowed despite symlink/.. leading into repo or ambiguous", cmd)
+		}
+	}
+	// A clean path under home (no link to repo) is still allowed.
+	if namesFileIn("ssh -i ~/.ssh/id_ed25519", roots) {
+		t.Errorf("~/.ssh/id_ed25519 refused")
+	}
+}
+
 // TestOriginEnvRefusesConfiguredDelegatesInTheRepository covers the
 // config's ssh command and credential helpers end to end, written in the
 // ways 1-4 list.

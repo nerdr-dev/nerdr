@@ -185,15 +185,23 @@ func (c names) absolute(w string) bool {
 
 func (c names) expand(w string) string {
 	if c.home != "" && (w == "~" || strings.HasPrefix(w, "~/")) {
-		return filepath.Join(c.home, w[1:])
+		// Preserve ".." components rather than Clean-ing them with
+		// filepath.Join: a link before ".." resolves from its target, not
+		// lexically.
+		return strings.TrimRight(c.home, "/") + w[1:]
 	}
 	return w
 }
 
-// in is whether the absolute path p, as written or with its links
-// resolved, is in one of the roots.
+// in is whether the absolute path p, as written or resolved component by
+// component as the OS opens it, is in one of the roots (or has an
+// ambiguous ".." whose target cannot be resolved).
 func (c names) in(p string) bool {
-	for _, q := range []string{filepath.Clean(p), canonical(p)} {
+	resolved, ok := resolvePath(p)
+	if !ok {
+		return true
+	}
+	for _, q := range []string{filepath.Clean(p), resolved} {
 		for _, root := range c.roots {
 			if rel, err := filepath.Rel(root, q); err == nil && filepath.IsLocal(rel) {
 				return true
@@ -206,19 +214,52 @@ func (c names) in(p string) bool {
 	return false
 }
 
-// canonical is p with the links in its longest existing part resolved.
+// canonical is p with the links in its longest existing part resolved,
+// walking component by component before applying "..".
 func canonical(p string) string {
-	p = clean(p)
-	rest := ""
-	for d := p; ; d = filepath.Dir(d) {
-		if real, err := filepath.EvalSymlinks(d); err == nil {
-			return filepath.Join(real, rest)
-		}
-		if filepath.Dir(d) == d {
-			return p
-		}
-		rest = filepath.Join(filepath.Base(d), rest)
+	if !filepath.IsAbs(p) {
+		p = clean(p)
 	}
+	if resolved, ok := resolvePath(p); ok {
+		return resolved
+	}
+	return clean(p)
+}
+
+// resolvePath resolves an absolute path p in the same order the OS opens
+// it: each component is resolved through EvalSymlinks before any ".."
+// after it is applied. ok is false when a ".." follows a component that
+// cannot be resolved, so the caller fails closed.
+func resolvePath(p string) (string, bool) {
+	if !filepath.IsAbs(p) {
+		return "", false
+	}
+	cur := string(filepath.Separator)
+	missing := false
+	for _, part := range strings.Split(filepath.ToSlash(p), "/") {
+		switch part {
+		case "", ".":
+			continue
+		case "..":
+			if missing {
+				return "", false
+			}
+			cur = filepath.Dir(cur)
+		default:
+			next := filepath.Join(cur, part)
+			if missing {
+				cur = next
+				continue
+			}
+			if real, err := filepath.EvalSymlinks(next); err == nil {
+				cur = real
+			} else {
+				cur = next
+				missing = true
+			}
+		}
+	}
+	return cur, true
 }
 
 // optionKey is an option's name, lower case, without its dashes or ssh's

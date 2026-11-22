@@ -1,11 +1,13 @@
 package spawn
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"os/exec"
 	"syscall"
 	"testing"
+	"time"
 )
 
 // How a program ended is told as exec tells it, from Local's Wait or from
@@ -94,5 +96,37 @@ func TestLocalSignalWhileWaiting(t *testing.T) {
 	var ee *ExitError
 	if err := <-done; !errors.As(err, &ee) || ee.Signal != syscall.SIGKILL {
 		t.Fatalf("Wait: %v, want killed", err)
+	}
+}
+
+// TestLocalWaitWithStdinAndGrandchildDoesNotDeadlockSignal: a child given
+// a large Spec.Stdin that spawns a grandchild inheriting stdin and exits
+// must not hold l.mu while blocked on stdin copying, so Signal can still
+// kill the process group and Wait finishes promptly.
+func TestLocalWaitWithStdinAndGrandchildDoesNotDeadlockSignal(t *testing.T) {
+	p, err := Local{}.Spawn(Spec{
+		Argv:  []string{"sh", "-c", "sleep 30 & exit 0"},
+		Stdin: bytes.Repeat([]byte("x"), 256<<10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	waited := make(chan error, 1)
+	go func() { waited <- p.Wait() }()
+	select {
+	case err := <-waited:
+		if err != nil {
+			t.Fatalf("Wait = %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Wait blocked on stdin held by grandchild")
+	}
+	sigDone := make(chan error, 1)
+	go func() { sigDone <- p.Signal(p.Pid(), syscall.SIGKILL) }()
+	select {
+	case <-sigDone:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Signal deadlocked against Wait")
 	}
 }

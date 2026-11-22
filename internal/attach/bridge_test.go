@@ -234,3 +234,48 @@ func TestBridgeGivesUpOnASilentClient(t *testing.T) {
 		t.Fatal("the bridge waits for a silent client")
 	}
 }
+
+// stuckWriter blocks in Write until release is closed (simulating a
+// client that stopped reading its stdout without supporting deadlines).
+type stuckWriter struct {
+	started chan struct{}
+	once    sync.Once
+	release chan struct{}
+}
+
+func (w *stuckWriter) Write(p []byte) (int, error) {
+	w.once.Do(func() { close(w.started) })
+	<-w.release
+	return len(p), nil
+}
+
+// TestBridgeReturnsWhenOutWriteBlocksAfterClientEOF: when the client hits
+// EOF on stdin and has also stopped reading stdout, Bridge returns once
+// byeTimeout passes rather than waiting forever on the blocked Write.
+func TestBridgeReturnsWhenOutWriteBlocksAfterClientEOF(t *testing.T) {
+	was := byeTimeout
+	byeTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { byeTimeout = was })
+	_, _, key, _ := listen(t, takeAll)
+	core := fakeCore(t, func(c net.Conn) {
+		_, _, _ = readFrame(c)
+		_ = writeJSON(c, frameBye, Bye{Reason: ByeQuit})
+		_, _ = io.Copy(io.Discard, c)
+	})
+	out := &stuckWriter{started: make(chan struct{}), release: make(chan struct{})}
+	defer close(out.release)
+	returned := make(chan error, 1)
+	go func() {
+		returned <- Bridge(bytes.NewReader(helloFrame(t)), out, core, key, nil)
+	}()
+	select {
+	case <-out.started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("core output never reached out.Write")
+	}
+	select {
+	case <-returned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Bridge hung waiting on blocked out.Write after byeTimeout")
+	}
+}

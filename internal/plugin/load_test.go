@@ -68,6 +68,8 @@ func TestCodeLoadingFlagsAreThePlugins(t *testing.T) {
 		{"env", "--split-string", "sh ./evil.sh"},
 		{"env", "-iS", "sh ./evil.sh"},
 		{"env", "NODE_OPTIONS=--require=./evil.js", "node", "./ok.js"},
+		{"env", "PATH=./bin:/usr/bin", "mytool"},
+		{"env", "PATH=.", "sh", "./ok.sh"},
 		{"env", "BASH_ENV=./evil.sh", "bash", "./ok.sh"},
 		{"env", "LD_PRELOAD=./evil.so", "./ok.sh"},
 		{"env", "RUBYOPT=-r./evil", "ruby", "./ok.rb"},
