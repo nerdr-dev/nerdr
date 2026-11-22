@@ -12,6 +12,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/proc"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -187,7 +188,11 @@ func TestSpinoffPicksTheRepositories(t *testing.T) {
 	tb := m.Cur()
 	tb.Worktrees = wts
 	ticked := func(pt spinoff.Part) []bool {
-		tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{pt}}
+		// As the agent sends it: core finds the repositories the commits
+		// are in, where the worktrees are.
+		tb.Spinoff = nil
+		m.dialog = &closeTab{t: tb}
+		m.home().Core.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.HookKey(), Spinoff: []spinoff.Part{pt}})
 		m.dialog = nil
 		m.openSpinoff(tb)
 		return m.dialog.(*spinoffDialog).repoOn
@@ -232,6 +237,52 @@ func TestSpinoffPicksTheRepositories(t *testing.T) {
 	d.key(m, keyMsg(" "))
 	if !d.repoOn[0] || d.repoOn[1] {
 		t.Fatalf("on the agents, space ticks no repository: %v", d.repoOn)
+	}
+}
+
+// TestSpinoffDialogRunsNoGit: the dialog ticks the repositories a part's
+// commits are in as core found them, and looks for nothing itself: the
+// tab's worktrees may be on another machine. A part core found nothing for
+// has all ticked.
+func TestSpinoffDialogRunsNoGit(t *testing.T) {
+	root := t.TempDir()
+	var wts []workspace.Worktree
+	for _, name := range []string{"api", "web"} {
+		dir := filepath.Join(root, name)
+		if out, err := exec.Command("git", "init", "-q", dir).CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v\n%s", err, out)
+		}
+		wts = append(wts, workspace.Worktree{Repo: dir, Path: dir})
+	}
+	m := testModel(t)
+	fakeAgent(m, agents.Claude)
+	tb := m.Cur()
+	tb.Worktrees = wts
+	gitCalls := func() int {
+		calls, _ := proc.Counts()
+		n := 0
+		for c, k := range calls {
+			if c.Program == "git" {
+				n += k
+			}
+		}
+		return n
+	}
+	for _, tc := range []struct {
+		in   []string
+		want []bool
+	}{{nil, []bool{true, true}}, {[]string{"web"}, []bool{false, true}}} {
+		tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{{Branch: "fix-a", Summary: "A.", Prompt: "Do A.",
+			Commits: []string{"0123456789abcdef0123456789abcdef01234567"}, InRepos: tc.in}}}
+		m.dialog = nil
+		before := gitCalls()
+		m.openSpinoff(tb)
+		if n := gitCalls() - before; n != 0 {
+			t.Fatalf("the dialog ran git %d times", n)
+		}
+		if got := m.dialog.(*spinoffDialog).repoOn; !slices.Equal(got, tc.want) {
+			t.Fatalf("found in %v: ticked %v, want %v", tc.in, got, tc.want)
+		}
 	}
 }
 

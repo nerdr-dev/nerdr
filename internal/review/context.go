@@ -27,6 +27,9 @@ func (m *Model) switchWorktree() bool {
 		return false
 	}
 	m.curWT = wt
+	// A read of the file list of the worktree left behind is let go when
+	// it comes (onFiles): the next is not to wait for it.
+	m.filesBusy, m.filesAgain = false, false
 	m.walkWanted = "" // a walkthrough asked for elsewhere does not open here
 	m.watching = false
 	m.projectVer, m.imports = 0, nil

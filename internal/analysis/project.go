@@ -31,7 +31,12 @@ type Project struct {
 	wordIndex    map[string][]refEntry
 	wordBuilt    bool
 	stamps       map[string]sourceStamp
-	incomplete   string
+	// unwalked is why the walk may have missed source files: set only as
+	// the project is loaded, it is part of what Same compares. incomplete
+	// is what reading the files found since, the index or a file asked
+	// about: it says nothing of whether the tree changed.
+	unwalked   string
+	incomplete string
 }
 
 type sourceStamp struct {
@@ -79,7 +84,7 @@ func loadProject(root string, fileLimit, entryLimit int) *Project {
 	p.loadTsconfig()
 	r, err := os.OpenRoot(root)
 	if err != nil {
-		p.markIncomplete("source tree unreadable")
+		p.markUnwalked("source tree unreadable")
 		return p
 	}
 	defer r.Close()
@@ -92,7 +97,7 @@ func loadProject(root string, fileLimit, entryLimit int) *Project {
 		pending = pending[:len(pending)-1]
 		f, err := r.OpenFile(dir, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_DIRECTORY, 0)
 		if err != nil {
-			p.markIncomplete("source directories unreadable")
+			p.markUnwalked("source directories unreadable")
 			continue
 		}
 		for entries < entryLimit && len(p.files) < fileLimit {
@@ -111,7 +116,7 @@ func loadProject(root string, fileLimit, entryLimit int) *Project {
 			}
 			if err != nil {
 				if err != io.EOF {
-					p.markIncomplete("source directories unreadable")
+					p.markUnwalked("source directories unreadable")
 				}
 				break
 			}
@@ -119,10 +124,10 @@ func loadProject(root string, fileLimit, entryLimit int) *Project {
 		f.Close()
 	}
 	if entries >= entryLimit {
-		p.markIncomplete("directory entry limit reached")
+		p.markUnwalked("directory entry limit reached")
 	}
 	if len(p.files) >= fileLimit {
-		p.markIncomplete("source file limit reached")
+		p.markUnwalked("source file limit reached")
 	}
 	slices.Sort(p.files)
 	p.stamps = make(map[string]sourceStamp, len(p.files)+1)
@@ -136,8 +141,10 @@ func loadProject(root string, fileLimit, entryLimit int) *Project {
 
 // Same reports whether q was loaded from the same source files as p, none
 // of them changed since.
+// It reads only what loading set, which nothing changes after: what reads
+// p meanwhile, as References does, may go on.
 func (p *Project) Same(q *Project) bool {
-	return p.incomplete == q.incomplete && slices.Equal(p.files, q.files) && maps.Equal(p.stamps, q.stamps)
+	return p.unwalked == q.unwalked && slices.Equal(p.files, q.files) && maps.Equal(p.stamps, q.stamps)
 }
 
 // Index reads every source file into the index References looks names up
@@ -209,13 +216,26 @@ func (p *Project) fileSet() map[string]bool {
 }
 
 // Incomplete describes why analysis may omit files or references; empty means complete.
-func (p *Project) Incomplete() string { return p.incomplete }
+func (p *Project) Incomplete() string {
+	switch {
+	case p.unwalked == "":
+		return p.incomplete
+	case p.incomplete == "":
+		return p.unwalked
+	}
+	return p.unwalked + "; " + p.incomplete
+}
 
-func (p *Project) markIncomplete(reason string) {
-	if !strings.Contains(p.incomplete, reason) {
-		if p.incomplete != "" {
-			p.incomplete += "; "
+func (p *Project) markIncomplete(reason string) { addReason(&p.incomplete, reason) }
+
+func (p *Project) markUnwalked(reason string) { addReason(&p.unwalked, reason) }
+
+// addReason adds reason to the reasons in *to, if it is not there yet.
+func addReason(to *string, reason string) {
+	if !strings.Contains(*to, reason) {
+		if *to != "" {
+			*to += "; "
 		}
-		p.incomplete += reason
+		*to += reason
 	}
 }

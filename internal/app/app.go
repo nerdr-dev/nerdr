@@ -4,6 +4,7 @@ package app
 
 import (
 	"os"
+	"reflect"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -325,9 +326,13 @@ type Model struct {
 	toastUntil time.Time
 	// toastSeq is the history's entry for the toast shown; see say.
 	toastSeq int
-	// deniedSaid is how many denials had been noted when the last was
-	// said in a toast (see toastDenied).
-	deniedSaid int
+	// deniedSaid is how many denials each machine's core had noted when
+	// the last was said in a toast, and by nil the TUI's own process's
+	// (see toastDenied).
+	deniedSaid map[*fleet.Machine]int
+	// callsJobs counts the reads of the calls asked for by the calls
+	// dialog (see readCalls).
+	callsJobs int
 	// inApp is what tabs behind the one shown have to say this tick, and
 	// inAppTabs the tabs saying it; see notify.go. toastTabs are the tabs
 	// the toast shown tells of, toastOf the text it was for them.
@@ -464,6 +469,14 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// ofBubbleTea reports whether msg is a message of Bubble Tea's own package,
+// which its program takes as it comes: a tea.BatchMsg, a sequence, the
+// screen cleared or the mouse turned on.
+func ofBubbleTea(msg tea.Msg) bool {
+	ty := reflect.TypeOf(msg)
+	return ty != nil && ty.PkgPath() == reflect.TypeOf(tea.BatchMsg(nil)).PkgPath()
+}
+
 // isKey reports whether msg is the key k.
 func isKey(msg tea.Msg, k string) bool {
 	km, ok := msg.(tea.KeyMsg)
@@ -472,8 +485,21 @@ func isKey(msg tea.Msg, k string) bool {
 
 // Update handles one message.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if p, ok := msg.(core.PanicMsg); ok {
+	// What core's loop hands the TUI in its own process comes as the home
+	// machine's (see fleet.Machine.Tell): a panic in it, and what a Cmd of
+	// the TUI's ran there returned, are looked for inside as well.
+	inner := msg
+	t, told := msg.(fleet.Told)
+	if told {
+		inner = t.Msg
+	}
+	if p, ok := inner.(core.PanicMsg); ok {
 		panic(p.String()) // here, where the terminal is put back
+	}
+	if told && ofBubbleTea(inner) {
+		// A tea.BatchMsg, a sequence or one of Bubble Tea's own is only
+		// done as a message of its own, not inside a Told.
+		return m, func() tea.Msg { return inner }
 	}
 	m.fleet.Lock()
 	defer m.fleet.Unlock()
@@ -614,6 +640,12 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		moved := m.moveMachineGone(mc)
 		return tea.Batch(moved, m.spinoffMachineGone(mc), m.coreGone(mc, msg.Why))
 
+	case core.WirePanic:
+		// A core in another process panicked: it ends, and the TUI is told
+		// it is gone as for any other end. The TUI itself goes on.
+		m.Notice("the core of " + machineLabel(mc) + " panicked: " + msg.Value)
+		return nil
+
 	case coreBackMsg:
 		return m.coreBack(mc, msg.conn, msg.try)
 
@@ -622,6 +654,9 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 
 	case serverDialedMsg:
 		return m.onServerDialed(msg)
+
+	case callsAgainMsg:
+		return m.callsAgain(msg)
 
 	case loginOutputMsg:
 		m.fleet.Bump()

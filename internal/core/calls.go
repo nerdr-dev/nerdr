@@ -4,9 +4,54 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/proc"
 )
+
+func init() { registerRequests(ReadCalls{}) }
+
+// ReadCalls has core say what its process has run, by the calls dialog
+// (prefix and g): told as a CallsMsg. A client in a process of its own
+// runs almost none of what core does.
+type ReadCalls struct{ Job string }
+
+// CallsMsg is what ReadCalls of Job read: how many times core's process
+// made each call, since it started at Since.
+type CallsMsg struct {
+	Job   string
+	Calls []CallCount
+	Since time.Time
+}
+
+// CallCount is how many times call C was made.
+type CallCount struct {
+	C proc.Call
+	N int
+}
+
+func (q ReadCalls) Do(m *Core) Cmd {
+	calls, since := proc.Counts()
+	msg := CallsMsg{Job: q.Job, Since: since}
+	for c, n := range calls {
+		msg.Calls = append(msg.Calls, CallCount{C: c, N: n})
+	}
+	return func() Event { return Reply{msg} }
+}
+
+// CallsOf are calls by the call, as proc.Counts has them.
+func CallsOf(calls []CallCount) map[proc.Call]int {
+	out := make(map[proc.Call]int, len(calls))
+	for _, c := range calls {
+		out[c.C] += c.N
+	}
+	return out
+}
+
+// noteDenied takes in what core's process was turned down for, for
+// Denied and DeniedNoted. Mu is held.
+func (m *Core) noteDenied() { m.DeniedNoted, m.Denied = denied.Noted(), denied.List() }
 
 // allCalls is the name of the row that sums the others.
 const AllCalls = "all"

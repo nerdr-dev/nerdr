@@ -65,6 +65,7 @@ type InfoMsg struct {
 // the issues, and agents to put to sleep or wake. The loop runs it every
 // InfoTickN, with a client or without.
 func (m *Core) InfoTick(now time.Time) Cmd {
+	m.noteDenied()
 	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now), m.lookForGh(), m.tickScan(now), m.lookForAgents(now), m.lookAtSkills(now), m.lookAtConfig(), m.noticeRefusedGit())
 }
 

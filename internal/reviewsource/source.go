@@ -192,9 +192,33 @@ type loaded struct {
 
 func (Local) LoadProject(wt string) int {
 	p := analysis.LoadProject(wt)
-	p.Index()
+	// The files unchanged since they were read last, the project read then
+	// is kept, and the slow part, reading every file into the index, is
+	// not done again. Same reads only what loading set, which Relations
+	// does not change, so the project's own mu is not needed for it.
+	projects.Lock()
+	if v, ok := keepProject(wt, p); ok {
+		projects.Unlock()
+		return v
+	}
+	projects.Unlock()
+	indexProject(p) // not under projects: every worktree's reads wait for it
 	projects.Lock()
 	defer projects.Unlock()
+	if v, ok := keepProject(wt, p); ok {
+		return v // read meanwhile by a load of its own
+	}
+	projects.next++
+	projects.byWt[wt] = &loaded{p: p, version: projects.next}
+	return projects.next
+}
+
+// indexProject reads p's files into its index; a test counts the reads.
+var indexProject = (*analysis.Project).Index
+
+// keepProject has wt as the worktree read last, and reports the version of
+// the project kept of it, if p is the same. projects is held.
+func keepProject(wt string, p *analysis.Project) (int, bool) {
 	if projects.byWt == nil {
 		projects.byWt = map[string]*loaded{}
 	}
@@ -203,20 +227,10 @@ func (Local) LoadProject(wt string) int {
 		delete(projects.byWt, projects.used[0])
 		projects.used = projects.used[1:]
 	}
-	if was := projects.byWt[wt]; was != nil {
-		// Same also reads analysis status, which Relations can update.
-		// Lock order is projects then loaded.mu; users of loaded.mu never
-		// acquire projects while holding it.
-		was.mu.Lock()
-		same := was.p.Same(p)
-		was.mu.Unlock()
-		if same {
-			return was.version
-		}
+	if was := projects.byWt[wt]; was != nil && was.p.Same(p) {
+		return was.version, true
 	}
-	projects.next++
-	projects.byWt[wt] = &loaded{p: p, version: projects.next}
-	return projects.next
+	return 0, false
 }
 
 // project is wt's code as LoadProject last read it, held for use (its mu

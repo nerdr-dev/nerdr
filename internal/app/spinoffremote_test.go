@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -209,5 +210,53 @@ func TestFleetSpinoffTwoPartsCloneOnce(t *testing.T) {
 		if _, _, wts := boxTabNamed(box, name); len(wts) != 1 || wts[0].Repo != boxRepo {
 			t.Errorf("%s on box: %+v", name, wts)
 		}
+	}
+}
+
+// TestSpinoffReposFoundByTheTabsCore: in a tab with several repositories
+// of a core in another process, the repository a part's commits are in is
+// found by that core, where the worktrees are, and ticked in the dialog
+// from what it sends.
+func TestSpinoffReposFoundByTheTabsCore(t *testing.T) {
+	m, here, _, told := remoteTUI(t, "sh", "-c", `stty -echo; echo here-ready; while read l; do echo "here got $l"; done`)
+	root := t.TempDir()
+	var wts []workspace.Worktree
+	for _, name := range []string{"api", "web"} {
+		dir := filepath.Join(root, name)
+		moveGit(t, root, "init", "-q", dir)
+		moveGit(t, dir, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", name)
+		wts = append(wts, workspace.Worktree{Repo: dir, Path: dir})
+	}
+	webCommit := strings.TrimSpace(moveGit(t, wts[1].Path, "rev-parse", "HEAD"))
+	here.Mu.Lock()
+	here.Tabs[0].Worktrees = wts
+	here.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: here.Tabs[0].HookKey(), Spinoff: []spinoff.Part{
+		{Branch: "part-a", Summary: "A.", Prompt: "Do A.", Commits: []string{webCommit}, InRepos: []string{"api"}},
+	}})
+	pt := here.Tabs[0].Spinoff.Next[0]
+	here.Mu.Unlock()
+	if len(pt.InRepos) != 1 || pt.InRepos[0] != "web" {
+		t.Fatalf("core found the commit in %v, not web alone", pt.InRepos)
+	}
+	locked(m, func() { m.do(core.RenameTab{T: core.TabRef{Tab: "1"}, Name: "login"}) })
+	pumpUntil(t, m, told, "the plan", func() bool {
+		var ok bool
+		locked(m, func() {
+			tb := m.fleet.Tabs()[0]
+			ok = tb.Spinoff != nil && len(tb.Spinoff.Next) == 1 && len(tb.Worktrees) == 2
+		})
+		return ok
+	})
+	goTo(m, 0)
+	var on []bool
+	locked(m, func() {
+		m.dialog = nil
+		m.openSpinoff(m.Cur())
+		if d, ok := m.dialog.(*spinoffDialog); ok {
+			on = d.repoOn
+		}
+	})
+	if len(on) != 2 || on[0] || !on[1] {
+		t.Fatalf("ticked %v, want web alone", on)
 	}
 }

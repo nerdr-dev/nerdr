@@ -62,21 +62,19 @@ func RepoNamed(w workspace.Worktree, name string) bool {
 }
 
 // SpinoffRepos is which of wts part pt is for at first: those the agent
-// named, else those its commits are in, else all of them.
+// named, else those its commits are in (InRepos, as core found them), else
+// all of them. It reads no disk: a client of a core elsewhere calls it,
+// where the worktrees are not.
 func SpinoffRepos(wts []workspace.Worktree, pt spinoff.Part) []bool {
 	on := make([]bool, len(wts))
 	some := false
-	for i, w := range wts {
-		on[i] = slices.ContainsFunc(pt.Repos, func(r string) bool { return RepoNamed(w, strings.TrimSpace(r)) })
-		some = some || on[i]
-	}
-	if !some && len(pt.Commits) > 0 && len(wts) > 1 {
+	for _, names := range [][]string{pt.Repos, pt.InRepos} {
 		for i, w := range wts {
-			on[i] = slices.ContainsFunc(pt.Commits, func(c string) bool {
-				_, err := workspace.ResolveCommit(w.Path, c)
-				return err == nil
-			})
+			on[i] = slices.ContainsFunc(names, func(r string) bool { return RepoNamed(w, strings.TrimSpace(r)) })
 			some = some || on[i]
+		}
+		if some {
+			break
 		}
 	}
 	if !some {
@@ -85,6 +83,26 @@ func SpinoffRepos(wts []workspace.Worktree, pt spinoff.Part) []bool {
 		}
 	}
 	return on
+}
+
+// commitRepos are, for a part that names no repositories, the folders of
+// those of wts its commits are in: what SpinoffRepos picks at first. It is
+// worked out here, where the worktrees are, as the part comes; the full
+// ids nerdr spinoff sent are quick to look up.
+func commitRepos(wts []workspace.Worktree, pt spinoff.Part) []string {
+	if len(pt.Repos) > 0 || len(pt.Commits) == 0 || len(wts) < 2 {
+		return nil
+	}
+	var out []string
+	for _, w := range wts {
+		if slices.ContainsFunc(pt.Commits, func(c string) bool {
+			_, err := workspace.ResolveCommit(w.Path, c)
+			return err == nil
+		}) {
+			out = append(out, RepoName(w))
+		}
+	}
+	return out
 }
 
 // UnknownRepos are those of names that are none of wts.
@@ -249,6 +267,7 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 			continue
 		}
 		pt.From, pt.Sandboxed = from, confined
+		pt.InRepos = commitRepos(t.Worktrees, pt)
 		t.Spinoff.Next = append(t.Spinoff.Next, pt)
 	}
 	if dropped > 0 {

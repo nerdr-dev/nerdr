@@ -35,6 +35,10 @@ type Part struct {
 	// the part is for, as the agent sees them in its own folder; the user
 	// may pick others. None is for nerdr to work out.
 	Repos []string `json:"repos,omitempty"`
+	// InRepos are, with no Repos named, the folders of the tab's
+	// repositories its Commits are in, as nerdr found them on the tab's
+	// machine when the part came. nerdr sets it, whatever the agent sent.
+	InRepos []string `json:"in_repos,omitempty"`
 	// From is the id of the agent that sent the part, and Sandboxed is set
 	// when it ran in a sandbox: its tab then runs only an agent in one,
 	// and what became of it is told to that agent alone. nerdr sets both,

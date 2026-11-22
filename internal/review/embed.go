@@ -117,7 +117,10 @@ func (m *Model) loadPinned() tea.Cmd {
 	m.worktrees, m.wtIdx = []git.Worktree{{Path: path}}, 0
 	m.switchWorktree()
 	m.refreshing = true
-	m.filesToken++ // a refresh of the worktree left behind is overtaken
+	// A refresh of the worktree left behind is overtaken: its answer is let
+	// go, so it is no longer waited for either.
+	m.filesToken++
+	m.filesBusy, m.filesAgain = false, false
 	m.pinToken++
 	token, showBase := m.pinToken, m.showBase
 	var cmds []tea.Cmd
