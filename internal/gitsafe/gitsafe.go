@@ -55,6 +55,7 @@ import (
 	"sync"
 
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 var (
@@ -429,7 +430,7 @@ func resolve(repo, path string) (gitDirs, error) {
 // pointsAt reports whether the worktree folder a, under .git/worktrees,
 // belongs to the worktree at path: its gitdir file names path's .git.
 func pointsAt(a, path string) bool {
-	b, err := os.ReadFile(filepath.Join(a, "gitdir"))
+	b, err := readAdmin(a, "gitdir")
 	if err != nil {
 		return false
 	}
@@ -441,6 +442,27 @@ func pointsAt(a, path string) bool {
 	got, err2 := os.Stat(filepath.Dir(g))
 	return err1 == nil && err2 == nil && os.SameFile(want, got)
 }
+
+// maxAdminFile bounds what nerdr reads of a small file in a git
+// directory: gitdir, HEAD, a reflog's first line.
+const maxAdminFile = 64 << 10
+
+// readAdmin reads the file name in the git directory dir — a worktree's
+// folder under .git/worktrees, or .git itself — which a sandboxed agent
+// may write: it may make name a link (to /dev/zero, out of the
+// repository), a named pipe nerdr would wait on forever, or a file too big
+// to hold. So it is read from the folder above dir, without following a
+// link on the way, only if it is a regular file, and only up to
+// maxAdminFile bytes.
+func readAdmin(dir, name string) ([]byte, error) {
+	dir = filepath.Clean(dir)
+	return safefile.ReadUnder(filepath.Dir(dir), filepath.Join(filepath.Base(dir), name), maxAdminFile)
+}
+
+// ReadGitFile is readAdmin for other packages: the file name in the git
+// directory dir, read without following a link or blocking on a pipe,
+// and only if it is at most 64 KiB.
+func ReadGitFile(dir, name string) ([]byte, error) { return readAdmin(dir, name) }
 
 // sameDir reports whether a and b are the same folder.
 func sameDir(a, b string) bool {

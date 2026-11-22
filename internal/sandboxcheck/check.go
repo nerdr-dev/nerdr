@@ -14,12 +14,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"net"
 	"os"
 	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -239,19 +241,41 @@ func Probe(t Target) Result {
 
 // canWrite reports whether path can be written from here: a folder by
 // making a file in it, which is removed again, a file by opening it to
-// append to, with nothing written. One that is not there cannot.
+// append to, with nothing written.
+//
+// A file the open is refused for only by its own mode, read only (chmod
+// 444), can still be replaced, by a new file renamed over it, when its
+// folder can be written: whether it can is tried on two files of the
+// check's own in that folder, never on path, which is not renamed,
+// removed or opened to write. A sandbox's own refusal (EPERM from
+// Seatbelt, EROFS from a read-only bind) is not tried further: such a
+// rule on the file holds for a rename over it too, and trying it on
+// other files there would find what it does not deny.
+//
+// One that is not there is tried by making it, as a folder, which is
+// removed again at once: a sandbox that lets the agent make
+// .git/hooks, missing, lets it put hooks in it. It is path itself that
+// is made, not some other name in its folder, so a rule on path alone
+// (.git/hooks denied, .git allowed) is what answers.
 func canWrite(path, nonce string) bool {
 	st, err := os.Stat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return canMake(path)
+	}
 	if err != nil {
 		return false
 	}
 	if !st.IsDir() {
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND, 0)
-		if err != nil {
-			return false
+		// O_NONBLOCK: a pipe put there is not waited on.
+		f, err := os.OpenFile(path, os.O_WRONLY|os.O_APPEND|syscall.O_NONBLOCK, 0)
+		if err == nil {
+			_ = f.Close()
+			return true
 		}
-		_ = f.Close()
-		return true
+		if errors.Is(err, syscall.EACCES) && st.Mode().IsRegular() && readOnlyByMode(st) {
+			return canReplaceIn(filepath.Dir(path), nonce)
+		}
+		return false
 	}
 	probe := filepath.Join(path, ".nerdr-sandbox-check-"+filepath.Base(nonce))
 	f, err := os.OpenFile(probe, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
@@ -261,6 +285,72 @@ func canWrite(path, nonce string) bool {
 	_ = f.Close()
 	_ = os.Remove(probe)
 	return true
+}
+
+// canMake reports whether path, which is not there, can be made from
+// here: it is made as an empty folder and removed again. A folder of the
+// same name made by another meanwhile is not removed: Mkdir fails on it.
+func canMake(path string) bool {
+	if err := os.Mkdir(path, 0o700); err != nil {
+		return false
+	}
+	_ = os.Remove(path)
+	return true
+}
+
+// readOnlyByMode reports whether st's mode bits alone keep this process
+// from writing it: the refusal of an open then comes from them, not from
+// a sandbox.
+func readOnlyByMode(st os.FileInfo) bool {
+	sys, ok := st.Sys().(*syscall.Stat_t)
+	if !ok {
+		return false
+	}
+	perm := st.Mode().Perm()
+	switch {
+	case int(sys.Uid) == os.Getuid():
+		return perm&0o200 == 0
+	case inGroup(int(sys.Gid)):
+		return perm&0o020 == 0
+	}
+	return perm&0o002 == 0
+}
+
+func inGroup(gid int) bool {
+	if gid == os.Getgid() {
+		return true
+	}
+	groups, _ := os.Getgroups()
+	return slices.Contains(groups, gid)
+}
+
+// canReplaceIn reports whether a file in dir can be replaced by another
+// renamed over it, as an agent would replace a read-only .git/config: two
+// files of the check's own are made there, one renamed over the other,
+// and both removed again.
+func canReplaceIn(dir, nonce string) bool {
+	base := filepath.Join(dir, ".nerdr-sandbox-check-"+filepath.Base(nonce))
+	from, to := base+"-new", base+"-old"
+	made := func(p string) bool {
+		f, err := os.OpenFile(p, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+		if err != nil {
+			return false
+		}
+		_ = f.Close()
+		return true
+	}
+	if !made(to) {
+		return false
+	}
+	defer os.Remove(to)
+	if !made(from) {
+		return false
+	}
+	err := os.Rename(from, to)
+	if err != nil {
+		_ = os.Remove(from)
+	}
+	return err == nil
 }
 
 // seesInto reports whether the folder dir, the client socket's, can be

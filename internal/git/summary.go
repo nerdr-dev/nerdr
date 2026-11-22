@@ -22,15 +22,16 @@ func ShortStat(worktreePath string) (files, add, del int) {
 // ShortStatBase is ShortStat against the merge base with base rather than
 // HEAD, so a branch's committed work is counted too.
 func ShortStatBase(worktreePath, base string) (files, add, del int) {
-	return shortStat(worktreePath, "--merge-base", base)
+	return shortStat(worktreePath, "--merge-base", "--end-of-options", base)
 }
 
 func shortStat(worktreePath string, against ...string) (files, add, del int) {
 	// git diff leaves out files nobody has added yet, which is most of what
 	// an agent creates; they are counted here, every line an insertion.
 	files, add = untrackedStat(worktreePath)
-	args := append([]string{"diff"}, against...)
-	out, err := proc.Output(gitsafe.Command(worktreePath, append(args, "--shortstat")...))
+	// against last: it may end the options (--end-of-options base).
+	args := append([]string{"diff", "--shortstat"}, against...)
+	out, err := proc.Output(gitsafe.Command(worktreePath, args...))
 	if err != nil || len(out) == 0 {
 		return files, add, 0
 	}
@@ -56,8 +57,9 @@ type LineCount struct {
 // the worktree; a file not yet added counts every line as added.
 func NumStat(worktreePath string, against ...string) map[string]LineCount {
 	out := map[string]LineCount{}
-	args := append([]string{"diff"}, against...)
-	if b, err := proc.Output(gitsafe.Command(worktreePath, append(args, "--numstat", "-z")...)); err == nil {
+	// against last: it may end the options (--end-of-options base).
+	args := append([]string{"diff", "--numstat", "-z"}, against...)
+	if b, err := proc.Output(gitsafe.Command(worktreePath, args...)); err == nil {
 		// "ADD\tDEL\tPATH\0", or for a rename "ADD\tDEL\t\0FROM\0TO\0";
 		// binary files have "-" for both counts.
 		fields := strings.Split(string(b), "\x00")

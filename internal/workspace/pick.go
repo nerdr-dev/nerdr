@@ -9,7 +9,7 @@ import (
 // ResolveCommit is the full id of the commit rev names in the repository
 // at dir, or an error saying it names none.
 func ResolveCommit(dir, rev string) (string, error) {
-	out, err := git(dir, "rev-parse", "--verify", "--quiet", rev+"^{commit}")
+	out, err := git(dir, "rev-parse", "--verify", "--quiet", "--end-of-options", rev+"^{commit}")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return "", fmt.Errorf("%s is not a commit here", rev)
 	}

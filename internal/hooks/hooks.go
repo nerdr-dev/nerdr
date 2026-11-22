@@ -321,6 +321,9 @@ type Server struct {
 	conn map[net.Conn]bool
 	shut bool
 	stop chan struct{}
+	// big holds a place for each request being read or handled that is
+	// longer than smallRequest; see readRequest.
+	big chan struct{}
 }
 
 // SocketPath is the socket nerdr listens on for agents in a sandbox:
@@ -405,7 +408,7 @@ func Listen(path string, send func(Report)) (*Server, error) {
 		_ = lock.Close()
 		return nil, err
 	}
-	s := &Server{ln: ln, made: made, lock: lock, path: path, send: send, conn: map[net.Conn]bool{}, stop: make(chan struct{})}
+	s := &Server{ln: ln, made: made, lock: lock, path: path, send: send, conn: map[net.Conn]bool{}, stop: make(chan struct{}), big: make(chan struct{}, maxBigRequests)}
 	s.wg.Add(1)
 	go s.accept(ln)
 	return s, nil
@@ -527,7 +530,15 @@ func (s *Server) Reclaim() (replaced bool, err error) {
 // It does not keep one agent in a sandbox from answering another between
 // two looks; it keeps that short, and tells the user.
 func (s *Server) Guard(every time.Duration, told func(err error)) {
+	s.mu.Lock()
+	if s.shut {
+		s.mu.Unlock()
+		return
+	}
+	// Added under mu, as Close, which waits for the group, sets shut
+	// under it.
 	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
 		defer s.wg.Done()
 		tick := time.NewTicker(every)
@@ -558,9 +569,21 @@ func (s *Server) accept(ln net.Listener) {
 			_ = c.Close()
 			return
 		}
+		if len(s.conn) >= maxHookConns {
+			// An agent in a sandbox can connect here: it must not have
+			// nerdr hold a goroutine, a descriptor and a buffer for as
+			// many connections as it cares to open. One over the limit is
+			// closed at once, and the hooks of every agent, which connect
+			// for a request and leave, find a place again in a moment.
+			s.mu.Unlock()
+			_ = c.Close()
+			continue
+		}
 		s.conn[c] = true
-		s.mu.Unlock()
+		// Added under mu, as Close, which waits for the group, sets shut
+		// under it: none is added once it waits.
 		s.wg.Add(1)
+		s.mu.Unlock()
 		go s.serve(c)
 	}
 }
@@ -574,17 +597,22 @@ func (s *Server) serve(c net.Conn) {
 		_ = c.Close()
 	}()
 	cl := &client{s: s, peer: PeerOf(c)}
-	sc := bufio.NewScanner(c)
-	// A spinoff carries the prompts for the new agents, which may be long.
-	sc.Buffer(make([]byte, 64*1024), maxRequest)
+	r := bufio.NewReaderSize(c, 4<<10)
 	for {
 		// A hook sends its request at once; one that holds a connection
 		// open doing nothing is dropped.
-		_ = c.SetReadDeadline(time.Now().Add(time.Minute))
-		if !sc.Scan() {
+		_ = c.SetReadDeadline(time.Now().Add(hookIdle))
+		line, release, err := s.readRequest(r)
+		if errors.Is(err, errBusy) {
+			_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, _ = c.Write(append(errorResponse("", "busy", "nerdr is reading too many long requests: try again"), '\n'))
 			return
 		}
-		resp := s.handle(cl, sc.Bytes())
+		if err != nil {
+			return
+		}
+		resp := s.handle(cl, line)
+		release()
 		_ = c.SetWriteDeadline(time.Now().Add(5 * time.Second))
 		if _, err := c.Write(append(resp, '\n')); err != nil {
 			return
@@ -592,8 +620,74 @@ func (s *Server) serve(c net.Conn) {
 	}
 }
 
-// maxRequest is the longest request line taken.
+// maxRequest is the longest request line taken. A spinoff carries the
+// prompts for the new agents, which may be long.
 const maxRequest = 8 << 20
+
+// A connection holds only a small buffer between requests, and a request
+// only as much as it is long, let go once answered. One longer than
+// smallRequest needs one of maxBigRequests places, taken without waiting,
+// so connections that each send a request of nearly maxRequest hold
+// maxBigRequests*maxRequest at most, not maxHookConns times it.
+const (
+	smallRequest   = 64 << 10
+	maxBigRequests = 4
+)
+
+// maxHookConns is how many connections are served at once, and hookIdle
+// how long one may wait between requests before it is dropped.
+var (
+	maxHookConns = 64
+	hookIdle     = time.Minute
+)
+
+// errBusy is readRequest's when a long request finds no place.
+var errBusy = errors.New("too many long requests")
+
+// readRequest reads one request line from r, without its line end, as
+// bufio.ScanLines would, the last one with no line end included. release
+// gives back the place a long one took, once it is handled.
+func (s *Server) readRequest(r *bufio.Reader) (line []byte, release func(), err error) {
+	held := false
+	release = func() {
+		if held {
+			held = false
+			<-s.big
+		}
+	}
+	var buf []byte
+	for {
+		part, err := r.ReadSlice('\n')
+		if len(buf)+len(part) > maxRequest {
+			release()
+			return nil, nil, bufio.ErrTooLong
+		}
+		if !held && s.big != nil && len(buf)+len(part) > smallRequest {
+			select {
+			case s.big <- struct{}{}:
+				held = true
+			default:
+				return nil, nil, errBusy
+			}
+		}
+		buf = append(buf, part...)
+		switch {
+		case errors.Is(err, bufio.ErrBufferFull):
+			continue // the rest of the line is still to come
+		case err == nil:
+			buf = buf[:len(buf)-1]
+		case errors.Is(err, io.EOF) && len(buf) > 0:
+			// The last line, with no line end.
+		default:
+			release()
+			return nil, nil, err
+		}
+		if n := len(buf); n > 0 && buf[n-1] == '\r' {
+			buf = buf[:n-1]
+		}
+		return buf, release, nil
+	}
+}
 
 // maxMessage is the longest message of a report kept, in bytes: it is
 // shown as what the agent last said.

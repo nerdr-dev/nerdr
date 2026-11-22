@@ -241,19 +241,28 @@ func TestProbeFindsWhatItCanWrite(t *testing.T) {
 	_ = os.Chmod(locked, 0o444)
 	t.Cleanup(func() { _ = os.Chmod(closed, 0o755) })
 
-	r := Probe(Target{Nonce: "n", Writes: []string{open, closed, file, locked, filepath.Join(dir, "gone")}})
-	if !slices.Equal(r.Writes, []string{open, file}) {
-		t.Fatalf("writes = %q, want the open folder and the file", r.Writes)
+	// A read-only file in a folder that can be written can be replaced,
+	// and one not there made: both are writes. One not there in a folder
+	// that cannot be written cannot be made.
+	gone, goneShut := filepath.Join(dir, "gone"), filepath.Join(closed, "gone")
+	want := []string{open, file, locked, gone}
+	r := Probe(Target{Nonce: "n", Writes: []string{open, closed, file, locked, gone, goneShut}})
+	if !slices.Equal(r.Writes, want) {
+		t.Fatalf("writes = %q, want %q", r.Writes, want)
 	}
 	if r.Warns != nil {
 		t.Fatalf("warns = %q, with none asked", r.Warns)
 	}
-	gone := filepath.Join(dir, "gone")
-	if w := Probe(Target{Nonce: "n", Warns: []string{open, closed, file, locked, gone}}); w.Writes != nil || !slices.Equal(w.Warns, []string{open, file}) {
-		t.Fatalf("warns = %q, writes = %q: want the open folder and the file as warns", w.Warns, w.Writes)
+	if w := Probe(Target{Nonce: "n", Warns: []string{open, closed, file, locked, gone, goneShut}}); w.Writes != nil || !slices.Equal(w.Warns, want) {
+		t.Fatalf("warns = %q, writes = %q: want %q as warns", w.Warns, w.Writes, want)
 	}
-	if _, err := os.Stat(gone); !os.IsNotExist(err) {
-		t.Fatalf("the check made %s: %v", gone, err)
+	for _, p := range []string{gone, goneShut} {
+		if _, err := os.Lstat(p); !os.IsNotExist(err) {
+			t.Fatalf("the check left %s: %v", p, err)
+		}
+	}
+	if left, _ := os.ReadDir(dir); len(left) != 4 {
+		t.Fatalf("the check left more behind in %s: %v", dir, left)
 	}
 	if r.Reached() {
 		t.Fatal("what it can write is not a way to the client socket or the holder")
@@ -261,7 +270,121 @@ func TestProbeFindsWhatItCanWrite(t *testing.T) {
 	if left, _ := os.ReadDir(open); len(left) != 0 {
 		t.Fatalf("the check left %v behind", left)
 	}
-	if b, _ := os.ReadFile(file); string(b) != "as it was\n" {
-		t.Fatalf("the check changed the file: %q", b)
+	for _, f := range []string{file, locked} {
+		if b, _ := os.ReadFile(f); string(b) != "as it was\n" {
+			t.Fatalf("the check changed %s: %q", f, b)
+		}
 	}
+}
+
+// gitDir makes a repository's .git as the check finds it: config, and
+// hooks unless noHooks, in a folder of their own.
+func gitDir(t *testing.T, noHooks bool) (git, config, hooks string) {
+	t.Helper()
+	git = filepath.Join(t.TempDir(), ".git")
+	config, hooks = filepath.Join(git, "config"), filepath.Join(git, "hooks")
+	if err := os.Mkdir(git, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, []byte("[core]\n\tbare = false\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !noHooks {
+		if err := os.Mkdir(hooks, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return git, config, hooks
+}
+
+// sameFile fails t when path is not, in all, what before was: the same
+// file, with the same content, mode and time.
+func sameFile(t *testing.T, path string, before os.FileInfo, content string) {
+	t.Helper()
+	st, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("%s: %v", path, err)
+	}
+	if !os.SameFile(st, before) || st.Mode() != before.Mode() || !st.ModTime().Equal(before.ModTime()) || st.Size() != before.Size() {
+		t.Fatalf("%s changed: %v %v, was %v %v", path, st.Mode(), st.ModTime(), before.Mode(), before.ModTime())
+	}
+	if b, _ := os.ReadFile(path); string(b) != content {
+		t.Fatalf("%s now holds %q", path, b)
+	}
+}
+
+// A repository without .git/hooks (git init --template=, or removed) is
+// not passed as kept from: when the agent could make it, and put hooks in
+// it, that is found, and nothing is left behind. When .git cannot be
+// written, it is not.
+func TestMissingHooksAreTriedByMakingThem(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root writes what is read only")
+	}
+	git, config, hooks := gitDir(t, true)
+	r := Probe(Target{Nonce: "n", Writes: []string{config, hooks}})
+	if !slices.Contains(r.Writes, hooks) {
+		t.Fatalf("a .git/hooks the agent can make passed: %q", r.Writes)
+	}
+	if _, err := os.Lstat(hooks); !os.IsNotExist(err) {
+		t.Fatalf("the check left .git/hooks behind: %v", err)
+	}
+
+	if err := os.Chmod(git, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(git, 0o755) })
+	r = Probe(Target{Nonce: "n", Writes: []string{hooks}})
+	if slices.Contains(r.Writes, hooks) {
+		t.Fatalf("a .git/hooks that cannot be made was found writable: %q", r.Writes)
+	}
+	if left, _ := os.ReadDir(git); len(left) != 1 {
+		t.Fatalf("the check left %v in .git", left)
+	}
+}
+
+// A .git/config the agent cannot open to write, only by its mode, but
+// could replace by renaming a file of its own over it, as .git can be
+// written, is found; one in a .git that cannot be written is not. The
+// check never writes, renames or removes .git/config itself.
+func TestAReadOnlyConfigThatCanBeReplacedIsFound(t *testing.T) {
+	if os.Getuid() == 0 {
+		t.Skip("root writes what is read only")
+	}
+	const content = "[core]\n\tbare = false\n"
+	git, config, _ := gitDir(t, false)
+	if err := os.Chmod(config, 0o444); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.Lstat(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := Probe(Target{Nonce: "n", Writes: []string{config}}); !slices.Contains(r.Writes, config) {
+		t.Fatalf("a .git/config that can be replaced passed: %q", r.Writes)
+	}
+	sameFile(t, config, before, content)
+	if left, _ := os.ReadDir(git); len(left) != 2 {
+		t.Fatalf("the check left %v in .git", left)
+	}
+
+	if err := os.Chmod(git, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(git, 0o755) })
+	if r := Probe(Target{Nonce: "n", Writes: []string{config}}); slices.Contains(r.Writes, config) {
+		t.Fatalf("a .git/config in a .git that cannot be written was found writable: %q", r.Writes)
+	}
+	sameFile(t, config, before, content)
+
+	// One that can be written is found, and left as it was too.
+	_ = os.Chmod(git, 0o755)
+	if err := os.Chmod(config, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before, _ = os.Lstat(config)
+	if r := Probe(Target{Nonce: "n", Writes: []string{config}}); !slices.Contains(r.Writes, config) {
+		t.Fatalf("a writable .git/config passed: %q", r.Writes)
+	}
+	sameFile(t, config, before, content)
 }

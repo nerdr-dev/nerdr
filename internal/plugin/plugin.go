@@ -46,6 +46,8 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // File is the file in a plugin's folder that says what the plugin is.
@@ -173,20 +175,35 @@ func Load(dir string) Plugin {
 
 // readToml reads the plugin.toml in dir. It is read only when it is a
 // regular file of a reasonable size: a link, a FIFO or a device is not
-// something to read, and opening one can wait or read for ever.
+// something to read, and opening one can wait or read for ever. The look
+// and the read are of the one file opened, without following a link and
+// without waiting on a pipe put there in between, and no more than
+// maxToml is read of one that grows meanwhile.
 func readToml(dir string) ([]byte, error) {
-	path := filepath.Join(dir, File)
-	info, err := os.Lstat(path)
+	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, err
 	}
-	if !info.Mode().IsRegular() {
+	defer root.Close()
+	f, info, err := safefile.OpenRegular(root, File)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
+	if err != nil {
 		return nil, fmt.Errorf("%s must be a regular file in the plugin's folder, not a link or a special file", File)
 	}
+	defer f.Close()
 	if info.Size() > maxToml {
 		return nil, fmt.Errorf("%s is %d bytes; a plugin's is at most %d", File, info.Size(), maxToml)
 	}
-	return os.ReadFile(path)
+	b, err := io.ReadAll(io.LimitReader(f, maxToml+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(b) > maxToml {
+		return nil, fmt.Errorf("%s is over %d bytes; a plugin's is at most %d", File, maxToml, maxToml)
+	}
+	return b, nil
 }
 
 var (
@@ -288,6 +305,9 @@ func (p *Plugin) checkCommand(argv []string) error {
 	if len(argv) == 0 {
 		return nil
 	}
+	if err := checkEnv(argv); err != nil {
+		return err
+	}
 	program := argv[0]
 	resolved := p.Command(argv)[0]
 	switch {
@@ -313,10 +333,18 @@ func (p *Plugin) checkCommand(argv []string) error {
 	if err := p.checkReal(resolved); err != nil {
 		return err
 	}
+	cmd := p.Command(argv)
+	loaded := map[int]bool{}
+	for _, l := range loadsOf(cmd) {
+		loaded[l.at] = true
+		if err := p.checkLoad(argv[l.at], l); err != nil {
+			return err
+		}
+	}
 	script, spec, isInterp := interpreterScript(argv)
 	codeMode := isInterp && script < 0
-	for i, a := range p.Command(argv) {
-		if i == 0 || a == "" || strings.HasPrefix(argv[i], "-") {
+	for i, a := range cmd {
+		if i == 0 || a == "" || strings.HasPrefix(argv[i], "-") || loaded[i] {
 			continue
 		}
 		if !isInterp {
@@ -357,6 +385,36 @@ func (p *Plugin) checkCommand(argv []string) error {
 		if err := p.checkReal(a); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// checkLoad checks the file a flag of an interpreter loads code from, as
+// Command gives it, word being the word it is in as written: it is the
+// plugin's, as a script is — in its folder, a regular file or a folder
+// (perl -I), and not a link out of it. A bare name is a file or a package
+// of the folder the agent runs in, and refused, but for a module the
+// interpreter finds on its own load path (ruby -r json).
+func (p *Plugin) checkLoad(word string, l loadRef) error {
+	v := l.value
+	if v == "" {
+		return nil
+	}
+	if l.kind == loadModule && !strings.ContainsRune(v, filepath.Separator) && !strings.HasPrefix(v, ".") {
+		return nil
+	}
+	if !filepath.IsAbs(v) {
+		return fmt.Errorf("%q would come from the folder the agent runs in, and load code from there: put it in the plugin's folder and write ./%s",
+			word, filepath.Base(v))
+	}
+	if !p.within(v) {
+		return fmt.Errorf("%q loads code from outside the plugin's folder: keep what it runs in its folder", word)
+	}
+	if err := p.checkReal(v); err != nil {
+		return err
+	}
+	if st, err := os.Stat(v); err == nil && !st.IsDir() {
+		return p.checkRegular(v)
 	}
 	return nil
 }
@@ -469,6 +527,21 @@ func (p Plugin) Command(argv []string) []string {
 		// the plugin.toml with the same name as a target, such as make's
 		// build, is not what the user meant.
 	}
+	if isInterp {
+		// What a flag loads code from is the plugin's too: node --require
+		// ./preload.js, bash --rcfile=./rc. A module name the interpreter
+		// looks up itself (ruby -r json) is left as it is.
+		for _, l := range loadsOf(argv) {
+			v := l.value
+			if v == "" || filepath.IsAbs(v) ||
+				l.kind == loadModule && !strings.ContainsRune(v, filepath.Separator) && !strings.HasPrefix(v, ".") {
+				continue
+			}
+			if path, ok := p.scriptPath(v); ok {
+				out[l.at] = l.prefix + path
+			}
+		}
+	}
 	return out
 }
 
@@ -511,10 +584,34 @@ func looksLikeFile(a string) bool {
 
 // interpreter is a program that runs a script named in its first word
 // that is neither a flag nor the value of one. code and value name the
-// flags whose next word is code, and a value, rather than a script.
+// flags whose next word is code, and a value, rather than a script; load
+// those whose value is more code it loads, from a file (node --require,
+// bash --rcfile, awk -f), which must be the plugin's as its script must.
+//
+// inline is for a program whose first word that is not a flag is its
+// code (awk, sed); sub for words that come before the script (deno run),
+// codeSub for words after which it runs code (deno eval), and named for
+// one whose first word may name a task rather than a file (bun run build).
 type interpreter struct {
 	code, value map[string]bool
+	load        map[string]loadKind
+	inline      bool
+	sub         map[string]bool
+	codeSub     map[string]bool
+	named       bool
 }
+
+// loadKind is what the value of a flag that loads code may be. A file is
+// a path, which must be in the plugin's folder: a bare name is a file the
+// folder the agent runs in has, or a package there (node_modules). A
+// module may also be a bare name the interpreter finds on its own load
+// path, which does not have that folder (ruby -r json, perl -MPOSIX).
+type loadKind int
+
+const (
+	loadFile loadKind = iota
+	loadModule
+)
 
 func words(ss ...string) map[string]bool {
 	m := make(map[string]bool, len(ss))
@@ -524,26 +621,67 @@ func words(ss ...string) map[string]bool {
 	return m
 }
 
+func loads(kind loadKind, ss ...string) map[string]loadKind {
+	m := make(map[string]loadKind, len(ss))
+	for _, s := range ss {
+		m[s] = kind
+	}
+	return m
+}
+
+func merge(ms ...map[string]loadKind) map[string]loadKind {
+	out := map[string]loadKind{}
+	for _, m := range ms {
+		for k, v := range m {
+			out[k] = v
+		}
+	}
+	return out
+}
+
 // interpreters are the common ones, so that `sh script` uses the
 // script beside the plugin.toml even when it has no extension, and one
 // only an agent's folder could give is refused.
+var (
+	shell = interpreter{code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O"),
+		load: loads(loadFile, "--rcfile", "--init-file")}
+	node = interpreter{code: words("-e", "-p", "--eval", "--print"), value: words("--run"),
+		load: loads(loadFile, "-r", "--require", "--loader", "--experimental-loader", "--import")}
+	awk = interpreter{inline: true, value: words("-v", "-F", "--assign", "--field-separator"),
+		load: loads(loadFile, "-f", "--file", "-i", "--include", "-l", "--load", "-E", "--exec")}
+	sed = interpreter{inline: true, code: words("-e", "--expression"), value: words("-l", "--line-length"),
+		load: loads(loadFile, "-f", "--file")}
+)
+
 var interpreters = map[string]interpreter{
-	"sh":      {code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O", "--rcfile", "--init-file")},
-	"bash":    {code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O", "--rcfile", "--init-file")},
+	"sh":      shell,
+	"bash":    shell,
 	"dash":    {code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O")},
 	"zsh":     {code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O")},
 	"ksh":     {code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O")},
 	"ash":     {code: words("-c", "-s"), value: words("-o", "+o", "-O", "+O")},
-	"fish":    {code: words("-c"), value: words("-O")},
+	"fish":    {code: words("-c"), value: words("-O", "-C", "--init-command")},
 	"python":  {code: words("-c", "-m"), value: words("-W", "-X")},
 	"python2": {code: words("-c", "-m"), value: words("-W", "-X")},
 	"python3": {code: words("-c", "-m"), value: words("-W", "-X")},
-	"perl":    {code: words("-e", "-E"), value: words("-I", "-M", "-m")},
-	"ruby":    {code: words("-e"), value: words("-I", "-r")},
-	"node":    {code: words("-e", "-p", "--eval", "--print"), value: words("-r", "--require", "--loader", "--experimental-loader", "--import", "--run")},
-	"nodejs":  {code: words("-e", "-p", "--eval", "--print"), value: words("-r", "--require", "--loader", "--experimental-loader", "--import", "--run")},
-	"lua":     {code: words("-e"), value: words("-l")},
-	"php":     {code: words("-r"), value: words("-c", "-d")},
+	"perl":    {code: words("-e", "-E"), load: merge(loads(loadFile, "-I"), loads(loadModule, "-M", "-m"))},
+	"ruby":    {code: words("-e"), load: merge(loads(loadFile, "-I"), loads(loadModule, "-r"))},
+	"node":    node,
+	"nodejs":  node,
+	// lua -e runs its code and then the script: the script is still
+	// checked. lua -l looks for the module in the folder it runs in.
+	"lua": {value: words("-e"), load: loads(loadFile, "-l")},
+	"php": {code: words("-r"), value: words("-d"), load: loads(loadFile, "-c")},
+	"deno": {sub: words("run"), codeSub: words("eval", "repl"), named: true,
+		load: loads(loadFile, "--preload", "--import-map", "--config", "-c", "--require")},
+	"bun": {sub: words("run"), code: words("-e", "--eval", "-p", "--print"), named: true,
+		load: loads(loadFile, "--preload", "-r", "--require", "--import", "--config", "-c")},
+	"awk":  awk,
+	"gawk": awk,
+	"mawk": awk,
+	"nawk": awk,
+	"sed":  sed,
+	"gsed": sed,
 }
 
 // interpreterFor is the specification of the interpreter called name,
@@ -590,10 +728,10 @@ func envProgram(argv []string, from int) (int, bool) {
 		switch {
 		case a == "--":
 			return i + 1, i+1 < len(argv)
-		case a == "-u" || a == "--unset" || a == "-S" || a == "--split-string":
+		case a == "-u" || a == "--unset" || a == "-S" || a == "--split-string" || a == "-C" || a == "--chdir":
 			i++
 			continue
-		case strings.HasPrefix(a, "--unset=") || strings.HasPrefix(a, "--split-string="):
+		case strings.HasPrefix(a, "--unset=") || strings.HasPrefix(a, "--split-string=") || strings.HasPrefix(a, "--chdir="):
 			continue
 		case strings.HasPrefix(a, "-"):
 			continue
@@ -606,24 +744,130 @@ func envProgram(argv []string, from int) (int, bool) {
 	return 0, false
 }
 
-// scriptAfter is the index of the script spec runs from from, or -1 when
-// it runs code or has none.
-func scriptAfter(spec interpreter, argv []string, from int) int {
+// loadRef is the value of a flag that loads code: argv[at] is prefix
+// followed by value, prefix being the flag when the value is in the same
+// word (--require=./x.js, -r./x.rb), empty when it is a word of its own.
+type loadRef struct {
+	at            int
+	prefix, value string
+	kind          loadKind
+}
+
+// scanned is what scan found in an interpreter's words.
+type scanned struct {
+	script int  // the index of its script, -1 for none
+	code   bool // it runs code given in its words, or reads it from stdin
+	loads  []loadRef
+}
+
+// scan reads the words an interpreter spec is given from from: its
+// script, if it has one, and the files its flags load code from. Flags
+// are read as getopt reads them: a short one may be joined with others
+// and with its value (-wr./x), a long one with its value after =. A flag
+// that loads code is looked for in all words up to the script, also
+// after code, which takes nothing on trust.
+func scan(spec interpreter, argv []string, from int) scanned {
+	out := scanned{script: -1}
+	positional := 0
+	addLoad := func(at int, prefix, value string, kind loadKind) {
+		out.loads = append(out.loads, loadRef{at, prefix, value, kind})
+	}
 	for i := from; i < len(argv); i++ {
 		a := argv[i]
-		if spec.code[a] {
-			return -1 // it runs code, and what follows is its words
-		}
-		if spec.value[a] {
+		switch {
+		case a == "--":
+			if !out.code && !spec.inline && i+1 < len(argv) {
+				out.script = i + 1
+				return out
+			}
+			continue
+		case spec.code[a]:
+			out.code = true
+			i++ // its code
+			continue
+		case spec.value[a]:
 			i++
 			continue
 		}
-		if strings.HasPrefix(a, "-") || strings.HasPrefix(a, "+") {
+		if kind, ok := spec.load[a]; ok {
+			if i+1 < len(argv) {
+				addLoad(i+1, "", argv[i+1], kind)
+			}
+			i++
 			continue
 		}
-		return i
+		if strings.HasPrefix(a, "--") {
+			if name, v, ok := strings.Cut(a, "="); ok {
+				if kind, ok := spec.load[name]; ok {
+					addLoad(i, name+"=", v, kind)
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(a, "-") && len(a) > 1 {
+			// A cluster of short flags: the first that takes a value has
+			// the rest of the word, or the next word.
+			for j := 1; j < len(a); j++ {
+				f := "-" + a[j:j+1]
+				rest := a[j+1:]
+				if kind, ok := spec.load[f]; ok {
+					if rest != "" {
+						addLoad(i, a[:j+1], rest, kind)
+					} else if i+1 < len(argv) {
+						addLoad(i+1, "", argv[i+1], kind)
+						i++
+					}
+					break
+				}
+				if spec.code[f] {
+					out.code = true
+					if rest == "" {
+						i++
+					}
+					break
+				}
+				if spec.value[f] {
+					if rest == "" {
+						i++
+					}
+					break
+				}
+			}
+			continue
+		}
+		if strings.HasPrefix(a, "+") {
+			continue
+		}
+		// A word that is not a flag.
+		positional++
+		switch {
+		case out.code || spec.inline:
+			// Code's words, or awk's program or data: no script, but a
+			// flag after them may still load code.
+			continue
+		case positional == 1 && spec.codeSub[a]:
+			out.code = true
+			continue
+		case positional == 1 && spec.sub[a]:
+			positional = 0
+			continue
+		case spec.named && !looksLikeFile(a):
+			return out // a task or package name, not a file
+		}
+		out.script = i
+		return out
 	}
-	return -1
+	return out
+}
+
+// scriptAfter is the index of the script spec runs from from, or -1 when
+// it runs code or has none.
+func scriptAfter(spec interpreter, argv []string, from int) int {
+	sc := scan(spec, argv, from)
+	if sc.code {
+		return -1
+	}
+	return sc.script
 }
 
 // runnerScript is the index of the file a runner such as npx runs, if
@@ -658,7 +902,13 @@ func runnerScript(argv []string, from int) int {
 // word that is not a flag is a script; -1 when it runs code or has no
 // script. The common versioned names and runners are looked through too.
 func interpreterScript(argv []string) (script int, spec interpreter, found bool) {
-	start := 0
+	_, script, spec, found = interpreterAt(argv)
+	return script, spec, found
+}
+
+// interpreterAt is interpreterScript with the index of the interpreter
+// itself, after any env before it.
+func interpreterAt(argv []string) (start, script int, spec interpreter, found bool) {
 	for start < len(argv) {
 		name := strings.ToLower(filepath.Base(argv[start]))
 		if name != "env" {
@@ -666,25 +916,72 @@ func interpreterScript(argv []string) (script int, spec interpreter, found bool)
 		}
 		next, ok := envProgram(argv, start+1)
 		if !ok {
-			return -1, interpreter{}, false
+			return start, -1, interpreter{}, false
 		}
 		start = next
 	}
 	if start >= len(argv) {
-		return -1, interpreter{}, false
+		return start, -1, interpreter{}, false
 	}
 	name := strings.ToLower(filepath.Base(argv[start]))
 	if s, ok := interpreterFor(name); ok {
-		return scriptAfter(s, argv, start+1), s, true
+		return start, scriptAfter(s, argv, start+1), s, true
 	}
 	if isRunner(name) {
-		return runnerScript(argv, start+1), interpreter{}, true
+		return start, runnerScript(argv, start+1), interpreter{}, true
 	}
 	if start > 0 && (isScript(argv[start]) || strings.HasPrefix(argv[start], "./") || strings.HasPrefix(argv[start], "../")) {
 		// env ./script: the word after env is a script.
-		return start, interpreter{}, true
+		return start, start, interpreter{}, true
 	}
-	return -1, interpreter{}, false
+	return start, -1, interpreter{}, false
+}
+
+// loadsOf are the files argv's interpreter loads code from, by its flags.
+func loadsOf(argv []string) []loadRef {
+	start, _, spec, found := interpreterAt(argv)
+	if !found || spec.load == nil {
+		return nil
+	}
+	return scan(spec, argv, start+1).loads
+}
+
+// envUnsafe are the variables that have a program load code named in
+// them, which env NAME=value would set for it: LD_PRELOAD for any,
+// NODE_OPTIONS=--require=./x.js for node, BASH_ENV for bash.
+var envUnsafe = words("BASH_ENV", "ENV", "NODE_OPTIONS", "NODE_PATH", "RUBYOPT", "RUBYLIB",
+	"PERL5OPT", "PERL5LIB", "PERLLIB", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONHOME", "PYTHONUSERBASE",
+	"LUA_INIT", "LUA_PATH", "LUA_CPATH", "PHPRC", "PHP_INI_SCAN_DIR", "AWKPATH", "AWKLIBPATH",
+	"DENO_DIR", "BUN_CONFIG", "ZDOTDIR", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "IFS")
+
+// checkEnv refuses what an env in argv does that the checks of its
+// program's words cannot see: -S splits a word into more words, a
+// command line of its own, and NAME=value can have the program load code
+// from the folder the agent runs in.
+func checkEnv(argv []string) error {
+	for start := 0; start < len(argv) && strings.ToLower(filepath.Base(argv[start])) == "env"; {
+		end, ok := envProgram(argv, start+1)
+		if !ok {
+			end = len(argv)
+		}
+		for _, a := range argv[start+1 : end] {
+			switch {
+			case a == "--split-string" || strings.HasPrefix(a, "--split-string="),
+				strings.HasPrefix(a, "-") && !strings.HasPrefix(a, "--") && strings.ContainsRune(a, 'S'):
+				return fmt.Errorf("env %s makes a command line of a word, which nerdr cannot check: write its words in the list", a)
+			case !strings.HasPrefix(a, "-") && strings.Contains(a, "="):
+				name, _, _ := strings.Cut(a, "=")
+				if envUnsafe[name] || strings.HasPrefix(name, "LD_") || strings.HasPrefix(name, "DYLD_") {
+					return fmt.Errorf("env %s= can have the program load code nerdr does not check: set it in a script in the plugin's folder", name)
+				}
+			}
+		}
+		if !ok {
+			return nil
+		}
+		start = end
+	}
+	return nil
 }
 
 // Values are the parameters given to a plugin, by name: a string, a bool
@@ -897,55 +1194,89 @@ func (q Param) About() string {
 //
 // What is allowed is a Key, whatever folder it is in.
 
-// maxHashed is the most of a plugin's folder its key is made of; one
-// bigger cannot be allowed.
-const maxHashed = 16 << 20
+// maxHashed is the most of a plugin's folder its key is made of, and
+// maxHashedEntries the most names in it; one bigger cannot be allowed.
+const (
+	maxHashed        = 16 << 20
+	maxHashedEntries = 10000
+)
 
 // Key is a hash of everything in p's folder: the names of its files,
-// links and empty folders, and what is in them. A file outside the folder
-// it uses is not.
+// links, empty folders and special files, and what is in the files. A
+// file outside the folder it uses is not.
+//
+// The folder is walked from an os.Root of it, so nothing is read from
+// outside it, and each file is opened as the regular file the walk saw,
+// without following a link or waiting on a pipe put in its place. What is
+// read is bounded in all by maxHashed, read as it is, not as the size
+// looked at said: a file growing meanwhile cannot have it read for ever.
 func (p Plugin) Key() (string, error) {
+	root, err := os.OpenRoot(p.Dir)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
 	h := sha256.New()
-	total := 0
-	err := filepath.WalkDir(p.Dir, func(path string, d fs.DirEntry, err error) error {
+	var total int64
+	entries := 0
+	tooBig := fmt.Errorf("the plugin's folder holds more than %d MB", maxHashed>>20)
+	err = fs.WalkDir(root.FS(), ".", func(rel string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		rel, _ := filepath.Rel(p.Dir, path)
+		if entries++; entries > maxHashedEntries {
+			return fmt.Errorf("the plugin's folder holds more than %d files", maxHashedEntries)
+		}
+		rel = filepath.FromSlash(rel)
 		switch {
 		case d.Type()&fs.ModeSymlink != 0:
-			to, err := os.Readlink(path)
+			to, err := root.Readlink(rel)
 			if err != nil {
 				return err
 			}
 			fmt.Fprintf(h, "link %q %q\n", rel, to)
-		case d.Type().IsDir() && rel != ".":
+		case d.Type().IsDir():
+			if rel == "." {
+				return nil
+			}
 			// An empty folder is a marker a script can test for: it is
 			// part of what the user allowed too.
-			entries, err := os.ReadDir(path)
+			f, err := root.Open(rel)
 			if err != nil {
 				return err
 			}
-			if len(entries) == 0 {
+			names, err := f.Readdirnames(1)
+			f.Close()
+			if err != nil && !errors.Is(err, io.EOF) {
+				return err
+			}
+			if len(names) == 0 {
 				fmt.Fprintf(h, "empty %q\n", rel)
 			}
 		case d.Type().IsRegular():
-			info, err := d.Info()
-			if err != nil {
-				return err
-			}
-			if total += int(info.Size()); total > maxHashed {
-				return fmt.Errorf("the plugin's folder holds more than %d MB", maxHashed>>20)
-			}
-			f, err := os.Open(path)
+			f, info, err := safefile.OpenRegular(root, rel)
 			if err != nil {
 				return err
 			}
 			defer f.Close()
+			if total+info.Size() > maxHashed {
+				return tooBig
+			}
 			fmt.Fprintf(h, "file %q %d %o\n", rel, info.Size(), info.Mode().Perm()&0o111)
-			if _, err := io.Copy(h, f); err != nil {
+			// The size hashed is the one looked at: read only that much,
+			// and refuse a file that was not that size when read.
+			n, err := io.Copy(h, io.LimitReader(f, info.Size()+1))
+			if err != nil {
 				return err
 			}
+			if n != info.Size() {
+				return fmt.Errorf("%s changed while it was read", rel)
+			}
+			total += n
+		default:
+			// A pipe, a socket or a device: never read, but named, so one
+			// put in the folder changes what the user allowed.
+			fmt.Fprintf(h, "special %q %v\n", rel, d.Type())
 		}
 		return nil
 	})

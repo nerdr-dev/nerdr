@@ -57,7 +57,7 @@ func NewFileContent(worktreePath, file string) (string, error) {
 
 // ReadRefFile returns a file's raw content as it existed at ref.
 func ReadRefFile(worktreePath, ref, file string) (string, error) {
-	out, err := proc.Output(gitsafe.Command(worktreePath, "show", ref+":"+file))
+	out, err := proc.Output(gitsafe.Command(worktreePath, "show", "--end-of-options", ref+":"+file))
 	if err != nil {
 		return "", err
 	}

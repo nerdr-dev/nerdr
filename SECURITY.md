@@ -67,8 +67,12 @@ from `origin`, run in the main checkout over SSH or HTTPS only. It reads
 the remote, the SSH command and the credential helpers from Git
 configuration the sandbox must protect, and is not run when `origin`'s
 URL is not in that configuration, is not SSH or HTTPS after rewrites, or
-when `core.sshCommand` or a credential helper names a file in the
-repository or its worktrees. Submodules are not fetched. Executable
+when `core.sshCommand`, a credential helper, or the `GIT_SSH_COMMAND` or
+`GIT_SSH` nerdr was started with names a file in the repository or its
+worktrees, compared with symbolic links resolved. A relative path, the
+operand of a shell or an interpreter, and shell syntax beyond plain words
+(other than `$HOME` and the arguments Git passes) count as naming one.
+Submodules are not fetched. Executable
 authentication/signing delegates and environment overrides are blocked
 or suppressed. Required signing fails rather than silently producing an
 unsigned commit. Push, and any other fetch, must run inside the sandbox
@@ -107,6 +111,20 @@ Optional JSONL metadata (notes, review sessions and walkthroughs) accepts
 only regular files of at most 64 MiB within its configured data anchor,
 without following a symbolic link at the file itself. Each read is bounded
 by the file's initial size, and records longer than 4 MiB are skipped.
+Rewriting such a file refuses one over 64 MiB, and its lock is waited for
+at most 5 seconds. nerdr writes in the data folder only when no folder on
+the way is a symbolic link, also one inside the git directory (such as
+`.git/nerdr` to `.git/hooks`). The small Git files an agent may write —
+a worktree's `gitdir` and `HEAD`, a branch's reflog, `config.worktree` —
+and `.nerdr.toml` are read only as regular files, not through a symbolic
+link, with nonblocking opens and limits of 64 KiB (1 MiB for
+`.nerdr.toml`); `config.worktree` is handed to `git config` on its standard
+input, which has 5 seconds to answer. A plugin's `plugin.toml` and the
+files its key hashes are read the same way.
+
+The agent socket (`nerdr.sock`) serves at most 64 connections at once,
+closing more as they come; a request line is at most 8 MiB, and only 4 of
+those over 64 KiB are read at a time.
 
 ## Files nerdr installs for the agents
 

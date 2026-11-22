@@ -2,6 +2,7 @@ package gitsafe
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -355,7 +356,9 @@ func extensionOn(common string) bool {
 	if ok && seen.size == st.Size() && seen.mod.Equal(st.ModTime()) {
 		return seen.on
 	}
-	cmd := configCommand("--file", f, "--type=bool", "--get", "extensions.worktreeConfig")
+	ctx, cancel := context.WithTimeout(context.Background(), configTimeout)
+	defer cancel()
+	cmd := configCommand(ctx, "--file", f, "--type=bool", "--get", "extensions.worktreeConfig")
 	out, err := cmd.Output()
 	on := true
 	switch {
@@ -381,6 +384,10 @@ func refusal(common string) string {
 	for _, f := range files {
 		keys, ok := worktreeKeys(f)
 		if !ok {
+			if _, err := os.Lstat(f); err == nil {
+				// A link, a pipe or a huge file, which nerdr does not read.
+				found = append(found, f+" is not a small regular file")
+			}
 			continue
 		}
 		if other := slices.DeleteFunc(keys, func(k string) bool {
@@ -404,11 +411,24 @@ func refusal(common string) string {
 
 // worktreeKeys are the settings config file f holds, as git reads them,
 // sorted and each once; ok is false when f cannot be read.
+//
+// A sandboxed agent writes f: it may be a link (to /dev/zero, out of the
+// repository), a named pipe git would wait on forever, or a huge file.
+// So nerdr reads it itself, as a regular file of at most
+// maxAdminFile bytes and never through a link, and hands git what it
+// read on its standard input: git does not open f, so it cannot be
+// swapped between nerdr's look and git's read. The git is given
+// configTimeout, so a stuck one cannot hold up the core either.
 func worktreeKeys(f string) (keys []string, ok bool) {
-	if _, err := os.Stat(f); err != nil {
+	data, err := readAdmin(filepath.Dir(f), filepath.Base(f))
+	if err != nil {
 		return nil, false
 	}
-	out, err := configCommand("--file", f, "--null", "--list").Output()
+	ctx, cancel := context.WithTimeout(context.Background(), configTimeout)
+	defer cancel()
+	cmd := configCommand(ctx, "--file", "-", "--null", "--list")
+	cmd.Stdin = bytes.NewReader(data)
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, false
 	}
@@ -423,8 +443,12 @@ func worktreeKeys(f string) (keys []string, ok bool) {
 	return slices.Compact(keys), true
 }
 
+// configTimeout is how long a configCommand may take before it is killed.
+var configTimeout = 5 * time.Second
+
 // configCommand is `git config args…` on a file named in args, run outside
-// any repository so that git reads that file and nothing else of one.
+// any repository so that git reads that file and nothing else of one. It
+// is killed when ctx is done.
 //
 // git still looks for a .git in the folder it runs in, ceiling or not, so
 // that is the state folder's temporary folder, which a sandboxed agent
@@ -432,8 +456,8 @@ func worktreeKeys(f string) (keys []string, ok bool) {
 // of its own that makes every such command fail. When the folder cannot
 // be made, the command fails to start, which callers take as they take a
 // failure of git's.
-func configCommand(args ...string) *exec.Cmd {
-	cmd := proc.Detach(exec.Command("git", append([]string{"config"}, args...)...))
+func configCommand(ctx context.Context, args ...string) *exec.Cmd {
+	cmd := proc.Detach(exec.CommandContext(ctx, "git", append([]string{"config"}, args...)...))
 	dir, _ := statedir.EnsureTempDir()
 	if dir == "" {
 		dir = statedir.TempDir()

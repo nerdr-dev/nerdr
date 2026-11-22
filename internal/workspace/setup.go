@@ -21,6 +21,7 @@ import (
 	gitdata "github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 
 	"github.com/BurntSushi/toml"
 )
@@ -54,18 +55,24 @@ type RepoConfig struct {
 // gets anyway. A missing file gives an empty config.
 func LoadRepoConfig(repo string) (RepoConfig, error) {
 	var c RepoConfig
-	data, err := os.ReadFile(filepath.Join(repo, RepoConfigFile))
+	// An agent whose tab is in the main checkout can write the file: it is
+	// read only as a regular file of at most maxRepoConfig bytes, not
+	// through a link, nor from a pipe that would keep nerdr waiting.
+	data, err := safefile.ReadUnder(repo, RepoConfigFile, maxRepoConfig)
 	if errors.Is(err, os.ErrNotExist) {
 		return c, nil
 	}
 	if err != nil {
-		return c, err
+		return c, fmt.Errorf("%s: %w", filepath.Join(repo, RepoConfigFile), err)
 	}
 	if _, err := toml.Decode(string(data), &c); err != nil {
 		return c, fmt.Errorf("%s: %w", filepath.Join(repo, RepoConfigFile), err)
 	}
 	return c, nil
 }
+
+// maxRepoConfig bounds the .nerdr.toml LoadRepoConfig reads.
+const maxRepoConfig = 1 << 20
 
 // Empty reports whether the config asks for nothing.
 func (c RepoConfig) Empty() bool { return len(c.Copy) == 0 && strings.TrimSpace(c.Setup) == "" }
@@ -543,7 +550,7 @@ func BranchStats(w Worktree) (Stats, error) {
 	if s.Base == "" {
 		return s, errors.New("found no main or master branch")
 	}
-	out, err := git(w.Path, "rev-list", "--left-right", "--count", s.Base+"...HEAD")
+	out, err := git(w.Path, "rev-list", "--left-right", "--count", "--end-of-options", s.Base+"...HEAD")
 	if err != nil {
 		return s, err
 	}
@@ -560,7 +567,7 @@ func BranchStats(w Worktree) (Stats, error) {
 			}
 		}
 	}
-	if out, err := git(w.Path, "diff", "--merge-base", s.Base, "--name-only", "-z"); err == nil {
+	if out, err := git(w.Path, "diff", "--name-only", "-z", "--merge-base", "--end-of-options", s.Base); err == nil {
 		add(out)
 	}
 	if out, err := git(w.Path, "ls-files", "--others", "--exclude-standard", "-z"); err == nil {

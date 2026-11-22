@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 )
 
@@ -21,7 +22,7 @@ import (
 // nerdr starts claude with a status line of its own, `nerdr hook
 // statusline` (see ClaudeSettings): it reports the limits and the
 // context window to the tab, then shows the status line the user has set
-// in claude's settings, given the same input, or a short one of nerdr's
+// in claude's own settings, given the same input, or a short one of nerdr's
 // when there is none.
 
 // statusLineCommand is the status line nerdr gives claude.
@@ -47,7 +48,7 @@ func StatusLineCommand(stdin io.Reader, stdout, stderr io.Writer) int {
 	if sock, pane := os.Getenv("NERDR_SOCKET"), os.Getenv("NERDR_TAB"); sock != "" && pane != "" {
 		_ = SendReport(sock, Usage, map[string]any{"pane_id": pane, "limits": r})
 	}
-	if cmd := userStatusLine(dir); cmd != "" {
+	if cmd := userStatusLine(); cmd != "" {
 		if out, ok := runStatusLine(cmd, dir, in); ok {
 			_, _ = stdout.Write(out)
 			return 0
@@ -57,46 +58,60 @@ func StatusLineCommand(stdin io.Reader, stdout, stderr io.Writer) int {
 	return 0
 }
 
-// userStatusLine is the status line command set in claude's settings for
-// dir — the project's local settings, its shared ones, then the user's —
+// userStatusLine is the status line command set in the user's own claude
+// settings ($CLAUDE_CONFIG_DIR/settings.json, or ~/.claude/settings.json),
 // or "" for none. One that is nerdr's own is none: it would run itself.
-func userStatusLine(dir string) string {
-	var files []string
-	if dir != "" {
-		files = append(files,
-			filepath.Join(dir, ".claude", "settings.local.json"),
-			filepath.Join(dir, ".claude", "settings.json"))
-	}
+//
+// The project's settings (dir's .claude/settings.json and
+// settings.local.json) are never read: they come with the repository, and
+// a cloned repository or a pull request's branch could name any command
+// in them. claude asks before it trusts a folder, and nerdr cannot tell
+// whether it has.
+func userStatusLine() string {
 	home := os.Getenv("CLAUDE_CONFIG_DIR")
 	if home == "" {
-		if h, err := os.UserHomeDir(); err == nil {
-			home = filepath.Join(h, ".claude")
-		}
-	}
-	if home != "" {
-		files = append(files, filepath.Join(home, "settings.json"))
-	}
-	for _, f := range files {
-		data, err := os.ReadFile(f)
+		h, err := os.UserHomeDir()
 		if err != nil {
-			continue
-		}
-		var s struct {
-			StatusLine *struct {
-				Type    string `json:"type"`
-				Command string `json:"command"`
-			} `json:"statusLine"`
-		}
-		if json.Unmarshal(data, &s) != nil || s.StatusLine == nil {
-			continue
-		}
-		cmd := strings.TrimSpace(s.StatusLine.Command)
-		if strings.Contains(cmd, "hook statusline") {
 			return ""
 		}
-		return cmd
+		home = filepath.Join(h, ".claude")
 	}
-	return ""
+	data, err := readSettings(filepath.Join(home, "settings.json"))
+	if err != nil {
+		return ""
+	}
+	var s struct {
+		StatusLine *struct {
+			Type    string `json:"type"`
+			Command string `json:"command"`
+		} `json:"statusLine"`
+	}
+	if json.Unmarshal(data, &s) != nil || s.StatusLine == nil || s.StatusLine.Type != "command" {
+		return ""
+	}
+	cmd := strings.TrimSpace(s.StatusLine.Command)
+	if strings.Contains(cmd, "hook statusline") {
+		return ""
+	}
+	return cmd
+}
+
+// maxSettingsBytes bounds the settings file userStatusLine reads.
+const maxSettingsBytes = 1 << 20
+
+// readSettings reads the user's settings file: a regular file of at most
+// maxSettingsBytes, never blocking on a named pipe. A link the user made
+// to it (stow, chezmoi) is followed, as claude does.
+func readSettings(file string) ([]byte, error) {
+	if real, err := filepath.EvalSymlinks(file); err == nil {
+		file = real
+	}
+	root, err := os.OpenRoot(filepath.Dir(file))
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
+	return safefile.ReadRegularLimit(root, filepath.Base(file), maxSettingsBytes)
 }
 
 // runStatusLine runs the user's status line cmd in dir, given in, as
