@@ -179,3 +179,26 @@ func TestQuitClosesTheReviewWatch(t *testing.T) {
 		t.Fatal("the watch was not closed")
 	}
 }
+
+// When an active watch closes on its own (e.g. passing kqueueMax),
+// waitForChange emits watchEnded so core clears it and tells the client
+// to fall back to polling.
+func TestWatchClosingOnItsOwnTellsClientToPoll(t *testing.T) {
+	cl := &eventsClient{}
+	c := &Core{Client: cl}
+	w := reviewWatched(t, c)
+	wt := c.ReviewWatch.wt
+	cmd := waitForChange(w)
+	w.Close()
+	evs := runNow(cmd, 5*time.Second)
+	if len(evs) != 1 {
+		t.Fatalf("events = %#v, want watchEnded", evs)
+	}
+	c.Handle(evs[0])
+	if c.ReviewWatch.w != nil {
+		t.Fatal("closed watch was not cleared")
+	}
+	if last := cl.told[len(cl.told)-1]; last != (WatchingMsg{Wt: wt, OK: false}) {
+		t.Fatalf("told %#v, want WatchingMsg{OK: false}", last)
+	}
+}

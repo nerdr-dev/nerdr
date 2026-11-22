@@ -1,9 +1,11 @@
 package store
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 	"testing"
 	"time"
@@ -48,6 +50,42 @@ func TestExcludeCreatesInfoAndKeepsExistingLines(t *testing.T) {
 	}
 	if left, _ := filepath.Glob(filepath.Join(info, ".nerdr-tmp-*")); len(left) != 0 {
 		t.Errorf("temporary files left: %v", left)
+	}
+}
+
+// TestExcludeConcurrentWritesKeepAllPatterns: concurrent Exclude calls on
+// the same repository serialize on info's lock so no rename drops another
+// caller's pattern.
+func TestExcludeConcurrentWritesKeepAllPatterns(t *testing.T) {
+	repo := gitRepo(t)
+	const n = 16
+	start := make(chan struct{})
+	errs := make(chan error, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Go(func() {
+			<-start
+			errs <- Exclude(repo, fmt.Sprintf("/.nerdr-p%d/", i))
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("Exclude failed: %v", err)
+		}
+	}
+	data, err := os.ReadFile(filepath.Join(repo, ".git", "info", "exclude"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(data)
+	for i := range n {
+		want := fmt.Sprintf("/.nerdr-p%d/", i)
+		if !strings.Contains(got, want) {
+			t.Errorf("pattern %s lost under concurrent Exclude:\n%s", want, got)
+		}
 	}
 }
 

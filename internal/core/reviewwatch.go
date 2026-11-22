@@ -51,6 +51,10 @@ type watchStarted struct {
 // watchFired is w reporting a change.
 type watchFired struct{ w *watch.Watcher }
 
+// watchEnded is w stopping on its own (for instance, passing kqueueMax),
+// so core can clear it and tell the client to fall back to polling.
+type watchEnded struct{ w *watch.Watcher }
+
 func (q WatchForReview) Do(m *Core) Cmd {
 	rw := &m.ReviewWatch
 	if q.Wt == rw.wt {
@@ -113,12 +117,21 @@ func (m *Core) onWatchFired(ev watchFired) Cmd {
 	return waitForChange(ev.w)
 }
 
-// waitForChange waits for w's next report. It ends without an event once
-// w is closed.
+func (m *Core) onWatchEnded(ev watchEnded) {
+	rw := &m.ReviewWatch
+	if ev.w != rw.w {
+		return // already replaced or stopped
+	}
+	rw.w = nil
+	m.Tell(WatchingMsg{Wt: rw.wt, OK: false})
+}
+
+// waitForChange waits for w's next report. Once w closes, watchEnded tells
+// core if it was still the active watch.
 func waitForChange(w *watch.Watcher) Cmd {
 	return func() Event {
 		if !w.Wait() {
-			return nil
+			return watchEnded{w}
 		}
 		return watchFired{w}
 	}
