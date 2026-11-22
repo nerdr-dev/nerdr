@@ -40,7 +40,20 @@ func moveSetup(t *testing.T, m *Model, told chan any, here, box *core.Core, sand
 		"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"} {
 		t.Setenv(k, v)
 	}
-	root := t.TempDir()
+	// Not t.TempDir: the cores, stopped only after this is cleaned up,
+	// can still have git write to the repositories in it for a moment,
+	// and its one RemoveAll then fails on a folder not yet empty.
+	root, err := os.MkdirTemp("", "nmove")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		for deadline := time.Now().Add(5 * time.Second); ; time.Sleep(50 * time.Millisecond) {
+			if err := os.RemoveAll(root); err == nil || time.Now().After(deadline) {
+				return
+			}
+		}
+	})
 	seed := filepath.Join(root, "seed")
 	moveGit(t, root, "init", "-q", "-b", "main", seed)
 	for _, f := range []string{"a.txt", "b.txt", "gone.txt"} {

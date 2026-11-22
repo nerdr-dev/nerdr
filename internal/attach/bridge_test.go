@@ -40,11 +40,15 @@ func bridged(t *testing.T, sock, key string, env []string) net.Conn {
 	if err != nil {
 		t.Fatal(err)
 	}
+	done := make(chan struct{})
 	go func() {
+		defer close(done)
 		defer far.Close()
 		_ = Bridge(far, far, core, key, env)
 	}()
-	t.Cleanup(func() { client.Close(); core.Close() })
+	// Wait for Bridge to return, so a later test that changes byeTimeout
+	// does not race with this one's Bridge still reading it.
+	t.Cleanup(func() { client.Close(); core.Close(); <-done })
 	return client
 }
 

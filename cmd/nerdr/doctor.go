@@ -208,8 +208,13 @@ func runningCheck(folder string, tab bool) check {
 	if err != nil {
 		return check{"running", checkFail, err.Error()}
 	}
+	refusedUnderNerdr := check{"running", checkOK, "not looked at: nerdr refuses programs a nerdr runs at its API; run nerdr doctor in your own terminal for this check"}
 	c, err := dialAPI(root)
 	if err != nil {
+		if strings.Contains(err.Error(), "takes no client from a program") {
+			// The core refused before it read the hello.
+			return refusedUnderNerdr
+		}
 		if strings.HasPrefix(err.Error(), "no nerdr runs") {
 			return check{"running", checkOK, "no nerdr runs for " + root}
 		}
@@ -220,7 +225,7 @@ func runningCheck(folder string, tab bool) check {
 	w, err := readWelcome(bufio.NewReader(c))
 	if err != nil && strings.Contains(err.Error(), "takes no client from a program") {
 		// Run under a nerdr, without what it gives its programs.
-		return check{"running", checkOK, "not looked at: nerdr refuses programs a nerdr runs at its API; run nerdr doctor in your own terminal for this check"}
+		return refusedUnderNerdr
 	}
 	if err != nil {
 		return check{"running", checkFail, fmt.Sprintf("the nerdr of %s did not answer: %v", root, err)}

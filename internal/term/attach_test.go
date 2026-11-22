@@ -124,6 +124,14 @@ func (p *recordingProc) written() string {
 	return p.in.String()
 }
 
+// livingProc is a recordingProc that has not exited till quit is closed.
+type livingProc struct {
+	*recordingProc
+	quit chan struct{}
+}
+
+func (p *livingProc) Wait() error { <-p.quit; return nil }
+
 // A pane taken up does not answer again the queries its program wrote
 // before (Taken.Answered): the answer would reach it as keys typed in.
 // Those after are answered, also in the read that has both.
@@ -163,7 +171,9 @@ func TestAttachToAProgramThatAskedForInBandResizes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	proc := &recordingProc{heldProc: newHeldProc(nil)}
+	// The program lives on until the test ends: one that is gone has
+	// what is still to be written to it dropped, the answer too.
+	proc := &livingProc{recordingProc: &recordingProc{heldProc: newHeldProc(nil)}, quit: make(chan struct{})}
 	attachedc := make(chan *Pane, 1)
 	go func() { attachedc <- Attach(proc, 30, 6, Taken{Pos: pos, Block: block}, func() {}) }()
 	var p *Pane
@@ -173,6 +183,8 @@ func TestAttachToAProgramThatAskedForInBandResizes(t *testing.T) {
 		t.Fatal("Attach never returned")
 	}
 	t.Cleanup(func() {
+		close(proc.quit)
+		<-p.Done()
 		p.CloseReplies()
 		<-p.replyDone
 		p.Close()
