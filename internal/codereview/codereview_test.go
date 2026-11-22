@@ -88,7 +88,7 @@ func TestLatestAndNotes(t *testing.T) {
 
 func TestPrompts(t *testing.T) {
 	req := Request("claude", "codex", "main", "", 1, 2)
-	for _, want := range []string{"you (codex) are reviewing", "git log main..HEAD", "round 1 of at most 2", `post-review - <<'EOF'`} {
+	for _, want := range []string{"you (codex) are reviewing", "git log main..HEAD", "round 1 of at most 2", `post-review - <<'EOF'`, "outside your sandbox"} {
 		if !strings.Contains(req, want) {
 			t.Errorf("request lacks %q", want)
 		}

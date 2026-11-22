@@ -336,7 +336,9 @@ EOF
 
 verdict is "approve" when nothing needs fixing (findings may still hold small remarks) and "changes" when something does. severity is high, medium or low. Leave anchor out for a finding about a whole file. Write in the language the user works in. Once it is sent, do nothing more and wait.
 
-If the command fails, show the user its message, put your review in your reply, and wait. Do not look for, build or run another nerdr, and do not save the review in a file for the user to send: the command only passes it on to the nerdr that started you, for this review, and no one else can send it for you.`
+The command talks to nerdr over a socket, which a sandbox of your own may not let it reach: when it fails with "operation not permitted", "permission denied" or a sandbox error, run the same command again at once, asking to run it outside your sandbox the way your tools ask for that. It is the command you were given, not another nerdr.
+
+If it fails any other way, or again outside the sandbox, show the user its message, put your review in your reply, and wait. Do not look for, build or run another nerdr, and do not save the review in a file for the user to send: the command only passes it on to the nerdr that started you, for this review, and no one else can send it for you.`
 
 // Review is one reviewer's Result.
 type Review struct {
