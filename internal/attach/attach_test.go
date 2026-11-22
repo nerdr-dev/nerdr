@@ -612,3 +612,26 @@ func TestDialWhileClosing(t *testing.T) {
 		wg.Wait()
 	}
 }
+
+// TestDrainedQueueLetsGoOfItsBodies: once all that was queued is sent,
+// the queue holds no array with the bodies in it.
+func TestDrainedQueueLetsGoOfItsBodies(t *testing.T) {
+	a, b, err := Pair()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.Close("")
+	defer b.Close("")
+	a.Send("", []byte("one"))
+	a.Send("", []byte("two"))
+	for range 2 {
+		if _, err := b.Recv(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.queue != nil {
+		t.Errorf("queue kept: len %d cap %d", len(a.queue), cap(a.queue))
+	}
+}

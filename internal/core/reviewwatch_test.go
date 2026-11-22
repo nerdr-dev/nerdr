@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/watch"
 )
 
 // eventsClient keeps what it is told.
@@ -113,5 +115,67 @@ func TestCoreWatchesTheReviewedWorktree(t *testing.T) {
 	runNow(cmd, 5*time.Second)
 	if got, n := c.reviewWatching(); got != "" || n != 1 {
 		t.Fatalf("after stopping: watching %q, %d changes", got, n)
+	}
+}
+
+// reviewWatched is c watching worktree wt for the review panel, the watch
+// in place; it skips when the kernel refuses it.
+func reviewWatched(t *testing.T, c *Core) *watch.Watcher {
+	t.Helper()
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	wt := t.TempDir()
+	if out, err := exec.Command("git", "-C", wt, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v\n%s", err, out)
+	}
+	for _, ev := range runNow(WatchForReview{Wt: wt}.Do(c), 5*time.Second) {
+		c.Handle(ev)
+	}
+	if c.ReviewWatch.w == nil {
+		t.Skip("the kernel refused the watch")
+	}
+	return c.ReviewWatch.w
+}
+
+// closedSoon reports whether w is closed: Wait ends without a change.
+func closedSoon(w *watch.Watcher) bool {
+	done := make(chan bool, 1)
+	go func() { done <- w.Wait() }()
+	select {
+	case changed := <-done:
+		return !changed
+	case <-time.After(2 * time.Second):
+		return false
+	}
+}
+
+// The client gone, the review panel's watch is closed: nobody is told of
+// its changes.
+func TestClientGoneClosesTheReviewWatch(t *testing.T) {
+	c := &Core{Client: &eventsClient{}}
+	w := reviewWatched(t, c)
+	rc := Unattached(Layout{}, TabRef{})
+	c.Client = rc
+	runNow(clientGone{rc: rc}.Do(c), 5*time.Second)
+	if wt, _ := c.reviewWatching(); wt != "" || c.ReviewWatch.w != nil {
+		t.Fatalf("still watching %q", wt)
+	}
+	if !closedSoon(w) {
+		t.Fatal("the watch was not closed")
+	}
+}
+
+// Quitting closes the review panel's watch.
+func TestQuitClosesTheReviewWatch(t *testing.T) {
+	c := &Core{Client: &eventsClient{}}
+	w := reviewWatched(t, c)
+	cmd := QuitAll{}.Do(c)
+	if c.ReviewWatch.w != nil {
+		t.Fatal("still watching")
+	}
+	runNow(cmd, 5*time.Second)
+	if !closedSoon(w) {
+		t.Fatal("the watch was not closed")
 	}
 }

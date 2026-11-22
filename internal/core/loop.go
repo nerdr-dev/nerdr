@@ -113,8 +113,14 @@ func (l *Loop) every(d time.Duration, ev Event) {
 	})
 }
 
-// Stop ends the loop. Events posted after it are dropped.
-func (l *Loop) Stop() { l.once.Do(func() { close(l.stop) }) }
+// Stop ends the loop, and the waits of core's Tick and After. Events
+// posted after it are dropped.
+func (l *Loop) Stop() {
+	l.once.Do(func() {
+		close(l.stop)
+		l.c.stopWaits()
+	})
+}
 
 // Post gives the loop an event. It waits while the loop is too far behind, and
 // never once the loop has stopped.
@@ -226,9 +232,25 @@ func (l *Loop) deliver() {
 			if !ok {
 				break
 			}
-			l.forward(ev)
+			l.forwardSafe(ev)
 		}
 	}
+}
+
+// forwardSafe hands ev on to the client. A panic in forward is handed on
+// there and then, as a PanicMsg: put in the queue, as guarded does, it
+// would wait for this goroutine, which the panic would have ended. One
+// that panics handing on a PanicMsg is dropped, as there is no other way
+// to the client; delivering goes on either way.
+func (l *Loop) forwardSafe(ev Event) {
+	defer func() {
+		if v := recover(); v != nil {
+			if _, was := ev.(PanicMsg); !was {
+				l.forwardSafe(PanicMsg{Value: v, Stack: debug.Stack()})
+			}
+		}
+	}()
+	l.forward(ev)
 }
 
 // next is the next event for the client: those queued first, in order, then
@@ -238,7 +260,11 @@ func (l *Loop) next() (Event, bool) {
 	defer l.outMu.Unlock()
 	if len(l.out) > 0 {
 		ev := l.out[0]
+		l.out[0] = nil
 		l.out = l.out[1:]
+		if len(l.out) == 0 {
+			l.out = nil // let go of the array, and what it held
+		}
 		return ev, true
 	}
 	if l.draw[ChangedMsg{}] {
@@ -263,8 +289,7 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		var cmd Cmd
 		if !m.Quitting {
 			m.CheckShells()
-			m.CheckPluginUIs()
-			cmd = m.ExpireAsks(time.Now())
+			cmd = Batch(m.CheckPluginUIs(), m.ExpireAsks(time.Now()))
 		}
 		if m.Screens != nil {
 			m.Screens.Tick(m, false)
@@ -362,6 +387,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	case pluginsLooked:
 		m.onPluginsLooked(ev)
 		return nil, true
+	case pluginsChecked:
+		m.onPluginsChecked(ev)
+		return nil, true
 	case skillsLooked:
 		m.onSkillsLooked(ev)
 		return nil, true
@@ -442,7 +470,17 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return nil, true
 	case RecapMsg:
 		if !m.Live(ev.T) {
+			if ev.Recap {
+				ev.T.RecapWaiting = false
+			}
 			return nil, true
+		}
+		if ev.Recap {
+			// A turn ended since the wait began: wait on, for its recap.
+			if left := time.Until(ev.T.RecapDue); left > 0 {
+				return m.recapTick(ev.T, left), true
+			}
+			ev.T.RecapWaiting = false
 		}
 		return m.LookUpGoal(ev.T), true
 	case ModelsMsg:

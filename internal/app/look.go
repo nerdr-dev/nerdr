@@ -122,3 +122,52 @@ func (m *Model) share(p *core.PaneTab) float64 {
 // their screens, and send what the user does in them by c, as a client in
 // a process of its own does.
 func (m *Model) SetScreens(c *core.ScreenClient) { m.home().Screens = c }
+
+// pruneLooks lets go of what the TUI keeps per tab and pane for those no
+// machine's core has any more: closed there, by another client or an
+// agent, moved away, or a server's taken out. Without it each tab ever had
+// would be kept for as long as nerdr runs. Only PaneList is read, not
+// Panes(), which would add a tab's first pane: the TUI reads core's tabs
+// here, it does not change them.
+func (m *Model) pruneLooks() {
+	tabs := map[*core.Tab]bool{}
+	panes := map[*core.PaneTab]bool{}
+	groups := map[string]bool{}
+	for _, mc := range m.fleet.Machines() {
+		for _, t := range mc.Core.Tabs {
+			tabs[t] = true
+			groups[m.fleet.Group(t)] = true
+			for _, p := range t.PaneList {
+				panes[p] = true
+				if p.A != nil {
+					tabs[p.A] = true
+				}
+			}
+		}
+	}
+	for t := range m.tabLooks {
+		if !tabs[t] {
+			delete(m.tabLooks, t)
+		}
+	}
+	for p := range m.paneLooks {
+		if !panes[p] {
+			delete(m.paneLooks, p)
+		}
+	}
+	for t := range m.panelScreens {
+		if !tabs[t] {
+			delete(m.panelScreens, t)
+		}
+	}
+	for t := range m.paneBars {
+		if !tabs[t] {
+			delete(m.paneBars, t)
+		}
+	}
+	for g := range m.tabRows {
+		if !groups[g] {
+			delete(m.tabRows, g)
+		}
+	}
+}

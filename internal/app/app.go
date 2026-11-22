@@ -235,6 +235,9 @@ type Model struct {
 	sameFrame bool
 	// frameGen is core's Gen when the frame was drawn.
 	frameGen uint64
+	// lookGen is the fleet's Gen when the looks were last pruned to the
+	// tabs and panes there are; see pruneLooks.
+	lookGen uint64
 	// quiet is set while Update handles a message that changed nothing the
 	// TUI shows or says: a frame of a core in another process, whose
 	// screens come by themselves (core.ScreensMsg), and what such a core
@@ -526,6 +529,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	m.sameFrame, m.quiet, m.keepFrame = false, false, false
 	cmd := m.updateOn(mc, msg)
+	if gen := m.fleet.Gen(); gen != m.lookGen {
+		// A tab or pane may be gone, from this client or from core.
+		m.pruneLooks()
+		m.lookGen = gen
+	}
 	if m.quiet {
 		// Nothing changed: the frame is the last one, if core has not
 		// changed it meanwhile (see View).
@@ -1166,22 +1174,24 @@ func (m *Model) Shutdown() {
 	}
 	m.shutdown.Do(func() {
 		m.fleet.Lock()
-		panes := m.stopping()
+		panes, wait := m.stopping()
 		m.fleet.Unlock()
 		core.StopPanes(panes)
+		wait()
 		m.Herdr.Release()
 	})
 }
 
 // stopping saves the session and lists every program to stop, there and
 // then: what reads the model is done before the programs are stopped,
-// which takes a while and runs out of the screen's way when quitting.
-func (m *Model) stopping() []*term.Pane {
+// which takes a while and runs out of the screen's way when quitting. The
+// plugins' runs are told to stop; wait waits for them, and is to be called
+// with the fleet unlocked, as the panes are stopped.
+func (m *Model) stopping() (panes []*term.Pane, wait func()) {
 	for _, mc := range m.fleet.Machines() {
 		mc.Core.Quitting = true
 		mc.Core.SaveSession()
 	}
-	var panes []*term.Pane
 	for _, t := range m.fleet.Tabs() {
 		for _, p := range t.Panes() {
 			if tp := p.Term(); tp != nil {
@@ -1192,10 +1202,19 @@ func (m *Model) stopping() []*term.Pane {
 	if m.editor != nil {
 		panes = append(panes, m.editor)
 	}
+	var waits []func()
 	for _, mc := range m.fleet.Machines() {
-		panes = append(panes, mc.Core.PluginUIPanes()...)
+		ui, w := mc.Core.PluginUIPanes()
+		panes = append(panes, ui...)
+		waits = append(waits, w)
 	}
-	return panes
+	return panes, func() {
+		var wg sync.WaitGroup
+		for _, w := range waits {
+			wg.Go(w)
+		}
+		wg.Wait()
+	}
 }
 
 // onPanelLayout follows F1's file list going beside the diff or back above

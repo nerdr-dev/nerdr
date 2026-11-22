@@ -152,6 +152,65 @@ func TestLoopPanicReachesTheClient(t *testing.T) {
 	}
 }
 
+// TestLoopForwardPanicReachesTheClient: a panic handing an event on to the
+// client gets to it too, and what comes after is still handed on.
+func TestLoopForwardPanicReachesTheClient(t *testing.T) {
+	type bad struct{}
+	type after struct{}
+	got := make(chan Event, 16)
+	c := &Core{Client: NoClient{}, Wake: make(chan struct{}, 1)}
+	l := NewLoop(c, func(ev Event) {
+		if _, ok := ev.(bad); ok {
+			panic("forward boom")
+		}
+		got <- ev
+	})
+	l.StartSteps()
+	defer l.Stop()
+	l.send(bad{})
+	var panicked bool
+	for !panicked {
+		select {
+		case ev := <-got:
+			if p, ok := ev.(PanicMsg); ok {
+				if !strings.Contains(p.String(), "forward boom") {
+					t.Fatalf("panic says %q", p.String())
+				}
+				panicked = true
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("the panic did not arrive")
+		}
+	}
+	l.send(after{})
+	select {
+	case ev := <-got:
+		if _, ok := ev.(after); !ok {
+			t.Fatalf("got %T", ev)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("delivering stopped after the panic")
+	}
+}
+
+// TestLoopLetsGoOfWhatItSent: an event handed on is not kept in the
+// queue's array.
+func TestLoopLetsGoOfWhatItSent(t *testing.T) {
+	type big struct{ b []byte }
+	l := NewLoop(&Core{}, nil)
+	l.send(big{make([]byte, 1)})
+	l.send(big{make([]byte, 1)})
+	arr := l.out[:2]
+	l.next()
+	if arr[0] != nil {
+		t.Fatal("the first event is still in the array")
+	}
+	l.next()
+	if l.out != nil || arr[1] != nil {
+		t.Fatal("the queue still holds its array")
+	}
+}
+
 // TestLoopWhileQuitting: requests are turned away, and nothing is looked at.
 func TestLoopWhileQuitting(t *testing.T) {
 	c := &Core{Client: NoClient{}, Wake: make(chan struct{}, 1), Quitting: true}

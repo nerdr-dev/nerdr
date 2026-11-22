@@ -181,6 +181,9 @@ func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 		b := cc.inbox[0]
 		cc.inbox[0] = nil
 		cc.inbox = cc.inbox[1:]
+		if len(cc.inbox) == 0 {
+			cc.inbox = nil // let go of the array, and what it held
+		}
 		cc.mu.Unlock()
 		switch b[0] {
 		case wireParts:

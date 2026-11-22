@@ -15,6 +15,10 @@ import (
 type Core struct {
 	// Mu guards all of Core; see Loop.
 	Mu sync.Mutex `json:"-"`
+	// stopped is closed once the loop stops, under stopMu, not Mu: see
+	// Tick.
+	stopMu  sync.Mutex
+	stopped chan struct{}
 	// Quitting is set once the program is on its way out.
 	Quitting bool
 	// Gen counts the changes that can change what a client draws: the
@@ -46,12 +50,14 @@ type Core struct {
 	// PluginUIW and PluginUIH the size the client last drew one, for the
 	// next to start at. PluginsGoneAt is when the plugins' folders were last
 	// looked for, and PluginsMissing when each absent folder was first seen:
-	// a plugin.toml written by rename is missing for a moment. See
-	// pluginspanel.go.
+	// a plugin.toml written by rename is missing for a moment;
+	// PluginsLooking is while a look is on the disk, away from Mu, for one
+	// at a time. See pluginspanel.go.
 	PluginUIs            map[string]*PluginUI
 	PluginUIW, PluginUIH int
 	PluginsGoneAt        time.Time
 	PluginsMissing       map[string]time.Time
+	PluginsLooking       bool
 
 	// claudeLimits is the last of what a claude agent said of its
 	// account's limits, and when; see usage.go.

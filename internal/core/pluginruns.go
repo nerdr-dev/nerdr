@@ -431,19 +431,25 @@ func (m *Core) PumpRuns(now time.Time) {
 	}
 }
 
-// stopRuns stops all runs, for nerdr quitting.
-func (m *Core) StopRuns() {
+// StopRuns stops all runs, for nerdr quitting. It only signals them, so
+// it can be called with Mu held: the wait it returns, for the SIGTERM and
+// the SIGKILL the stop escalates to, is for after Mu is let go of.
+func (m *Core) StopRuns() (wait func()) {
 	var runs []*PluginRun
 	for _, run := range m.PluginRuns.ByID {
 		run.Proc.Stop()
 		runs = append(runs, run)
 	}
+	return func() { WaitRuns(runs) }
+}
+
+// WaitRuns waits for runs stopped to have ended: nerdr must not exit
+// before them, or a program that ignores SIGTERM outlives it. It waits up
+// to 6 seconds, and must not be called with Mu held.
+func WaitRuns(runs []*PluginRun) {
 	if len(runs) == 0 {
 		return
 	}
-	// Wait for the SIGTERM, then the SIGKILL the stop escalates to: nerdr
-	// must not exit before it, or a program that ignores SIGTERM outlives
-	// it.
 	deadline := time.NewTimer(6 * time.Second)
 	defer deadline.Stop()
 	for _, run := range runs {

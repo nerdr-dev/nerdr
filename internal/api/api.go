@@ -264,6 +264,16 @@ func (s *Server) call(changes bool, f func(m *core.Core) (any, core.Cmd, error))
 	}
 }
 
+// repoPlaces are where the core looks for repositories, from the loop: the
+// looking, on the disk, is done here, away from it.
+func (s *Server) repoPlaces() (core.RepoPlaces, error) {
+	v, err := s.call(false, func(m *core.Core) (any, core.Cmd, error) { return m.RepoPlaces(), nil, nil })
+	if err != nil {
+		return core.RepoPlaces{}, err
+	}
+	return v.(core.RepoPlaces), nil
+}
+
 // state is the state now, from the loop.
 func (s *Server) state() (core.APIState, error) {
 	v, err := s.call(false, func(m *core.Core) (any, core.Cmd, error) { return m.APIState(), nil, nil })
@@ -526,13 +536,20 @@ func (c *conn) do(r Request) (any, error) {
 			return nil, cmd, err
 		})
 	case "repos":
-		return s.call(false, func(m *core.Core) (any, core.Cmd, error) {
-			return m.APIRepos(), nil, nil
-		})
+		places, err := s.repoPlaces()
+		if err != nil {
+			return nil, err
+		}
+		return core.APIRepos(places.Scan()), nil
 	case "new_tab":
 		q := core.APINewTab{Repos: r.Repos, Branch: r.Branch, Agent: r.Agent, Model: r.Model, Task: r.Task}
+		places, err := s.repoPlaces()
+		if err != nil {
+			return nil, err
+		}
+		all := places.Scan()
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
-			cmd, err := m.APIMakeTab(q)
+			cmd, err := m.APIMakeTab(q, all)
 			if err != nil {
 				return nil, nil, err
 			}

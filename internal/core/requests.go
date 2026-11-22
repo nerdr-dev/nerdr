@@ -54,8 +54,7 @@ type CheckPrograms struct{}
 
 func (CheckPrograms) Do(m *Core) Cmd {
 	m.CheckShells()
-	m.CheckPluginUIs()
-	return nil
+	return m.CheckPluginUIs()
 }
 
 // Detect looks at every agent now.
