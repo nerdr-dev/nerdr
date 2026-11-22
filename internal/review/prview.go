@@ -635,12 +635,14 @@ func (m *Model) scrollPRPane(delta int) {
 	m.prConvViewTop = clamp(m.prConvViewTop+delta, 0, last)
 }
 
+// prConvInnerHeight is how many rows of the PR screen are shown, as
+// prView draws them through renderScrollList.
 func (m Model) prConvInnerHeight() int {
 	h := m.height
 	if h == 0 {
 		h = 32
 	}
-	return max(1, h-1-m.menuRows()-3-hintRows)
+	return max(1, h-m.statusRows()-m.menuRows()-3-hintRows)
 }
 
 // draftReply is a: a message asking the agent to draft an answer to the
@@ -812,8 +814,8 @@ func fixPrompt(pr github.PR, logs string) string {
 	fmt.Fprintf(&b, "A CI check on pull request #%d (%s) failed. Find out why, and fix it.\n\n", pr.Number, pr.Title)
 	b.WriteString("Failing checks:\n")
 	for _, c := range pr.Checks {
-		switch strings.ToUpper(c.Status) {
-		case "SUCCESS", "NEUTRAL", "SKIPPED":
+		// Only what failed: one still queued or running has not.
+		if !github.Failed(c.Status) {
 			continue
 		}
 		fmt.Fprintf(&b, "  - %s (%s)\n", c.Name, strings.ToLower(c.Status))

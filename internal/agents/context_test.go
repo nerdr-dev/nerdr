@@ -62,3 +62,31 @@ func TestContextCodex(t *testing.T) {
 		t.Fatalf("%+v", items)
 	}
 }
+
+// A link among the rules, to a file elsewhere or to a folder, is not
+// listed: a worktree could point it at anything on the disk.
+func TestContextRulesDoNotFollowLinks(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(home, ".claude"))
+	dir, outside := filepath.Join(t.TempDir(), "w"), t.TempDir()
+	rules := filepath.Join(dir, ".claude", "rules")
+	writeContext(t, filepath.Join(rules, "own.md"), "rule")
+	writeContext(t, filepath.Join(outside, "secret.md"), "secret")
+	writeContext(t, filepath.Join(outside, "more", "deep.md"), "secret")
+	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(rules, "link.md")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "more"), filepath.Join(rules, "folder")); err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, it := range Context(Claude, dir, "") {
+		if it.Group == ContextRules {
+			got = append(got, filepath.Base(it.Path))
+		}
+	}
+	if strings.Join(got, " ") != "own.md" {
+		t.Errorf("rules: %v", got)
+	}
+}

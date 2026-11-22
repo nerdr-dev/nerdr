@@ -137,7 +137,9 @@ func LogStamp(k Kind, sessionID, dir string) string {
 func conversationLog(k Kind, sessionID, dir string) string {
 	switch k {
 	case Claude:
-		if files := claudeLogs(Claude, sessionID); len(files) > 0 {
+		// As turnsOf: the log of the conversation had in dir, not one of
+		// the same id had in another folder.
+		if files := claudeLogsIn(Claude, sessionID, dir); len(files) > 0 {
 			return files[0]
 		}
 	case Codex:

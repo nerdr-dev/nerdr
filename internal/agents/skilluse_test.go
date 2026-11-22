@@ -49,3 +49,19 @@ func TestSkillUsesInClaudesLog(t *testing.T) {
 		t.Fatalf("a slash command is counted, not told: %q", text)
 	}
 }
+
+// A log's stamp is of the conversation had in dir, as its turns are, not
+// of one with the same id had in another folder.
+func TestLogStampIsOfTheConversationInDir(t *testing.T) {
+	cfg, dir, other := t.TempDir(), t.TempDir(), t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", cfg)
+	writeFile(t, filepath.Join(claudeProject(other), "s1.jsonl"), `{"type":"user","cwd":"`+other+`","message":{"content":"hi"}}`+"\n")
+	if s := LogStamp(Claude, "s1", dir); s != "" {
+		t.Errorf("stamped another folder's log: %q", s)
+	}
+	own := filepath.Join(claudeProject(dir), "s1.jsonl")
+	writeFile(t, own, `{"type":"user","cwd":"`+dir+`","message":{"content":"hi"}}`+"\n")
+	if s := LogStamp(Claude, "s1", dir); !strings.Contains(s, own) {
+		t.Errorf("stamp %q, not of %s", s, own)
+	}
+}

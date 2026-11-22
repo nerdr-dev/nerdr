@@ -144,8 +144,14 @@ func Older(root string, w Walkthrough, files []string) bool {
 	if err != nil {
 		return false
 	}
+	// Of the files in the worktree, not of what a link in it points at.
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return false
+	}
+	defer r.Close()
 	for _, f := range files {
-		fi, err := os.Stat(filepath.Join(root, filepath.FromSlash(f)))
+		fi, err := safefile.Lstat(r, filepath.FromSlash(f))
 		if err == nil && fi.ModTime().Truncate(time.Minute).After(t) {
 			return true
 		}

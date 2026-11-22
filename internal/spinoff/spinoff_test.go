@@ -145,3 +145,20 @@ func TestPromptAndReportOnAnotherMachine(t *testing.T) {
 		t.Errorf("report:\n%s", r)
 	}
 }
+
+// A repository's folder is kept as it was checked, trimmed, and neither it
+// nor a commit may have a control character in it.
+func TestCheckKeepsReposTrimmedAndRefusesControlCharacters(t *testing.T) {
+	p, err := Parse([]byte(`{"parts": [{"branch": "a", "summary": "s", "prompt": "p", "repos": [" api\r"]}]}`), valid)
+	if err != nil || p.Parts[0].Repos[0] != "api" {
+		t.Fatalf("%+v, %v", p, err)
+	}
+	for _, bad := range []string{"a\rb", "a\vb", "a\x00b", "a\x1bb"} {
+		if err := Check([]Part{{Branch: "a", Summary: "s", Prompt: "p", Repos: []string{bad}}}, valid); err == nil {
+			t.Errorf("repo %q taken", bad)
+		}
+		if err := Check([]Part{{Branch: "a", Summary: "s", Prompt: "p", Commits: []string{"abc" + bad}}}, valid); err == nil {
+			t.Errorf("commit %q taken", bad)
+		}
+	}
+}

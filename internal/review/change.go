@@ -139,15 +139,20 @@ func (r diffReq) read() diffMsg {
 	}
 	if r.peek {
 		msg.diff, msg.err = r.src.ReadFile(r.wt, r.path)
-		return msg
-	}
-	msg.diff, msg.err = r.fileDiff()
-	if r.mode == diffModeOld {
-		src, err := r.src.OldSource(r.c, r.original)
-		msg.src, msg.srcOK = src, err == nil
 	} else {
-		src, err := r.src.ReadFile(r.wt, r.path)
-		msg.src, msg.srcOK = src, err == nil
+		msg.diff, msg.err = r.fileDiff()
+		if r.mode == diffModeOld {
+			src, err := r.src.OldSource(r.c, r.original)
+			msg.src, msg.srcOK = src, err == nil
+		} else {
+			src, err := r.src.ReadFile(r.wt, r.path)
+			msg.src, msg.srcOK = src, err == nil
+		}
+	}
+	if msg.err == nil {
+		// Here, off the UI's goroutine: parsing, word-diffing and chroma
+		// tokenising a large file takes long enough to freeze the screen.
+		msg.lines, msg.built = msg.diffLines(), true
 	}
 	return msg
 }
@@ -187,6 +192,20 @@ type diffMsg struct {
 	refs       [][]analysis.Ref
 	incomplete string
 	err        error
+	lines      []diffLine // diff as lines, highlighted, when built
+	built      bool
+}
+
+// diffLines is the diff as the pane's lines, syntax- and word-highlighted,
+// before the notes and references that hang on the model are put in.
+func (msg diffMsg) diffLines() []diffLine {
+	if msg.built {
+		return msg.lines
+	}
+	if msg.peek {
+		return plainSourceLines(msg.path, msg.diff)
+	}
+	return builtDiffLines(msg.path, msg.diff, msg.src, msg.srcOK)
 }
 
 // onDiff puts a diff read in the background in place, if it is still the
@@ -212,9 +231,9 @@ func (m *Model) onDiff(msg diffMsg) {
 	m.symbols, m.symbolRefs = msg.symbols, msg.refs
 	m.analysisIncomplete = msg.incomplete
 	if msg.peek {
-		m.diffLines = annotateWhyLines(plainSourceLines(path, msg.diff), path, m.whyIndex)
+		m.diffLines = annotateWhyLines(msg.diffLines(), path, m.whyIndex)
 	} else {
-		m.diffLines = m.displayLines(path, msg.diff, msg.src, msg.srcOK)
+		m.diffLines = m.annotateLines(path, msg.diffLines())
 	}
 	m.diffSel = lineSpan{}
 	switch {
@@ -236,10 +255,21 @@ func (m *Model) onDiff(msg diffMsg) {
 // load rather than per render frame, since chroma tokenisation of a full
 // file is too expensive to redo on every keystroke, scroll or tick.
 func (m *Model) displayLines(path, diff, src string, srcOK bool) []diffLine {
+	return m.annotateLines(path, builtDiffLines(path, diff, src, srcOK))
+}
+
+// builtDiffLines is the costly part of displayLines, which diffReq.read
+// does in the background: it needs nothing of the model.
+func builtDiffLines(path, diff, src string, srcOK bool) []diffLine {
 	lines := buildDiffLines(diff)
 	if srcOK {
 		lines = highlightContextLines(lines, path, src)
 	}
+	return lines
+}
+
+// annotateLines puts the symbol references and the notes in lines.
+func (m *Model) annotateLines(path string, lines []diffLine) []diffLine {
 	lines = annotateDiffLines(lines, m.symbols, m.symbolRefs, m.analysisIncomplete)
 	return annotateWhyLines(lines, path, m.whyIndex)
 }

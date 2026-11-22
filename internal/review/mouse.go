@@ -176,8 +176,26 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 		}
 
 	case l.overview.contains(x, y):
-		if i := l.overview.contentRow(y, 0); i >= 0 {
-			m.ovCursor = clamp(i, 0, max(0, len(m.ovItems)-1))
+		// The row on screen, below the rows renderPane has scrolled past.
+		if i := l.overview.contentRow(y, 0); i >= 0 && len(m.ovItems) > 0 {
+			innerH := max(l.overview.h-3-hintRows, 1)
+			if idx := listStart(m.ovCursor, innerH, len(m.ovItems)) + i; idx < len(m.ovItems) {
+				m.ovCursor = idx
+			}
+		}
+
+	case l.zoom.contains(x, y):
+		// The one pane drawn, as zoomedView draws it: with a heading row,
+		// and no repository bar.
+		i := l.zoom.contentRow(y, 0)
+		if i < 0 {
+			return nil
+		}
+		if m.focus == focusFiles {
+			return m.clickFileRow(i, l.zoom.h-3-hintRows)
+		}
+		if line := m.diffView().lineAt(m.diffViewTop, i); line >= 0 {
+			m.setDiffCursor(line)
 		}
 
 	case l.prConv.contains(x, y):
@@ -212,31 +230,7 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 		}
 		m.onRepoBar = false
 		if i := l.files.contentRow(y, m.filesHeader()); i >= 0 {
-			rows := m.flatRows()
-			if len(rows) == 0 {
-				if _, button := m.emptyFiles(); button >= 0 && i == button {
-					return m.toggleBase()
-				}
-				return nil
-			}
-			innerH := l.files.h - 3 - hintRows - m.filesHeader()
-			idx := listStart(m.cursor, innerH, len(rows)) + i
-			if idx < len(rows) {
-				m.cursor = idx
-				// Clicking outside the opened section leaves it, which drops
-				// its rows: find the clicked row again in the tree without them.
-				if m.peek != nil && !inPeekSection(rows, idx) {
-					clicked := rows[idx].node
-					m.clearPeek()
-					for i, r := range m.flatRows() {
-						if r.node.path == clicked.path && r.node.isDir == clicked.isDir {
-							m.cursor = i
-							break
-						}
-					}
-				}
-				return m.loadDiff()
-			}
+			return m.clickFileRow(i, l.files.h-3-hintRows-m.filesHeader())
 		}
 	case l.diff.contains(x, y):
 		m.focus = focusDiff
@@ -247,6 +241,36 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 		}
 	}
 	return nil
+}
+
+// clickFileRow puts the file cursor on row i of a file list innerH rows
+// high, and shows the file.
+func (m *Model) clickFileRow(i, innerH int) tea.Cmd {
+	rows := m.flatRows()
+	if len(rows) == 0 {
+		if _, button := m.emptyFiles(); button >= 0 && i == button {
+			return m.toggleBase()
+		}
+		return nil
+	}
+	idx := listStart(m.cursor, innerH, len(rows)) + i
+	if idx >= len(rows) {
+		return nil
+	}
+	m.cursor = idx
+	// Clicking outside the opened section leaves it, which drops its rows:
+	// find the clicked row again in the tree without them.
+	if m.peek != nil && !inPeekSection(rows, idx) {
+		clicked := rows[idx].node
+		m.clearPeek()
+		for i, r := range m.flatRows() {
+			if r.node.path == clicked.path && r.node.isDir == clicked.isDir {
+				m.cursor = i
+				break
+			}
+		}
+	}
+	return m.loadDiff()
 }
 
 // selectConvRow puts the conversation cursor on the block containing row,

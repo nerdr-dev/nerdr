@@ -122,7 +122,7 @@ func TestScrollbar(t *testing.T) {
 	}
 
 	short := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines[:3]}
-	if got := renderDiff(short.diffLines, 0, 0, 60, 20, false, "diff", "", lineSpan{}); strings.Contains(got, thumbGlyph) {
+	if got := renderDiff(nil, short.diffLines, 0, 0, 60, 20, false, "diff", "", lineSpan{}); strings.Contains(got, thumbGlyph) {
 		t.Fatal("a diff that fits has no scrollbar")
 	}
 }

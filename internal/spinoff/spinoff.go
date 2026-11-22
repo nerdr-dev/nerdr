@@ -15,6 +15,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
 )
@@ -115,15 +116,19 @@ func Check(parts []Part, valid func(string) error) error {
 		} else if len(pt.Prompt) > MaxPrompt {
 			errs = append(errs, fmt.Sprintf("%s: prompt is %d KB; keep it under %d KB — the new agent can read files and git for the details", name, len(pt.Prompt)/1024, MaxPrompt/1024))
 		}
-		for _, r := range pt.Repos {
-			if r = strings.TrimSpace(r); r == "" || r == "." || r == ".." || strings.ContainsAny(r, "/\\\n") {
+		for j := range pt.Repos {
+			// Kept trimmed, as it is checked: the folder is joined to a
+			// path later.
+			r := strings.TrimSpace(pt.Repos[j])
+			pt.Repos[j] = r
+			if r == "" || r == "." || r == ".." || strings.ContainsAny(r, "/\\") || hasControl(r) {
 				errs = append(errs, fmt.Sprintf("%s: %q is not a repository's folder: give its name alone", name, r))
 			}
 		}
 		for _, c := range pt.Commits {
 			// A commit is put on git's command line: one starting with -
 			// would be read as an option.
-			if strings.TrimSpace(c) == "" || strings.ContainsAny(c, " \t\n") || strings.HasPrefix(c, "-") {
+			if strings.TrimSpace(c) == "" || strings.ContainsRune(c, ' ') || hasControl(c) || strings.HasPrefix(c, "-") {
 				errs = append(errs, fmt.Sprintf("%s: %q is not a commit", name, c))
 			}
 		}
@@ -132,6 +137,12 @@ func Check(parts []Part, valid func(string) error) error {
 		return errors.New(strings.Join(errs, "\n"))
 	}
 	return nil
+}
+
+// hasControl reports whether s has a control character in it, a line
+// break or any other, none of which a folder or commit given here has.
+func hasControl(s string) bool {
+	return strings.IndexFunc(s, unicode.IsControl) >= 0
 }
 
 // FullCommit reports whether c is a full commit id, as `nerdr spinoff`

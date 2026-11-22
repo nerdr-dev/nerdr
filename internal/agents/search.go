@@ -53,6 +53,9 @@ type logHead struct {
 	dir      string
 	size     int64
 	modified time.Time
+	// empty is that it was read in full and had nothing said in it to
+	// keep: it is not read again until it changes.
+	empty bool
 }
 
 // Len is how many conversations x has.
@@ -74,7 +77,13 @@ func (x *Index) Update(roots []string) {
 		if abs, err := filepath.Abs(r); err == nil {
 			r = abs
 		}
-		clean = append(clean, filepath.Clean(r))
+		r = filepath.Clean(r)
+		clean = append(clean, r)
+		// A log says the folder as the agent had it, which may be with
+		// its links resolved: /private/var on macOS for /var.
+		if real, err := filepath.EvalSymlinks(r); err == nil && real != r {
+			clean = append(clean, real)
+		}
 	}
 	under := func(dir string) bool {
 		if dir == "" {
@@ -138,11 +147,13 @@ func (x *Index) Update(roots []string) {
 			h = logHead{dir: logDir(l.kind, l.path), size: st.Size(), modified: st.ModTime()}
 		}
 		heads[l.path] = h
-		if !under(h.dir) {
+		if h.empty || !under(h.dir) {
 			continue
 		}
-		c := readConversation(l.kind, l.path)
-		if c == nil || !under(c.Dir) || len(c.Said) == 0 {
+		c := readConversation(l.kind, l.path, h.dir)
+		if c == nil || len(c.Said) == 0 {
+			h.empty = true
+			heads[l.path] = h
 			continue
 		}
 		c.size, c.Modified = st.Size(), st.ModTime()
@@ -185,10 +196,10 @@ func logDir(k Kind, path string) string {
 	return ""
 }
 
-// readConversation reads the log at path of kind k, or nil when it has
-// no folder it was had in.
-func readConversation(k Kind, path string) *Conversation {
-	c := &Conversation{Kind: k, Path: path, Dir: logDir(k, path)}
+// readConversation reads the log at path of kind k, had in dir as logDir
+// says, or nil when it has no folder it was had in.
+func readConversation(k Kind, path, dir string) *Conversation {
+	c := &Conversation{Kind: k, Path: path, Dir: dir}
 	var turns []turn
 	switch k {
 	case Claude:
@@ -292,8 +303,11 @@ func foldedIndex(text, word string) int {
 		}
 	}
 	at := strings.Index(lower.String(), word)
-	if at < 0 {
+	switch {
+	case at < 0:
 		return -1
+	case at >= len(from): // an empty word, found at the end
+		return len(text)
 	}
 	return from[at]
 }

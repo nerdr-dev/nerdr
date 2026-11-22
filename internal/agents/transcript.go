@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -167,21 +168,47 @@ func said(text string) bool {
 	return text != "" && !strings.HasPrefix(text, "<") && !strings.HasPrefix(text, "# AGENTS.md instructions")
 }
 
-// eachLine calls line for every line of the file at path.
+// maxLine is the longest line eachLine hands on: a longer one, such as a
+// pasted image a log keeps inline, is skipped rather than read whole.
+const maxLine = 16 << 20
+
+// eachLine calls line for every line of the file at path, skipping any
+// longer than maxLine, and says why it could not read to the end.
 func eachLine(path string, line func([]byte)) error {
 	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	r := bufio.NewReader(f)
+	return eachLineOf(bufio.NewReader(f), maxLine, line)
+}
+
+// eachLineOf is eachLine on r, with lines up to max bytes long.
+func eachLineOf(r *bufio.Reader, max int, line func([]byte)) error {
+	var b []byte
+	long := false
 	for {
-		b, err := r.ReadBytes('\n')
-		if len(b) > 0 {
+		chunk, err := r.ReadSlice('\n')
+		if !long {
+			if len(b)+len(chunk) > max {
+				long, b = true, nil
+			} else {
+				b = append(b, chunk...)
+			}
+		}
+		if err == bufio.ErrBufferFull {
+			continue
+		}
+		if !long && len(b) > 0 {
 			line(b)
 		}
-		if err != nil {
+		// A fresh slice for each line, as the callers may keep theirs.
+		b, long = nil, false
+		if err == io.EOF {
 			return nil
+		}
+		if err != nil {
+			return err
 		}
 	}
 }

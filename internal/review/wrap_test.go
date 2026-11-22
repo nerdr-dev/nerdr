@@ -46,7 +46,7 @@ func TestLongLinesWrap(t *testing.T) {
 		{kind: '+', text: long, newLine: 2},
 		{kind: ' ', text: " after", newLine: 3},
 	}
-	pane := renderDiff(lines, 1, 0, 60, 20, true, "diff", "", lineSpan{})
+	pane := renderDiff(nil, lines, 1, 0, 60, 20, true, "diff", "", lineSpan{})
 	plain := ansi.Strip(pane)
 	if !strings.Contains(plain, "END") {
 		t.Fatalf("the end of a long line is shown:\n%s", plain)
@@ -150,7 +150,7 @@ func TestScrollWithinTallDiffLine(t *testing.T) {
 	if m.diffViewTop != v.maxTop() {
 		t.Fatalf("scrollbar top %d, want %d", m.diffViewTop, v.maxTop())
 	}
-	pane := renderTitledDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h, true, "diff", "", lineSpan{})
+	pane := renderTitledDiff(nil, m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h, true, "diff", "", lineSpan{})
 	if !strings.Contains(ansi.Strip(pane), "END") {
 		t.Fatalf("end of line missing:\n%s", ansi.Strip(pane))
 	}

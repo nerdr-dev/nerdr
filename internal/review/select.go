@@ -104,9 +104,14 @@ func (m *Model) selText() string {
 		}
 		switch dl.kind {
 		case '+', '-', ' ':
-			if dl.text != "" {
-				out = append(out, dl.text[1:])
+			// An empty line of the file is an empty line copied, and a
+			// line with no sign in front, such as a note that the file
+			// is not there, is kept whole.
+			text := dl.text
+			if text != "" && strings.IndexByte("+- ", text[0]) >= 0 {
+				text = text[1:]
 			}
+			out = append(out, text)
 		}
 	}
 	return strings.Join(out, "\n")

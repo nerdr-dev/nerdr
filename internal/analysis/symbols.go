@@ -3,6 +3,7 @@ package analysis
 import (
 	"errors"
 	"io/fs"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -20,9 +21,26 @@ type Ref struct {
 	Line int
 }
 
-var symbolRe = regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:async\s+)?(function|class|const|let|var|interface|type|enum)\s+([A-Za-z_$][\w$]*)`)
+var symbolRe = regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:async\s+|abstract\s+)?(function|class|const|let|var|interface|type|enum)\s+([A-Za-z_$][\w$]*)`)
 
 var defaultRe = regexp.MustCompile(`(?m)^\s*export\s+default\s+([A-Za-z_$][\w$]*)`)
+
+// declKeywords are the words that may follow "export default" to begin a
+// declaration rather than name what is exported: "export default function
+// () {}" exports nothing called "function".
+var declKeywords = map[string]bool{
+	"function": true, "async": true, "class": true, "abstract": true, "interface": true,
+	"type": true, "enum": true, "const": true, "let": true, "var": true,
+}
+
+// defaultName is the name "export default" exports in m, a defaultRe
+// match, or "" when the word after it begins a declaration.
+func defaultName(m []string) string {
+	if declKeywords[m[1]] {
+		return ""
+	}
+	return m[1]
+}
 
 var identRe = regexp.MustCompile(`[A-Za-z_$][\w$]*`)
 
@@ -39,7 +57,7 @@ func ParseSymbolDecl(line string) (name, kind string, ok bool) {
 	if m := symbolRe.FindStringSubmatch(line); m != nil {
 		return m[2], m[1], true
 	}
-	if m := defaultRe.FindStringSubmatch(line); m != nil {
+	if m := defaultRe.FindStringSubmatch(line); m != nil && defaultName(m) != "" {
 		return m[1], "default", true
 	}
 	return "", "", false
@@ -73,7 +91,7 @@ func (p *Project) Symbols(targetRel string) []Symbol {
 		}
 	}
 	for _, m := range defaultRe.FindAllStringSubmatch(src, -1) {
-		if !seen[m[1]] {
+		if defaultName(m) != "" && !seen[m[1]] {
 			seen[m[1]] = true
 			out = append(out, Symbol{Name: m[1], Kind: "default"})
 		}
@@ -108,8 +126,15 @@ func (p *Project) buildWordIndexLimited(byteLimit, refLimit, wordLimit int) {
 	p.wordBuilt = true
 	p.wordIndex = map[string][]refEntry{}
 	bytesRead, refs := 0, 0
+	// One root for the whole walk, not one opened for every file.
+	root, err := os.OpenRoot(p.Root)
+	if err != nil {
+		p.markIncomplete("source files unreadable or over size limit")
+		return
+	}
+	defer root.Close()
 	for i, file := range p.files {
-		data, err := p.readSource(file)
+		data, err := readSourceIn(root, file)
 		if err != nil {
 			p.markIncomplete("source files unreadable or over size limit")
 			continue
