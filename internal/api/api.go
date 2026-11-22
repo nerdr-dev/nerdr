@@ -18,6 +18,7 @@ package api
 
 import (
 	"bufio"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -80,6 +81,10 @@ type Request struct {
 	Branch string   `json:"branch,omitempty"`
 	Model  string   `json:"model,omitempty"`
 	Task   string   `json:"task,omitempty"`
+	// Remove is close_tab's: the tab's worktrees are deleted too.
+	Remove bool `json:"remove,omitempty"`
+	// By is review's: the kind of agent to review with.
+	By string `json:"by,omitempty"`
 }
 
 // Answer is the core's answer to a request: Result, or Error.
@@ -98,6 +103,22 @@ type ReadResult struct {
 type NewTabResult struct {
 	Branch string `json:"branch"`
 }
+
+// OpenedResult is new_terminal's and new_agent's result: the ID of the
+// terminal or the agent started.
+type OpenedResult struct {
+	ID string `json:"id"`
+}
+
+// ClosedResult is close_tab's result: what became of the tab, in a
+// sentence for people.
+type ClosedResult struct {
+	Text string `json:"text"`
+}
+
+// closeTimeout is how long close_tab waits for the tab's programs to stop
+// and its worktrees to go, before it answers that they are still going.
+var closeTimeout = 2 * time.Minute
 
 // Config is what the API socket goes by.
 type Config struct {
@@ -538,6 +559,33 @@ func (c *conn) do(r Request) (any, error) {
 			}
 			return NewTabResult{Branch: q.Branch}, cmd, nil
 		})
+	case "close_tab":
+		text, err := s.closeTab(r.Tab, r.Remove)
+		if err != nil {
+			return nil, err
+		}
+		return ClosedResult{Text: text}, nil
+	case "new_terminal":
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			id, cmd, err := m.APINewTerminal(r.Tab)
+			if err != nil {
+				return nil, cmd, err
+			}
+			return OpenedResult{ID: id}, cmd, nil
+		})
+	case "new_agent":
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			id, cmd, err := m.APINewAgent(r.Tab, r.Agent, r.Model, r.Task)
+			if err != nil {
+				return nil, cmd, err
+			}
+			return OpenedResult{ID: id}, cmd, nil
+		})
+	case "review":
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			cmd, err := m.APIReview(r.Agent, r.By, r.Model)
+			return nil, cmd, err
+		})
 	case "quit":
 		// As the user quitting in the TUI: every program stops, and the
 		// core ends, the tabs kept for next time. The answer comes before
@@ -552,5 +600,51 @@ func (c *conn) do(r Request) (any, error) {
 	case "":
 		return nil, errors.New("a request needs an op")
 	}
-	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, answer, seen, wake, repos, new_tab and quit", r.Op)
+	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_tab and quit", r.Op)
+}
+
+// closeTab closes tab id, as the TUI's close dialog does, and answers once
+// its programs have stopped and, with remove, its worktrees are deleted.
+// With remove, what would be lost is looked at first, away from the loop,
+// and the tab is not closed if anything would be: the API never deletes
+// by force.
+func (s *Server) closeTab(id string, remove bool) (string, error) {
+	v, err := s.call(false, func(m *core.Core) (any, core.Cmd, error) {
+		c, err := m.APIStartClose(id, remove)
+		return c, nil, err
+	})
+	if err != nil {
+		return "", err
+	}
+	c := v.(*core.APIClosing)
+	if err := c.Look(); err != nil {
+		return "", err
+	}
+	closed := make(chan core.TabClosedMsg, 1)
+	if _, err := s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+		cmd, err := m.APIClose(c)
+		if err != nil || cmd == nil {
+			return nil, nil, cmp.Or(err, fmt.Errorf("%s was not closed", c.Name))
+		}
+		return nil, func() core.Event {
+			ev := cmd()
+			if msg, ok := ev.(core.TabClosedMsg); ok {
+				closed <- msg
+			}
+			return ev
+		}, nil
+	}); err != nil {
+		return "", err
+	}
+	select {
+	case msg := <-closed:
+		if msg.Err != "" {
+			return "", errors.New(msg.Err)
+		}
+		return msg.Note, nil
+	case <-time.After(closeTimeout):
+		return "closed " + c.Name + "; its programs are still stopping, and a notice will say how it went", nil
+	case <-s.done:
+		return "", core.ErrAPIQuitting
+	}
 }

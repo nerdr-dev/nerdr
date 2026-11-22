@@ -1,6 +1,6 @@
 ---
 title: Requests
-description: Everything a program can ask of nerdr's API — the state, an agent's screen, messages, keys, answers, new tabs and quitting.
+description: Everything a program can ask of nerdr's API — the state, an agent's screen, messages, keys, answers, new tabs, terminals and agents, reviews, closing tabs and quitting.
 ---
 
 A request is one line of JSON with an `op`, what to do, and the
@@ -33,6 +33,10 @@ as nerdr runs. A tab's ID is also the ID of its first agent.
 | [`wake`](#wake) | `tab` | Wake a sleeping tab |
 | [`repos`](#repos) | | The repositories a tab can be made in |
 | [`new_tab`](#new_tab) | `repos`, `branch`, `agent`, `model`, `task` | Make a tab |
+| [`new_terminal`](#new_terminal) | `tab` | Open a terminal in a tab |
+| [`new_agent`](#new_agent) | `tab`, `agent`, `model`, `task` | Start another agent in a tab |
+| [`review`](#review) | `agent`, `by`, `model` | Have an agent's work reviewed |
+| [`close_tab`](#close_tab) | `tab`, `remove` | Close a tab |
 | [`quit`](#quit) | | Stop nerdr and its agents |
 
 ## state
@@ -241,6 +245,96 @@ The request is refused at once if the branch name is not valid, a
 repository or agent is not there, or the tab limit (`max_tabs`) is
 reached.
 
+## new_terminal
+
+Opens a terminal in the tab's worktree, in a new pane after the others,
+as the TUI's new-terminal key does. nerdr's window keeps the keyboard
+where it is.
+
+```json
+{"id":12,"op":"new_terminal","tab":"9f3c01aa"}
+```
+
+```json
+{"id":12,"result":{"id":"c4d5e6f7"}}
+```
+
+The result is the terminal's ID, to [`type`](#type) a command into and
+[`read`](#read). The tab's `terminals` have it, and a `tab`
+[event](../events/) says so.
+
+## new_agent
+
+Starts another agent beside the tab's own, in a new pane after the
+others, working in the same worktree. nerdr's window keeps the keyboard
+where it is.
+
+```json
+{"id":13,"op":"new_agent","tab":"9f3c01aa","agent":"codex","task":"Write the tests for the redirect"}
+```
+
+```json
+{"id":13,"result":{"id":"1b2e77d0"}}
+```
+
+- `agent` is one of `state`'s `agents`, and must be given. `model` is
+  optional.
+- `task`, if given, is the agent's first message, typed in once it is
+  at its prompt, as with [`send`](#send).
+- The result is the new agent's ID. It comes with an `agent`
+  [event](../events/), and has the next `num` in the tab.
+
+## review
+
+Starts a code review of an agent's work, the same way the TUI's review
+pane does, or adds a reviewer to the review going on.
+
+```json
+{"id":14,"op":"review","agent":"9f3c01aa","by":"codex"}
+```
+
+- `by` is the kind of agent to review with, one of `state`'s `agents`.
+  If not given, it is the one the config gives (`[review] agent`).
+- `model` is optional; without it the reviewer runs the model the
+  config gives it (`[review.models]`), if any.
+- The answer comes at once. nerdr then looks at the worktree, and the
+  reviewer arrives as an agent with `reviewer` set, or a `notice` says
+  why not, for example that nothing has changed to review.
+
+The request is refused if the agent is itself a reviewer, if a reviewer
+of the same kind is reviewing already, if the agent is busy with the
+findings of a review, or if the agent runs in a sandbox and the reviewer
+would not.
+
+## close_tab
+
+Closes a tab, stopping every agent, terminal and reviewer in it, as the
+TUI's close dialog does.
+
+```json
+{"id":15,"op":"close_tab","tab":"9f3c01aa","remove":true}
+```
+
+```json
+{"id":15,"result":{"text":"closed fix-login and deleted its worktree"}}
+```
+
+- Without `remove`, the worktrees and branches are kept, and the tab
+  can be opened again from them.
+- With `remove`, the worktrees are deleted too, but never by force. The
+  request is refused, and the tab stays open, if a worktree has changes
+  that are not committed, or commits that are on no remote and not in a
+  merged pull request. The error says where. Commit or push them, or
+  close without `remove`.
+- The branches are kept, unless the pull request of every one is merged
+  on GitHub with the head the branch has: then they are deleted as well,
+  as pressing enter in the close dialog does.
+- `tab` must be the tab's own ID, not the ID of another agent in it.
+
+The answer comes once the tab's programs have stopped and its worktrees
+are gone; `text` says what was done. A `tab_closed` [event](../events/)
+follows.
+
 ## quit
 
 Stops nerdr for its folder, as quitting in its window does: every agent,
@@ -248,10 +342,10 @@ terminal and plugin stops, and the tabs are kept for the next time nerdr
 starts there. A window open on it closes. `nerdr stop` sends this.
 
 ```json
-{"id":12,"op":"quit"}
+{"id":16,"op":"quit"}
 ```
 
-The answer, `{"id":12,"result":{}}`, says nerdr is quitting, and the
+The answer, `{"id":16,"result":{}}`, says nerdr is quitting, and the
 connection then closes. While the agents stop it can close before the
 answer comes: a program that sent `quit` can take the connection closing
 as the same answer. A `quit` to a nerdr already quitting is answered

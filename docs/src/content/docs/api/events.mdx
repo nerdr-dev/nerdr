@@ -54,6 +54,10 @@ Most programs only need a few events:
 - **A tab arrived or failed**: `tab_opened` after
   [`new_tab`](../requests/#new_tab), or a `notice` saying why it was not
   made.
+- **A pane came or went**: an `agent` event for an agent started with
+  [`new_agent`](../requests/#new_agent) or a reviewer started with
+  [`review`](../requests/#review), and a `tab` event when its
+  `terminals` change, after [`new_terminal`](../requests/#new_terminal).
 
 Events are sent once the change has happened in nerdr, within half a
 second.

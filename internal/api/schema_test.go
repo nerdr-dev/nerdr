@@ -63,6 +63,17 @@ var schemaOps = []opSpec{
 	{op: "new_tab", desc: "Make a tab on a new branch in the repositories named, its agent (the first of state's agents when not given) started with task. The tab comes with a tab_opened event once its worktrees are made, or a notice says why not.",
 		fields: []string{"repos", "branch", "agent", "model", "task"}, required: []string{"repos", "branch"},
 		result: reflect.TypeFor[NewTabResult]()},
+	{op: "new_terminal", desc: "Open a terminal in a tab's worktree, in a new pane, last; nerdr's window keeps the keyboard where it is. The tab gets a tab event with the terminal.",
+		fields: []string{"tab"}, required: []string{"tab"},
+		result: reflect.TypeFor[OpenedResult]()},
+	{op: "new_agent", desc: "Start an agent of the kind named (one of state's agents) beside a tab's own, in a new pane, with model if given and task as its first message if given; nerdr's window keeps the keyboard where it is. It comes with an agent event.",
+		fields: []string{"tab", "agent", "model", "task"}, required: []string{"tab", "agent"},
+		result: reflect.TypeFor[OpenedResult]()},
+	{op: "review", desc: "Start a code review of an agent's work by an agent of the kind by (the one the config gives when not given), with model if given; or add that reviewer to the review going on. The reviewer comes with an agent event once the worktree is looked at, or a notice says why not, such as there being nothing to review.",
+		fields: []string{"agent", "by", "model"}, required: []string{"agent"}},
+	{op: "close_tab", desc: "Close a tab, stopping everything in it, and answer once it is closed. With remove its worktrees are deleted too, never by force: it is refused, the tab left open, if that would lose changes not committed or commits not pushed. The branches are kept, unless each one's pull request is merged with the head it has.",
+		fields: []string{"tab", "remove"}, required: []string{"tab"},
+		result: reflect.TypeFor[ClosedResult]()},
 	{op: "quit", desc: "Stop nerdr for its folder, as quitting in its window does: every agent, terminal and plugin stops, and the tabs are kept. The connection then closes, maybe before the answer comes."},
 }
 

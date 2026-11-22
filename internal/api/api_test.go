@@ -29,6 +29,13 @@ func testCore() *core.Core {
 // socket and key it listens at.
 func serve(t *testing.T, m *core.Core, check func(hooks.Peer) string) (*Server, string, string) {
 	t.Helper()
+	return serveWith(t, m, check, false)
+}
+
+// serveWith is serve, the work the calls give run too when run says so,
+// as the loop runs it, away from it.
+func serveWith(t *testing.T, m *core.Core, check func(hooks.Peer) string, run bool) (*Server, string, string) {
+	t.Helper()
 	dir, err := os.MkdirTemp("", "napi")
 	if err != nil {
 		t.Fatal(err)
@@ -41,8 +48,11 @@ func serve(t *testing.T, m *core.Core, check func(hooks.Peer) string) (*Server, 
 	s, err := Listen(sock, key, Config{Version: "test", Root: m.Root, Check: check, Post: func(c core.Call) {
 		go func() {
 			m.Mu.Lock()
-			defer m.Mu.Unlock()
-			c.F(m)
+			cmd := c.F(m)
+			m.Mu.Unlock()
+			if run && cmd != nil {
+				cmd()
+			}
 		}()
 	}})
 	if err != nil {
@@ -311,5 +321,84 @@ func TestQuitStopsTheCore(t *testing.T) {
 	c.send(map[string]any{"id": 2, "op": "quit"})
 	if a := c.line(); a["error"] != core.ErrAPIQuitting.Error() {
 		t.Fatalf("a second quit: %v", a)
+	}
+}
+
+// TestPanesAndClosing: a terminal and an agent open in a tab by the IDs
+// state then has, a review is checked before it starts, and close_tab
+// answers once the tab is closed.
+func TestPanesAndClosing(t *testing.T) {
+	m := testCore()
+	m.Client = core.NoClient{}
+	m.Cfg.Shell = "cat"
+	m.Agents = []agents.Kind{agents.Claude, agents.Codex}
+	first := m.Tabs[0]
+	first.Dir, first.Num = t.TempDir(), 1
+	t.Cleanup(func() {
+		for _, p := range first.Panes() {
+			if tp := p.Term(); tp != nil {
+				tp.Close()
+			}
+		}
+	})
+	_, sock, keyFile := serveWith(t, m, nil, true)
+	c := dial(t, sock)
+	c.hello(keyFile)
+	root := schemaDoc(t)
+	ops := root["x-nerdr-ops"].(map[string]any)
+	matches := func(op string, a map[string]any) {
+		t.Helper()
+		mustValidate(t, root, ops[op].(map[string]any)["result"].(map[string]any), a["result"], "the result of "+op)
+	}
+
+	c.send(map[string]any{"id": 1, "op": "new_terminal", "tab": "t1"})
+	a := c.line()
+	matches("new_terminal", a)
+	term, _ := a["result"].(map[string]any)["id"].(string)
+	if a["error"] != nil || term == "" {
+		t.Fatalf("new_terminal %v", a)
+	}
+	c.send(map[string]any{"id": 2, "op": "new_agent", "tab": "t1", "agent": "nope"})
+	if a := c.line(); !strings.Contains(a["error"].(string), `no agent "nope"`) {
+		t.Fatalf("new_agent %v", a)
+	}
+	c.send(map[string]any{"id": 3, "op": "new_agent", "tab": "t1", "agent": "codex"})
+	a = c.line()
+	matches("new_agent", a)
+	ag, _ := a["result"].(map[string]any)["id"].(string)
+	if a["error"] != nil || ag == "" {
+		t.Fatalf("new_agent %v", a)
+	}
+	c.send(map[string]any{"id": 4, "op": "state"})
+	tab := c.line()["result"].(map[string]any)["tabs"].([]any)[0].(map[string]any)
+	if ts := tab["terminals"].([]any); len(ts) != 1 || ts[0].(map[string]any)["id"] != term {
+		t.Fatalf("terminals %v, want %s", ts, term)
+	}
+	if as := tab["agents"].([]any); len(as) != 2 || as[1].(map[string]any)["id"] != ag {
+		t.Fatalf("agents %v, want %s", as, ag)
+	}
+	c.send(map[string]any{"id": 5, "op": "review", "agent": "nope", "by": "codex"})
+	if a := c.line(); !strings.Contains(a["error"].(string), `no agent "nope"`) {
+		t.Fatalf("review %v", a)
+	}
+	c.send(map[string]any{"id": 6, "op": "close_tab", "tab": ag})
+	if a := c.line(); !strings.Contains(a["error"].(string), "not a tab") {
+		t.Fatalf("close_tab of an agent %v", a)
+	}
+	c.send(map[string]any{"id": 7, "op": "close_tab", "tab": "t1"})
+	a = c.line()
+	matches("close_tab", a)
+	if a["error"] != nil || !strings.Contains(a["result"].(map[string]any)["text"].(string), "closed fix-login") {
+		t.Fatalf("close_tab %v", a)
+	}
+	m.Mu.Lock()
+	n := len(m.Tabs)
+	m.Mu.Unlock()
+	if n != 0 {
+		t.Fatalf("%d tabs left", n)
+	}
+	c.send(map[string]any{"id": 8, "op": "close_tab", "tab": "t1"})
+	if a := c.line(); !strings.Contains(a["error"].(string), `no tab "t1"`) {
+		t.Fatalf("close_tab again %v", a)
 	}
 }
