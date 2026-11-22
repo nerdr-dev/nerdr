@@ -1,6 +1,7 @@
 package core
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -30,6 +31,13 @@ type TabClosedMsg struct{ Err, Note string }
 
 // CloseTab closes t; see the request CloseTab.
 func (m *Core) CloseTab(t *Tab, remove, force bool, branchHeads map[string]string) Cmd {
+	return m.closeTab(t, remove, force, branchHeads, branchHeads != nil)
+}
+
+// closeTab is CloseTab, the worktrees kept unless each still has the head
+// heads gives it, by path, once the programs have stopped, when heads is
+// not nil; their branches deleted too with deleteBranch.
+func (m *Core) closeTab(t *Tab, remove, force bool, heads map[string]string, deleteBranch bool) Cmd {
 	i := m.TabIndex(t)
 	if i < 0 || m.ReposHold(t) {
 		return nil
@@ -75,13 +83,16 @@ func (m *Core) CloseTab(t *Tab, remove, force bool, branchHeads map[string]strin
 		if !remove {
 			return TabClosedMsg{Note: "closed " + name + " — the worktree is kept"}
 		}
-		deleteBranch := branchHeads != nil
-		if deleteBranch {
-			// The agent may have committed while the dialog was open. It is
-			// stopped now: check every worktree again before removing any.
+		if heads != nil {
+			// The agent may have committed while the dialog was open, or
+			// since the worktrees were looked at. It is stopped now: check
+			// every worktree again before removing any.
 			for _, w := range wts {
-				if h := branchHeads[w.Path]; h == "" || workspace.Head(w) != h {
-					return TabClosedMsg{Err: "closed " + name + "; kept the worktree and branch: the branch moved after you were asked"}
+				if h := heads[w.Path]; h == "" || workspace.Head(w) != h {
+					if deleteBranch {
+						return TabClosedMsg{Err: "closed " + name + "; kept the worktree and branch: the branch moved after you were asked"}
+					}
+					return TabClosedMsg{Err: "closed " + name + "; kept the worktree: " + filepath.Base(w.Path) + " has a commit made after it was looked at"}
 				}
 			}
 		}
@@ -95,7 +106,7 @@ func (m *Core) CloseTab(t *Tab, remove, force bool, branchHeads map[string]strin
 		if deleteBranch {
 			var errs []string
 			for _, w := range wts {
-				if err := workspace.DeleteBranch(w, branchHeads[w.Path]); err != nil {
+				if err := workspace.DeleteBranch(w, heads[w.Path]); err != nil {
 					errs = append(errs, err.Error())
 				}
 			}
