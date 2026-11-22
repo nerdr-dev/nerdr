@@ -209,11 +209,31 @@ type AgyEvent struct {
 	ToolCall struct {
 		Name string `json:"name"`
 		Args struct {
-			Subagents []json.RawMessage `json:"Subagents"`
+			// Subagents is the list of them an older agy started in
+			// one call; agy 1.5.14 starts one a call, with no list.
+			Subagents json.RawMessage `json:"Subagents"`
 		} `json:"args"`
 	} `json:"toolCall"`
 	// Error is why the tool failed, on PostToolUse.
 	Error string `json:"error"`
+}
+
+// subagents is how many subagents an invoke_subagent call ev is about
+// starts: those in its list, or the one it names.
+func (ev AgyEvent) subagents() int {
+	raw := bytes.TrimSpace(ev.ToolCall.Args.Subagents)
+	if len(raw) == 0 || bytes.Equal(raw, []byte("null")) {
+		return 1
+	}
+	var list []json.RawMessage
+	if json.Unmarshal(raw, &list) != nil {
+		// The list as a string of JSON, as agy writes its tools' args.
+		var s string
+		if json.Unmarshal(raw, &s) != nil || json.Unmarshal([]byte(s), &list) != nil {
+			return 1
+		}
+	}
+	return len(list)
 }
 
 // AgyState is the state an event of the agent's own conversation means,
@@ -264,7 +284,7 @@ func (t *agyTurn) see(ev AgyEvent) bool {
 		return false
 	}
 	if ev.ToolCall.Name == agySubagentTool {
-		n := len(ev.ToolCall.Args.Subagents)
+		n := ev.subagents()
 		switch {
 		case ev.Event == "PreToolUse":
 			t.Pending += n
@@ -283,6 +303,14 @@ func agyTurnFile(nerdr, agy int) string {
 // seeAgy takes ev in the agyTurn kept in file, and reports whether it is
 // of the agent's own conversation.
 func seeAgy(file string, ev AgyEvent) bool {
+	// agy may run the hooks of calls in one step side by side, each a
+	// process of its own: lock a sidecar, as seeSubagents does, so that
+	// none of their counts is lost. With no lock, nothing is known.
+	lock, ok := lockState(file)
+	if !ok {
+		return false
+	}
+	defer lock.Close() // which lets the lock go
 	var t agyTurn
 	if b := readOwn(file); b != nil {
 		_ = json.Unmarshal(b, &t)
