@@ -53,6 +53,8 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(m.onPluginJob(ev.Job, ev))
 	case core.UsageMsg:
 		m.onUsage(ev)
+	case core.CallsMsg:
+		return toCore(m.onCalls(ev))
 	case core.PromptsMsg:
 		m.onSent(ev)
 	case core.ConversationsReadMsg, core.SearchHitsMsg:

@@ -6,6 +6,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/denied"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/usage"
 )
@@ -117,6 +118,12 @@ type Core struct {
 	// NoGh is set when the gh CLI was not found, the last time core
 	// looked; see GhMsg.
 	NoGh bool
+	// Denied is what core's process was turned down for, the latest
+	// first, as of the last InfoTick, and DeniedNoted how many denials
+	// it had kept by then, one more a new one: a client in a process of
+	// its own reads them from its copy. See denied.List, and noteDenied.
+	Denied      []denied.Denial
+	DeniedNoted int
 	// Agents are the agents whose commands are on the client's PATH,
 	// looked for at AgentsAt; see agentson.go.
 	Agents     []agents.Kind

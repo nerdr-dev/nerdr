@@ -598,8 +598,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "shift+right":
 		return m.moveTab(1)
 	case "g":
-		m.dialog = m.newCallsDialog()
-		return nil
+		d, cmd := m.newCallsDialog()
+		m.dialog = d
+		return cmd
 	case "u":
 		return m.openUsage()
 	case "k":

@@ -95,3 +95,40 @@ func TestOversizedSourceMarksIndexIncomplete(t *testing.T) {
 		t.Fatal("oversized source silently skipped")
 	}
 }
+
+// TestSymbolsOfOtherFilesLeaveTheProject: Symbols of a file not of the
+// kinds read (a large JSON or Go file), or of one deleted, is nothing, and
+// marks nothing incomplete: Same still holds with the project loaded anew.
+func TestSymbolsOfOtherFilesLeaveTheProject(t *testing.T) {
+	root := t.TempDir()
+	writeAnalysisFile(t, root, "a.ts", "export const a = 1;\n")
+	writeAnalysisFile(t, root, "big.json", strings.Repeat("x", maxSourceBytes+1))
+	writeAnalysisFile(t, root, "big.go", strings.Repeat("x", maxSourceBytes+1))
+	p := LoadProject(root)
+	p.Index()
+	for _, file := range []string{"big.json", "big.go", "gone.ts"} {
+		if syms := p.Symbols(file); syms != nil || p.Incomplete() != "" {
+			t.Fatalf("%s: %v, incomplete %q", file, syms, p.Incomplete())
+		}
+	}
+	if !p.Same(LoadProject(root)) {
+		t.Fatal("not the same as the project loaded anew")
+	}
+}
+
+// TestIndexGapsLeaveSame: what the index found missing (a source over the
+// size limit) is said, but is no change of the tree: a project not yet
+// indexed, loaded of the same files, is the same.
+func TestIndexGapsLeaveSame(t *testing.T) {
+	root := t.TempDir()
+	writeAnalysisFile(t, root, "a.ts", strings.Repeat(" ", maxSourceBytes+1))
+	p := LoadProject(root)
+	p.Index()
+	p.Symbols("a.ts")
+	if p.Incomplete() == "" {
+		t.Fatal("the oversized source is not said")
+	}
+	if !p.Same(LoadProject(root)) {
+		t.Fatal("not the same as the project loaded anew")
+	}
+}

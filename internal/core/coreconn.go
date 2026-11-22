@@ -118,8 +118,9 @@ func (cc *CoreConn) Run(r Request) ([]Event, error) {
 	cc.mu.Lock()
 	cc.lastID++
 	id := cc.lastID
+	conn := cc.conn // Reconnect replaces it
 	cc.mu.Unlock()
-	if !cc.conn.Send("", wire(wireAsked, askedWire{ID: id, Req: b})) {
+	if conn == nil || !conn.Send("", wire(wireAsked, askedWire{ID: id, Req: b})) {
 		return nil, ErrCoreGone
 	}
 	var evs []Event
@@ -153,10 +154,8 @@ func (cc *CoreConn) Send(r Request) bool {
 		Debugf("core: %v", err)
 		return false
 	}
-	cc.mu.Lock()
-	conn := cc.conn // Reconnect replaces it
-	cc.mu.Unlock()
-	return conn.Send("", append([]byte{wireRequest}, b...))
+	conn := cc.current()
+	return conn != nil && conn.Send("", append([]byte{wireRequest}, b...))
 }
 
 // encode is r as it goes to core: the tabs and panes it names, the copy's
@@ -233,5 +232,17 @@ func (cc *CoreConn) Started() bool {
 	return s
 }
 
+// current is the connection over which the client goes on now: Reconnect
+// replaces it, from another goroutine than may send.
+func (cc *CoreConn) current() *attach.Conn {
+	cc.mu.Lock()
+	defer cc.mu.Unlock()
+	return cc.conn
+}
+
 // Close closes the connection.
-func (cc *CoreConn) Close(reason string) { cc.conn.Close(reason) }
+func (cc *CoreConn) Close(reason string) {
+	if conn := cc.current(); conn != nil {
+		conn.Close(reason)
+	}
+}

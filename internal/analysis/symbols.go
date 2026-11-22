@@ -1,6 +1,9 @@
 package analysis
 
 import (
+	"errors"
+	"io/fs"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -46,7 +49,16 @@ func ParseSymbolDecl(line string) (name, kind string, ok bool) {
 // relative to Root). Exported symbols are the ones with meaningful
 // cross-file references.
 func (p *Project) Symbols(targetRel string) []Symbol {
+	// As ImportsOf: only a source file the project reads has definitions
+	// of the kind looked for, and any other (a lock file, a Go file) is
+	// not read at all.
+	if !sourceExts[filepath.Ext(targetRel)] {
+		return nil
+	}
 	data, err := p.readSource(targetRel)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil // deleted: it defines nothing now
+	}
 	if err != nil {
 		p.markIncomplete("source files unreadable or over size limit")
 		return nil
