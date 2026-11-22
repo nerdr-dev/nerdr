@@ -381,9 +381,7 @@ func cursorCreateChat(s Spec, dir string) string {
 	if len(s.Command) == 0 {
 		return ""
 	}
-	cmd := proc.Detach(exec.Command(s.Command[0], append(s.Command[1:], "create-chat")...))
-	cmd.Dir = dir
-	out, err := runFor(cmd, 15*time.Second)
+	out, err := runFor(15*time.Second, dir, s.Command[0], append(s.Command[1:], "create-chat")...)
 	if err != nil {
 		return ""
 	}
@@ -682,27 +680,15 @@ type openCodeSession struct {
 	Directory string `json:"directory"`
 }
 
+// openCodeListTime is how long opencode is given to list its sessions.
+var openCodeListTime = 15 * time.Second
+
 // openCodeSessions asks opencode for its sessions started in dir.
 func openCodeSessions(s Spec, dir string) []openCodeSession {
 	if len(s.Command) == 0 {
 		return nil
 	}
-	cmd := proc.Detach(exec.Command(s.Command[0], append(s.Command[1:], "session", "list", "--format", "json", "-n", "50")...))
-	cmd.Dir = dir
-	done := make(chan struct{})
-	var out []byte
-	go func() {
-		out, _ = proc.Output(cmd)
-		close(done)
-	}()
-	select {
-	case <-done:
-	case <-time.After(15 * time.Second):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		return nil
-	}
+	out, _ := runFor(openCodeListTime, dir, s.Command[0], append(s.Command[1:], "session", "list", "--format", "json", "-n", "50")...)
 	var sessions []openCodeSession
 	if json.Unmarshal(out, &sessions) != nil {
 		return nil

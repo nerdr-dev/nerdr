@@ -25,6 +25,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
@@ -60,6 +61,8 @@ type Watcher struct {
 	gitDirs map[string]bool
 	notes   string // where the why notes and reading order are kept; see internal/store
 	done    chan struct{}
+	// closing makes Close once only, however many call it at once.
+	closing sync.Once
 }
 
 // New watches the worktree at path. commonDir is the repository's git common
@@ -135,14 +138,12 @@ func (w *Watcher) Wait() bool {
 	}
 }
 
-// Close stops the watch.
+// Close stops the watch. It may be called more than once, and at once.
 func (w *Watcher) Close() {
-	select {
-	case <-w.done:
-	default:
+	w.closing.Do(func() {
 		close(w.done)
 		w.fs.Close()
-	}
+	})
 }
 
 func (w *Watcher) run() {

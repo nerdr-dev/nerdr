@@ -165,6 +165,10 @@ func (e *Emulator) Restore(b []byte) error {
 		// before they are made.
 		r.fail("short screens")
 	}
+	if r.err != nil {
+		// Nothing is made for a size that is not there.
+		return r.err
+	}
 	alt := r.bool()
 	var scrs [2]Screen
 	for i := range scrs {
@@ -585,6 +589,13 @@ func (r *ckReader) cursor() Cursor {
 }
 
 func (r *ckReader) screen(w, h int) Screen {
+	if r.err == nil && w*h > len(r.b) {
+		// Each cell takes a byte at least.
+		r.fail("short screen")
+	}
+	if r.err != nil {
+		return Screen{}
+	}
 	s := Screen{buf: uv.NewRenderBuffer(w, h)}
 	for y := range h {
 		l := r.line(true)

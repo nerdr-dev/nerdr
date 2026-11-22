@@ -57,3 +57,26 @@ func TestAgentsAreLookedForOnTheClientsPath(t *testing.T) {
 		t.Fatal("did not look again after AgentsEvery")
 	}
 }
+
+// TestFindAgentsWhileAClientConnects: a client connecting as core starts
+// sets ClientEnv under Mu while FindAgents looks; FindAgents reads it
+// under Mu too, so the race detector finds nothing.
+func TestFindAgentsWhileAClientConnects(t *testing.T) {
+	c := &Core{Cfg: config.Config{Agents: map[agents.Kind]agents.Spec{
+		"one": {Command: []string{"fakeone"}},
+	}}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 200 {
+			c.Mu.Lock()
+			c.ClientEnv = []string{"PATH=/nowhere/" + string(rune('a'+i%26))}
+			c.Cfg.Agents = map[agents.Kind]agents.Spec{"one": {Command: []string{"fakeone"}}}
+			c.Mu.Unlock()
+		}
+	}()
+	for range 50 {
+		c.FindAgents()
+	}
+	<-done
+}

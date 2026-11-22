@@ -508,3 +508,107 @@ func TestRefusedBeforeTheHello(t *testing.T) {
 		t.Errorf("Handshake = %v", err)
 	}
 }
+
+// lateListener hands out one connection only as it is closed, a moment
+// after: an Accept that returns just as Close begins, and is seen to
+// only once Close has closed every connection it knew of.
+type lateListener struct {
+	conn   net.Conn
+	closed chan struct{}
+	once   sync.Once
+	handed atomic.Bool
+}
+
+func (l *lateListener) Accept() (net.Conn, error) {
+	<-l.closed
+	if l.handed.CompareAndSwap(false, true) {
+		time.Sleep(50 * time.Millisecond)
+		return l.conn, nil
+	}
+	return nil, net.ErrClosed
+}
+
+func (l *lateListener) Close() error   { l.once.Do(func() { close(l.closed) }); return nil }
+func (l *lateListener) Addr() net.Addr { return &net.UnixAddr{Name: "late", Net: "unix"} }
+
+// TestCloseWithAConnectionAcceptedLate: a connection accepted as Close
+// begins is closed, not let in to be waited for for ever.
+func TestCloseWithAConnectionAcceptedLate(t *testing.T) {
+	d := t.TempDir()
+	lock, err := os.Create(filepath.Join(d, "lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, b := net.Pipe()
+	defer a.Close()
+	ln := &lateListener{conn: b, closed: make(chan struct{})}
+	let := make(chan *Conn, 1)
+	s := &Server{
+		cfg: Config{Check: takeAll, Client: func(c *Conn, _ Hello) { let <- c }},
+		ln:  ln, lock: lock, sock: filepath.Join(d, "s"), keyf: filepath.Join(d, "k"), key: "key",
+		all: map[net.Conn]bool{},
+	}
+	s.wg.Add(1)
+	go s.accept()
+	go func() { _, _, _ = Handshake(a, Hello{Key: "key", Gen: Generation}) }()
+	closed := make(chan struct{})
+	go func() {
+		s.Close(ByeQuit)
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close hung on a connection accepted as it began")
+	}
+	select {
+	case <-let:
+		t.Error("a client was let in after Close")
+	default:
+	}
+}
+
+// TestDialWhileClosing: clients connecting while the core closes never
+// keep Close from returning.
+func TestDialWhileClosing(t *testing.T) {
+	for i := range 50 {
+		s, sock, key, clients := listen(t, takeAll)
+		closed := make(chan struct{})
+		go func() {
+			for {
+				select {
+				case <-clients:
+				case <-closed:
+					return
+				}
+			}
+		}()
+		var wg sync.WaitGroup
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for range 4 {
+					c, _, err := Dial(sock, key, Hello{})
+					if err != nil {
+						return
+					}
+					defer c.Close("")
+				}
+			}()
+		}
+		if i%2 == 0 {
+			time.Sleep(time.Duration(i%5) * time.Millisecond)
+		}
+		go func() {
+			s.Close(ByeQuit)
+			close(closed)
+		}()
+		select {
+		case <-closed:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("round %d: Close hung", i)
+		}
+		wg.Wait()
+	}
+}

@@ -370,3 +370,28 @@ func TestRestoreRefusesImpossibleStates(t *testing.T) {
 		t.Fatalf("what followed was taken as the sequence: %q", b.String())
 	}
 }
+
+// TestRestoreHugeShortCheckpoint covers a checkpoint of a few bytes that
+// says its screens are as large as can be: it is refused before any of
+// them is made, which would take tens of gigabytes.
+func TestRestoreHugeShortCheckpoint(t *testing.T) {
+	var w ckWriter
+	w.b = append(w.b, checkpointMagic...)
+	w.uvarint(CheckpointVersion)
+	w.uvarint(0) // no styles
+	w.uvarint(maxCheckpointSide)
+	w.uvarint(maxCheckpointSide)
+	w.b = append(w.b, 0, 0, 0, 0)
+	e := newCkEmu(t, 10, 3)
+	allocs := testing.AllocsPerRun(1, func() {
+		if err := e.Restore(w.b); err == nil {
+			t.Fatal("restored")
+		}
+	})
+	if allocs > 100 {
+		t.Fatalf("%v allocations for a checkpoint of %d bytes", allocs, len(w.b))
+	}
+	if e.Width() != 10 || e.Height() != 3 {
+		t.Fatalf("size = %d×%d", e.Width(), e.Height())
+	}
+}

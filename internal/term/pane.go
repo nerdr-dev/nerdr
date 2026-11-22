@@ -34,6 +34,7 @@ type Pane struct {
 	// is dropped, as is what was still waiting.
 	outMu   sync.Mutex
 	out     [][]byte
+	outLen  int
 	outDone bool
 	outWake chan struct{}
 
@@ -186,15 +187,24 @@ func (p *Pane) readLoop() {
 	}
 }
 
+// maxReplyBacklog is how much may wait to be written to the program
+// before more answers to its queries are dropped: one that asks and asks
+// but never reads its input is not let fill the memory.
+const maxReplyBacklog = 1 << 20
+
 // replyLoop forwards what the emulator answers to the program's queries
-// (cursor position, device attributes, colours) back into the pty.
+// (cursor position, device attributes, colours) back into the pty. It
+// queues them for writeLoop rather than write them itself: Feed holds
+// Screen.mu until its answers are read, so a program that has stopped
+// reading its input would otherwise hold up the whole pane. Nor does it
+// go through Write, which takes Screen.mu.
 func (p *Pane) replyLoop() {
 	defer close(p.replyDone)
 	buf := make([]byte, 4096)
 	for {
 		n, err := p.ReadReply(buf)
 		if n > 0 {
-			_, _ = p.proc.Write(buf[:n])
+			p.queue(buf[:n], maxReplyBacklog)
 		}
 		if err != nil {
 			return
@@ -245,15 +255,25 @@ func (p *Pane) Write(b []byte) {
 	p.mu.Lock()
 	exited := p.exited
 	p.mu.Unlock()
-	if exited || len(b) == 0 {
+	if exited {
+		return
+	}
+	p.queue(b, -1)
+}
+
+// queue has writeLoop write a copy of b, unless more than limit bytes are
+// waiting already; a limit below 0 is none. It does not take Screen.mu.
+func (p *Pane) queue(b []byte, limit int) {
+	if len(b) == 0 {
 		return
 	}
 	p.outMu.Lock()
-	if p.outDone {
+	if p.outDone || limit >= 0 && p.outLen > limit {
 		p.outMu.Unlock()
 		return
 	}
 	p.out = append(p.out, append([]byte(nil), b...))
+	p.outLen += len(b)
 	p.outMu.Unlock()
 	select {
 	case p.outWake <- struct{}{}:
@@ -282,6 +302,7 @@ func (p *Pane) writeLoop() {
 				break
 			}
 			n := copy(buf, p.out[0])
+			p.outLen -= n
 			if p.out[0] = p.out[0][n:]; len(p.out[0]) == 0 {
 				p.out[0] = nil
 				p.out = p.out[1:]
@@ -298,7 +319,7 @@ func (p *Pane) writeLoop() {
 // is written from now on.
 func (p *Pane) dropWrites() {
 	p.outMu.Lock()
-	p.out, p.outDone = nil, true
+	p.out, p.outLen, p.outDone = nil, 0, true
 	p.outMu.Unlock()
 }
 

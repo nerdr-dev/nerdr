@@ -38,9 +38,14 @@ func (m *Core) Available() []agents.Kind {
 }
 
 // FindAgents looks for the agents now: as core starts, before its loop
-// runs, without Mu.
+// runs, without Mu. A client may connect meanwhile and set ClientEnv, so
+// what to look for, and on which PATH, is read under Mu, the PATH then
+// searched without it.
 func (m *Core) FindAgents() {
-	kinds := agents.AvailableIn(m.Cfg.Agents, envPath(m.BaseEnv()))
+	m.Mu.Lock()
+	specs, path := maps.Clone(m.Cfg.Agents), envPath(m.BaseEnv())
+	m.Mu.Unlock()
+	kinds := agents.AvailableIn(specs, path)
 	m.Mu.Lock()
 	m.Agents, m.AgentsAt = kinds, time.Now()
 	m.Mu.Unlock()

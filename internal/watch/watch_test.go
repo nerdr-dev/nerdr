@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -134,4 +135,28 @@ func TestWatchIgnoresWhatGitIgnores(t *testing.T) {
 	changed(t, w, "creating a directory at the root")
 	write(t, filepath.Join(dir, "build", "out.js"), "x\n")
 	quiet(t, w, "writing into an ignored directory")
+}
+
+// TestWatchClosedAtOnce covers a watch closed from several goroutines at
+// once, and again after: it is closed once, with no panic.
+func TestWatchClosedAtOnce(t *testing.T) {
+	dir, common := repo(t)
+	w, err := New(dir, common)
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			<-start
+			w.Close()
+		})
+	}
+	close(start)
+	wg.Wait()
+	w.Close()
+	if w.Wait() {
+		t.Fatal("a closed watch reports a change")
+	}
 }
