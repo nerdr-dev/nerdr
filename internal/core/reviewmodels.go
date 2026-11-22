@@ -78,7 +78,7 @@ func (m *Core) OnModels(msg ModelsMsg) Cmd {
 	if len(msg.Models) == 0 && msg.Err == nil && !msg.Again {
 		l.Asking = true
 		specs, k := m.Cfg.Agents, msg.Kind
-		cmd = Tick(ModelsAgain, func(time.Time) Event { return ListModels(specs, k, true) })
+		cmd = m.Tick(ModelsAgain, func(time.Time) Event { return ListModels(specs, k, true) })
 	}
 	m.AgentModels[msg.Kind] = l
 	return cmd

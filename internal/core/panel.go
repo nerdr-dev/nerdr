@@ -61,8 +61,12 @@ type GoalMsg struct {
 // recap: Claude writes one when it has stood idle about three minutes.
 const RecapWait = 4 * time.Minute
 
-// recapMsg is the time to look for t's recap.
-type RecapMsg struct{ T *Tab }
+// recapMsg is the time to look for t's recap: Recap when it is the wait
+// of RecapLater's, and not PromptLater's.
+type RecapMsg struct {
+	T     *Tab
+	Recap bool
+}
 
 // promptWait is how long after the agent starts working its log is read
 // again for the prompt it was sent: at the start, it may not be in yet.
@@ -73,15 +77,27 @@ func (m *Core) PromptLater(t *Tab) Cmd {
 	if t.Agent != agents.Claude {
 		return nil
 	}
-	return Tick(PromptWait, func(time.Time) Event { return RecapMsg{t} })
+	return m.Tick(PromptWait, func(time.Time) Event { return RecapMsg{T: t} })
 }
 
-// recapLater looks for t's recap once Claude has had time to write it.
+// recapLater looks for t's recap once Claude has had time to write it,
+// after the last of its turns: one wait a tab, which a turn ending while
+// it is on puts off (see RecapMsg), rather than one for each turn.
 func (m *Core) RecapLater(t *Tab) Cmd {
 	if t.Agent != agents.Claude {
 		return nil
 	}
-	return Tick(RecapWait, func(time.Time) Event { return RecapMsg{t} })
+	t.RecapDue = time.Now().Add(RecapWait)
+	if t.RecapWaiting {
+		return nil
+	}
+	t.RecapWaiting = true
+	return m.recapTick(t, RecapWait)
+}
+
+// recapTick is RecapLater's wait, d long.
+func (m *Core) recapTick(t *Tab, d time.Duration) Cmd {
+	return m.Tick(d, func(time.Time) Event { return RecapMsg{T: t, Recap: true} })
 }
 
 // lookUpGoal reads t's first prompt, when t has no task yet, and the end

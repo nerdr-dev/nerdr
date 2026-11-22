@@ -468,10 +468,12 @@ func (m *Model) quit() tea.Cmd {
 		}
 	}
 	var panes []*term.Pane
-	m.shutdown.Do(func() { panes = m.stopping() })
+	wait := func() {}
+	m.shutdown.Do(func() { panes, wait = m.stopping() })
 	h := m.Herdr
 	return func() tea.Msg {
 		core.StopPanes(panes)
+		wait()
 		h.Release()
 		return quitReadyMsg{}
 	}

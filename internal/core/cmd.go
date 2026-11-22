@@ -34,18 +34,53 @@ func Batch(cmds ...Cmd) Cmd {
 	return func() Event { return BatchEvent(out) }
 }
 
-// Tick is what fn makes of the time, d from now.
-func Tick(d time.Duration, fn func(time.Time) Event) Cmd {
+// Tick is what fn makes of the time, d from now. The wait ends with no
+// event once m's loop stops (see Loop.Stop), so a long one does not
+// outlive it.
+func (m *Core) Tick(d time.Duration, fn func(time.Time) Event) Cmd {
+	stop := m.Stopped()
 	return func() Event {
-		time.Sleep(d)
-		return fn(time.Now())
+		t := time.NewTimer(d)
+		defer t.Stop()
+		select {
+		case <-stop:
+			return nil
+		case <-t.C:
+			return fn(time.Now())
+		}
 	}
 }
 
-// After is ev, d from now.
+// After is ev, d from now: for a short wait, where there is no core to
+// stop it (see Core.Tick for a long one).
 func After(d time.Duration, ev Event) Cmd {
 	return func() Event {
 		time.Sleep(d)
 		return ev
+	}
+}
+
+// Stopped is closed once m's loop has stopped, for the waits of Tick to
+// end.
+func (m *Core) Stopped() <-chan struct{} { return m.stopCh() }
+
+func (m *Core) stopCh() chan struct{} {
+	m.stopMu.Lock()
+	defer m.stopMu.Unlock()
+	if m.stopped == nil {
+		m.stopped = make(chan struct{})
+	}
+	return m.stopped
+}
+
+// stopWaits ends the waits of Tick, for the loop stopping.
+func (m *Core) stopWaits() {
+	ch := m.stopCh()
+	m.stopMu.Lock()
+	defer m.stopMu.Unlock()
+	select {
+	case <-ch:
+	default:
+		close(ch)
 	}
 }

@@ -458,7 +458,7 @@ func TestPluginGoneStopsItsScreenAndRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.home().Core.PluginsGoneAt = time.Time{}
-	m.home().Core.CheckPluginsGone(time.Now().Add(10 * time.Second))
+	lookForPluginsGone(t, &m.home().Core, time.Now().Add(10*time.Second))
 	if m.home().Core.PluginUIOf(tb, p) != nil {
 		t.Fatal("the screen of a gone plugin is still there")
 	}
@@ -497,7 +497,7 @@ func TestPluginGoneWaitsForAnEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.home().Core.PluginsGoneAt = time.Time{}
-	m.home().Core.CheckPluginsGone(time.Now())
+	lookForPluginsGone(t, &m.home().Core, time.Now())
 	if m.home().Core.PluginUIOf(tb, p) == nil {
 		t.Fatal("a plugin.toml being written stopped its screen")
 	}
@@ -505,7 +505,7 @@ func TestPluginGoneWaitsForAnEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	m.home().Core.PluginsGoneAt = time.Time{}
-	m.home().Core.CheckPluginsGone(time.Now().Add(2 * time.Second))
+	lookForPluginsGone(t, &m.home().Core, time.Now().Add(2*time.Second))
 	if m.home().Core.PluginUIOf(tb, p) == nil {
 		t.Fatal("the screen did not stay")
 	}
@@ -602,4 +602,18 @@ func TestPluginDisallowOldVersions(t *testing.T) {
 // it before allowing it.
 func pluginPreview(dir string, n, w int) []string {
 	return renderPreview(core.ReadPreview(dir), dir, n, w)
+}
+
+// lookForPluginsGone is CheckPluginsGone, its look on the disk done there
+// and then, as the loop would away from Mu.
+func lookForPluginsGone(t *testing.T, c *core.Core, now time.Time) {
+	t.Helper()
+	cmd := c.CheckPluginsGone(now)
+	if cmd == nil {
+		t.Fatal("the plugins were not looked for")
+	}
+	c.Handle(cmd())
+	if c.PluginsLooking {
+		t.Fatal("the look did not end")
+	}
 }

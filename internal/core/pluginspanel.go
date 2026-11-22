@@ -100,15 +100,46 @@ func (m *Core) PluginGone(dir string) {
 
 // CheckPluginsGone stops screens and runs whose plugin folder is gone, or
 // has had no plugin.toml for a while. It looks every few seconds, so a
-// watch does not outlive its plugin just because F5 is not open.
-func (m *Core) CheckPluginsGone(now time.Time) {
-	if now.Sub(m.PluginsGoneAt) < PluginsCheckEvery {
-		return
+// watch does not outlive its plugin just because F5 is not open. The look
+// is on the disk, so it is the Cmd returned, away from Mu, one at a time;
+// pluginsChecked, which it ends in, does the stopping.
+func (m *Core) CheckPluginsGone(now time.Time) Cmd {
+	if m.PluginsLooking || now.Sub(m.PluginsGoneAt) < PluginsCheckEvery {
+		return nil
 	}
 	m.PluginsGoneAt = now
-	if m.PluginsMissing == nil {
-		m.PluginsMissing = map[string]time.Time{}
+	dirs := m.pluginDirsInUse()
+	if len(dirs) == 0 {
+		clear(m.PluginsMissing)
+		return nil
 	}
+	m.PluginsLooking = true
+	return func() Event {
+		ev := pluginsChecked{now: now, live: map[string]bool{}, gone: map[string]bool{}}
+		for _, p := range plugin.Find(plugin.UserDir(config.Path())) {
+			ev.live[p.Dir] = true
+		}
+		for dir := range dirs {
+			if ev.live[dir] {
+				continue
+			}
+			if _, err := os.Stat(dir); os.IsNotExist(err) {
+				ev.gone[dir] = true
+			}
+		}
+		return ev
+	}
+}
+
+// pluginsChecked is what CheckPluginsGone found on the disk at now: the
+// plugin folders there are, and those of the ones in use gone altogether.
+type pluginsChecked struct {
+	now        time.Time
+	live, gone map[string]bool
+}
+
+// pluginDirsInUse are the folders of the plugins with a screen or a run.
+func (m *Core) pluginDirsInUse() map[string]bool {
 	dirs := map[string]bool{}
 	for _, u := range m.PluginUIs {
 		dirs[u.Dir] = true
@@ -119,32 +150,31 @@ func (m *Core) CheckPluginsGone(now time.Time) {
 	for _, r := range m.PluginRuns.Runs {
 		dirs[r.Dir] = true
 	}
-	if len(dirs) == 0 {
-		for dir := range m.PluginsMissing {
-			delete(m.PluginsMissing, dir)
-		}
-		return
+	return dirs
+}
+
+// onPluginsChecked stops what is of the plugins found gone. What has
+// started or stopped while the disk was looked at is gone by what is in use
+// now: a folder started meanwhile, not looked at, waits for the next look.
+func (m *Core) onPluginsChecked(ev pluginsChecked) {
+	m.PluginsLooking = false
+	if m.PluginsMissing == nil {
+		m.PluginsMissing = map[string]time.Time{}
 	}
-	live := map[string]bool{}
-	for _, p := range plugin.Find(plugin.UserDir(config.Path())) {
-		live[p.Dir] = true
-	}
+	dirs := m.pluginDirsInUse()
 	for dir := range dirs {
-		if live[dir] {
+		switch {
+		case ev.live[dir]:
 			delete(m.PluginsMissing, dir)
-			continue
-		}
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
+		case ev.gone[dir]:
 			m.PluginGone(dir)
-			continue
-		}
-		since, ok := m.PluginsMissing[dir]
-		if !ok {
-			m.PluginsMissing[dir] = now
-			continue
-		}
-		if now.Sub(since) >= PluginGoneAfter {
-			m.PluginGone(dir)
+		default:
+			since, ok := m.PluginsMissing[dir]
+			if !ok {
+				m.PluginsMissing[dir] = ev.now
+			} else if ev.now.Sub(since) >= PluginGoneAfter {
+				m.PluginGone(dir)
+			}
 		}
 	}
 	for dir := range m.PluginsMissing {
@@ -250,8 +280,8 @@ func (m *Core) stopPluginUI(t *Tab, p plugin.Plugin) bool {
 }
 
 // CheckPluginUIs stops the screens of the tabs closed, and forgets their
-// runs.
-func (m *Core) CheckPluginUIs() {
+// runs; the Cmd is the look for plugins gone, see CheckPluginsGone.
+func (m *Core) CheckPluginUIs() Cmd {
 	for k, u := range m.PluginUIs {
 		if !slices.Contains(m.Tabs, u.T) {
 			delete(m.PluginUIs, k)
@@ -260,7 +290,7 @@ func (m *Core) CheckPluginUIs() {
 		}
 	}
 	now := time.Now()
-	m.CheckPluginsGone(now)
+	look := m.CheckPluginsGone(now)
 	m.PumpRuns(now)
 	for k, r := range m.PluginRuns.Runs {
 		if !slices.Contains(m.Tabs, r.T) {
@@ -272,20 +302,21 @@ func (m *Core) CheckPluginUIs() {
 			// its result and stopRuns waits for its stop at quitting.
 		}
 	}
+	return look
 }
 
 // PluginUIPanes are the plugins' screens, to stop when nerdr quits; the
-// agents' runs are stopped there and then.
-func (m *Core) PluginUIPanes() []*term.Pane {
-	m.StopRuns()
-	var out []*term.Pane
+// agents' runs are told to stop there and then, and wait, returned, waits
+// for them to have: it is to be called once Mu is let go of.
+func (m *Core) PluginUIPanes() (out []*term.Pane, wait func()) {
+	wait = m.StopRuns()
 	for _, u := range m.PluginUIs {
 		out = append(out, u.Pane)
 		if u.Events != nil {
 			_ = os.Remove(u.Events.Name())
 		}
 	}
-	return out
+	return out, wait
 }
 
 // PluginEvent tells the screen of the plugin in folder dir, in t, of an

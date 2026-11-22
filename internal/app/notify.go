@@ -110,3 +110,7 @@ func (m *Model) flushNotes(herdrBefore string) {
 		m.Herdr.Notify(n.Title, n.Body, sound)
 	}
 }
+
+// Notice shows a message for longer than a toast: for what went wrong
+// before the screen was up.
+func (m *Model) Notice(s string) { m.say(catWarning, s, 20*time.Second) }

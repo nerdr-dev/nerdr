@@ -200,8 +200,9 @@ type clientGone struct{ rc *RemoteClient }
 func (q clientGone) Do(m *Core) Cmd {
 	if m.Client == q.rc {
 		m.Screens = nil
-		// No one carries the moves on; the tabs stay here.
-		return m.movesGone()
+		// No one carries the moves on; the tabs stay here. No one is
+		// told of the review panel's worktree changing either.
+		return Batch(m.movesGone(), m.stopReviewWatch())
 	}
 	return nil
 }

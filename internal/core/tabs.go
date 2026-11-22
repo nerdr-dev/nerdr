@@ -733,7 +733,10 @@ type Tab struct {
 	// typed to an agent whose log is not read, to take the task from. See
 	// panel.go.
 	GoalLooking bool
-	Typed       *TypedLine `json:"-"`
+	// RecapWaiting is while RecapLater waits, till RecapDue; see panel.go.
+	RecapWaiting bool       `json:"-"`
+	RecapDue     time.Time  `json:"-"`
+	Typed        *TypedLine `json:"-"`
 	// PromptedInto is the program a prompt was last typed into by TypeIn,
 	// for the enter after it; see PromptEnter.
 	PromptedInto *term.Pane `json:"-"`

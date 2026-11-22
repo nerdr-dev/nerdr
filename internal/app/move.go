@@ -405,6 +405,7 @@ func (m *Model) moveFinish(remove, branch, keep bool) tea.Cmd {
 		q.BranchHeads = r.heads
 	}
 	cmd := m.doOn(r.from, q)
+	m.pruneLooks() // the tab closed on the source, if its core did so there and then
 	if t := m.fleet.ByRef(r.landed); t != nil {
 		return tea.Batch(cmd, m.selectTab(m.fleet.TabIndex(t)))
 	}

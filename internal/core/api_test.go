@@ -106,7 +106,7 @@ func TestAPIQuitting(t *testing.T) {
 	if err := m.APISend("t1", "x"); !errors.Is(err, ErrAPIQuitting) {
 		t.Fatalf("send %v", err)
 	}
-	if _, err := m.APIMakeTab(APINewTab{Repos: []string{"r"}, Branch: "b"}); !errors.Is(err, ErrAPIQuitting) {
+	if _, err := m.APIMakeTab(APINewTab{Repos: []string{"r"}, Branch: "b"}, nil); !errors.Is(err, ErrAPIQuitting) {
 		t.Fatalf("new tab %v", err)
 	}
 }
@@ -122,7 +122,8 @@ func TestAPIMakeTabChecksFirst(t *testing.T) {
 	if out, err := exec.Command("git", "init", "-q", repo).CombinedOutput(); err != nil {
 		t.Fatalf("%v: %s", err, out)
 	}
-	if repos := m.APIRepos(); len(repos) != 1 || repos[0].Name != "web" {
+	all := m.RepoPlaces().Scan()
+	if repos := APIRepos(all); len(repos) != 1 || repos[0].Name != "web" {
 		t.Fatalf("repos %+v", repos)
 	}
 	for _, c := range []struct {
@@ -134,11 +135,11 @@ func TestAPIMakeTabChecksFirst(t *testing.T) {
 		{APINewTab{Repos: []string{"api"}, Branch: "fix"}, `no repository "api"; those there are: web`},
 		{APINewTab{Repos: []string{"web"}, Branch: "fix", Agent: "nope"}, `no agent "nope"`},
 	} {
-		if _, err := m.APIMakeTab(c.q); err == nil || !strings.Contains(err.Error(), c.want) {
+		if _, err := m.APIMakeTab(c.q, all); err == nil || !strings.Contains(err.Error(), c.want) {
 			t.Errorf("%+v: %v, want %q", c.q, err, c.want)
 		}
 	}
-	cmd, err := m.APIMakeTab(APINewTab{Repos: []string{"web"}, Branch: "fix"})
+	cmd, err := m.APIMakeTab(APINewTab{Repos: []string{"web"}, Branch: "fix"}, all)
 	if err != nil || cmd == nil {
 		t.Fatalf("cmd %v, err %v", cmd != nil, err)
 	}

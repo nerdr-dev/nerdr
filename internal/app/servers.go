@@ -110,6 +110,8 @@ func (m *Model) removeServer(mc *fleet.Machine) tea.Cmd {
 	}
 	m.fleet.Remove(mc)
 	mc.Core.Mu.Unlock() // the fleet's no longer, nor locked with it
+	// Its tabs went with it, and what the TUI kept for them goes too.
+	m.pruneLooks()
 	if i := m.fleet.TabIndex(cur); i >= 0 {
 		m.Active = i
 	} else {

@@ -311,9 +311,27 @@ func (m *Core) APIAnswer(id int, yes bool) (Cmd, error) {
 	return m.Answer(id, answer), nil
 }
 
-// APIRepos are the repositories nerdr finds, to make a tab in.
-func (m *Core) APIRepos() []APIRepo {
-	all, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
+// RepoPlaces are where nerdr looks for repositories to make a tab in, as
+// core's config says now: read with Mu held, for Scan to look in away
+// from it, as the disk can be slow.
+type RepoPlaces struct {
+	root, worktrees string
+	dirs            []string
+}
+
+// RepoPlaces are where the repositories are looked for now. Mu is held.
+func (m *Core) RepoPlaces() RepoPlaces {
+	return RepoPlaces{root: m.Root, worktrees: m.Cfg.WorktreesDir, dirs: slices.Clone(m.Cfg.RepoDirs)}
+}
+
+// Scan finds the repositories in p, on the disk: not with Mu held.
+func (p RepoPlaces) Scan() []workspace.Repo {
+	all, _ := workspace.ScanAll(p.root, p.worktrees, p.dirs)
+	return all
+}
+
+// APIRepos are the repositories nerdr found, all, to make a tab in.
+func APIRepos(all []workspace.Repo) []APIRepo {
 	out := []APIRepo{}
 	for _, r := range all {
 		out = append(out, APIRepo{Name: r.Name, Path: r.Path})
@@ -332,9 +350,10 @@ type APINewTab struct {
 	Task   string   `json:"task,omitempty"`
 }
 
-// APIMakeTab starts making the tab q asks for; the tab comes, or a notice
-// of why it did not, once its worktrees are made.
-func (m *Core) APIMakeTab(q APINewTab) (Cmd, error) {
+// APIMakeTab starts making the tab q asks for, in the repositories all,
+// which RepoPlaces.Scan found; the tab comes, or a notice of why it did
+// not, once its worktrees are made.
+func (m *Core) APIMakeTab(q APINewTab, all []workspace.Repo) (Cmd, error) {
 	if m.Quitting {
 		return nil, ErrAPIQuitting
 	}
@@ -358,7 +377,6 @@ func (m *Core) APIMakeTab(q APINewTab) (Cmd, error) {
 	if q.Model != "" && !agents.TakesModel(k) {
 		return nil, fmt.Errorf("nerdr does not know how to give %s a model", k)
 	}
-	all, _ := workspace.ScanAll(m.Root, m.Cfg.WorktreesDir, m.Cfg.RepoDirs)
 	var repos []workspace.Repo
 	for _, name := range q.Repos {
 		i := slices.IndexFunc(all, func(r workspace.Repo) bool { return r.Name == name })

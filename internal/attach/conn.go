@@ -232,7 +232,9 @@ func (c *Conn) write() {
 		}
 		p := c.queue[0]
 		c.queue[0] = nil
-		c.queue = c.queue[1:]
+		if c.queue = c.queue[1:]; len(c.queue) == 0 {
+			c.queue = nil // not to hold the backing array
+		}
 		if p.key != "" {
 			delete(c.keyed, p.key)
 		}

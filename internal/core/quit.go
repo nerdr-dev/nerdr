@@ -17,10 +17,15 @@ func (QuitAll) Do(m *Core) Cmd {
 	}
 	m.Quitting = true
 	m.SaveSession()
-	panes := m.AllPanes()
+	panes, wait := m.AllPanes()
+	unwatch := m.stopReviewWatch()
 	quit := m.OnQuit
 	return func() Event {
+		if unwatch != nil {
+			unwatch()
+		}
 		StopPanes(panes)
+		wait()
 		m.ShutdownHolder()
 		if quit != nil {
 			quit()
@@ -30,8 +35,9 @@ func (QuitAll) Do(m *Core) Cmd {
 }
 
 // AllPanes are the programs core runs: the agents', the terminals' and the
-// plugins' screens. Mu is held.
-func (m *Core) AllPanes() []*term.Pane {
+// plugins' screens. Mu is held; the plugins' runs are told to stop, and
+// wait, to call once Mu is let go of, waits for them.
+func (m *Core) AllPanes() ([]*term.Pane, func()) {
 	var panes []*term.Pane
 	for _, t := range m.Tabs {
 		for _, p := range t.Panes() {
@@ -40,7 +46,8 @@ func (m *Core) AllPanes() []*term.Pane {
 			}
 		}
 	}
-	return append(panes, m.PluginUIPanes()...)
+	ui, wait := m.PluginUIPanes()
+	return append(panes, ui...), wait
 }
 
 // Unattached is the client of a core no client has connected to yet: it

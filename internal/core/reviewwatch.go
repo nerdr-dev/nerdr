@@ -80,6 +80,13 @@ func (q WatchForReview) Do(m *Core) Cmd {
 	return Batch(cmds...)
 }
 
+// stopReviewWatch closes the watch on the review panel's worktree, for a
+// client gone or core quitting: with no one to tell, its changes are for
+// nothing. The count stays, for MaySkip. The Cmd does the closing.
+func (m *Core) stopReviewWatch() Cmd {
+	return WatchForReview{}.Do(m)
+}
+
 func (m *Core) onWatchStarted(ev watchStarted) Cmd {
 	rw := &m.ReviewWatch
 	if ev.wt != rw.wt {
