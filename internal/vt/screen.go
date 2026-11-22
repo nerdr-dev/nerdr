@@ -83,6 +83,19 @@ func (s *Screen) Resize(width int, height int) {
 		s.buf.Touched = nil
 	}
 	s.scroll = s.buf.Bounds()
+	// The cursor, and the saved one, are kept on the screen: that of the
+	// screen not shown, or a saved one, would otherwise be restored off a
+	// screen made smaller.
+	s.cur.Position = s.clampPos(s.cur.Position)
+	s.saved.Position = s.clampPos(s.saved.Position)
+}
+
+// clampPos is p, put on the screen.
+func (s *Screen) clampPos(p uv.Position) uv.Position {
+	w, h := s.buf.Width(), s.buf.Height()
+	p.X = min(max(p.X, 0), max(w-1, 0))
+	p.Y = min(max(p.Y, 0), max(h-1, 0))
+	return p
 }
 
 // Width returns the width of the screen.
@@ -231,6 +244,7 @@ func (s *Screen) SaveCursor() {
 func (s *Screen) RestoreCursor() {
 	old := s.cur.Position
 	s.cur = s.saved
+	s.cur.Position = s.clampPos(s.cur.Position)
 
 	if s.cb.CursorPosition != nil && (old.X != s.cur.X || old.Y != s.cur.Y) {
 		s.cb.CursorPosition(old, s.cur.Position)

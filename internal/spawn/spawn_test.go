@@ -2,6 +2,7 @@ package spawn
 
 import (
 	"errors"
+	"io"
 	"os/exec"
 	"syscall"
 	"testing"
@@ -46,5 +47,52 @@ func TestExitErrorIsToldAsExecTellsIt(t *testing.T) {
 	defer p.Close()
 	if err := p.Wait(); err != nil {
 		t.Errorf("exit 0: Wait = %v", err)
+	}
+}
+
+// TestLocalSpawnWithoutProgram: a Spec with no Argv is an error, not a
+// panic.
+func TestLocalSpawnWithoutProgram(t *testing.T) {
+	if _, err := (Local{}).Spawn(Spec{}); err == nil {
+		t.Fatal("spawning no program did not fail")
+	}
+}
+
+// TestLocalSignalAfterWait: once Wait has reaped the program and its
+// group is seen gone, the group is signalled no more, its id being free
+// for another's.
+func TestLocalSignalAfterWait(t *testing.T) {
+	p, err := Local{}.Spawn(Spec{Argv: []string{"true"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := p.Pid()
+	_, _ = io.Copy(io.Discard, p)
+	_ = p.Wait()
+	if err := p.Signal(pid, syscall.Signal(0)); !errors.Is(err, syscall.ESRCH) {
+		t.Fatalf("signal after Wait: %v, want ESRCH", err)
+	}
+	if !p.(*local).pgGone {
+		t.Fatal("the group seen gone was not noted")
+	}
+	p.Close()
+}
+
+// TestLocalSignalWhileWaiting: Signal while Wait waits reaches the
+// program, and does not race Wait's reap.
+func TestLocalSignalWhileWaiting(t *testing.T) {
+	p, err := Local{}.Spawn(Spec{Argv: []string{"sleep", "30"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p.Close()
+	done := make(chan error, 1)
+	go func() { done <- p.Wait() }()
+	if err := p.Signal(p.Pid(), syscall.SIGKILL); err != nil {
+		t.Fatalf("signal while running: %v", err)
+	}
+	var ee *ExitError
+	if err := <-done; !errors.As(err, &ee) || ee.Signal != syscall.SIGKILL {
+		t.Fatalf("Wait: %v, want killed", err)
 	}
 }

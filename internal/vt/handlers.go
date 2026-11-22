@@ -552,8 +552,10 @@ func (e *Emulator) registerDefaultCsiHandlers() {
 			e.scr.FillArea(e.scr.blankCell(), rect1)
 			e.scr.FillArea(e.scr.blankCell(), rect2)
 		case 1: // Erase screen above (including cursor)
-			rect := uv.Rect(0, 0, width, y+1)
-			e.scr.FillArea(e.scr.blankCell(), rect)
+			rect1 := uv.Rect(0, 0, width, y) // lines above
+			rect2 := uv.Rect(0, y, x+1, 1)   // line start to cursor
+			e.scr.FillArea(e.scr.blankCell(), rect1)
+			e.scr.FillArea(e.scr.blankCell(), rect2)
 		case 2: // erase screen
 			// Save screen content to scrollback before clearing
 			e.scr.ClearWithScrollback()

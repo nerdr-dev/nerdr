@@ -712,7 +712,7 @@ func (h *Holder) Checkpoint(id string) (int64, []byte) {
 func (h *Holder) list(id string) ([]Prog, error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	ids := h.order
+	ids := slices.Clone(h.order) // forgetting below changes h.order
 	if id != "" {
 		if _, err := h.get(id); err != nil {
 			return nil, err

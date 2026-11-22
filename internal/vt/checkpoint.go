@@ -606,8 +606,7 @@ func (r *ckReader) screen(w, h int) Screen {
 		s.buf.TouchLine(0, y, w)
 	}
 	s.cur, s.saved = r.cursor(), r.cursor()
-	// Resize keeps only the active screen's cursor on it: the other
-	// screen's, and the saved ones, can be off a screen made smaller, and
+	// A checkpoint's cursors are not trusted to be on its screen: they
 	// are put on it here.
 	for _, c := range []*Cursor{&s.cur, &s.saved} {
 		c.X = min(max(c.X, 0), max(w-1, 0))

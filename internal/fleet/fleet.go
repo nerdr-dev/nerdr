@@ -81,13 +81,14 @@ type Fleet struct {
 func New(ms ...*Machine) Fleet { return Fleet{machines: ms} }
 
 // Add puts mc last among the fleet's machines; mc.Name is not one of
-// theirs. The fleet is not locked (Lock), or mc is too.
-func (f *Fleet) Add(mc *Machine) { f.machines = append(f.Machines(), mc) }
+// theirs. The fleet is not locked (Lock), or mc is too. Added to the zero
+// Fleet, mc is its one machine: the zero core it stood for is not kept.
+func (f *Fleet) Add(mc *Machine) { f.machines = append(f.machines, mc) }
 
 // Remove takes mc out of the fleet: its tabs are no longer shown. What
 // Lock locked of it stays locked.
 func (f *Fleet) Remove(mc *Machine) {
-	f.machines = slices.DeleteFunc(f.Machines(), func(o *Machine) bool { return o == mc })
+	f.machines = slices.DeleteFunc(f.machines, func(o *Machine) bool { return o == mc })
 }
 
 // Machines are the fleet's machines, in order.
@@ -224,9 +225,11 @@ func (f *Fleet) Lock() {
 	}
 }
 
-// Unlock unlocks what Lock locked.
+// Unlock unlocks what Lock locked, the machines Added since among it. It
+// leaves alone the zero Fleet, whose one machine Lock would have made: it
+// was not locked, and making it now would unlock what never was.
 func (f *Fleet) Unlock() {
-	ms := f.Machines()
+	ms := f.machines
 	for i := len(ms) - 1; i >= 0; i-- {
 		ms[i].Core.Mu.Unlock()
 	}

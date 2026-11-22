@@ -5,6 +5,7 @@ package term
 
 import (
 	"encoding/base64"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -109,11 +110,15 @@ func Attach(proc spawn.Proc, w, h int, at Taken, notify func()) *Pane {
 	}
 	p := newPane(proc, sc, started, notify)
 	p.base, p.answered = at.Pos, at.Answered
-	// Running first: a program that asked for in-band resizes (mode 2048)
-	// is told of this one, which waits for its reader till then.
-	p.run()
+	// Its replies read first: a program that asked for in-band resizes
+	// (mode 2048) is told of this one, which waits for their reader till
+	// then. Its output is read only once the screen has its size, so
+	// what it wrote from at.Pos on always lands on the screen as the
+	// caller has it, never on the one put back, whichever comes first.
+	p.runAllButRead()
 	sc.Resize(w, h)
 	_ = proc.Resize(max(w, 10), max(h, 3))
+	go p.readLoop()
 	return p
 }
 
@@ -132,6 +137,11 @@ func newPane(proc spawn.Proc, sc *Screen, started time.Time, notify func()) *Pan
 
 func (p *Pane) run() {
 	go p.readLoop()
+	p.runAllButRead()
+}
+
+// runAllButRead starts what run does but the reading of the output.
+func (p *Pane) runAllButRead() {
 	go p.replyLoop()
 	go p.writeLoop()
 	go p.wait()
@@ -407,7 +417,7 @@ func (p *Pane) Stop(grace time.Duration) {
 	}
 	alive := groups[:0]
 	for _, pg := range groups {
-		if p.proc.Signal(pg, syscall.SIGHUP) != syscall.ESRCH {
+		if there(p.proc.Signal(pg, syscall.SIGHUP)) {
 			alive = append(alive, pg)
 		}
 	}
@@ -420,7 +430,7 @@ func (p *Pane) Stop(grace time.Duration) {
 		case <-tick.C:
 			remaining := alive[:0]
 			for _, pg := range alive {
-				if p.proc.Signal(pg, 0) != syscall.ESRCH {
+				if there(p.proc.Signal(pg, 0)) {
 					remaining = append(remaining, pg)
 				}
 			}
@@ -432,6 +442,14 @@ func (p *Pane) Stop(grace time.Duration) {
 			return
 		}
 	}
+}
+
+// there is whether a group a signal went to, with err, may still be there
+// to wait for: gone (ESRCH), or out of reach for good, as when the holder
+// that keeps it has gone or no longer has it, it is not, and waiting the
+// grace out for it would wait for nothing.
+func there(err error) bool {
+	return err == nil || errors.Is(err, syscall.EPERM)
 }
 
 // clipboardSet is the text an OSC 52 ("52;Pc;Pd", Pd in base64) puts on

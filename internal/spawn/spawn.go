@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"strconv"
+	"sync"
 	"syscall"
 
 	"github.com/creack/pty"
@@ -123,6 +124,9 @@ type Local struct{}
 var _ Spawner = Local{}
 
 func (Local) Spawn(s Spec) (Proc, error) {
+	if len(s.Argv) == 0 {
+		return nil, errors.New("spawn: no program")
+	}
 	cmd := exec.Command(s.Argv[0], s.Argv[1:]...)
 	cmd.Dir, cmd.Env, cmd.ExtraFiles = s.Dir, s.Env, s.Files
 	if s.PTY {
@@ -169,6 +173,13 @@ type local struct {
 	out   *os.File
 	tty   *os.File
 	start uint64
+	// reaped is that Wait has reaped the process, pgGone that its group
+	// was then seen empty. A group's id is not reused while the group has
+	// a process in it, so what is left of it is signalled, as a holder
+	// does, until it is seen gone, and then never again: the id can then
+	// be another's. mu guards both.
+	mu             sync.Mutex
+	reaped, pgGone bool
 }
 
 func (l *local) StartTime() uint64 { return l.start }
@@ -190,7 +201,19 @@ func (l *local) Resize(w, h int) error {
 }
 
 func (l *local) Wait() error {
+	// Where the process can be waited for without being reaped (exited),
+	// it is reaped with mu held, so that no Signal comes between the reap
+	// and reaped; elsewhere one can, as it could before.
+	held := l.cmd.Process != nil && exited(l.cmd.Process.Pid)
+	if held {
+		l.mu.Lock()
+	}
 	err := l.cmd.Wait()
+	if !held {
+		l.mu.Lock()
+	}
+	l.reaped = true
+	l.mu.Unlock()
 	var ee *exec.ExitError
 	if !errors.As(err, &ee) {
 		return err
@@ -233,7 +256,17 @@ func (l *local) Signal(pg int, sig syscall.Signal) error {
 	if pg <= 0 {
 		return syscall.ESRCH
 	}
-	return syscall.Kill(-pg, sig)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	own := pg == l.Pid()
+	if own && l.pgGone {
+		return syscall.ESRCH // its group's id may be another's since
+	}
+	err := syscall.Kill(-pg, sig)
+	if own && l.reaped && err == syscall.ESRCH {
+		l.pgGone = true
+	}
+	return err
 }
 
 func (l *local) Close() error { return l.out.Close() }

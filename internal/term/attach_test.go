@@ -2,6 +2,7 @@ package term
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"strings"
 	"sync"
@@ -182,5 +183,67 @@ func TestAttachToAProgramThatAskedForInBandResizes(t *testing.T) {
 			t.Fatalf("not told of the new size: %q", proc.written())
 		}
 		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+// TestAttachReadsAtTheSizeItIsGiven: what a program taken up wrote from
+// the checkpoint on lands on the screen at the size Attach is given, not
+// the checkpoint's, however soon it is read.
+func TestAttachReadsAtTheSizeItIsGiven(t *testing.T) {
+	first := attached(t, nil, Taken{}) // 20×4
+	block, pos, err := first.CheckpointAt()
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := strings.Repeat("x", 30)
+	for range 20 {
+		p := Attach(newHeldProc([]byte(line)), 40, 4, Taken{Pos: pos, Block: block}, func() {})
+		select {
+		case <-p.Done():
+		case <-time.After(5 * time.Second):
+			t.Fatal("output never all read")
+		}
+		got := p.Snapshot().Screen
+		p.Close()
+		if !strings.Contains(got, line) {
+			t.Fatalf("not read at 40 columns: %q", got)
+		}
+	}
+}
+
+// goneProc is a program whose holder has gone: no signal reaches it, nor
+// will. Its output ends once it is closed.
+type goneProc struct {
+	closed chan struct{}
+	once   sync.Once
+}
+
+func (p *goneProc) Read(b []byte) (int, error)              { <-p.closed; return 0, io.EOF }
+func (p *goneProc) Write(b []byte) (int, error)             { return 0, io.ErrClosedPipe }
+func (p *goneProc) Resize(w, h int) error                   { return nil }
+func (p *goneProc) Wait() error                             { <-p.closed; return nil }
+func (p *goneProc) Pid() int                                { return 1 << 30 }
+func (p *goneProc) StartTime() uint64                       { return 0 }
+func (p *goneProc) Foreground() (int, bool)                 { return 0, false }
+func (p *goneProc) Signal(pg int, sig syscall.Signal) error { return errors.New("holder: gone") }
+func (p *goneProc) Close() error                            { p.once.Do(func() { close(p.closed) }); return nil }
+
+// TestStopDoesNotWaitOutTheGraceForWhatItCannotReach: a program out of
+// reach for good is not waited for, and Close lets go of its terminal,
+// which ends the reading, before the screen goes.
+func TestStopDoesNotWaitOutTheGraceForWhatItCannotReach(t *testing.T) {
+	proc := &goneProc{closed: make(chan struct{})}
+	p := newPane(proc, NewScreen(20, 4), time.Now(), func() {})
+	p.run()
+	start := time.Now()
+	p.Stop(5 * time.Second)
+	if d := time.Since(start); d > time.Second {
+		t.Errorf("Stop waited %v for a program it cannot reach", d)
+	}
+	p.Close()
+	select {
+	case <-p.readDone:
+	default:
+		t.Error("Close returned with the output still being read")
 	}
 }

@@ -20,6 +20,7 @@
 package watch
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -60,7 +61,13 @@ type Watcher struct {
 	// files there that say the change moved are listened to; see relevant.
 	gitDirs map[string]bool
 	notes   string // where the why notes and reading order are kept; see internal/store
+	// watched is how many files and directories the watch holds, as kqueue
+	// counts them; only run's goroutine changes it once run has started.
+	watched int
 	done    chan struct{}
+	// ctx is cancelled by Close, ending a git command addNewDir waits on.
+	ctx    context.Context
+	cancel context.CancelFunc
 	// closing makes Close once only, however many call it at once.
 	closing sync.Once
 }
@@ -75,7 +82,10 @@ func New(path, commonDir string) (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
+	ctx, cancel := context.WithCancel(context.Background())
 	w := &Watcher{
+		ctx:      ctx,
+		cancel:   cancel,
 		C:        make(chan struct{}, 1),
 		fs:       fs,
 		worktree: path,
@@ -83,9 +93,10 @@ func New(path, commonDir string) (*Watcher, error) {
 		notes:    store.Dir(path),
 		done:     make(chan struct{}),
 	}
-	dirs, files, err := sourceDirs(path, ".")
-	if err == nil && runtime.GOOS != "linux" && files+len(dirs) > kqueueMax {
-		err = fmt.Errorf("%d files and folders are too many to watch with kqueue", files+len(dirs))
+	dirs, files, err := sourceDirs(ctx, path, ".")
+	w.watched = files + len(dirs)
+	if err == nil && overKqueue(w.watched) {
+		err = fmt.Errorf("%d files and folders are too many to watch with kqueue", w.watched)
 	}
 	if err == nil {
 		for _, d := range dirs {
@@ -98,6 +109,7 @@ func New(path, commonDir string) (*Watcher, error) {
 		err = w.addGitDirs(commonDir)
 	}
 	if err != nil {
+		cancel()
 		fs.Close()
 		return nil, err
 	}
@@ -108,10 +120,13 @@ func New(path, commonDir string) (*Watcher, error) {
 // addGitDirs watches the worktree's own git directory (its index and HEAD),
 // the common directory (the branch refs, and by default the notes folder)
 // and the records' directory when it exists yet.
+// Both are Cleaned, as relevant's directories are, so that a commonDir
+// given with a trailing separator still matches.
 func (w *Watcher) addGitDirs(commonDir string) error {
+	commonDir = filepath.Clean(commonDir)
 	dirs := []string{commonDir}
 	if out, err := proc.Output(gitsafe.Command(w.worktree, "rev-parse", "--absolute-git-dir")); err == nil {
-		if d := strings.TrimSpace(string(out)); d != commonDir {
+		if d := filepath.Clean(strings.TrimSpace(string(out))); d != commonDir {
 			dirs = append(dirs, d)
 		}
 	}
@@ -142,6 +157,7 @@ func (w *Watcher) Wait() bool {
 func (w *Watcher) Close() {
 	w.closing.Do(func() {
 		close(w.done)
+		w.cancel()
 		w.fs.Close()
 	})
 }
@@ -224,28 +240,52 @@ func (w *Watcher) relevant(ev fsnotify.Event) bool {
 
 // addNewDir watches a directory created in the worktree, and the ones git
 // would list inside it — an agent creating a package creates its
-// subdirectories before the watch on the first can be added.
+// subdirectories before the watch on the first can be added. Where kqueue
+// watches (not Linux), what would take the watch past kqueueMax is not
+// added: changes in it go unseen until the watch is set up again. The git
+// commands are given gitTimeout, and end once the watch is closed.
 func (w *Watcher) addNewDir(dir string) {
 	rel, err := filepath.Rel(w.worktree, dir)
 	if err != nil || rel == ".git" || strings.HasPrefix(rel, ".git"+string(filepath.Separator)) {
 		return
 	}
-	if proc.Run(gitsafe.Command(w.worktree, "check-ignore", "-q", "--", rel)) == nil {
+	ctx, cancel := context.WithTimeout(w.ctx, gitTimeout)
+	defer cancel()
+	if proc.Run(gitsafe.CommandContext(ctx, w.worktree, "check-ignore", "-q", "--", rel)) == nil {
 		return // ignored: build output, dependencies
 	}
-	_ = w.fs.Add(dir)
-	if dirs, _, err := sourceDirs(w.worktree, rel); err == nil {
-		for _, d := range dirs {
-			_ = w.fs.Add(d)
-		}
+	if ctx.Err() != nil {
+		return // timed out, or closed: whether it is ignored is not known
+	}
+	dirs, files, err := sourceDirs(ctx, w.worktree, rel)
+	if err != nil {
+		dirs, files = []string{dir}, 0
+	}
+	if overKqueue(w.watched + files + len(dirs)) {
+		return
+	}
+	w.watched += files + len(dirs)
+	for _, d := range dirs {
+		_ = w.fs.Add(d)
 	}
 }
+
+// gitTimeout is the longest addNewDir waits on a git command.
+const gitTimeout = 10 * time.Second
+
+// overKqueue reports whether n files and directories are too many to watch
+// here: more than kqueueMax, where kqueue is what watches.
+func overKqueue(n int) bool { return kqueueGOOS && n > kqueueMax }
+
+// kqueueGOOS is whether kqueue watches here, fsnotify's way outside Linux
+// (and Windows, which nerdr does not run on); a variable for the tests.
+var kqueueGOOS = runtime.GOOS != "linux"
 
 // sourceDirs lists the directories under sub (relative to the worktree)
 // that hold a file git would list: tracked, or new and not ignored, and
 // how many such files there are.
-func sourceDirs(worktree, sub string) ([]string, int, error) {
-	out, err := proc.Output(gitsafe.Command(worktree, "ls-files", "-z",
+func sourceDirs(ctx context.Context, worktree, sub string) ([]string, int, error) {
+	out, err := proc.Output(gitsafe.CommandContext(ctx, worktree, "ls-files", "-z",
 		"--cached", "--others", "--exclude-standard", "--", sub))
 	if err != nil {
 		return nil, 0, err

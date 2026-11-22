@@ -624,3 +624,28 @@ func TestShutdownKeepsWhatItCouldNotSeeExit(t *testing.T) {
 		t.Error("the program kept is not closed")
 	}
 }
+
+// A list lets go of every program that is done, not every other one:
+// forgetting one moves the rest of h.order down under the loop.
+func TestListForgetsEveryProgramDone(t *testing.T) {
+	h := New()
+	h.mu.Lock()
+	for i, id := range []string{"a", "b", "c"} {
+		h.progs[id] = &prog{id: id, pid: 1<<30 + i, ring: newRing(0), changed: make(chan struct{}),
+			exited: true, reaped: true, done: true, pgGone: true, groups: map[int]bool{}}
+		h.order = append(h.order, id)
+	}
+	h.mu.Unlock()
+	progs, err := h.list("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(progs) != 3 {
+		t.Errorf("listed %d, want 3", len(progs))
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if len(h.progs) != 0 || len(h.order) != 0 {
+		t.Errorf("kept %v, in order %v", h.progs, h.order)
+	}
+}

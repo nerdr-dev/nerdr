@@ -1,13 +1,17 @@
 package watch
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 )
 
 func repo(t *testing.T) (dir, common string) {
@@ -158,5 +162,69 @@ func TestWatchClosedAtOnce(t *testing.T) {
 	w.Close()
 	if w.Wait() {
 		t.Fatal("a closed watch reports a change")
+	}
+}
+
+// TestWatchTakesCommonDirUncleaned: a common directory given with a
+// trailing separator is still the git directory, whose scratch copies are
+// not changes.
+func TestWatchTakesCommonDirUncleaned(t *testing.T) {
+	dir, common := repo(t)
+	w, err := New(dir, common+string(filepath.Separator))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	write(t, filepath.Join(common, "index.lock"), "")
+	quiet(t, w, "git taking its index lock")
+}
+
+// bareWatcher is a watch on dir that is not run, for addNewDir to be
+// called on at the test's pace.
+func bareWatcher(t *testing.T, dir string) *Watcher {
+	t.Helper()
+	fs, err := fsnotify.NewWatcher()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	w := &Watcher{fs: fs, worktree: dir, gitDirs: map[string]bool{}, done: make(chan struct{}), ctx: ctx, cancel: cancel}
+	t.Cleanup(w.Close)
+	return w
+}
+
+// TestAddNewDirKeepsUnderKqueueMax: where kqueue watches, a directory that
+// would take the watch past kqueueMax is not added; one that fits is.
+func TestAddNewDirKeepsUnderKqueueMax(t *testing.T) {
+	was := kqueueGOOS
+	kqueueGOOS = true
+	defer func() { kqueueGOOS = was }()
+	dir, _ := repo(t)
+	write(t, filepath.Join(dir, "newpkg", "sub", "b.go"), "package sub\n")
+	newpkg := filepath.Join(dir, "newpkg")
+
+	w := bareWatcher(t, dir)
+	w.watched = kqueueMax - 1
+	w.addNewDir(newpkg)
+	if slices.Contains(w.fs.WatchList(), newpkg) || w.watched != kqueueMax-1 {
+		t.Fatalf("past kqueueMax: watching %v, %d counted", w.fs.WatchList(), w.watched)
+	}
+	w.watched = 0
+	w.addNewDir(newpkg)
+	if !slices.Contains(w.fs.WatchList(), filepath.Join(newpkg, "sub")) || w.watched != 3 {
+		t.Fatalf("under kqueueMax: watching %v, %d counted", w.fs.WatchList(), w.watched)
+	}
+}
+
+// TestAddNewDirAfterClose: once the watch is closed, addNewDir's git
+// commands end at once, and nothing is added.
+func TestAddNewDirAfterClose(t *testing.T) {
+	dir, _ := repo(t)
+	write(t, filepath.Join(dir, "newpkg", "b.go"), "package newpkg\n")
+	w := bareWatcher(t, dir)
+	w.cancel()
+	w.addNewDir(filepath.Join(dir, "newpkg"))
+	if l := w.fs.WatchList(); len(l) != 0 || w.watched != 0 {
+		t.Fatalf("closed watch added %v, %d counted", l, w.watched)
 	}
 }
