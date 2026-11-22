@@ -1125,6 +1125,20 @@ func UnpushedCount(w Worktree) int {
 	return n
 }
 
+// UnpushedAt is how many commits commit, in w's repository, has that are
+// on no remote; -1 when git cannot say, which is to be taken as some.
+func UnpushedAt(w Worktree, commit string) int {
+	s, err := git(w.Path, "rev-list", "--count", commit, "--not", "--remotes", "--")
+	if err != nil {
+		return -1
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return -1
+	}
+	return n
+}
+
 // Head is the commit w has checked out, or "" when git cannot say.
 func Head(w Worktree) string {
 	s, err := git(w.Path, "rev-parse", "HEAD")

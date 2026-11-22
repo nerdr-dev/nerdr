@@ -155,19 +155,9 @@ func (c *APIClosing) Look() error {
 	if !c.Remove {
 		return nil
 	}
-	if d := workspace.Dirty(c.wts); len(d) > 0 {
-		return fmt.Errorf("not closed: uncommitted changes in %s would be lost; commit them, or close without remove", strings.Join(d, ", "))
-	}
-	merged := mergedBranchHeads(c.wts)
-	var unpushed []string
-	for _, w := range c.wts {
-		if merged[w.Path] == "" && workspace.UnpushedCount(w) > 0 {
-			unpushed = append(unpushed, filepath.Base(w.Path))
-		}
-	}
-	if len(unpushed) > 0 {
-		return fmt.Errorf("not closed: commits not pushed in %s; push them, or close without remove", strings.Join(unpushed, ", "))
-	}
+	// The heads first: the agents run still, and what is checked below is
+	// these commits, which the worktrees must still have once they have
+	// stopped (see closeTab). A commit made meanwhile keeps the worktree.
 	heads := make(map[string]string, len(c.wts))
 	for _, w := range c.wts {
 		h := workspace.Head(w)
@@ -176,10 +166,39 @@ func (c *APIClosing) Look() error {
 		}
 		heads[w.Path] = h
 	}
+	if afterHeads != nil {
+		afterHeads()
+	}
+	if d := workspace.Dirty(c.wts); len(d) > 0 {
+		return fmt.Errorf("not closed: uncommitted changes in %s would be lost; commit them, or close without remove", strings.Join(d, ", "))
+	}
+	got := mergedHeads(c.wts)
+	merged := 0
+	var unpushed []string
+	for _, w := range c.wts {
+		if got[w.Path] != "" && got[w.Path] == heads[w.Path] {
+			merged++
+			continue
+		}
+		if workspace.UnpushedAt(w, heads[w.Path]) != 0 {
+			unpushed = append(unpushed, filepath.Base(w.Path))
+		}
+	}
+	if len(unpushed) > 0 {
+		return fmt.Errorf("not closed: commits not pushed in %s; push them, or close without remove", strings.Join(unpushed, ", "))
+	}
 	c.heads = heads
-	c.merged = len(c.wts) > 0 && len(merged) == len(c.wts)
+	c.merged = len(c.wts) > 0 && merged == len(c.wts)
 	return nil
 }
+
+// afterHeads, when set, is called by Look once it has the heads: for a
+// test to commit then. mergedHeads is mergedBranchHeads, for a test to
+// stand in for GitHub.
+var (
+	afterHeads  func()
+	mergedHeads = mergedBranchHeads
+)
 
 // APIClose closes the tab c began closing, if it is there still with the
 // worktrees it was looked at with. The Cmd stops its programs and deletes

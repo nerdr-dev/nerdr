@@ -279,3 +279,67 @@ func TestAPICloseTabKeepsACommitMadeAfterTheLook(t *testing.T) {
 		t.Fatalf("worktree at %s, want the late commit %s", got, late)
 	}
 }
+
+// TestAPICloseTabKeepsACommitMadeDuringTheLook: a commit made while Look
+// checks the heads it read, on a detached HEAD or on the branch, keeps
+// the worktree and the branch, even when GitHub says the new head is
+// merged: what Look checked is the commit it read.
+func TestAPICloseTabKeepsACommitMadeDuringTheLook(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	for _, detach := range []bool{true, false} {
+		m := paneCore(t)
+		root := t.TempDir()
+		repo := gitRepo(t, root, "web")
+		bare := filepath.Join(root, "web.git")
+		gitIn(t, root, "clone", "-q", "--bare", repo.Path, bare)
+		gitIn(t, repo.Path, "remote", "add", "origin", bare)
+		gitIn(t, repo.Path, "fetch", "-q", "origin")
+		plan, err := workspace.MakePlan(filepath.Join(root, "worktrees"), "fix-login", []workspace.Repo{repo})
+		if err != nil {
+			t.Fatal(err)
+		}
+		wts, err := plan.Execute()
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.Tabs[0].Dir, m.Tabs[0].Worktrees = plan.Dir, wts
+		wt := wts[0].Path
+		if detach {
+			gitIn(t, wt, "checkout", "-q", "--detach")
+		}
+		var late string
+		afterHeads = func() {
+			gitIn(t, wt, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "late")
+			late = gitIn(t, wt, "rev-parse", "HEAD")
+		}
+		mergedHeads = func(wts []workspace.Worktree) map[string]string {
+			return map[string]string{wt: workspace.Head(wts[0])} // the late commit
+		}
+		c, err := m.APIStartClose("t1", true)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = c.Look()
+		afterHeads, mergedHeads = nil, mergedBranchHeads
+		if err != nil {
+			t.Fatalf("detached %v: %v", detach, err)
+		}
+		cmd, err := m.APIClose(c)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ev, ok := cmd().(TabClosedMsg); !ok || !strings.Contains(ev.Err, "kept the worktree") {
+			t.Fatalf("detached %v: event %+v", detach, ev)
+		}
+		if got := gitIn(t, wt, "rev-parse", "HEAD"); got != late {
+			t.Fatalf("detached %v: worktree at %s, want the late commit %s", detach, got, late)
+		}
+		if !detach {
+			if got := gitIn(t, repo.Path, "rev-parse", "fix-login"); got != late {
+				t.Fatalf("branch at %s, want the late commit %s", got, late)
+			}
+		}
+	}
+}
