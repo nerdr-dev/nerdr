@@ -340,6 +340,9 @@ func Resume(fd int) error {
 	h.tellWatch()
 	h.mu.Unlock()
 	h.keepWatch()
+	// The exec put the signals back as they were: a hangup would end the
+	// holder at once, its programs unstopped.
+	h.onHangup()
 	return h.keepCoreUp(st.CoreArgv, first)
 }
 

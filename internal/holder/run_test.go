@@ -65,6 +65,8 @@ func playRole(role string, args []string) int {
 		return coreCannotStart()
 	case "core-hangup":
 		return coreWaitsForAHangup()
+	case "core-upgrade-hangup":
+		return coreUpgradesThenHangsUp()
 	case "core-orphans":
 		return coreLeavesPrograms()
 	case "agent":
@@ -225,6 +227,31 @@ func coreWaitsForAHangup() int {
 		return 1
 	}
 	signal.Ignore(syscall.SIGHUP)
+	p, err := cl.SpawnAs("keep", spawn.Spec{Argv: []string{"sleep", "60"}}, Mark{}, 0)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	fmt.Printf("program %d\n", p.Pid())
+	os.Stdout.Close()
+	syscall.Kill(os.Getppid(), syscall.SIGHUP)
+	time.Sleep(time.Minute)
+	return 0
+}
+
+// coreUpgradesThenHangsUp is coreWaitsForAHangup with the holder
+// upgraded first, so the hangup goes to the holder Resume runs.
+func coreUpgradesThenHangsUp() int {
+	cl, err := FromEnv()
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	signal.Ignore(syscall.SIGHUP)
+	if err := cl.Upgrade(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
 	p, err := cl.SpawnAs("keep", spawn.Spec{Argv: []string{"sleep", "60"}}, Mark{}, 0)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -468,6 +495,32 @@ func TestAHangupEndsTheHolder(t *testing.T) {
 	out, err := cmd.Output()
 	if err != nil {
 		t.Fatalf("holder: %v\n%s", err, out)
+	}
+	var pid int
+	if _, err := fmt.Sscanf(string(out), "program %d", &pid); err != nil {
+		t.Fatalf("holder said %q", out)
+	}
+	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
+		t.Errorf("program %d left running: %v", pid, err)
+	}
+}
+
+// An upgraded holder still stops its programs and ends on a hangup,
+// rather than die of it.
+func TestAHangupEndsAnUpgradedHolder(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, self(), roleArg, "holder", "core-upgrade-hangup")
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Env = append(os.Environ(), "TEST_HANGUP_GRACE=1")
+	var stderr strings.Builder
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("holder: %v\n%s\n%s", err, out, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "the programs are stopped") {
+		t.Errorf("the holder never said it would stop the programs:\n%s", stderr.String())
 	}
 	var pid int
 	if _, err := fmt.Sscanf(string(out), "program %d", &pid); err != nil {

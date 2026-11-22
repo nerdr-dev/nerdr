@@ -40,12 +40,15 @@ type Server struct {
 	keyf string
 	key  string
 
-	closed sync.Once
+	once sync.Once
 
 	mu  sync.Mutex
 	cur *Conn
 	all map[net.Conn]bool
-	wg  sync.WaitGroup
+	// closed is set as Close begins: a connection accepted after it is
+	// closed at once, as Close may already have closed all it knew of.
+	closed bool
+	wg     sync.WaitGroup
 }
 
 // Listen opens the client socket at sock, with a new key in keyFile. The
@@ -106,11 +109,12 @@ func (s *Server) Current() *Conn {
 // Close stops listening and says bye to the client, for reason, and
 // removes the socket and the key. Only the first call does: once the lock
 // is let go, the socket may be another core's.
-func (s *Server) Close(reason string) { s.closed.Do(func() { s.close(reason) }) }
+func (s *Server) Close(reason string) { s.once.Do(func() { s.close(reason) }) }
 
 func (s *Server) close(reason string) {
 	_ = s.ln.Close()
 	s.mu.Lock()
+	s.closed = true
 	cur := s.cur
 	s.cur = nil
 	for c := range s.all {
@@ -141,9 +145,14 @@ func (s *Server) accept() {
 			return
 		}
 		s.mu.Lock()
+		if s.closed {
+			s.mu.Unlock()
+			_ = c.Close()
+			return
+		}
 		s.all[c] = true
-		s.mu.Unlock()
 		s.wg.Add(1)
+		s.mu.Unlock()
 		go func() {
 			defer s.wg.Done()
 			s.serve(c)
@@ -195,6 +204,12 @@ func (s *Server) serve(c net.Conn) {
 	cn := newConn(c)
 	cn.version = h.Version
 	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		cn.shut()
+		forget()
+		return
+	}
 	old := s.cur
 	s.cur = cn
 	s.mu.Unlock()

@@ -187,6 +187,11 @@ func TestCopyRefusesBadRows(t *testing.T) {
 	for _, msg := range []ScreenMsg{
 		{W: 0, H: 3},
 		{W: 1 << 20, H: 1 << 20},
+		// Sizes whose product wraps round to 0, and below it.
+		{W: 1 << 32, H: 1 << 32},
+		{W: 3037000500, H: 3037000500},
+		{W: 10, H: 3, Full: true, Rows: []WireRow{{Y: 0, Runs: []WireRun{{C: []string{"a", "b"}, W: []int{-5, 1}}}}}},
+		{W: 10, H: 3, Full: true, Rows: []WireRow{{Y: 0, Runs: []WireRun{{C: []string{"a"}, W: []int{1 << 40}}}}}},
 		{W: 10, H: 3, Rows: []WireRow{{Y: 5}}},
 		{W: 11, H: 3},
 		{W: 10, H: 3, Full: true, Rows: []WireRow{{Y: 0, Runs: []WireRun{{T: strings.Repeat("x", 11)}}}}},
@@ -198,6 +203,16 @@ func TestCopyRefusesBadRows(t *testing.T) {
 			t.Errorf("%+v taken", msg)
 		}
 		_ = Draw(c.Frame(0), true, nil)
+	}
+}
+
+// TestDrawNegativeWidth covers a cell whose width is below 0, which a
+// frame should never have: it is drawn as one cell wide, not walked back
+// off the start of the row.
+func TestDrawNegativeWidth(t *testing.T) {
+	f := Frame{W: 3, H: 1, Rows: [][]Cell{{{Text: "a", Width: -3}, {Text: "b", Width: 1}, {Text: "c", Width: 1}}}}
+	if got := Draw(f, false, nil); len(got) != 1 || got[0] != "abc" {
+		t.Fatalf("drawn %q", got)
 	}
 }
 

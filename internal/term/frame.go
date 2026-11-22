@@ -175,7 +175,8 @@ func Draw(f Frame, cursor bool, sel *Selection) []string {
 				prev, styled = *st, !st.IsZero()
 			}
 			b.WriteString(c.Text)
-			x += c.Width - 1
+			// A width below 0 is not one; it must not take x back.
+			x += max(c.Width, 1) - 1
 		}
 		if styled {
 			b.WriteString(ansi.ResetStyle)

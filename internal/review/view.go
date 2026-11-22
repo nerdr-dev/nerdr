@@ -372,7 +372,7 @@ func renderScrollList(items []string, cursor, viewTop, width, height int, active
 	if height < 3 {
 		height = 3
 	}
-	innerW := width - 2
+	innerW := max(width-2, 0)
 	innerH := height - 3 - hintRows - headerRows(header)
 	if innerH < 1 {
 		innerH = 1
@@ -706,7 +706,7 @@ func renderPane(items []string, idx, width, height int, active bool, title, hint
 	if height < 3 {
 		height = 3
 	}
-	innerW := width - 2
+	innerW := max(width-2, 0)
 	innerH := height - 3 - hintRows // title row + top/bottom border + hints
 	if innerH < 1 {
 		innerH = 1
@@ -763,7 +763,7 @@ func renderDiff(lines []diffLine, cursor, viewTop, width, height int, active boo
 	if height < 3 {
 		height = 3
 	}
-	innerW := width - 2
+	innerW := max(width-2, 0)
 	innerH := height - 3 - hintRows
 	if innerH < 1 {
 		innerH = 1

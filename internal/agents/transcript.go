@@ -2,6 +2,7 @@ package agents
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -82,7 +83,11 @@ const (
 
 func render(k Kind, turns []turn) string {
 	var parts []string
+	first := -1 // in parts, the first thing the user asked
 	for _, t := range turns {
+		if t.who == "user" && first < 0 {
+			first = len(parts)
+		}
 		switch t.who {
 		case "tool":
 			parts = append(parts, "  → "+clip(oneLine(t.text), maxTool))
@@ -99,13 +104,7 @@ func render(k Kind, turns []turn) string {
 		size += len(p) + 2
 	}
 	if size > maxTranscript && len(parts) > 1 {
-		first := 0
-		for i, t := range turns {
-			if t.who == "user" {
-				first = i
-				break
-			}
-		}
+		first = max(first, 0)
 		keep := []string{parts[first], "[… the conversation up to here is left out: it is long, and its end is where the work stands …]"}
 		var tail []string
 		room := maxTranscript - len(head) - len(keep[0]) - len(keep[1])
@@ -380,9 +379,7 @@ func openCodeTurns(s Spec, sessionID, dir string) ([]turn, error) {
 	if len(s.Command) == 0 {
 		return nil, errors.New("no command for opencode")
 	}
-	cmd := proc.Detach(exec.Command(s.Command[0], append(s.Command[1:], "session", "export", sessionID)...))
-	cmd.Dir = dir
-	out, err := runFor(cmd, 30*time.Second)
+	out, err := runFor(30*time.Second, dir, s.Command[0], append(s.Command[1:], "session", "export", sessionID)...)
 	if err != nil {
 		return nil, fmt.Errorf("opencode session export %s: %v", sessionID, err)
 	}
@@ -402,24 +399,19 @@ func openCodeTurns(s Spec, sessionID, dir string) ([]turn, error) {
 	return turns, nil
 }
 
-// runFor runs cmd for at most d, and returns what it wrote.
-func runFor(cmd *exec.Cmd, d time.Duration) ([]byte, error) {
-	done := make(chan struct{})
-	var out []byte
-	var err error
-	go func() {
-		out, err = proc.Output(cmd)
-		close(done)
-	}()
-	select {
-	case <-done:
-		return out, err
-	case <-time.After(d):
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
+// runFor runs name with args in dir for at most d, and returns what it
+// wrote. Past d its whole session is killed (see proc.Detach): the
+// context does it, so nothing reads cmd.Process while Output starts it.
+func runFor(d time.Duration, dir, name string, args ...string) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), d)
+	defer cancel()
+	cmd := proc.Detach(exec.CommandContext(ctx, name, args...))
+	cmd.Dir = dir
+	out, err := proc.Output(cmd)
+	if ctx.Err() != nil {
 		return nil, errors.New("took too long")
 	}
+	return out, err
 }
 
 // parseOpenCodeExport reads `opencode session export`, in the shape it

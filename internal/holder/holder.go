@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"sync"
 	"syscall"
 	"time"
@@ -25,6 +26,10 @@ type Holder struct {
 	// shut is closed once a shutdown op has the holder stop.
 	shut     chan struct{}
 	shutOnce sync.Once
+	// stopping is set once a shutdown begins: from then on no program is
+	// spawned and the holder is not upgraded, so none starts that the
+	// shutdown does not stop.
+	stopping bool
 	// paused stops what moves bytes, for an upgrade; pausing is closed
 	// then, for those waiting to see.
 	paused  bool
@@ -106,6 +111,9 @@ func New() *Holder {
 
 // ErrShutdown is what Serve returns after a shutdown op.
 var ErrShutdown = errors.New("holder: shut down")
+
+// errStopping refuses what would start anew once a shutdown has begun.
+var errStopping = errors.New("holder: shutting down")
 
 // Serve serves the core at the other end of c until it goes, and closes
 // c. Only one core is served at a time: a new one waits for the last.
@@ -250,8 +258,12 @@ func (h *Holder) handle(s *sender, gone chan struct{}, m *Msg, body []byte, file
 		return ErrShutdown
 	case OpUpgrade:
 		h.mu.Lock()
-		up := h.upgrade
+		up, stopping := h.upgrade, h.stopping
 		h.mu.Unlock()
+		if stopping {
+			answer(s, m, nil, nil, errStopping)
+			return nil
+		}
 		if up == nil {
 			answer(s, m, nil, nil, fmt.Errorf("holder: cannot upgrade here"))
 			return nil
@@ -287,7 +299,11 @@ func (h *Holder) spawn(m *Msg, stdin []byte, files []*os.File) (int, error) {
 	}
 	h.mu.Lock()
 	_, dup := h.progs[m.ID]
+	stopping := h.stopping
 	h.mu.Unlock()
+	if stopping {
+		return 0, errStopping
+	}
 	if dup {
 		return 0, fmt.Errorf("holder: program %q is there already", m.ID)
 	}
@@ -304,6 +320,17 @@ func (h *Holder) spawn(m *Msg, stdin []byte, files []*os.File) (int, error) {
 		ring: newRing(s.Ring), changed: make(chan struct{}), ckPos: -1,
 	}
 	h.mu.Lock()
+	if h.stopping {
+		// A shutdown began while it started, and would not stop it.
+		h.mu.Unlock()
+		_ = syscall.Kill(-p.pid, syscall.SIGKILL)
+		p.out.Close()
+		if p.in != nil {
+			p.in.Close()
+		}
+		reap(p.pid)
+		return 0, errStopping
+	}
 	h.progs[p.id] = p
 	h.order = append(h.order, p.id)
 	h.run(p)
@@ -726,10 +753,14 @@ func (h *Holder) list(id string) ([]Prog, error) {
 	return progs, nil
 }
 
+// killWait is how long a shutdown waits for what it killed to exit.
+var killWait = 5 * time.Second
+
 // shutdown hangs up every program, its foreground too, kills what is
 // left after grace, and reaps them all.
 func (h *Holder) shutdown(grace time.Duration) {
 	h.mu.Lock()
+	h.stopping = true
 	var running []*prog
 	for _, id := range h.order {
 		p := h.progs[id]
@@ -771,15 +802,20 @@ func (h *Holder) shutdown(grace time.Duration) {
 		}
 	}
 	h.mu.Unlock()
-	deadline = time.Now().Add(5 * time.Second)
+	deadline = time.Now().Add(killWait)
 	for time.Now().Before(deadline) && len(left()) > 0 {
 		time.Sleep(10 * time.Millisecond)
 	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
+	var alive []string
 	for _, id := range h.order {
 		p := h.progs[id]
-		if p.exited && !p.reaped {
+		if !p.exited {
+			// Not dead even after SIGKILL, so kept, and watched: its
+			// exit, when it comes, forgets it.
+			alive = append(alive, id)
+		} else if !p.reaped {
 			reap(p.pid)
 			p.reaped = true
 		}
@@ -794,9 +830,14 @@ func (h *Holder) shutdown(grace time.Duration) {
 			p.in = nil
 		}
 	}
-	h.progs, h.order = map[string]*prog{}, nil
-	// None left: the watch kills nothing as the holder ends, not a group
-	// whose id another has since.
+	for _, id := range h.order {
+		if !slices.Contains(alive, id) {
+			delete(h.progs, id)
+		}
+	}
+	h.order = alive
+	// Only those still alive left: the watch kills nothing else as the
+	// holder ends, not a group whose id another has since.
 	h.tellWatch()
 }
 

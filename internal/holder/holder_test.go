@@ -537,3 +537,90 @@ func TestCloseAnswersWritesStillQueued(t *testing.T) {
 		t.Fatalf("the holder is gone: %v", err)
 	}
 }
+
+// Once a shutdown begins, nothing starts that it would not stop: a spawn
+// and an upgrade asked for while it waits on a program are refused.
+func TestNothingStartsOnceAShutdownBegins(t *testing.T) {
+	h, cl := serve(t)
+	shutdown(t, h)
+	upgraded := make(chan struct{}, 1)
+	h.mu.Lock()
+	h.upgrade = func(uint64) error { upgraded <- struct{}{}; return nil }
+	h.mu.Unlock()
+	p, err := cl.Spawn(spawn.Spec{Argv: []string{"sh", "-c", "trap '' HUP; echo up; sleep 60"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	readUntil(t, p, "up")
+	done := make(chan struct{})
+	go func() { h.shutdown(time.Second); close(done) }()
+	within(t, 5*time.Second, "the shutdown beginning", func() {
+		for {
+			h.mu.Lock()
+			stopping := h.stopping
+			h.mu.Unlock()
+			if stopping {
+				return
+			}
+			time.Sleep(time.Millisecond)
+		}
+	})
+	q, err := cl.Spawn(spawn.Spec{Argv: []string{"sleep", "60"}})
+	if err == nil {
+		syscall.Kill(-q.Pid(), syscall.SIGKILL)
+		t.Error("spawned while shutting down")
+	} else if !strings.Contains(err.Error(), "shutting down") {
+		t.Errorf("Spawn = %v", err)
+	}
+	if err := cl.Upgrade(); err == nil || !strings.Contains(err.Error(), "shutting down") {
+		t.Errorf("Upgrade = %v", err)
+	}
+	select {
+	case <-upgraded:
+		t.Error("upgraded while shutting down")
+	default:
+	}
+	within(t, 10*time.Second, "the shutdown", func() { <-done })
+	if err := syscall.Kill(p.Pid(), 0); err != syscall.ESRCH {
+		t.Errorf("%d is still there: %v", p.Pid(), err)
+	}
+}
+
+// A program a shutdown could not see exit, even killed, is kept and
+// watched rather than forgotten, so the watch still has its group.
+func TestShutdownKeepsWhatItCouldNotSeeExit(t *testing.T) {
+	defer func(w time.Duration) { killWait = w }(killWait)
+	killWait = 50 * time.Millisecond
+	h := New()
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer r.Close()
+	gone, gw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	gone.Close()
+	gw.Close()
+	// A pid no process has: no signal reaches it, and no exit comes.
+	p := &prog{id: "stuck", pid: 1 << 30, out: w, ring: newRing(0), changed: make(chan struct{}), groups: map[int]bool{}}
+	q := &prog{id: "dead", pid: 1<<30 + 1, out: gone, ring: newRing(0), changed: make(chan struct{}),
+		exited: true, reaped: true, done: true, pgGone: true, groups: map[int]bool{}}
+	h.mu.Lock()
+	for _, x := range []*prog{p, q} {
+		h.progs[x.id] = x
+		h.order = append(h.order, x.id)
+		x.wake = make(chan struct{}, 1)
+	}
+	h.mu.Unlock()
+	h.shutdown(10 * time.Millisecond)
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	if h.progs["stuck"] != p || len(h.order) != 1 || h.order[0] != "stuck" {
+		t.Errorf("kept %v, in order %v", h.progs, h.order)
+	}
+	if !p.done {
+		t.Error("the program kept is not closed")
+	}
+}

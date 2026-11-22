@@ -3,8 +3,12 @@ package agents
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
+	"syscall"
 	"testing"
+	"time"
 )
 
 func writeFile(t *testing.T, path, text string) {
@@ -266,4 +270,76 @@ func TestGeminiTranscript(t *testing.T) {
 	if _, err := Transcript(nil, Gemini, "a1b2c3d4-0000-4000-8000-000000000000", "/other"); err == nil {
 		t.Fatal("accepted gemini session from unknown worktree")
 	}
+}
+
+// TestRunForKillsWhatOutlivesItsTime: a command that takes too long has
+// its whole session killed, what it started too, and runFor returns soon
+// after its time, with nothing racing on cmd.Process; opencode's session
+// list, run with it, then finds none.
+func TestRunForKillsWhatOutlivesItsTime(t *testing.T) {
+	dir := t.TempDir()
+	pidFile := filepath.Join(dir, "child")
+	bin := filepath.Join(dir, "slow")
+	writeFile(t, bin, "#!/bin/sh\nsleep 30 &\necho $! > '"+pidFile+"'\nsleep 30\n")
+	_ = os.Chmod(bin, 0o755)
+
+	start := time.Now()
+	out, err := runFor(200*time.Millisecond, dir, bin)
+	if err == nil || out != nil {
+		t.Fatalf("runFor = %q, %v past its time", out, err)
+	}
+	if took := time.Since(start); took > 10*time.Second {
+		t.Fatalf("runFor took %v to give up", took)
+	}
+	data, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for syscall.Kill(pid, 0) == nil {
+		if time.Now().After(deadline) {
+			_ = syscall.Kill(pid, syscall.SIGKILL)
+			t.Fatal("what the command started outlived it")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	old := openCodeListTime
+	openCodeListTime = 200 * time.Millisecond
+	t.Cleanup(func() { openCodeListTime = old })
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Go(func() {
+			if got := openCodeSessions(Spec{Command: []string{bin}}, dir); got != nil {
+				t.Errorf("sessions %v from an opencode that took too long", got)
+			}
+		})
+	}
+	wg.Wait()
+}
+
+// A long conversation with slash commands before the first question keeps
+// that question, not what came after it: commands are not told, so the
+// question's place among what is told is not its place among the turns.
+func TestLongTranscriptAfterCommandsKeepsTheFirstQuestion(t *testing.T) {
+	var turns []turn
+	for range 50 {
+		turns = append(turns, turn{"command", "/clear"})
+	}
+	turns = append(turns, turn{"claude", "HELLO"}, turn{"user", "THE FIRST QUESTION"})
+	for range 400 {
+		turns = append(turns, turn{"claude", strings.Repeat("x", 2000)})
+	}
+	turns = append(turns, turn{"claude", "THE LAST ANSWER"})
+	got := render(Claude, turns)
+	wantInOrder(t, got, []string{"## user\n\nTHE FIRST QUESTION", "is left out", "THE LAST ANSWER"}, []string{"HELLO"})
+
+	// Only commands and one told turn, past the limit: nothing to index
+	// past.
+	turns = []turn{{"command", "/a"}, {"command", "/b"}, {"claude", strings.Repeat("x", 2*maxTranscript)}, {"claude", "END"}}
+	_ = render(Claude, turns)
 }

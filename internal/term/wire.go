@@ -381,6 +381,10 @@ func (w WireStyle) style() (uv.Style, error) {
 // cannot have a client make room for more.
 const maxWireCells = 1 << 22
 
+// maxCellWidth is the widest a cell sent may be: a wide character takes
+// two.
+const maxCellWidth = 2
+
 // RowsMsg is lines of a screen, as Rows gives them, as they are sent: Y of
 // each row is its place after First.
 type RowsMsg struct {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // Searching the agents' conversations: the logs claude and codex keep of
@@ -250,11 +251,13 @@ type Hit struct {
 // Snippet is the part of what was said at h that has the first of words
 // in it, on one line, about w long.
 func (h Hit) Snippet(words []string, w int) string {
+	if w <= 0 {
+		return ""
+	}
 	text := oneLine(h.Conv.Said[h.At].Text)
-	lower := strings.ToLower(text)
 	at := 0
 	if len(words) > 0 {
-		at = max(strings.Index(lower, words[0]), 0)
+		at = max(foldedIndex(text, words[0]), 0)
 	}
 	start := max(at-w/3, 0)
 	for start > 0 && !utf8Start(text[start]) {
@@ -272,6 +275,27 @@ func (h Hit) Snippet(words []string, w int) string {
 		out += "…"
 	}
 	return out
+}
+
+// foldedIndex is where in text word is, in lower case as Words has it,
+// or -1: the byte offset in text, not in its lower case, which can be
+// longer or shorter ('Ⱥ' takes 2 bytes, 'ⱥ' 3; 'K', the Kelvin sign, 3
+// and 'k' 1).
+func foldedIndex(text, word string) int {
+	var lower strings.Builder
+	var from []int // for each byte of lower, where its rune is in text
+	for i, r := range text {
+		n := lower.Len()
+		lower.WriteRune(unicode.ToLower(r))
+		for range lower.Len() - n {
+			from = append(from, i)
+		}
+	}
+	at := strings.Index(lower.String(), word)
+	if at < 0 {
+		return -1
+	}
+	return from[at]
 }
 
 // Words are the words of a search, in lower case.

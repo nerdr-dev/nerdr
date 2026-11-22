@@ -84,7 +84,8 @@ func blankRow(row []Cell, w int) []Cell {
 // Apply takes a message of the screen. One that does not fit what the
 // copy has is an error, and the copy is then to be sent every row again.
 func (c *Copy) Apply(msg *ScreenMsg) error {
-	if msg.W < 1 || msg.H < 1 || msg.W*msg.H > maxWireCells {
+	// Divided, as a product of two large sizes can wrap round.
+	if msg.W < 1 || msg.H < 1 || msg.W > maxWireCells/msg.H {
 		return fmt.Errorf("screen of %d×%d", msg.W, msg.H)
 	}
 	styles := make([]uv.Style, len(msg.Styles))
@@ -158,6 +159,10 @@ func setRow(row []Cell, runs []WireRun, styles []uv.Style) error {
 				w := 1
 				if i < len(r.W) {
 					w = r.W[i]
+				}
+				if w < 0 || w > maxCellWidth {
+					err = fmt.Errorf("cell %d wide", w)
+					w = 1
 				}
 				row[x] = Cell{Text: t, Width: w, Style: st}
 				x++

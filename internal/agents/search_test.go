@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 )
 
 // TestSearchConversations: the conversations had under the roots are
@@ -83,5 +84,29 @@ func TestSearchConversations(t *testing.T) {
 	x.Update([]string{root})
 	if x.Len() != 3 {
 		t.Fatal("a changed log was not read again")
+	}
+}
+
+// A snippet is cut at a place in what was said, not in its lower case,
+// which can be shorter or longer, and is empty with no room.
+func TestSnippetOfTextWhoseLowerCaseIsAnotherLength(t *testing.T) {
+	for _, text := range []string{
+		strings.Repeat("İ", 40) + " the parser " + strings.Repeat("İ", 40),
+		strings.Repeat("Ⱥ", 40) + " the parser " + strings.Repeat("Ⱥ", 40),
+		strings.Repeat("K", 40) + " the parser " + strings.Repeat("K", 40),
+	} {
+		h := Hit{Conv: &Conversation{Said: []Said{{Text: text}}}}
+		for _, w := range []int{-5, 0, 1, 2, 10, 40, 1000} {
+			s := h.Snippet(Words("PARSER"), w)
+			if w <= 0 && s != "" {
+				t.Fatalf("snippet %q %d wide", s, w)
+			}
+			if !utf8.ValidString(s) {
+				t.Fatalf("snippet %q is not UTF-8", s)
+			}
+			if w >= 10 && !strings.Contains(s, "parser") {
+				t.Fatalf("snippet %q, %d wide, has not the word", s, w)
+			}
+		}
 	}
 }
