@@ -16,6 +16,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 	"github.com/nerdr-dev/nerdr/internal/why"
 )
@@ -128,8 +129,14 @@ func (Local) Summary(wt string) (files, add, del int) {
 
 func (Local) Stamps(wt string, paths []string) map[string]string {
 	out := make(map[string]string, len(paths))
+	// Of the files in the worktree, not of what a link in it points at.
+	root, err := os.OpenRoot(wt)
+	if err != nil {
+		return out
+	}
+	defer root.Close()
 	for _, p := range paths {
-		if fi, err := os.Stat(filepath.Join(wt, filepath.FromSlash(p))); err == nil {
+		if fi, err := safefile.Lstat(root, filepath.FromSlash(p)); err == nil {
 			out[p] = fmt.Sprintf("%d/%d", fi.ModTime().UnixNano(), fi.Size())
 		}
 	}

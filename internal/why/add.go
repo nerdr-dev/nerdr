@@ -2,13 +2,16 @@ package why
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/safefile"
 	"github.com/nerdr-dev/nerdr/internal/store"
 )
+
+// maxSource is the largest file a note is put on.
+const maxSource = 16 << 20
 
 // Add checks a note against the code and appends it to the repository's
 // notes file. dir is where the writer stands — any directory inside the
@@ -53,7 +56,8 @@ func Add(dir string, note Note) (Note, int, error) {
 		return note, 0, err
 	}
 	note.File = rel
-	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	// Not through a link the worktree has: a note is on the file in it.
+	src, err := safefile.ReadUnder(root, filepath.FromSlash(rel), maxSource)
 	if err != nil {
 		return note, 0, fmt.Errorf("cannot read %s: %v", rel, err)
 	}

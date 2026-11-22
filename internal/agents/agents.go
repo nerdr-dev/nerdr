@@ -5,6 +5,7 @@ package agents
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"crypto/md5"
 	"crypto/rand"
@@ -12,6 +13,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -785,10 +787,39 @@ func modTime(path string) time.Time {
 	return st.ModTime()
 }
 
-// fileHas reports whether the file at path has s in it.
+// fileHas reports whether the file at path has s in it, reading it a
+// piece at a time rather than whole: a log can be large.
 func fileHas(path, s string) bool {
-	data, err := os.ReadFile(path)
-	return err == nil && strings.Contains(string(data), s)
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+	return readerHas(f, s, 64<<10)
+}
+
+// readerHas reports whether r has s in it, reading size bytes at a time
+// and keeping the tail of each piece, so s is found across two.
+func readerHas(r io.Reader, s string, size int) bool {
+	if s == "" {
+		return true
+	}
+	keep := len(s) - 1
+	buf := make([]byte, keep+max(size, len(s)))
+	n := 0
+	for {
+		m, err := r.Read(buf[n:])
+		n += m
+		if bytes.Contains(buf[:n], []byte(s)) {
+			return true
+		}
+		if err != nil {
+			return false
+		}
+		if n > keep {
+			n = copy(buf, buf[n-keep:n])
+		}
+	}
 }
 
 // copilotSaid reports whether anything was said in Copilot CLI's session
@@ -814,6 +845,8 @@ func latestCopilotSession(dir string, skip map[string]bool) string {
 	if err != nil {
 		return ""
 	}
+	// Newest first, by when its workspace was last written, so the
+	// content of only as many sessions is read as it takes to find one.
 	type cand struct {
 		id string
 		at time.Time
@@ -823,28 +856,32 @@ func latestCopilotSession(dir string, skip map[string]bool) string {
 		if !e.IsDir() || skip[e.Name()] {
 			continue
 		}
-		ws := filepath.Join(root, e.Name(), "workspace.yaml")
-		data, err := os.ReadFile(ws)
-		if err != nil {
-			continue
-		}
-		for _, line := range strings.Split(string(data), "\n") {
-			v, ok := strings.CutPrefix(strings.TrimSpace(line), "cwd:")
-			if !ok {
-				continue
-			}
-			v = strings.Trim(strings.TrimSpace(v), `"'`)
-			if st, err := os.Stat(ws); err == nil && samePath(v, dir) && copilotSaid(e.Name()) {
-				cands = append(cands, cand{e.Name(), st.ModTime()})
-			}
-			break
+		if st, err := os.Stat(filepath.Join(root, e.Name(), "workspace.yaml")); err == nil {
+			cands = append(cands, cand{e.Name(), st.ModTime()})
 		}
 	}
-	if len(cands) == 0 {
-		return ""
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].at.After(cands[j].at) })
+	for _, c := range cands {
+		if copilotCwdIs(filepath.Join(root, c.id, "workspace.yaml"), dir) && copilotSaid(c.id) {
+			return c.id
+		}
 	}
-	sort.Slice(cands, func(i, j int) bool { return cands[i].at.After(cands[j].at) })
-	return cands[0].id
+	return ""
+}
+
+// copilotCwdIs reports whether the Copilot CLI workspace file at ws has
+// dir for its working directory.
+func copilotCwdIs(ws, dir string) bool {
+	data, err := os.ReadFile(ws)
+	if err != nil {
+		return false
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "cwd:"); ok {
+			return samePath(strings.Trim(strings.TrimSpace(v), `"'`), dir)
+		}
+	}
+	return false
 }
 
 // cursorChats is where cursor-agent keeps the chats started in dir: a

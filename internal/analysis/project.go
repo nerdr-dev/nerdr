@@ -1,6 +1,7 @@
 package analysis
 
 import (
+	"cmp"
 	"encoding/json"
 	"io"
 	"maps"
@@ -70,6 +71,11 @@ func (p *Project) readSource(file string) ([]byte, error) {
 		return nil, err
 	}
 	defer r.Close()
+	return readSourceIn(r, file)
+}
+
+// readSourceIn is readSource with the root already open.
+func readSourceIn(r *os.Root, file string) ([]byte, error) {
 	return safefile.ReadRegularLimit(r, filepath.FromSlash(file), maxSourceBytes)
 }
 
@@ -186,6 +192,15 @@ func (p *Project) loadTsconfig() {
 			Base:   filepath.ToSlash(filepath.Join(base, dir)),
 		})
 	}
+	// paths is a JSON object, read in no order: the longest prefix is
+	// tried first, as TypeScript does, and equal ones by name, so the same
+	// tsconfig always resolves an import the same way.
+	slices.SortFunc(p.Aliases, func(a, b Alias) int {
+		if c := cmp.Compare(len(b.Prefix), len(a.Prefix)); c != 0 {
+			return c
+		}
+		return cmp.Or(cmp.Compare(a.Prefix, b.Prefix), cmp.Compare(a.Base, b.Base))
+	})
 }
 
 // aliasPrefix extracts the literal prefix from a tsconfig paths pattern such

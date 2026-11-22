@@ -60,6 +60,7 @@ func NewEmbedded(src Source) Model {
 		expanded:  map[string]bool{},
 		showOrder: true,
 		recent:    map[string]int{},
+		rows:      &rowCache{},
 		spinner:   spinner.New(spinner.WithSpinner(spinner.MiniDot)),
 	}
 	m.filterInput = textinput.New()

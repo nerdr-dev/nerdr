@@ -163,6 +163,16 @@ func CheckNoLinks(root *os.Root, rel string) error {
 	return nil
 }
 
+// Lstat is root.Lstat of rel after verifying that no parent component of
+// rel is a symbolic link: what it describes is in root, not where a link
+// in a worktree points.
+func Lstat(root *os.Root, rel string) (os.FileInfo, error) {
+	if err := CheckNoLinks(root, rel); err != nil {
+		return nil, err
+	}
+	return root.Lstat(rel)
+}
+
 // ReadRegular reads rel inside root after verifying that no parent
 // component is a symbolic link and the opened file descriptor is a regular
 // file of at most maxFileBytes. O_NONBLOCK prevents blocking if rel is

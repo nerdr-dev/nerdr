@@ -3,6 +3,7 @@ package review
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
@@ -286,13 +287,27 @@ func refAnnotationLines(name string, refs []analysis.Ref, partial bool) []diffLi
 	return out
 }
 
+// wordDiffMax is the longest line, in bytes, whose changed words are
+// marked: past it, a minified file's line, the character diff is slow
+// and the marks no help. The row tint still says the line changed.
+const wordDiffMax = 2048
+
+// wordDiffTimeout is how long the character diff of one pair of lines may
+// take. diffmatchpatch's own default is a second, a second per pair, and
+// a diff of many pairs then hangs the pane while it is read.
+const wordDiffTimeout = 50 * time.Millisecond
+
 func applyWordHighlight(lines []diffLine, removed, added []int) {
 	dmp := diffmatchpatch.New()
+	dmp.DiffTimeout = wordDiffTimeout
 	n := min(len(removed), len(added))
 	for i := 0; i < n; i++ {
 		rIdx, aIdx := removed[i], added[i]
 		rText := strings.TrimPrefix(lines[rIdx].text, "-")
 		aText := strings.TrimPrefix(lines[aIdx].text, "+")
+		if len(rText) > wordDiffMax || len(aText) > wordDiffMax {
+			continue
+		}
 		diffs := dmp.DiffCleanupSemantic(dmp.DiffMain(rText, aText, false))
 		if !worthWordHighlight(diffs, rText, aText) {
 			continue // the row tint alone says the line changed

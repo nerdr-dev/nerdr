@@ -176,7 +176,13 @@ func (c *contextList) rules(root string) {
 		if n >= maxContextRules {
 			return filepath.SkipAll
 		}
-		if !d.IsDir() && strings.HasSuffix(d.Name(), ".md") && c.file(ContextRules, path) {
+		// A link is passed over, as a folder that is one is not walked
+		// into: d is of the entry itself, and c.file would follow it.
+		if !d.Type().IsRegular() || !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		if st, err := d.Info(); err == nil && st.Mode().IsRegular() {
+			c.add(ContextItem{Group: ContextRules, Path: path, Size: st.Size()})
 			n++
 		}
 		return nil

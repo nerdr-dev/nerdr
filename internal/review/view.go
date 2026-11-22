@@ -59,24 +59,6 @@ func (m Model) View() string {
 	if m.refreshing {
 		filesTitle = m.spinner.View() + " " + filesTitle
 	}
-	fileItems, fileIdx := m.treeItems(lay.files.w-2), m.cursor
-	if len(fileItems) == 0 {
-		fileItems, _ = m.emptyFiles()
-		fileIdx = -1
-	}
-	filesPane := renderPane(fileItems, fileIdx, lay.files.w, lay.files.h,
-		m.hasFocus(focusFiles), filesTitle, m.filesHint())
-	switch {
-	case m.hasRepoBar():
-		if m.onRepoBar && m.hasFocus(focusFiles) {
-			fileIdx = -1
-		}
-		filesPane = renderBarPane(fileItems, fileIdx, lay.files.w, lay.files.h,
-			m.hasFocus(focusFiles), filesTitle, m.repoBarView(lay.files.w-2), m.filesHint())
-	default:
-		filesPane = renderTitledPane(fileItems, fileIdx, lay.files.w, lay.files.h,
-			m.hasFocus(focusFiles), filesTitle, m.filesHint())
-	}
 
 	diffTitle := "diff"
 	if m.peek != nil {
@@ -100,11 +82,31 @@ func (m Model) View() string {
 	if m.diffSlow {
 		diffTitle = m.spinner.View() + " " + diffTitle
 	}
+	// Zoomed, only the one pane is drawn: the others are not built to be
+	// thrown away.
 	if m.zoomed {
 		return stack(append(m.menuPart(W), m.zoomedView(W, H, filesTitle, diffTitle))...)
 	}
 
-	diffPane := renderTitledDiff(m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h,
+	fileItems, fileIdx := m.treeItems(lay.files.w-2), m.cursor
+	if len(fileItems) == 0 {
+		fileItems, _ = m.emptyFiles()
+		fileIdx = -1
+	}
+	var filesPane string
+	switch {
+	case m.hasRepoBar():
+		if m.onRepoBar && m.hasFocus(focusFiles) {
+			fileIdx = -1
+		}
+		filesPane = renderBarPane(fileItems, fileIdx, lay.files.w, lay.files.h,
+			m.hasFocus(focusFiles), filesTitle, m.repoBarView(lay.files.w-2), m.filesHint())
+	default:
+		filesPane = renderTitledPane(fileItems, fileIdx, lay.files.w, lay.files.h,
+			m.hasFocus(focusFiles), filesTitle, m.filesHint())
+	}
+
+	diffPane := renderTitledDiff(m.rows, m.diffLines, m.diffCursor, m.diffViewTop, lay.diff.w, lay.diff.h,
 		m.hasFocus(focusDiff), diffTitle, m.diffHint(), m.diffSel)
 
 	var top string
@@ -140,7 +142,7 @@ func (m Model) zoomedView(W, H int, filesTitle, diffTitle string) string {
 	case focusFiles:
 		pane = renderPane(m.treeItems(W-2), m.cursor, W, body, true, filesTitle, m.filesHint())
 	default:
-		pane = renderDiff(m.diffLines, m.diffCursor, m.diffViewTop, W, body, true,
+		pane = renderDiff(m.rows, m.diffLines, m.diffCursor, m.diffViewTop, W, body, true,
 			diffTitle+"  [z: back]", m.diffHint(), m.diffSel)
 	}
 
@@ -353,8 +355,8 @@ func renderBarPane(items []string, idx, width, height int, active bool, title, b
 
 // renderTitledDiff is renderDiff with title in the top border and no
 // heading row, the way renderTitledPane draws the file list above it.
-func renderTitledDiff(lines []diffLine, cursor, viewTop, width, height int, active bool, title, hint string, sel lineSpan) string {
-	rows := strings.Split(renderDiff(lines, cursor, viewTop, width, height+1, active, title, hint, sel), "\n")
+func renderTitledDiff(c *rowCache, lines []diffLine, cursor, viewTop, width, height int, active bool, title, hint string, sel lineSpan) string {
+	rows := strings.Split(renderDiff(c, lines, cursor, viewTop, width, height+1, active, title, hint, sel), "\n")
 	if len(rows) < 2 || width < 9 {
 		return strings.Join(rows, "\n")
 	}
@@ -755,11 +757,12 @@ func renderPane(items []string, idx, width, height int, active bool, title, hint
 // lines is the already-built (annotated, syntax-highlighted) diff, computed
 // once by the model when the file/mode is loaded rather than on every
 // render frame — chroma tokenisation is too expensive to redo per keystroke.
+// c, when there is one, keeps how the lines wrap from one frame to the next.
 // cursor is the selected row; viewTop is the persisted first visible row
 // (see Model.setDiffCursor) — the cursor moves freely within that view and
 // only forces it to scroll once the cursor reaches an edge, rather than
 // the view jumping to re-centre on the cursor on every move.
-func renderDiff(lines []diffLine, cursor, viewTop, width, height int, active bool, title, hint string, sel lineSpan) string {
+func renderDiff(c *rowCache, lines []diffLine, cursor, viewTop, width, height int, active bool, title, hint string, sel lineSpan) string {
 	if height < 3 {
 		height = 3
 	}
@@ -780,7 +783,7 @@ func renderDiff(lines []diffLine, cursor, viewTop, width, height int, active boo
 	// start normally just is viewTop (kept in sync by setDiffCursor on
 	// every cursor move); this is a defensive fallback only, e.g. right
 	// after switching files before a sync has run.
-	v := newDiffView(lines, width, innerH)
+	v := newCachedDiffView(c, lines, width, innerH)
 	v.sel = sel
 	start := clamp(viewTop, 0, v.maxTop())
 	if cursor < v.lineAt(0, start) || cursor > v.last(start) {

@@ -85,6 +85,7 @@ type Model struct {
 	stamps      map[string]string
 	diff        string
 	diffLines   []diffLine
+	rows        *rowCache // how diffLines wrap, kept between frames; see rowCache
 	diffCursor  int
 	diffViewTop int // first visible row; persists so the cursor can move within the current view before it scrolls
 	diffMode    diffMode
@@ -810,7 +811,7 @@ func (m Model) diffPaneWidth() int {
 
 // diffView is the diff as the pane wraps it at its size now.
 func (m Model) diffView() diffView {
-	return newDiffView(m.diffLines, m.diffPaneWidth(), m.diffInnerHeight())
+	return newCachedDiffView(m.rows, m.diffLines, m.diffPaneWidth(), m.diffInnerHeight())
 }
 
 // diffInnerHeight returns the number of code rows actually visible in the

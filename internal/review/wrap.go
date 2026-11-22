@@ -2,7 +2,10 @@ package review
 
 import (
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
@@ -102,17 +105,84 @@ type diffView struct {
 	gutter int
 	innerH int
 	sel    lineSpan // the lines chosen with the mouse, drawn as chosen
+	first  []int    // the row each line starts on, and the rows in all last
 }
 
 func newDiffView(lines []diffLine, paneW, innerH int) diffView {
+	return newCachedDiffView(nil, lines, paneW, innerH)
+}
+
+// newCachedDiffView is newDiffView with the rows each line wraps to kept
+// in c, when there is one, for the next frame at the same width.
+func newCachedDiffView(c *rowCache, lines []diffLine, paneW, innerH int) diffView {
 	numWidth := 1
 	for _, dl := range lines {
-		if w := len(fmt.Sprint(dl.newLine)); dl.newLine > 0 && w > numWidth {
-			numWidth = w
+		if dl.newLine > 0 {
+			numWidth = max(numWidth, len(strconv.Itoa(dl.newLine)))
 		}
 	}
 	gutter := numWidth + 3 // mark + space + number + space
-	return diffView{lines: lines, textW: paneW - 2 - gutter, gutter: gutter, innerH: max(innerH, 1)}
+	v := diffView{lines: lines, textW: paneW - 2 - gutter, gutter: gutter, innerH: max(innerH, 1)}
+	v.first = c.starts(v)
+	return v
+}
+
+// rowCache keeps where each line of a diff starts when it is wrapped, so
+// the diff is wrapped once rather than over every line, several times,
+// in every frame: on a diff of thousands of long lines that is what made
+// each key and scroll stutter. It is good for as long as the lines' text
+// and the width are the same, which it checks for itself; comparing a
+// string with itself costs no reading of it.
+type rowCache struct {
+	mu    sync.Mutex
+	textW int
+	texts []string
+	kinds []byte
+	first []int
+}
+
+// starts is v's row starts, from c when it holds them for v's lines and
+// width. A nil c works them out every time.
+func (c *rowCache) starts(v diffView) []int {
+	if c == nil {
+		return v.countRows()
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.holds(v) {
+		return c.first
+	}
+	c.first = v.countRows()
+	c.textW = v.textW
+	c.texts = c.texts[:0]
+	c.kinds = c.kinds[:0]
+	for _, dl := range v.lines {
+		c.texts = append(c.texts, dl.text)
+		c.kinds = append(c.kinds, dl.kind)
+	}
+	return c.first
+}
+
+// holds is whether c's rows are of v's lines at v's width.
+func (c *rowCache) holds(v diffView) bool {
+	if c.first == nil || c.textW != v.textW || len(c.texts) != len(v.lines) {
+		return false
+	}
+	for i, dl := range v.lines {
+		if c.texts[i] != dl.text || c.kinds[i] != dl.kind {
+			return false
+		}
+	}
+	return true
+}
+
+// countRows is the row each of v's lines starts on, and the rows in all.
+func (v diffView) countRows() []int {
+	first := make([]int, len(v.lines)+1)
+	for i := range v.lines {
+		first[i+1] = first[i] + len(wrapStarts(diffPlain(v.lines[i]), v.bodyW(i)))
+	}
+	return first
 }
 
 // bodyW is how wide the text of line i is wrapped.
@@ -125,7 +195,7 @@ func (v diffView) bodyW(i int) int {
 
 // rows is how many rows line i takes.
 func (v diffView) rows(i int) int {
-	return len(wrapStarts(diffPlain(v.lines[i]), v.bodyW(i)))
+	return v.first[i+1] - v.first[i]
 }
 
 // fit moves the top screen row to show cursor's source line. A line
@@ -165,25 +235,16 @@ func (v diffView) last(top int) int {
 // row; -1 outside the diff.
 func (v diffView) lineAt(top, r int) int {
 	r += top
-	if r < 0 {
+	if r < 0 || r >= v.first[len(v.lines)] {
 		return -1
 	}
-	for i := range v.lines {
-		r -= v.rows(i)
-		if r < 0 {
-			return i
-		}
-	}
-	return -1
+	// The last line starting on or before r.
+	return sort.SearchInts(v.first[1:], r+1)
 }
 
 // rowOf is the row line i starts on, counting from the diff's start.
 func (v diffView) rowOf(i int) int {
-	n := 0
-	for j := 0; j < i && j < len(v.lines); j++ {
-		n += v.rows(j)
-	}
-	return n
+	return v.first[clamp(i, 0, len(v.lines))]
 }
 
 // render draws the rows from screen row top on, innerH of them, each
@@ -279,7 +340,11 @@ func diffRows(dl diffLine, w int) []string {
 			}
 			lead = signStyle.Render(sign)
 		}
-		row = lipgloss.NewStyle().MaxWidth(max(w, 0)).Render(row)
+		if w > 0 {
+			row = lipgloss.NewStyle().MaxWidth(w).Render(row)
+		} else {
+			row = "" // MaxWidth(0) is no limit at all, not none
+		}
 		rows[j] = lead + row + line.Render(strings.Repeat(" ", max(0, w-lipgloss.Width(row))))
 	}
 	return rows

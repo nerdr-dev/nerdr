@@ -110,3 +110,69 @@ func TestSnippetOfTextWhoseLowerCaseIsAnotherLength(t *testing.T) {
 		}
 	}
 }
+
+// A root given through a link finds the logs that say the folder with the
+// link resolved, as macOS's /var is /private/var; a log with nothing said
+// in it is read once, not again at every update while it is unchanged.
+func TestSearchThroughALinkAndReadsAnEmptyLogOnce(t *testing.T) {
+	home, codex := t.TempDir(), t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", home)
+	t.Setenv("CODEX_HOME", codex)
+	real := t.TempDir()
+	if r, err := filepath.EvalSymlinks(real); err == nil {
+		real = r
+	}
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(real, link); err != nil {
+		t.Fatal(err)
+	}
+	write := func(path, body string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(filepath.Join(claudeProject(real), "a.jsonl"), `{"type":"user","cwd":"`+real+`","message":{"content":"found through the link"}}`+"\n")
+	empty := filepath.Join(claudeProject(real), "b.jsonl")
+	said := func(text string) string {
+		return `{"type":"user","cwd":"` + real + `","message":{"content":"` + text + `"}}` + "\n"
+	}
+	write(empty, said("<command-name>/x</command-name>"))
+	var x Index
+	x.Update([]string{link})
+	if x.Len() != 1 || len(x.Search(Words("link"), 10)) != 1 {
+		t.Fatalf("through a link: %d conversations", x.Len())
+	}
+	st, err := os.Stat(empty)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(empty, said(strings.Repeat("y", len("<command-name>/x</command-name>")))) // as long, said
+	if err := os.Chtimes(empty, st.ModTime(), st.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	x.Update([]string{link})
+	if x.Len() != 1 {
+		t.Fatal("an unchanged log with nothing said was read again")
+	}
+	if err := os.Chtimes(empty, st.ModTime().Add(time.Second), st.ModTime().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	x.Update([]string{link})
+	if x.Len() != 2 {
+		t.Fatal("a changed log was not read again")
+	}
+}
+
+// An empty word in an empty text is found at its end, not out of range.
+func TestFoldedIndexOfAnEmptyWord(t *testing.T) {
+	if at := foldedIndex("", ""); at != 0 {
+		t.Errorf("at %d", at)
+	}
+	if at := foldedIndex("ab", ""); at != 0 {
+		t.Errorf("at %d", at)
+	}
+}
