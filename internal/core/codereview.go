@@ -315,6 +315,14 @@ func (m *Core) EndRound(t *Tab) Cmd {
 			remarks = state.Message{Text: fixPrompt(),
 				Auto: auto, Sandboxed: sandboxed}
 			t.Messages = append([]state.Message{remarks}, t.Messages...)
+		} else if run.Asked {
+			// The agent that asked waits to hear: told the approval, in
+			// nerdr's own words, with nothing of the reviewers'.
+			var who []string
+			for _, s := range run.Seats {
+				who = append(who, string(s.R.Agent))
+			}
+			t.Messages = append([]state.Message{{Text: codereview.ApprovedPrompt(who, run.Round, run.Rounds), Auto: true}}, t.Messages...)
 		}
 		m.EndReview(t, brief, true)
 		if !auto {
