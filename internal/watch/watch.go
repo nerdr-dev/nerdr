@@ -61,8 +61,11 @@ type Watcher struct {
 	// files there that say the change moved are listened to; see relevant.
 	gitDirs map[string]bool
 	notes   string // where the why notes and reading order are kept; see internal/store
-	// watched is how many files and directories the watch holds, as kqueue
-	// counts them; only run's goroutine changes it once run has started.
+	// dirs maps each actively watched worktree directory to the number of
+	// files counted in it; watched is the sum of 1+files across dirs (as
+	// kqueue counts them). Only run's goroutine changes both once run has
+	// started.
+	dirs    map[string]int
 	watched int
 	done    chan struct{}
 	// ctx is cancelled by Close, ending a git command addNewDir waits on.
@@ -90,19 +93,21 @@ func New(path, commonDir string) (*Watcher, error) {
 		fs:       fs,
 		worktree: path,
 		gitDirs:  map[string]bool{},
+		dirs:     map[string]int{},
 		notes:    store.Dir(path),
 		done:     make(chan struct{}),
 	}
-	dirs, files, err := sourceDirs(ctx, path, ".")
-	w.watched = files + len(dirs)
-	if err == nil && overKqueue(w.watched) {
-		err = fmt.Errorf("%d files and folders are too many to watch with kqueue", w.watched)
+	counts, total, err := sourceDirs(ctx, path, ".")
+	if err == nil && overKqueue(total) {
+		err = fmt.Errorf("%d files and folders are too many to watch with kqueue", total)
 	}
 	if err == nil {
-		for _, d := range dirs {
+		for d, files := range counts {
 			if err = fs.Add(d); err != nil {
 				break
 			}
+			w.dirs[d] = files
+			w.watched += 1 + files
 		}
 	}
 	if err == nil {
@@ -230,12 +235,46 @@ func (w *Watcher) relevant(ev fsnotify.Event) bool {
 	if dir == w.notes {
 		return !strings.HasSuffix(name, ".lock")
 	}
+	if ev.Has(fsnotify.Remove) || ev.Has(fsnotify.Rename) {
+		w.dropPath(ev.Name)
+	}
 	if ev.Has(fsnotify.Create) {
-		if fi, err := os.Stat(ev.Name); err == nil && fi.IsDir() {
-			w.addNewDir(ev.Name)
+		if fi, err := os.Stat(ev.Name); err == nil {
+			if fi.IsDir() {
+				w.addNewDir(ev.Name)
+			} else if _, ok := w.dirs[dir]; ok {
+				w.dirs[dir]++
+				w.watched++
+			}
 		}
 	}
 	return true
+}
+
+// dropPath releases watch capacity when a file or directory is removed or
+// renamed away: any watched directory at or below path is dropped from
+// dirs and fsnotify, and a removed file inside a watched directory lowers
+// that directory's file count.
+func (w *Watcher) dropPath(path string) {
+	p := filepath.Clean(path)
+	prefix := p + string(filepath.Separator)
+	droppedDir := false
+	for d, files := range w.dirs {
+		if d == p || strings.HasPrefix(d, prefix) {
+			delete(w.dirs, d)
+			w.watched -= 1 + files
+			_ = w.fs.Remove(d)
+			droppedDir = true
+		}
+	}
+	if droppedDir {
+		return
+	}
+	parent := filepath.Clean(filepath.Dir(p))
+	if n, ok := w.dirs[parent]; ok && n > 0 {
+		w.dirs[parent] = n - 1
+		w.watched--
+	}
 }
 
 // addNewDir watches a directory created in the worktree, and the ones git
@@ -257,16 +296,34 @@ func (w *Watcher) addNewDir(dir string) {
 	if ctx.Err() != nil {
 		return // timed out, or closed: whether it is ignored is not known
 	}
-	dirs, files, err := sourceDirs(ctx, w.worktree, rel)
+	counts, _, err := sourceDirs(ctx, w.worktree, rel)
 	if err != nil {
-		dirs, files = []string{dir}, 0
+		counts = map[string]int{filepath.Clean(dir): 0}
 	}
-	if overKqueue(w.watched + files + len(dirs)) {
+	if w.dirs == nil {
+		w.dirs = map[string]int{}
+	}
+	delta := 0
+	for d, files := range counts {
+		if old, ok := w.dirs[d]; ok {
+			delta += files - old
+		} else {
+			delta += 1 + files
+		}
+	}
+	if overKqueue(w.watched + delta) {
 		return
 	}
-	w.watched += files + len(dirs)
-	for _, d := range dirs {
-		_ = w.fs.Add(d)
+	for d, files := range counts {
+		if old, ok := w.dirs[d]; ok {
+			w.dirs[d] = files
+			w.watched += files - old
+			continue
+		}
+		if err := w.fs.Add(d); err == nil {
+			w.dirs[d] = files
+			w.watched += 1 + files
+		}
 	}
 }
 
@@ -281,31 +338,31 @@ func overKqueue(n int) bool { return kqueueGOOS && n > kqueueMax }
 // (and Windows, which nerdr does not run on); a variable for the tests.
 var kqueueGOOS = runtime.GOOS != "linux"
 
-// sourceDirs lists the directories under sub (relative to the worktree)
-// that hold a file git would list: tracked, or new and not ignored, and
-// how many such files there are.
-func sourceDirs(ctx context.Context, worktree, sub string) ([]string, int, error) {
+// sourceDirs maps each directory under sub (relative to the worktree) that
+// holds a file git would list (tracked, or new and not ignored) to how many
+// such files live directly in it, and returns the total directories + files.
+func sourceDirs(ctx context.Context, worktree, sub string) (map[string]int, int, error) {
 	out, err := proc.Output(gitsafe.CommandContext(ctx, worktree, "ls-files", "-z",
 		"--cached", "--others", "--exclude-standard", "--", sub))
 	if err != nil {
 		return nil, 0, err
 	}
 	files := 0
-	seen := map[string]bool{filepath.Join(worktree, sub): true}
-	dirs := []string{filepath.Join(worktree, sub)}
+	counts := map[string]int{filepath.Clean(filepath.Join(worktree, sub)): 0}
 	for _, f := range strings.Split(string(out), "\x00") {
 		if f == "" {
 			continue
 		}
 		files++
+		fileDir := filepath.Clean(filepath.Join(worktree, filepath.Dir(filepath.FromSlash(f))))
+		counts[fileDir]++
 		for d := filepath.Dir(filepath.FromSlash(f)); d != "." && d != string(filepath.Separator); d = filepath.Dir(d) {
-			abs := filepath.Join(worktree, d)
-			if seen[abs] {
+			abs := filepath.Clean(filepath.Join(worktree, d))
+			if _, ok := counts[abs]; ok {
 				break // its parents are in already
 			}
-			seen[abs] = true
-			dirs = append(dirs, abs)
+			counts[abs] = 0
 		}
 	}
-	return dirs, files, nil
+	return counts, files + len(counts), nil
 }

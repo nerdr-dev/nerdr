@@ -119,12 +119,16 @@ func Bridge(in io.Reader, out io.Writer, core net.Conn, keyFile string, env []st
 	select {
 	case err := <-toCore:
 		// The client is done saying: what the core says to that, its
-		// Bye, goes on to the client until it closes, or a while.
+		// Bye, goes on to the client until it closes, or a while. If the
+		// client also stopped reading out, out.Write may be blocked, so
+		// only wait on toOut when out can be given a write deadline.
 		select {
 		case <-toOut:
 		case <-time.After(byeTimeout):
 			_ = core.Close()
-			<-toOut
+			if setWriteDeadline(out, time.Now()) {
+				<-toOut
+			}
 		}
 		return err
 	case err := <-toOut:
@@ -143,6 +147,13 @@ func Bridge(in io.Reader, out io.Writer, core net.Conn, keyFile string, env []st
 func setReadDeadline(r io.Reader, t time.Time) bool {
 	d, ok := r.(interface{ SetReadDeadline(time.Time) error })
 	return ok && d.SetReadDeadline(t) == nil
+}
+
+// setWriteDeadline sets w's write deadline, if it has one, and says
+// whether it did.
+func setWriteDeadline(w io.Writer, t time.Time) bool {
+	d, ok := w.(interface{ SetWriteDeadline(time.Time) error })
+	return ok && d.SetWriteDeadline(t) == nil
 }
 
 // Refuse says to a client, which has said or is about to say its Hello,

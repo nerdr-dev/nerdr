@@ -228,3 +228,42 @@ func TestAddNewDirAfterClose(t *testing.T) {
 		t.Fatalf("closed watch added %v, %d counted", l, w.watched)
 	}
 }
+
+// TestAddNewDirDeduplicatesAndDropsRemovedDirs: repeated events on the
+// same directory and failed Adds do not inflate watched, and removing or
+// renaming a directory releases its kqueue capacity.
+func TestAddNewDirDeduplicatesAndDropsRemovedDirs(t *testing.T) {
+	was := kqueueGOOS
+	kqueueGOOS = true
+	defer func() { kqueueGOOS = was }()
+	dir, _ := repo(t)
+	newpkg := filepath.Join(dir, "newpkg")
+	sub := filepath.Join(newpkg, "sub")
+	write(t, filepath.Join(sub, "b.go"), "package sub\n")
+
+	w := bareWatcher(t, dir)
+	w.addNewDir(newpkg)
+	if w.watched != 3 || len(w.dirs) != 2 {
+		t.Fatalf("first add: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	}
+	// Duplicate create event on the same directory must not inflate count.
+	w.addNewDir(newpkg)
+	if w.watched != 3 || len(w.dirs) != 2 {
+		t.Fatalf("duplicate add: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	}
+	// A non-existent directory fails fs.Add and must not consume capacity.
+	w.addNewDir(filepath.Join(dir, "gone"))
+	if w.watched != 3 || len(w.dirs) != 2 {
+		t.Fatalf("failed add: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	}
+	// Removing newpkg releases both newpkg and newpkg/sub from watched.
+	w.relevant(fsnotify.Event{Name: newpkg, Op: fsnotify.Remove})
+	if w.watched != 0 || len(w.dirs) != 0 {
+		t.Fatalf("after remove: watched=%d dirs=%v, want 0 / empty", w.watched, w.dirs)
+	}
+	// Re-adding after removal succeeds and returns to 3.
+	w.addNewDir(newpkg)
+	if w.watched != 3 || len(w.dirs) != 2 {
+		t.Fatalf("re-add after remove: watched=%d dirs=%v, want 3 / 2 dirs", w.watched, w.dirs)
+	}
+}

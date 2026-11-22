@@ -947,9 +947,10 @@ func loadsOf(argv []string) []loadRef {
 }
 
 // envUnsafe are the variables that have a program load code named in
-// them, which env NAME=value would set for it: LD_PRELOAD for any,
-// NODE_OPTIONS=--require=./x.js for node, BASH_ENV for bash.
-var envUnsafe = words("BASH_ENV", "ENV", "NODE_OPTIONS", "NODE_PATH", "RUBYOPT", "RUBYLIB",
+// them, which env NAME=value would set for it: PATH to pick an executable
+// from the worktree, LD_PRELOAD for any, NODE_OPTIONS=--require=./x.js for
+// node, BASH_ENV for bash.
+var envUnsafe = words("PATH", "BASH_ENV", "ENV", "NODE_OPTIONS", "NODE_PATH", "RUBYOPT", "RUBYLIB",
 	"PERL5OPT", "PERL5LIB", "PERLLIB", "PYTHONPATH", "PYTHONSTARTUP", "PYTHONHOME", "PYTHONUSERBASE",
 	"LUA_INIT", "LUA_PATH", "LUA_CPATH", "PHPRC", "PHP_INI_SCAN_DIR", "AWKPATH", "AWKLIBPATH",
 	"DENO_DIR", "BUN_CONFIG", "ZDOTDIR", "PROMPT_COMMAND", "SHELLOPTS", "BASHOPTS", "IFS")

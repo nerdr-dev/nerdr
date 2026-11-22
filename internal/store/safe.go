@@ -5,15 +5,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
-	"syscall"
+
+	"golang.org/x/sys/unix"
 
 	"github.com/nerdr-dev/nerdr/internal/denied"
-	"github.com/nerdr-dev/nerdr/internal/safefile"
 )
 
 // The data folder is where agents write, and nerdr writes there too, as
@@ -60,58 +59,100 @@ func errLink(path string) error {
 	return fmt.Errorf("%s is not a regular file: nerdr does not write through links", path)
 }
 
+// openParentDir walks from anchor to rel's parent folder one component at a
+// time with O_DIRECTORY|O_NOFOLLOW, returning the pinned directory
+// descriptor and rel's base name. Holding the parent descriptor closes the
+// TOCTOU window where an agent replaces a parent folder with a symbolic link
+// (such as .git/nerdr -> hooks) between a link check and the open or rename.
+func openParentDir(anchor, rel, path string, create bool) (dirFD int, base string, err error) {
+	rel = filepath.Clean(rel)
+	if !filepath.IsLocal(rel) || rel == "." {
+		return -1, "", errLink(path)
+	}
+	if create {
+		if err := denied.Err(os.MkdirAll(anchor, 0o755)); err != nil {
+			return -1, "", err
+		}
+	}
+	fd, err := unix.Open(anchor, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return -1, "", denied.Err(&os.PathError{Op: "open", Path: anchor, Err: err})
+	}
+	dir := filepath.Dir(rel)
+	if dir != "." {
+		for _, part := range strings.Split(filepath.ToSlash(dir), "/") {
+			if part == "" || part == "." {
+				continue
+			}
+			var next int
+			for range 2 {
+				next, err = unix.Openat(fd, part, unix.O_RDONLY|unix.O_DIRECTORY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+				if err == nil {
+					break
+				}
+				if create && errors.Is(err, unix.ENOENT) {
+					merr := unix.Mkdirat(fd, part, 0o755)
+					if merr == nil || errors.Is(merr, unix.EEXIST) {
+						continue
+					}
+					_ = unix.Close(fd)
+					return -1, "", denied.Err(&os.PathError{Op: "mkdir", Path: path, Err: merr})
+				}
+				break
+			}
+			_ = unix.Close(fd)
+			if err != nil {
+				if errors.Is(err, unix.ELOOP) || errors.Is(err, unix.ENOTDIR) {
+					return -1, "", errLink(path)
+				}
+				return -1, "", denied.Err(&os.PathError{Op: "open", Path: path, Err: err})
+			}
+			fd = next
+		}
+	}
+	return fd, filepath.Base(rel), nil
+}
+
 // openFile opens path, which is in the data folder, as os.OpenFile would,
 // but neither through a link nor out of the folder it is opened from. The
 // folders on the way are made when flag creates the file.
 func openFile(path string, flag int, perm os.FileMode) (*os.File, error) {
 	anchor, rel := anchorOf(path)
-	if flag&os.O_CREATE != 0 {
-		if err := denied.Err(os.MkdirAll(anchor, 0o755)); err != nil {
-			return nil, err
-		}
-	}
-	root, err := os.OpenRoot(anchor)
+	dirFD, base, err := openParentDir(anchor, rel, path, flag&os.O_CREATE != 0)
 	if err != nil {
 		return nil, err
 	}
-	defer root.Close()
-	if err := noLinks(root, rel, path); err != nil {
-		return nil, err
-	}
-	if flag&os.O_CREATE != 0 {
-		if err := denied.Err(root.MkdirAll(filepath.Dir(rel), 0o755)); err != nil {
-			return nil, err
-		}
-		if err := noLinks(root, rel, path); err != nil {
-			return nil, err
-		}
-	}
+	defer unix.Close(dirFD)
 	for range 3 {
-		info, err := root.Lstat(rel)
+		var info unix.Stat_t
+		err := unix.Fstatat(dirFD, base, &info, unix.AT_SYMLINK_NOFOLLOW)
 		switch {
-		case err == nil && !info.Mode().IsRegular():
+		case err == nil && info.Mode&unix.S_IFMT != unix.S_IFREG:
 			return nil, errLink(path)
-		case err != nil && !errors.Is(err, fs.ErrNotExist):
-			return nil, err
+		case err != nil && !errors.Is(err, unix.ENOENT):
+			return nil, denied.Err(&os.PathError{Op: "lstat", Path: path, Err: err})
 		case err != nil && flag&os.O_CREATE == 0:
-			return nil, err
+			return nil, &os.PathError{Op: "open", Path: path, Err: err}
 		}
-		f, oerr := root.OpenFile(rel, openFlag(flag, err != nil)|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, perm)
-		if errors.Is(oerr, fs.ErrExist) {
+		ofd, oerr := unix.Openat(dirFD, base, openFlag(flag, err != nil)|unix.O_NONBLOCK|unix.O_NOFOLLOW|unix.O_CLOEXEC, uint32(perm))
+		if errors.Is(oerr, unix.EEXIST) {
 			continue // made meanwhile: looked at again
 		}
-		if denied.Err(oerr) != nil {
-			return nil, oerr
+		if errors.Is(oerr, unix.ELOOP) {
+			return nil, errLink(path)
+		}
+		if oerr != nil {
+			return nil, denied.Err(&os.PathError{Op: "open", Path: path, Err: oerr})
 		}
 		// The file looked at is the one opened, not a link, a pipe or a
 		// device put in its place since: O_NONBLOCK keeps the open of a
 		// pipe from waiting, and this refuses it.
-		st, serr := f.Stat()
-		if serr != nil || !st.Mode().IsRegular() || (err == nil && !os.SameFile(st, info)) {
-			f.Close()
+		var st unix.Stat_t
+		if serr := unix.Fstat(ofd, &st); serr != nil || st.Mode&unix.S_IFMT != unix.S_IFREG || (err == nil && (st.Dev != info.Dev || st.Ino != info.Ino)) {
+			_ = unix.Close(ofd)
 			return nil, errLink(path)
 		}
-		return f, nil
+		return os.NewFile(uintptr(ofd), path), nil
 	}
 	return nil, errLink(path)
 }
@@ -130,31 +171,25 @@ func openFlag(flag int, create bool) int {
 // followed, and the folders on the way do not lead out of the data folder.
 func WriteFile(path string, data []byte, perm os.FileMode) error {
 	anchor, rel := anchorOf(path)
-	if err := denied.Err(os.MkdirAll(anchor, 0o755)); err != nil {
-		return err
-	}
-	root, err := os.OpenRoot(anchor)
+	dirFD, base, err := openParentDir(anchor, rel, path, true)
 	if err != nil {
 		return err
 	}
-	defer root.Close()
-	if err := noLinks(root, rel, path); err != nil {
-		return err
-	}
-	if err := denied.Err(root.MkdirAll(filepath.Dir(rel), 0o755)); err != nil {
-		return err
-	}
-	if err := noLinks(root, rel, path); err != nil {
-		return err
-	}
+	defer unix.Close(dirFD)
 	var b [8]byte
 	_, _ = rand.Read(b[:])
-	tmp := filepath.Join(filepath.Dir(rel), "."+filepath.Base(rel)+"-"+hex.EncodeToString(b[:]))
-	f, err := root.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
-	if denied.Err(err) != nil {
-		return err
+	tmp := "." + base + "-" + hex.EncodeToString(b[:])
+	tfd, err := unix.Openat(dirFD, tmp, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_NOFOLLOW|unix.O_CLOEXEC, uint32(perm))
+	if err != nil {
+		return denied.Err(&os.PathError{Op: "open", Path: path, Err: err})
 	}
-	defer root.Remove(tmp) // gone already once renamed
+	f := os.NewFile(uintptr(tfd), filepath.Join(filepath.Dir(path), tmp))
+	renamed := false
+	defer func() {
+		if !renamed {
+			_ = unix.Unlinkat(dirFD, tmp, 0)
+		}
+	}()
 	if _, err := f.Write(data); err != nil {
 		f.Close()
 		return err
@@ -162,20 +197,9 @@ func WriteFile(path string, data []byte, perm os.FileMode) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	// A folder on the way made a link since is not renamed through.
-	if err := noLinks(root, rel, path); err != nil {
-		return err
+	if err := unix.Renameat(dirFD, tmp, dirFD, base); err != nil {
+		return denied.Err(&os.PathError{Op: "rename", Path: path, Err: err})
 	}
-	return denied.Err(root.Rename(tmp, rel))
-}
-
-// noLinks refuses rel, inside root, when a folder on the way to it is a
-// link. os.Root keeps to the anchor but follows a link inside it: in the
-// git directory an agent could make .git/nerdr a link to hooks, and have
-// nerdr write a file there that git would run as the user.
-func noLinks(root *os.Root, rel, path string) error {
-	if err := safefile.CheckNoLinks(root, rel); err != nil {
-		return fmt.Errorf("%s: %w: nerdr does not write through links", path, err)
-	}
+	renamed = true
 	return nil
 }
