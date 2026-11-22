@@ -42,7 +42,7 @@ func TestAgyTellsTheAgentsConversationFromASubagents(t *testing.T) {
 	invoke := func(event string, n int) AgyEvent {
 		ev := AgyEvent{Event: event, ConversationID: "main"}
 		ev.ToolCall.Name = "invoke_subagent"
-		ev.ToolCall.Args.Subagents = make([]json.RawMessage, n)
+		ev.ToolCall.Args.Subagents, _ = json.Marshal(make([]json.RawMessage, n))
 		return ev
 	}
 	var turn agyTurn
@@ -82,6 +82,41 @@ func TestAgyTellsTheAgentsConversationFromASubagents(t *testing.T) {
 	turn.see(failed)
 	if !turn.see(AgyEvent{Event: "SessionStart", ConversationID: "next"}) || turn.Main != "next" {
 		t.Fatalf("%+v", turn)
+	}
+
+	// agy 1.5.14 starts one subagent a call, naming it with no list, and
+	// may give its tools' args as strings of JSON.
+	turn = agyTurn{Main: "main"}
+	one := func(event string) AgyEvent {
+		ev := AgyEvent{Event: event, ConversationID: "main"}
+		ev.ToolCall.Name = "invoke_subagent"
+		return ev
+	}
+	var quoted AgyEvent
+	if err := json.Unmarshal([]byte(`{"conversationId":"main","toolCall":{"name":"invoke_subagent","args":{"Subagents":"[{},{}]"}}}`), &quoted); err != nil {
+		t.Fatal(err)
+	}
+	quoted.Event = "PreToolUse"
+	for i, c := range []struct {
+		ev  AgyEvent
+		own bool
+	}{
+		{one("PreToolUse"), true},
+		{one("PostToolUse"), true},
+		{AgyEvent{Event: "SessionStart", ConversationID: "a"}, false},
+		{one("PreToolUse"), true},
+		{one("PostToolUse"), true},
+		{AgyEvent{Event: "SessionStart", ConversationID: "b"}, false},
+		{quoted, true},
+		{AgyEvent{Event: "SessionStart", ConversationID: "c"}, false},
+		{AgyEvent{Event: "SessionStart", ConversationID: "d"}, false},
+		{AgyEvent{Event: "Stop", ConversationID: "a", FullyIdle: &yes}, false},
+		{AgyEvent{Event: "Stop", ConversationID: "main", FullyIdle: &no}, true},
+		{AgyEvent{Event: "SessionStart", ConversationID: "next"}, true},
+	} {
+		if got := turn.see(c.ev); got != c.own {
+			t.Fatalf("one a call %d %+v: own %v, want %v (%+v)", i, c.ev, got, c.own, turn)
+		}
 	}
 
 	// A resumed conversation has no SessionStart: the first seen is the

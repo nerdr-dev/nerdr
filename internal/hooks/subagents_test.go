@@ -60,3 +60,47 @@ func TestSubagentHooksConcurrentProcesses(t *testing.T) {
 		t.Fatalf("lost concurrent stops: %d remain", w.Going)
 	}
 }
+
+// TestAgyHooksConcurrentProcesses: the PreToolUse hooks of subagents
+// started in one step may run side by side, and each must count, or a
+// subagent's conversation is taken for the agent's.
+func TestAgyHooksConcurrentProcesses(t *testing.T) {
+	if file := os.Getenv("NERDR_TEST_AGY_FILE"); file != "" {
+		ev := AgyEvent{Event: "PreToolUse", ConversationID: "main"}
+		ev.ToolCall.Name = agySubagentTool
+		for range 8 {
+			seeAgy(file, ev)
+		}
+		return
+	}
+	file := filepath.Join(t.TempDir(), "turn.json")
+	if !seeAgy(file, AgyEvent{Event: "PreInvocation", ConversationID: "main"}) {
+		t.Fatal("the agent's own event")
+	}
+	const processes = 16
+	errs := make(chan error, processes)
+	for range processes {
+		cmd := exec.Command(os.Args[0], "-test.run=^TestAgyHooksConcurrentProcesses$")
+		cmd.Env = append(os.Environ(), "NERDR_TEST_AGY_FILE="+file)
+		go func() {
+			if b, err := cmd.CombinedOutput(); err != nil {
+				errs <- fmt.Errorf("%v\n%s", err, b)
+				return
+			}
+			errs <- nil
+		}()
+	}
+	for range processes {
+		if err := <-errs; err != nil {
+			t.Errorf("hook: %v", err)
+		}
+	}
+	for i := range processes * 8 {
+		if seeAgy(file, AgyEvent{Event: "SessionStart", ConversationID: "sub" + strconv.Itoa(i)}) {
+			t.Fatalf("subagent %d of %d taken for the agent: a start was lost", i+1, processes*8)
+		}
+	}
+	if !seeAgy(file, AgyEvent{Event: "SessionStart", ConversationID: "next"}) {
+		t.Fatal("the next conversation is the agent's")
+	}
+}
