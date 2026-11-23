@@ -4,6 +4,7 @@ description: Keep agents running when you disconnect, run them on a server over 
 ---
 
 import { Steps, Aside } from '@astrojs/starlight/components';
+import Machines from '../../../components/diagrams/Machines.astro';
 
 Closing nerdr, or losing the SSH connection it runs in, leaves its
 agents, tests and terminals running: start nerdr in the same folder
@@ -66,6 +67,8 @@ each server, in turn, before the screen is nerdr's, so SSH can ask for a
 password for each. A server that cannot be reached is shown grey, with
 the reason. `nerdr connect HOST:FOLDER` shows that one server only, and
 does not connect to `[[servers]]`.
+
+<Machines />
 
 Tabs are grouped by repository, whatever machine they are on: the tabs
 of `api` here and on a server stand together, this machine's first, then

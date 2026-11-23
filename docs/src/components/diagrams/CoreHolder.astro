@@ -1,0 +1,62 @@
+---
+// The client, the holder and the core. See reference/how-it-works.mdx.
+---
+<figure class="nerdr-diagram">
+	<svg viewBox="0 0 760 300" role="img" aria-labelledby="dc-title dc-desc">
+		<title id="dc-title">The client, the holder and the core</title>
+		<desc id="dc-desc">
+			The nerdr you start is a client. It connects to the core by the
+			client socket. The holder starts the core, and starts and owns the
+			agents, terminals and plugin runs. The holder and the core run on
+			when the client is closed.
+		</desc>
+		<defs>
+			<marker id="dc-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path class="arrowhead" d="M0 0 L10 5 L0 10 z" />
+			</marker>
+			<marker id="dc-arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path class="arrowhead accent" d="M0 0 L10 5 L0 10 z" />
+			</marker>
+		</defs>
+
+		<!-- The client -->
+		<rect class="box accent" x="10" y="176" width="140" height="70" rx="7" />
+		<text class="title mono" x="80" y="205" text-anchor="middle">nerdr</text>
+		<text class="sub" x="80" y="227" text-anchor="middle">the client</text>
+
+		<!-- What runs on with no terminal -->
+		<rect class="region dashed" x="262" y="12" width="486" height="276" rx="10" />
+		<text class="region-label" x="280" y="38">Runs on when you close nerdr</text>
+
+		<rect class="box" x="286" y="58" width="200" height="70" rx="7" />
+		<text class="title" x="386" y="87" text-anchor="middle">holder</text>
+		<text class="sub" x="386" y="109" text-anchor="middle">starts and owns the programs</text>
+
+		<rect class="box" x="286" y="176" width="200" height="70" rx="7" />
+		<text class="title" x="386" y="205" text-anchor="middle">core</text>
+		<text class="sub" x="386" y="227" text-anchor="middle">the tabs and all the logic</text>
+
+		<rect class="box" x="560" y="58" width="166" height="44" rx="7" />
+		<text class="sub" x="643" y="85" text-anchor="middle">agents</text>
+		<rect class="box" x="560" y="116" width="166" height="44" rx="7" />
+		<text class="sub" x="643" y="143" text-anchor="middle">terminals</text>
+		<rect class="box" x="560" y="174" width="166" height="44" rx="7" />
+		<text class="sub" x="643" y="201" text-anchor="middle">plugin runs</text>
+
+		<path class="edge" d="M486 80 H558" marker-end="url(#dc-arrow)" />
+		<path class="edge" d="M486 93 C 520 93, 525 138, 558 138" marker-end="url(#dc-arrow)" />
+		<path class="edge" d="M486 106 C 515 106, 525 196, 558 196" marker-end="url(#dc-arrow)" />
+
+		<path class="edge" d="M386 128 V174" marker-end="url(#dc-arrow)" />
+		<text class="edge-label" x="396" y="148">starts it,</text>
+		<text class="edge-label" x="396" y="164">and again</text>
+
+		<path class="edge accent" d="M150 211 H284" marker-start="url(#dc-arrow-accent)" marker-end="url(#dc-arrow-accent)" />
+		<text class="edge-label accent" x="206" y="202" text-anchor="middle">client socket</text>
+	</svg>
+	<figcaption>
+		Close nerdr and everything in the dashed box works on; start nerdr in
+		the folder again to connect to it. If the core crashes, the holder
+		starts it again. Quit stops it all.
+	</figcaption>
+</figure>

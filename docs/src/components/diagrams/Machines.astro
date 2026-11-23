@@ -1,0 +1,79 @@
+---
+// nerdr on a laptop with two servers: a client of each machine's core,
+// the servers' over SSH through nerdr bridge. See use/remote.mdx.
+---
+<figure class="nerdr-diagram">
+	<svg viewBox="0 0 760 360" role="img" aria-labelledby="dm-title dm-desc">
+		<title id="dm-title">nerdr on a laptop with two servers</title>
+		<desc id="dm-desc">
+			nerdr on the laptop connects to the laptop's own core, and over SSH
+			to nerdr bridge on each server, which connects to that server's core.
+			Each core runs its machine's agents, worktrees and git.
+		</desc>
+		<defs>
+			<marker id="dm-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path class="arrowhead" d="M0 0 L10 5 L0 10 z" />
+			</marker>
+			<marker id="dm-arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path class="arrowhead accent" d="M0 0 L10 5 L0 10 z" />
+			</marker>
+		</defs>
+
+		<!-- The laptop -->
+		<rect class="region" x="10" y="10" width="250" height="340" rx="10" />
+		<text class="region-label" x="28" y="36">Your laptop</text>
+
+		<rect class="box accent" x="30" y="56" width="210" height="64" rx="7" />
+		<text class="title mono" x="135" y="83" text-anchor="middle">nerdr</text>
+		<text class="sub" x="135" y="104" text-anchor="middle">what you see and click</text>
+
+		<rect class="box" x="30" y="168" width="210" height="64" rx="7" />
+		<text class="title" x="135" y="195" text-anchor="middle">core</text>
+		<text class="sub" x="135" y="216" text-anchor="middle">this machine's tabs</text>
+
+		<rect class="box" x="30" y="276" width="210" height="52" rx="7" />
+		<text class="sub" x="135" y="307" text-anchor="middle">agents · worktrees · git</text>
+
+		<path class="edge" d="M135 120 V166" marker-end="url(#dm-arrow)" />
+		<path class="edge" d="M135 232 V274" marker-end="url(#dm-arrow)" />
+
+		<!-- Server box -->
+		<rect class="region" x="480" y="10" width="270" height="160" rx="10" />
+		<text class="region-label host mono" x="498" y="36">box</text>
+		<rect class="box" x="496" y="50" width="112" height="54" rx="7" />
+		<text class="title mono" x="552" y="73" text-anchor="middle">nerdr bridge</text>
+		<text class="sub mono" x="552" y="93" text-anchor="middle">~/src</text>
+		<rect class="box" x="626" y="50" width="108" height="54" rx="7" />
+		<text class="title" x="680" y="74" text-anchor="middle">core</text>
+		<text class="sub" x="680" y="93" text-anchor="middle">box's tabs</text>
+		<rect class="box" x="496" y="120" width="238" height="36" rx="7" />
+		<text class="sub" x="615" y="143" text-anchor="middle">agents · worktrees · git</text>
+		<path class="edge" d="M608 77 H624" marker-end="url(#dm-arrow)" />
+		<path class="edge" d="M680 104 V118" marker-end="url(#dm-arrow)" />
+
+		<!-- Server gpu -->
+		<rect class="region" x="480" y="190" width="270" height="160" rx="10" />
+		<text class="region-label host mono" x="498" y="216">gpu</text>
+		<rect class="box" x="496" y="230" width="112" height="54" rx="7" />
+		<text class="title mono" x="552" y="253" text-anchor="middle">nerdr bridge</text>
+		<text class="sub mono" x="552" y="273" text-anchor="middle">~</text>
+		<rect class="box" x="626" y="230" width="108" height="54" rx="7" />
+		<text class="title" x="680" y="254" text-anchor="middle">core</text>
+		<text class="sub" x="680" y="273" text-anchor="middle">gpu's tabs</text>
+		<rect class="box" x="496" y="300" width="238" height="36" rx="7" />
+		<text class="sub" x="615" y="323" text-anchor="middle">agents · worktrees · git</text>
+		<path class="edge" d="M608 257 H624" marker-end="url(#dm-arrow)" />
+		<path class="edge" d="M680 284 V298" marker-end="url(#dm-arrow)" />
+
+		<!-- SSH from the laptop's nerdr to each bridge -->
+		<path class="edge accent" d="M240 82 C 360 82, 380 77, 494 77" marker-end="url(#dm-arrow-accent)" />
+		<text class="edge-label accent mono" x="368" y="70" text-anchor="middle">ssh box</text>
+		<path class="edge accent" d="M240 96 C 380 96, 370 257, 494 257" marker-end="url(#dm-arrow-accent)" />
+		<text class="edge-label accent mono" x="352" y="206" text-anchor="end">ssh gpu</text>
+	</svg>
+	<figcaption>
+		nerdr on your laptop is a client of each machine's core: its own, and
+		one on each server, reached over SSH. The cores do not know about each
+		other, and the agents work on where they are when you close nerdr.
+	</figcaption>
+</figure>

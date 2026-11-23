@@ -1,0 +1,55 @@
+---
+// From your program to the agents, through nerdr api. See api/overview.mdx.
+---
+<figure class="nerdr-diagram">
+	<svg viewBox="0 0 760 150" role="img" aria-labelledby="da-title da-desc">
+		<title id="da-title">How a program reaches the agents</title>
+		<desc id="da-desc">
+			Your program talks to nerdr api over standard input and output.
+			nerdr api connects to the API socket, which is private and needs a
+			key. Behind it is nerdr's core, which runs while the window is
+			closed and runs the agents.
+		</desc>
+		<defs>
+			<marker id="da-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path class="arrowhead" d="M0 0 L10 5 L0 10 z" />
+			</marker>
+			<marker id="da-arrow-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+				<path class="arrowhead accent" d="M0 0 L10 5 L0 10 z" />
+			</marker>
+		</defs>
+
+		<rect class="box accent" x="8" y="30" width="126" height="64" rx="7" />
+		<text class="title" x="71" y="59" text-anchor="middle">your program</text>
+		<text class="sub" x="71" y="80" text-anchor="middle">any language</text>
+
+		<rect class="box" x="164" y="30" width="126" height="64" rx="7" />
+		<text class="title mono" x="227" y="59" text-anchor="middle">nerdr api</text>
+		<text class="sub" x="227" y="80" text-anchor="middle">says hello for you</text>
+
+		<rect class="box" x="320" y="30" width="126" height="64" rx="7" />
+		<text class="title" x="383" y="59" text-anchor="middle">API socket</text>
+		<text class="sub" x="383" y="80" text-anchor="middle">private, keyed</text>
+
+		<rect class="box" x="476" y="30" width="126" height="64" rx="7" />
+		<text class="title" x="539" y="59" text-anchor="middle">core</text>
+		<text class="sub" x="539" y="80" text-anchor="middle">window open or not</text>
+
+		<rect class="box" x="632" y="30" width="120" height="64" rx="7" />
+		<text class="title" x="692" y="59" text-anchor="middle">agents</text>
+		<text class="sub" x="692" y="80" text-anchor="middle">in their tabs</text>
+
+		<path class="edge accent" d="M134 62 H162" marker-start="url(#da-arrow-accent)" marker-end="url(#da-arrow-accent)" />
+		<path class="edge" d="M290 62 H318" marker-start="url(#da-arrow)" marker-end="url(#da-arrow)" />
+		<path class="edge" d="M446 62 H474" marker-start="url(#da-arrow)" marker-end="url(#da-arrow)" />
+		<path class="edge" d="M602 62 H630" marker-end="url(#da-arrow)" />
+
+		<text class="edge-label accent" x="148" y="124" text-anchor="middle">JSON lines on</text>
+		<text class="edge-label accent" x="148" y="140" text-anchor="middle">stdin and stdout</text>
+		<path class="edge accent" d="M148 72 V104" stroke-dasharray="3 3" />
+	</svg>
+	<figcaption>
+		One JSON object per line, each way: requests and answers, and events
+		once your program subscribes.
+	</figcaption>
+</figure>

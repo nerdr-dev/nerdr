@@ -3,6 +3,8 @@ title: How it works
 description: Inside nerdr — terminals, status detection, hooks, resuming conversations, saved sessions.
 ---
 
+import CoreHolder from '../../../components/diagrams/CoreHolder.astro';
+
 ## Terminal and status lights
 
 Each agent runs in a pseudo-terminal with a virtual screen
@@ -20,6 +22,8 @@ taken as visible either, so walking past a tab does not clear its
 light.
 
 ## The core and the holder
+
+<CoreHolder />
 
 The nerdr you start is a client. It starts, once per folder, a holder:
 a process that starts and owns every agent, terminal and plugin run,
