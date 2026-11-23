@@ -1,0 +1,191 @@
+---
+title: Several machines
+description: Reach the tabs of this machine and of each server in your config through one connection, with nerdr api --servers.
+---
+
+import { Aside } from '@astrojs/starlight/components';
+
+`nerdr api` reaches the nerdr of one folder on one machine. When nerdr
+on `server1` shows the tabs of `server2` and `server3` too, through
+[`[[servers]]`](../../use/remote/#several-machines-in-one-nerdr), those
+connections are the window's own: a program that connects to
+`server1`'s API sees only `server1`'s tabs.
+
+To reach them all through one connection, such as from a phone app that
+can only reach `server1`, run this on `server1`:
+
+```sh
+nerdr api --servers [FOLDER]
+```
+
+It connects to the API of nerdr for `FOLDER` here, as `nerdr api` does,
+and to each server in `[[servers]]` of the config file here, over SSH,
+as `ssh SERVER nerdr api FOLDER`. Your program talks to all of them
+through its standard input and output.
+
+The machines are not merged. Each request names the machine it is for,
+and each answer and event says which machine it is from. IDs only mean
+something on their own machine: two machines can have a question `1`,
+and the agents you can start, and the repositories a tab can be made
+in, differ between machines. Your program keeps a copy of the
+[state](../requests/#state) of each machine, and puts them together
+itself.
+
+## The welcome
+
+The first line out lists the machines. This machine is always first,
+named `local`:
+
+```json
+{"api":1,"version":"v0.9.0","machines":[
+  {"machine":"local","status":"connected","api":1,"version":"v0.9.0","root":"/home/you/develop"},
+  {"machine":"gpu","status":"connecting"},
+  {"machine":"box","status":"down","error":"Permission denied (publickey). (ssh asks nothing here: …)"}]}
+```
+
+| Field | Meaning |
+|---|---|
+| `machine` | The server's `name` in `[[servers]]`, or `local` |
+| `status` | `connected`, `connecting`, or `down` |
+| `error` | Why it is down |
+| `api`, `version`, `root` | What its nerdr said in its welcome, while connected |
+
+A server named `local` is left out, as are servers with the same name
+as one before them. `nerdr api --servers` says so on standard error.
+
+Ask `{"op":"machines"}` for the list again at any time; the answer is
+`{"result":{"machines":[…]}}`.
+
+## Requests and answers
+
+A request is the same as with [`nerdr api`](../requests/), with a
+`machine` field:
+
+```json
+{"id":7,"machine":"gpu","op":"read","target":"9f3c01aa","lines":20}
+```
+
+The answer carries the same `machine`, and your `id` exactly as you
+sent it, or no `id` if you sent none:
+
+```json
+{"id":7,"machine":"gpu","result":{"text":"…"}}
+```
+
+Everything else in the request is passed on unchanged, so every
+request works as described in [Requests](../requests/), on the machine
+named. Each machine answers its own requests in order; answers from
+different machines can come in any order.
+
+- A request with no `machine` is answered with an error, except
+  `subscribe` and `machines`.
+- A request for a machine that is not connected is answered with an
+  error saying why. Nothing is queued for later.
+- [`quit`](../requests/#quit) needs a `machine` too: it stops nerdr and
+  every agent on that machine. Your program disconnecting stops
+  nothing; it only closes the connections.
+
+If a machine's connection is lost before it answers a request, the
+answer is an error that says whether it was done is not known.
+`nerdr api --servers` never sends a request again by itself. Look at
+the machine's state when it is back before you try again.
+
+## Events
+
+`{"op":"subscribe"}` with no `machine` subscribes to every machine,
+including those that connect later and those that connect again after
+their connection was lost. With a `machine`, it subscribes to that one
+only.
+
+Every [event](../events/) has a `machine` field. `waiting` replaces the
+waiting list of that machine only, and a `question` or `answered` is
+about that machine's question.
+
+The events of what changed are worked out from the machine's state,
+which `nerdr api --servers` fetches each time the machine says something
+changed. So no event is older than the state you were given before it,
+and you never need to fetch a machine's state again yourself. `lost` is
+not sent; `notice` is passed on as it comes.
+
+There is one more event, `machine`, with the same fields as in the
+welcome. After you subscribe, you get one for each machine. When a
+machine connects, it comes with the machine's whole `state`:
+
+```json
+{"event":"machine","machine":"gpu","status":"connected","api":1,"version":"v0.9.0","root":"/home/you/src","state":{"root":"/home/you/src","tabs":[…],"waiting":[…],"questions":[…],"agents":[…]}}
+```
+
+Replace your copy of that machine's state with it, and apply that
+machine's events after it, as in
+[Following along](../events/#following-along). When a machine goes
+down, you get `{"event":"machine","machine":"gpu","status":"down","error":"…"}`:
+its questions can no longer be answered, and its copy is out of date
+until it comes back.
+
+## Connecting again
+
+When a server's connection is lost, or it cannot be reached,
+`nerdr api --servers` tries again on its own, waiting a second the first
+time and twice as long each time after, up to a minute. When it is back,
+it subscribes again and sends its state in a `machine` event.
+
+The connection to this machine's nerdr is not tried again: if it ends,
+for example because nerdr here quit, `nerdr api --servers` ends too, as
+`nerdr api` does.
+
+A server you disconnected from in nerdr's window here is left out, and
+shown `down`, until you connect to it there again. Disconnect from it
+there while `nerdr api --servers` is connected to it, and that
+connection closes too, within ten seconds.
+
+## A server's version
+
+Each server's nerdr must have the same API version as nerdr here. A
+server with another one is shown `down`, saying which side to update,
+and the other machines work as usual. Start with the same version of
+nerdr on every machine, as [Different versions](../../use/remote/#different-versions)
+says.
+
+## SSH
+
+`nerdr api --servers` has no terminal to ask for a password or
+passphrase on, so it never asks: SSH runs with `BatchMode=yes`. Each
+server needs a key that logs in by itself, from the machine
+`nerdr api --servers` runs on, and that machine must already know the
+server's host key. If not, the server is shown `down` with what SSH
+said. Log in once by hand, as `ssh SERVER` from that machine, to check.
+
+As with nerdr's window, SSH runs with `ForwardAgent=no` and
+`ForwardX11=no`, and `nerdr` must be on the `PATH` of a login shell on
+each server. A server is reached in one hop: its `nerdr api` is plain,
+never `--servers` again.
+
+## How it is guarded
+
+`nerdr api --servers` is kept to you as `nerdr api` is, and as nerdr's
+window is when it connects to servers:
+
+- It refuses to run from a program nerdr runs, an agent above all,
+  without connecting anywhere.
+- Before it runs SSH, nerdr here must have let it in, with a welcome on
+  its API. nerdr refuses a connection from a program it runs.
+- It reaches only the servers in `[[servers]]` of your config file.
+
+<Aside type="caution">
+`nerdr api --servers` reaches every server in your config file as you.
+Whoever can use the program that talks to it, such as a connector for a
+phone app, can have the agents on all of them run commands as you. See
+[Bringing it to your phone](../connecting/#how-it-is-guarded).
+</Aside>
+
+## Without --servers
+
+To reach one other server through `server1` without it, use SSH's jump
+host:
+
+```sh
+ssh -J server1 server2 nerdr api ~/develop
+```
+
+The connection goes through `server1` to `server2`, and your program
+talks to `server2`'s nerdr directly.

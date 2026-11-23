@@ -9,6 +9,8 @@ import (
 	"io/fs"
 	"net"
 	"os"
+	"slices"
+	"strings"
 	"syscall"
 	"time"
 
@@ -18,6 +20,7 @@ import (
 )
 
 const apiUsage = `usage: nerdr api [FOLDER]
+       nerdr api --servers [FOLDER]
        nerdr api --schema
 
 Connects standard input and output to the API of the nerdr running for
@@ -36,15 +39,30 @@ See https://nerdr.app/api/requests/ for the requests and events.
 
 --schema prints the API as JSON Schema, to generate a client's types
 from; no nerdr need run. See https://nerdr.app/api/schema/.
+
+--servers reaches the [[servers]] of the config file too, through this
+machine: the tabs of FOLDER here and of each server's folder, each
+reached over ssh as nerdr api there. Every request, answer and event
+then names its machine, "local" for this one, and the first line out
+lists the machines. ssh never asks for a password here: a server needs
+a key that logs in by itself. A server disconnected from in nerdr's
+window is left out until connected to there again. Not from a program
+nerdr runs. See https://nerdr.app/api/servers/.
 `
 
 // runAPI is `nerdr api`.
 func runAPI(args []string) int {
-	if len(args) > 1 || len(args) == 1 && (args[0] == "-h" || args[0] == "--help" || args[0] == "help") {
+	if slices.ContainsFunc(args, func(a string) bool { return a == "-h" || a == "--help" }) ||
+		len(args) == 1 && args[0] == "help" {
 		fmt.Fprint(os.Stderr, apiUsage)
-		if len(args) == 1 {
-			return 0
-		}
+		return 0
+	}
+	servers := len(args) > 0 && args[0] == "--servers"
+	if servers {
+		args = args[1:]
+	}
+	if len(args) > 1 || len(args) == 1 && strings.HasPrefix(args[0], "-") && (servers || args[0] != "--schema") {
+		fmt.Fprint(os.Stderr, apiUsage)
 		return 2
 	}
 	if len(args) == 1 && args[0] == "--schema" {
@@ -56,6 +74,9 @@ func runAPI(args []string) int {
 	folder := "."
 	if len(args) == 1 {
 		folder = args[0]
+	}
+	if servers {
+		return runAPIServers(folder)
 	}
 	root, err := bridgeRoot(folder)
 	if err != nil {

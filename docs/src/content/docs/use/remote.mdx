@@ -68,6 +68,13 @@ password for each. A server that cannot be reached is shown grey, with
 the reason. `nerdr connect HOST:FOLDER` shows that one server only, and
 does not connect to `[[servers]]`.
 
+Connections to servers are not passed on. `nerdr connect server1`, or a
+program using `server1`'s [API](../../api/overview/), shows `server1`'s
+tabs only, not those of the servers nerdr on `server1` connects to. List
+those servers on your laptop too, or, for a program, run
+[`nerdr api --servers`](../../api/servers/) on `server1`, or reach each
+one through it with `ssh -J server1 server2 nerdr api FOLDER`.
+
 <Machines />
 
 Tabs are grouped by repository, whatever machine they are on: the tabs
