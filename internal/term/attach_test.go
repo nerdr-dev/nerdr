@@ -138,9 +138,15 @@ func (p *livingProc) Wait() error { <-p.quit; return nil }
 func TestAttachAnswersOnlyWhatIsNew(t *testing.T) {
 	old := strings.Repeat("o", 40) + "\x1b[6n" + strings.Repeat("o", 16) // asks where the cursor is
 	now := "\x1b[c" + "new"                                              // asks what the terminal is
-	proc := &recordingProc{heldProc: newHeldProc([]byte(old + now))}
+	// The program lives on till the answer is in: one that is gone has
+	// what is still to be written to it dropped, the answer too.
+	proc := &livingProc{recordingProc: &recordingProc{heldProc: newHeldProc([]byte(old + now))}, quit: make(chan struct{})}
 	p := Attach(proc, 20, 4, Taken{Answered: int64(len(old))}, func() {})
+	var quitOnce sync.Once
+	quit := func() { quitOnce.Do(func() { close(proc.quit) }) }
 	t.Cleanup(func() {
+		quit()
+		<-p.Done()
 		p.CloseReplies()
 		<-p.replyDone
 		p.Close()
@@ -152,6 +158,8 @@ func TestAttachAnswersOnlyWhatIsNew(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	<-proc.read
+	quit()
 	<-p.Done()
 	if got := proc.written(); strings.Contains(got, "R") {
 		t.Errorf("the old query was answered again: %q", got)
