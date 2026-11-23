@@ -55,6 +55,24 @@ agent's screen instead, which can mistake a long pause for done.
 
 See [Knowing when an agent is done](../how-it-works/#knowing-when-an-agent-is-done).
 
+## A notification never comes
+
+A notification that is not sent leaves no trace: the light is right, and
+you see the agent is done when you come back. To find out why, start
+nerdr with `NERDR_DEBUG_LOG` naming a file:
+
+```sh
+NERDR_DEBUG_LOG=~/nerdr-debug.log nerdr
+```
+
+nerdr appends a line to it for each focus change, each change of a tab's
+light and why, and each notification, sent or not and why, along with
+errors from the notifier (such as `notify-send` not found). nerdr's
+window writes the focus changes and notifications; the lights come from
+its core, which reads the variable only when it starts. To have those
+too, quit nerdr first if it already runs for the folder: closing its
+window leaves the old core running.
+
 ## An agent in a sandbox cannot use nerdr's commands
 
 The sandbox must pass the `NERDR_*` variables through, allow running
