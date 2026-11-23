@@ -532,7 +532,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	case "q":
-		if m.Remote() {
+		// A core of the TUI's own with servers asks which to quit, too.
+		if _, away := m.quitSides(); m.Remote() || len(away) > 0 {
 			m.dialog = closeOrQuit{}
 			return nil
 		}
@@ -542,7 +543,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 				"The agents are stopped. Their tabs and conversations are",
 				"restored the next time you start nerdr in " + m.home().Core.Root + ".",
 			},
-			yes: func(m *Model) tea.Cmd { return m.quit() },
+			// This machine's alone, as the dialog says: a server that
+			// connects again while it is open is not stopped unnamed.
+			yes: func(m *Model) tea.Cmd { return m.quit(false) },
 		}
 		return nil
 	case "t t":

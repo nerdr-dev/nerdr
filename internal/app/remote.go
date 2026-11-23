@@ -478,18 +478,48 @@ func (m *Model) Close() {
 	}
 }
 
-// closeOrQuit asks, as a client of a core in another process, whether to
-// close the client, the agents working on, or to quit, stopping them.
+// closeOrQuit asks whether to close the client, the agents working on, to
+// quit, stopping them on every machine, or, when some machines are this
+// one and some are reached over ssh, to quit here, stopping those on this
+// one only. Close is offered to a client of a core in another process: one
+// in the TUI's own ends with it.
 type closeOrQuit struct{}
 
 func (closeOrQuit) key(m *Model, msg tea.KeyMsg) tea.Cmd {
+	remote := m.Remote()
 	switch msg.String() {
-	case "c", "C", "enter":
+	case "c", "C":
+		if remote {
+			m.dialog = nil
+			return m.closeClient()
+		}
+	case "enter":
 		m.dialog = nil
-		return m.closeClient()
+		if remote {
+			return m.closeClient()
+		}
+		return m.quit(true)
 	case "q", "Q":
 		m.dialog = nil
-		return m.quitAll()
+		if remote {
+			return m.quitAll(true)
+		}
+		return m.quit(true)
+	case "y", "Y":
+		// Yes, as the simple question of a core of the TUI's own has it;
+		// a client has no question it answers.
+		if !remote {
+			m.dialog = nil
+			return m.quit(true)
+		}
+	case "l", "L":
+		if here, away := m.quitSides(); len(here) > 0 && len(away) > 0 {
+			m.dialog = nil
+			if remote {
+				return m.quitAll(false)
+			}
+			return m.quit(false)
+		}
 	case "esc", "n", "N", "ctrl+c":
 		m.dialog = nil
 	}
@@ -497,27 +527,73 @@ func (closeOrQuit) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 }
 
 func (closeOrQuit) view(m *Model, w, _ int) string {
-	lines := []string{
-		"Close: the agents work on; nerdr in " + m.home().Core.Root,
-		"shows them again as they are.",
-		"Quit: the agents are stopped. Their tabs and conversations",
-		"are restored the next time you start nerdr there.",
-	}
-	if live := m.fleet.Live(); len(m.fleet.Machines()) > 1 {
-		var names []string
-		for _, mc := range live {
-			names = append(names, machineLabel(mc))
-		}
+	remote := m.Remote()
+	here, away := m.quitSides()
+	var lines []string
+	if len(away) == 0 && len(m.fleet.Machines()) == 1 {
 		lines = []string{
-			"Close: the agents work on, and nerdr shows them",
-			"again as they are.",
-			"Quit: the agents are stopped, on " + strings.Join(names, ", ") + ".",
+			"Close: the agents work on; nerdr in " + m.home().Core.Root,
+			"shows them again as they are.",
+			"Quit: the agents are stopped. Their tabs and conversations",
+			"are restored the next time you start nerdr there.",
+		}
+	} else {
+		// The machines are named, each that a key stops or leaves at
+		// work: a core on a server is stopped by quit as much as one here.
+		all := machineLabels(append(append([]*fleet.Machine{}, here...), away...))
+		if remote {
+			lines = append(lines,
+				"Close: the agents work on, on "+all+",",
+				"and nerdr shows them again as they are.")
+		}
+		lines = append(lines, "Quit: the agents are stopped, on "+all+".")
+		if len(here) > 0 && len(away) > 0 {
+			lines = append(lines,
+				"Quit here: the agents are stopped on "+machineLabels(here)+";",
+				"those on "+machineLabels(away)+" work on.")
+		}
+		lines = append(lines,
 			"Their tabs and conversations are restored the next",
-			"time you start nerdr there.",
+			"time you start nerdr there.")
+	}
+	var buttons []string
+	if remote {
+		buttons = append(buttons, m.button("c", "close"))
+	}
+	if len(here) > 0 && len(away) > 0 {
+		buttons = append(buttons, m.button("l", "quit here"))
+	}
+	buttons = append(buttons, m.button("q", "quit"), m.button("esc", "cancel"))
+	title := "Quit nerdr?"
+	if remote {
+		title = "Close or quit nerdr?"
+	}
+	return box(title, append(lines, "", strings.Join(buttons, "   ")), w)
+}
+
+// quitSides are the machines connected, whose agents a quit stops: here,
+// those of a core on this machine, in the TUI's process or another; and
+// away, those of a core on another, reached over ssh.
+func (m *Model) quitSides() (here, away []*fleet.Machine) {
+	for _, mc := range m.fleet.Live() {
+		switch {
+		case mc.Away:
+		case mc.Host == "":
+			here = append(here, mc)
+		default:
+			away = append(away, mc)
 		}
 	}
-	lines = append(lines, "", m.button("c", "close")+"   "+m.button("q", "quit")+"   "+m.button("esc", "cancel"))
-	return box("Close or quit nerdr?", lines, w)
+	return here, away
+}
+
+// machineLabels names the machines ms, as the user knows them.
+func machineLabels(ms []*fleet.Machine) string {
+	names := make([]string, 0, len(ms))
+	for _, mc := range ms {
+		names = append(names, machineLabel(mc))
+	}
+	return strings.Join(names, ", ")
 }
 
 // closeClient ends the TUI, the agents working on in core.
@@ -527,14 +603,15 @@ func (m *Model) closeClient() tea.Cmd {
 }
 
 // quitAll has the core of every machine still there stop every program
-// and end, then ends the TUI.
-func (m *Model) quitAll() tea.Cmd {
+// and end, then ends the TUI; with away false, only those on this machine,
+// the cores reached over ssh working on.
+func (m *Model) quitAll(away bool) tea.Cmd {
 	m.toast("stopping agents…")
 	m.closing = true
 	// Waited for: core has it before the connection closes.
 	cmds := []tea.Cmd{}
 	for _, mc := range m.fleet.Live() {
-		if !mc.Away {
+		if !mc.Away && (away || mc.Host == "") {
 			cmds = append(cmds, m.doOn(mc, core.QuitAll{}))
 		}
 	}

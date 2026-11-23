@@ -458,12 +458,14 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 type quitReadyMsg struct{}
 
 // quit stops the agents and exits, keeping the tabs for next time: those
-// of the core in the TUI's process, and of every other machine's.
-func (m *Model) quit() tea.Cmd {
+// of the core in the TUI's process, and of every other machine's; with
+// away false, only of those on this machine, the cores reached over ssh
+// working on.
+func (m *Model) quit(away bool) tea.Cmd {
 	m.toast("stopping agents…")
 	// The machines' cores in other processes stop theirs.
 	for _, mc := range m.fleet.Live() {
-		if mc.Conn != nil && !mc.Away {
+		if mc.Conn != nil && !mc.Away && (away || mc.Host == "") {
 			m.doOn(mc, core.QuitAll{})
 		}
 	}
