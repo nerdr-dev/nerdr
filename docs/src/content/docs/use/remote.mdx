@@ -121,8 +121,15 @@ A server whose connection is down is grey: its tabs are dimmed, its badge
 has a `✕`, and a tab there shows why in place of its agent. Unless you
 disconnected it, nerdr keeps trying to connect again. Press `r` on one
 of its tabs to connect, or log in, now. The other machines work as before, and nerdr ends only when no
-machine is left. **Quit** stops the agents on every machine that is
-connected, and says which.
+machine is left. **Quit** (`q`) stops the agents on every machine that
+is connected, servers too, and the dialog names them all, even when the
+only one is a server. With agents both on this machine and on servers,
+**Quit here** (`l`) stops this machine's and leaves the servers' working,
+for a phone or another laptop to go on with; **Close** (`c` or `enter`)
+leaves them all working. With `NERDR_HOLDER=0`, where the core runs in
+nerdr itself, there is no Close, and `enter` is Quit. Connected to a
+server alone, there is nothing here to quit: Close is the way to leave
+its agents working.
 
 If you connect to the same server from a second laptop, that nerdr takes
 it over and the first shows it grey, saying so. Neither takes it back on

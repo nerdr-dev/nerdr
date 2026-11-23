@@ -23,7 +23,7 @@ func TestQuitLeavesConversationsAlone(t *testing.T) {
 	a.SessionID, a.Resumed = "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b", true
 	old := a.Pane
 
-	stop := m.quit()
+	stop := m.quit(true)
 	// The agent moved to another conversation (a /clear) just as nerdr
 	// was quitting: that one is resumed next time.
 	moved := "0199a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5c"

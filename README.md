@@ -43,7 +43,8 @@ question.*
   [Build on nerdr →](https://nerdr.app/api/overview/)
 - **Close it, and the agents work on.** Closing nerdr, or losing the SSH
   connection, leaves the agents running; start nerdr again to see them.
-  Quit stops them. [Remote →](https://nerdr.app/use/remote/)
+  Quit stops them, or with servers connected, Quit here stops only this
+  machine's. [Remote →](https://nerdr.app/use/remote/)
 - **Agents on your servers, beside your own.** nerdr connects over SSH to
   nerdr on other machines and shows their tabs with yours. A tab can move
   between machines with its branch, its uncommitted changes and its

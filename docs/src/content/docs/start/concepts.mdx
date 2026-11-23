@@ -41,8 +41,10 @@ on its own, once for each folder you start nerdr in:
 - **Close** nerdr (`ctrl+q q`, then `enter`), close its window or lose
   the SSH connection, and the core and every agent work on. Start nerdr
   in the same folder again to see them, the same processes.
-- **Quit** (`ctrl+q q q`) stops the core and the agents. The next start
-  brings every tab back, each agent continuing its conversation.
+- **Quit** (`ctrl+q q q`) stops the core and the agents, on every
+  machine nerdr is connected to. The next start brings every tab back,
+  each agent continuing its conversation. With servers too, **Quit
+  here** (`ctrl+q q l`) stops only this machine's.
 
 The core can also run on another machine. `nerdr connect box:~/src`
 shows the agents of a core on the server `box`, over SSH, and one nerdr
