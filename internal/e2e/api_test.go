@@ -22,7 +22,13 @@ type apiClient struct {
 
 func startAPI(t *testing.T, bin, root string, env []string) *apiClient {
 	t.Helper()
-	cmd := exec.Command(bin, "api", root)
+	return startAPIArgs(t, bin, env, "api", root)
+}
+
+// startAPIArgs is startAPI of nerdr with args.
+func startAPIArgs(t *testing.T, bin string, env []string, args ...string) *apiClient {
+	t.Helper()
+	cmd := exec.Command(bin, args...)
 	cmd.Env = env
 	in, err := cmd.StdinPipe()
 	if err != nil {

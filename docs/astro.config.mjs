@@ -58,7 +58,7 @@ export default defineConfig({
 				},
 				{
 					label: 'Build on nerdr',
-					items: ['api/overview', 'api/connecting', 'api/requests', 'api/events', 'api/schema', 'api/examples'],
+					items: ['api/overview', 'api/connecting', 'api/requests', 'api/events', 'api/servers', 'api/schema', 'api/examples'],
 				},
 				{
 					label: 'Reference',

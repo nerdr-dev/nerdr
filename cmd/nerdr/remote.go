@@ -47,6 +47,12 @@ func parseRemote(arg string) (host, folder string, err error) {
 // not reach them. Again, after a first connection, it never asks for a
 // password, the TUI having the terminal.
 func sshArgv(host, folder string, again bool) []string {
+	return sshNerdr(host, "bridge", folder, again)
+}
+
+// sshNerdr is the command line that runs nerdr COMMAND FOLDER on host, as
+// sshArgv says; command is a plain word.
+func sshNerdr(host, command, folder string, again bool) []string {
 	argv := strings.Fields(os.Getenv(EnvSSH))
 	if len(argv) == 0 {
 		argv = []string{"ssh"}
@@ -59,7 +65,7 @@ func sshArgv(host, folder string, again bool) []string {
 	}
 	// The user's login shell finds nerdr where it is installed, as in a
 	// terminal there; ssh's own PATH may not have it.
-	remote := `exec "$SHELL" -lc "exec nerdr bridge '` + folder + `'"`
+	remote := `exec "$SHELL" -lc "exec nerdr ` + command + ` '` + folder + `'"`
 	return append(argv, "--", host, remote)
 }
 
