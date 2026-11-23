@@ -101,6 +101,8 @@ dialog, so it fits in the badges and the panel.
 
 ### The Machines dialog
 
+![The Machines dialog with this machine and box connected, and gpu unavailable with its connection error](../../../assets/machines.png)
+
 `ctrl+q k` (or *Machines* in `ctrl+q ?`) lists this machine and every
 server, with its tabs and whether it is connected.
 
@@ -210,6 +212,11 @@ agent needs there in the server's shell setup, or in `env` under its
 `[agents.<name>]` in the server's config.
 
 ## Moving a tab to another machine
+
+<video autoPlay loop muted playsInline controls aria-label="Moving rate-limit to box: the confirmation lists what goes and what stays, Claude writes a handoff, and the tab opens on box with its changes and conversation" style="width:100%">
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "move.webm"} type="video/webm" />
+	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "move.mp4"} type="video/mp4" />
+</video>
 
 Press `ctrl+q a m`, or choose *Move to another machine…* in the tab's
 menu or `ctrl+q ?`, to carry a tab's work to another machine, from your
