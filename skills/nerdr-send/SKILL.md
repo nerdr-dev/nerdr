@@ -83,6 +83,9 @@ When the user asks for several agents, you coordinate:
 
 If the user closes an agent you started, or it stops, nerdr tells you in
 a message: stop waiting for it, and see what it left before you go on.
+nerdr tells you too when it has waited a while for the user, and when it
+ends a turn without answering your task or message: do what the message
+says rather than wait on.
 
 If an agent you started is no longer needed, ask the user whether to close
 its pane. Close it with `nerdr close N` only when they say so, or asked
