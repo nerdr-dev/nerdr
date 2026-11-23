@@ -43,3 +43,85 @@
 	height: 1.1em;
 	border-radius: 0.22em;
 }
+
+/* Diagrams: inline SVG drawn in Starlight's own colours, so they follow
+   the light and dark themes. Wide ones scroll sideways on a phone rather
+   than shrink their text out of reach. */
+.nerdr-diagram {
+	margin: 1.5rem 0;
+	overflow-x: auto;
+}
+.nerdr-diagram svg {
+	display: block;
+	width: 100%;
+	min-width: 36rem;
+	height: auto;
+	font-family: var(--sl-font);
+}
+.nerdr-diagram figcaption {
+	margin-top: 0.5rem;
+	color: var(--sl-color-gray-3);
+	font-size: var(--sl-text-sm);
+}
+.nerdr-diagram .region {
+	fill: none;
+	stroke: var(--sl-color-gray-5);
+	stroke-width: 1.5;
+}
+.nerdr-diagram .region.dashed {
+	stroke-dasharray: 6 5;
+}
+.nerdr-diagram .box {
+	fill: var(--sl-color-gray-6);
+	stroke: var(--sl-color-gray-4);
+	stroke-width: 1.2;
+}
+.nerdr-diagram .box.accent {
+	stroke: var(--sl-color-accent);
+	stroke-width: 1.8;
+}
+.nerdr-diagram .title {
+	fill: var(--sl-color-white);
+	font-size: 15px;
+	font-weight: 600;
+}
+.nerdr-diagram .mono {
+	font-family: var(--sl-font-mono);
+}
+.nerdr-diagram .sub {
+	fill: var(--sl-color-gray-3);
+	font-size: 12.5px;
+}
+.nerdr-diagram .region-label {
+	fill: var(--sl-color-gray-2);
+	font-size: 13px;
+	font-weight: 600;
+	letter-spacing: 0.04em;
+	text-transform: uppercase;
+}
+.nerdr-diagram .region-label.host {
+	text-transform: none;
+	letter-spacing: 0;
+}
+.nerdr-diagram .edge {
+	fill: none;
+	stroke: var(--sl-color-gray-3);
+	stroke-width: 1.5;
+}
+.nerdr-diagram .edge.accent {
+	stroke: var(--sl-color-accent);
+}
+.nerdr-diagram .edge-label {
+	fill: var(--sl-color-gray-2);
+	font-size: 12.5px;
+}
+.nerdr-diagram .edge-label.accent {
+	fill: var(--sl-color-accent);
+	font-weight: 600;
+}
+.nerdr-diagram .arrowhead {
+	fill: var(--sl-color-gray-3);
+}
+.nerdr-diagram .arrowhead.accent {
+	fill: var(--sl-color-accent);
+}

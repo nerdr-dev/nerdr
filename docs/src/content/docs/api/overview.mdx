@@ -4,6 +4,7 @@ description: nerdr's API lets your own programs see what the agents are doing an
 ---
 
 import { Aside, CardGrid, Card } from '@astrojs/starlight/components';
+import Api from '../../../components/diagrams/Api.astro';
 
 nerdr has an API for programs you write yourself. A program connected
 to it sees what nerdr sees: the tabs, each agent's state and screen, the
@@ -40,11 +41,7 @@ window open or closed. Several programs can be connected at once.
 
 ## How it works
 
-```
-your program ──▶ nerdr api ──▶ API socket ──▶ nerdr's core ──▶ agents
-                (stdin/stdout)  (private,       (runs while the
-                                 keyed)          window is closed)
-```
+<Api />
 
 nerdr's core is the part that runs the tabs and agents. It lives on
 when you close nerdr's window and stops when you quit (see
