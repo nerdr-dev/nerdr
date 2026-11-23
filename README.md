@@ -11,7 +11,7 @@
 **Run a team of coding agents in their own Git worktrees across one or
 more repositories, and review their work in one terminal.**
 
-![nerdr with three repositories: a new tab with Codex, switching repositories, the changes in the review panel, tests in a terminal, Codex reviewing Claude's work, and the waiting list taking you to an agent's question](docs/public/overview.gif)
+![A checkout audit finds three bugs. Spinoff creates a tab for each fix across local and remote worktrees. Codex requests changes to Claude’s VAT fix, and a terminal test shows the refund rounding error.](docs/public/overview.gif)
 
 *A new tab with Codex, the repositories and their status lights, Claude's
 changes in the review panel, the tests in a terminal, Codex reviewing
