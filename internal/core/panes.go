@@ -259,6 +259,7 @@ func (m *Core) NewAgentWith(t *Tab, k agents.Kind, model, task string, quiet, sa
 	a := &Tab{AgentState: Agent{Tab: state.Tab{ID: NewTabID(), Name: t.Name, Dir: t.Dir, Agent: k, Model: model, Worktrees: t.Worktrees, Num: t.NextNum()}, Light: StStarting}, PartOf: t}
 	if by != nil {
 		a.StartedBy = by.ID
+		a.OwesStarter = task != ""
 	}
 	p := &PaneTab{Kind: PaneAgent, A: a}
 	cmd := m.AddPane(t, p, quiet)
@@ -318,6 +319,12 @@ func (m *Core) OnMessage(r hooks.Report) Cmd {
 		from.Num, from.Agent, r.Text, from.Num)
 	m.AddMessageFrom(to, text, true, m.Confined(r, from))
 	to.Messages[len(to.Messages)-1].From = from.Num // for nerdr send --wait
+	if to.StartedBy == from.ID {
+		to.OwesStarter = true
+	}
+	if from.StartedBy == to.ID {
+		from.OwesStarter = false
+	}
 	m.SaveSession()
 	m.Tell(PanesMsg{})
 	m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " → " + m.AgentLabel(o, to) + ": a message, sent when it is idle")
@@ -687,17 +694,65 @@ func stopAgent(a *Tab) {
 // longer there to answer it, how saying what happened to it: once, and
 // not when by, the agent that did it, is the one that started it.
 func (m *Core) TellStarter(a *Tab, how string, by *Tab) {
-	if a.StartedBy == "" || a.StarterTold || m.Quitting {
+	if a.StarterTold {
 		return
 	}
-	s := m.AgentByID(a.StartedBy)
-	if s == nil || s == a || s == by || !m.Live(s) {
+	s := m.Starter(a)
+	if s == nil || s == by {
 		return
 	}
 	a.StarterTold = true
 	m.AddMessage(s, fmt.Sprintf("Agent %d (%s), which you started in this nerdr tab, %s: it does not answer you any more. "+
 		"If it had not sent you its work, see what it left in the worktree (git status, git diff), "+
 		"and do the rest of its task yourself, or ask the user.", a.Num, a.Agent, how), true)
+	m.Tell(PanesMsg{})
+}
+
+// Starter is the agent that started a (nerdr agent), while it is there to
+// be told of it; nil for one the user started.
+func (m *Core) Starter(a *Tab) *Tab {
+	if a.StartedBy == "" || m.Quitting {
+		return nil
+	}
+	s := m.AgentByID(a.StartedBy)
+	if s == nil || s == a || !m.Live(s) {
+		return nil
+	}
+	return s
+}
+
+// StarterBlockedAfter is how long an agent another started must wait for
+// the user before that one is told: a question the user answers at once
+// is not worth a turn of the starter's.
+const StarterBlockedAfter = 20 * time.Second
+
+// WatchForStarter tells the agent that started a (nerdr agent) what it
+// would otherwise wait for in vain: that a waits for the user, or that a
+// ended its turn without answering the task or message it sent it. was is
+// a's light before this look at it.
+func (m *Core) WatchForStarter(a *Tab, was Status, now time.Time) {
+	if a.Light != StBlocked {
+		a.BlockedTold = false
+	}
+	s := m.Starter(a)
+	if s == nil {
+		return
+	}
+	switch {
+	case a.Light == StBlocked && !a.BlockedTold && now.Sub(a.Changed) >= StarterBlockedAfter:
+		a.BlockedTold = true
+		m.AddMessage(s, fmt.Sprintf("Agent %d (%s), which you started in this nerdr tab, waits for the user: "+
+			"it asks something in its pane (nerdr read %d shows what). It takes no message until the user answers it: "+
+			"tell the user if your work waits for it.", a.Num, a.Agent, a.Num), true)
+	case was.AtWork() && (a.Light == StIdle || a.Light == StDone) && a.OwesStarter && a.NextAuto() < 0:
+		// A message still to come is another turn: it may answer in that.
+		a.OwesStarter = false
+		m.AddMessage(s, fmt.Sprintf("Agent %d (%s), which you started in this nerdr tab, ended its turn without answering you "+
+			"with nerdr send. nerdr read %d shows where it stopped, and git status and git diff what it changed: "+
+			"send it what it needs with nerdr send %d, or go on without it.", a.Num, a.Agent, a.Num, a.Num), true)
+	default:
+		return
+	}
 	m.Tell(PanesMsg{})
 }
 

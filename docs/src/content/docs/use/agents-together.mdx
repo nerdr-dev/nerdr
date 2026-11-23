@@ -31,7 +31,9 @@ terminal and starts Codex, and they send each other moves with
 
 Ask agent 1 to *"start a codex agent to write the tests"*, and a new pane
 opens beside it with that task. The new agent reports back to agent 1
-with `nerdr send`, and the keyboard stays where it was. Agents can name
+with `nerdr send`, and the keyboard stays where it was. If it stops, is
+closed, waits for you for a while, or ends a turn without answering, nerdr
+tells agent 1, so it does not wait in vain. Agents can name
 the kind of agent and its model, in the agent's own names (`haiku` for
 claude, say).
 

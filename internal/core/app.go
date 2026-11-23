@@ -134,6 +134,7 @@ func (m *Core) DetectAgent(t *Tab, shown bool, now time.Time) Cmd {
 	if t.Light == StExited && was != StExited {
 		cmds = append(cmds, m.OnExit(t))
 	}
+	m.WatchForStarter(t, was, now)
 	if was.AtWork() && (t.Light == StIdle || t.Light == StDone) {
 		m.TellCutOff(t)
 		// The log has the turn's prompt by now, whenever it was written.

@@ -747,6 +747,75 @@ func TestStarterToldOfClose(t *testing.T) {
 	}
 }
 
+// TestStarterToldOfWaits: the agent that started another (nerdr agent) is
+// told when that one has waited a while for the user, once a wait, and
+// when it ends a turn without answering the task or a message it sent it,
+// but not when it answered, nor while another message of its is queued.
+func TestStarterToldOfWaits(t *testing.T) {
+	m := paneModel(t)
+	fakeAgent(m, agents.Codex)
+	tb := m.Cur()
+	c := &m.home().Core
+	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.NewAgent, Kind: "codex", Text: "write the tests"}); a.Err != "" {
+		t.Fatalf("answer %+v", a)
+	}
+	two := tb.ExtraAgents()[0]
+	two.Messages = nil // as if typed in
+	told := func(what string) int {
+		n := 0
+		for _, msg := range tb.Messages {
+			if strings.Contains(msg.Text, "Agent 2 (codex), which you started") && strings.Contains(msg.Text, what) {
+				n++
+			}
+		}
+		return n
+	}
+	now := time.Now()
+
+	// It asks the user something: told only once it has waited a while,
+	// and only once a wait.
+	two.Light, two.Changed = core.StBlocked, now
+	c.WatchForStarter(two, core.StWorking, now)
+	if told("waits for the user") != 0 {
+		t.Fatal("told of a question the user may answer at once")
+	}
+	later := now.Add(core.StarterBlockedAfter)
+	c.WatchForStarter(two, core.StBlocked, later)
+	c.WatchForStarter(two, core.StBlocked, later.Add(time.Second))
+	if n := told("waits for the user"); n != 1 {
+		t.Fatalf("told %d times of the wait, want 1", n)
+	}
+
+	// Its turn ends with the task unanswered: told once.
+	two.Light = core.StIdle
+	c.WatchForStarter(two, core.StWorking, later)
+	c.WatchForStarter(two, core.StWorking, later)
+	if n := told("without answering"); n != 1 {
+		t.Fatalf("told %d times of the unanswered task, want 1", n)
+	}
+
+	// A message from its starter, answered: nothing to tell.
+	if a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Message, To: 2, Text: "and the error path"}); a.Err != "" {
+		t.Fatalf("send: %+v", a)
+	}
+	if !two.OwesStarter {
+		t.Fatal("a message from its starter is owed an answer")
+	}
+	// Still queued: the turn that ends is not the one that takes it.
+	c.WatchForStarter(two, core.StWorking, later)
+	if n := told("without answering"); n != 1 {
+		t.Fatalf("told with the message still to come")
+	}
+	two.Messages = nil
+	if a, _ := askNerdr(m, two, hooks.Report{Method: hooks.Message, To: 1, Text: "done"}); a.Err != "" {
+		t.Fatalf("answer: %+v", a)
+	}
+	c.WatchForStarter(two, core.StWorking, later)
+	if n := told("without answering"); n != 1 || two.OwesStarter {
+		t.Fatalf("told after it answered (%d), owes %v", n, two.OwesStarter)
+	}
+}
+
 // TestTerminalLeavesAColumn: a terminal pane's program is a column
 // narrower than the pane, so the cursor at the end of a long line is not
 // against the frame.

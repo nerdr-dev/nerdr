@@ -133,6 +133,12 @@ type Agent struct {
 	// StarterTold is set once the agent that started this one has been
 	// told it was closed or stopped, for it to be told only once.
 	StarterTold bool `json:"-"`
+	// OwesStarter is set while the agent has a task or message from the
+	// agent that started it that it has not answered with nerdr send; and
+	// BlockedTold once that agent has been told this one waits for the
+	// user, until it no longer does. See WatchForStarter.
+	OwesStarter bool `json:"-"`
+	BlockedTold bool `json:"-"`
 }
 
 // HookAuthority is what an integration has said about an agent.
