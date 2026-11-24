@@ -36,6 +36,14 @@ Before creating a branch, nerdr fetches origin's default branch: the one
 fast-forwards a local copy that is behind, but leaves one with local
 commits unchanged. If fetching fails, it does not create the worktree.
 
+Each connection to origin is a login, which with an SSH key behind
+Touch ID, or a token in the keychain that asks for it, is a finger on
+the reader. nerdr connects once per repository for a new tab: the fetch
+that checks whether origin has the branch also brings its default branch
+up to date, and that answer is used for the next minute. With a Git older
+than 2.41, which cannot say what a fetch got, it connects three times for
+a new branch.
+
 New worktrees go in `~/worktrees-nerdr`, or the folder set in
 `worktrees_dir`:
 

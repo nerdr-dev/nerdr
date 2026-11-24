@@ -213,6 +213,13 @@ type PlanItem struct {
 	// Replaces is, for "new", the commit of a merged local branch of the
 	// same name that the new branch takes the place of; see FromBase.
 	Replaces string
+	// BaseID is the commit origin named for Base when the plan fetched it,
+	// at BaseAt; "" when it was not fetched or git could not say (see
+	// fetchOrigin). Sync makes a new branch from it, without asking origin
+	// again, while it is fresh (planFresh): every connection to origin may
+	// be a login, and with Touch ID a finger on the reader.
+	BaseID string
+	BaseAt time.Time
 	// Stacked is set, for "new", when Base is another tab's local branch
 	// the new one starts on top of, with whatever it has not pushed; see
 	// MakePlanOn.
@@ -321,17 +328,22 @@ func planItem(r Repo, path, branch, on string) (PlanItem, error) {
 		strings.Contains(out, "branch refs/heads/"+branch+"\n") {
 		return it, fmt.Errorf("%s: branch %s is already checked out in another worktree", r.Name, branch)
 	}
-	switch {
-	case refExists(r.Path, "refs/heads/"+branch):
+	// The ref fetched as the base, named once: the commit origin named
+	// for it is kept for the base only when the plan's is the same.
+	base := originBaseRef(r.Path)
+	var baseID string
+	if refExists(r.Path, "refs/heads/"+branch) {
 		it.Mode = "local"
-	case remoteBranch(r.Path, branch):
-		it.Mode = "remote"
-	default:
-		it.Mode = "new"
+	} else if has, id, err := remoteBranch(r.Path, branch, base); err != nil {
+		return it, fmt.Errorf("%s: %w", r.Name, err)
+	} else if has {
+		it.Mode, baseID = "remote", id
+	} else {
+		it.Mode, baseID = "new", id
 	}
 	if it.Mode == "local" {
 		// Counted against the base as it is now, as for "remote".
-		fetchBase(r.Path)
+		baseID = fetchBase(r.Path, base)
 		if tip, err := git(r.Path, "rev-parse", "--verify", "refs/heads/"+branch); err == nil {
 			it.Tip = strings.TrimSpace(tip)
 		}
@@ -342,6 +354,9 @@ func planItem(r Repo, path, branch, on string) (PlanItem, error) {
 			return it, fmt.Errorf("%s: there is no branch %s to start on", r.Name, on)
 		}
 		it.Base, it.Stacked = on, true
+	}
+	if baseID != "" && !it.Stacked && base != "" && "refs/remotes/"+it.Base == base {
+		it.BaseID, it.BaseAt = baseID, time.Now()
 	}
 	if it.Base == "" && it.Mode != "local" {
 		return it, fmt.Errorf("%s: found no main or master branch to start from", r.Name)
@@ -361,45 +376,83 @@ func planItem(r Repo, path, branch, on string) (PlanItem, error) {
 // branch pushed since the last fetch has no copy in refs/remotes yet, and
 // one deleted on GitHub stays there until a fetch with --prune — taking
 // the local copy's word would start a new branch of the name of one
-// origin has, or offer to continue one that is gone. The base is fetched
-// along with it, so what the branch has that the base has not is counted
-// against the base as it is now.
-func remoteBranch(repo, branch string) bool {
+// origin has, or offer to continue one that is gone. The base, origin's
+// ref base (see originBaseRef), is fetched along with it, so what the
+// branch has that the base has not is counted against the base as it is
+// now; baseID is the commit origin named for base, "" when git could not
+// say (see fetchOrigin). err is origin's branch that could not be fetched
+// for a stale ref here in its way, which would otherwise be taken for a
+// branch origin has not, and started anew.
+func remoteBranch(repo, branch, base string) (has bool, baseID string, err error) {
 	ref := "refs/remotes/origin/" + branch
 	known := refExists(repo, ref)
 	if !known && !hasRemote(repo, "origin") {
-		return false
+		return false, "", nil
 	}
-	refspecs := append([]string{"+refs/heads/" + branch + ":" + ref}, baseRefspec(repo)...)
-	_, err := gitOrigin(repo, append([]string{"fetch", "--quiet", "origin"}, refspecs...)...)
+	if hasPorcelain() {
+		// A pattern does not fail when origin has no branch it matches,
+		// as the branch's own name does, so the base comes along in the
+		// one fetch either way. It takes origin's other branches whose
+		// names start with this one's as well, as a plain git fetch
+		// would.
+		f, ferr := fetchOrigin(repo, append([]string{"+refs/heads/" + branch + "*:" + ref + "*"}, baseRefspec(base)...)...)
+		switch {
+		case ferr != nil && !f.listed():
+			// Offline, or the login refused: asking again would only ask
+			// for the login again.
+			return known, "", nil
+		case f.rejected[ref]:
+			return false, "", fmt.Errorf("origin has branch %s, but a stale branch of origin's here is in the way of fetching it: run git remote prune origin in %s", branch, repo)
+		}
+		_, has = f.ids[ref]
+		if !has && known {
+			_, _ = git(repo, "update-ref", "-d", ref)
+		}
+		return has, f.ids[base], nil
+	}
+	_, err = gitOrigin(repo, append([]string{"fetch", "--quiet", "origin", "+refs/heads/" + branch + ":" + ref}, baseRefspec(base)...)...)
 	switch {
 	case err == nil:
-		return true
+		return true, "", nil
 	case strings.Contains(err.Error(), "couldn't find remote ref"):
 		if known {
 			_, _ = git(repo, "update-ref", "-d", ref)
 		}
-		return false
+		return false, "", nil
 	}
 	// Any other failure (offline, say): the local copy is the best guess.
-	return known
+	return known, "", nil
 }
 
-// baseRefspec is what to fetch to bring origin's main (or master) up to
-// date, nothing when the base is not origin's.
-func baseRefspec(repo string) []string {
-	if b := strings.TrimPrefix(defaultBase(repo), "origin/"); b != "" && b != defaultBase(repo) {
-		return []string{"+refs/heads/" + b + ":refs/remotes/origin/" + b}
+// baseRefspec is what to fetch to bring base, origin's main (or master)
+// as originBaseRef names it, up to date; nothing for "".
+func baseRefspec(base string) []string {
+	if base == "" {
+		return nil
 	}
-	return nil
+	return []string{"+refs/heads/" + strings.TrimPrefix(base, "refs/remotes/origin/") + ":" + base}
 }
 
-// fetchBase brings origin's main (or master) up to date, as well as it can:
-// offline, the copy there is stays the best guess.
-func fetchBase(repo string) {
-	if rs := baseRefspec(repo); rs != nil {
-		_, _ = gitOrigin(repo, append([]string{"fetch", "--quiet", "origin"}, rs...)...)
+// originBaseRef is the ref of origin's main (or master), "" when the base
+// is not origin's.
+func originBaseRef(repo string) string {
+	base := defaultBase(repo)
+	if b, ok := strings.CutPrefix(base, "origin/"); ok && b != "" {
+		return "refs/remotes/" + base
 	}
+	return ""
+}
+
+// fetchBase brings base, origin's main (or master) as originBaseRef names
+// it, up to date, as well as it can: offline, the copy there is stays the
+// best guess. id is the commit origin named for it, "" when git could not
+// say.
+func fetchBase(repo, base string) (id string) {
+	if base == "" {
+		return ""
+	}
+	f, _ := fetchOrigin(repo, baseRefspec(base)...)
+	return f.ids[base]
 }
 
 func revCount(repo, rng string) int {
@@ -543,13 +596,9 @@ func (p *Plan) Sync() (warnings []string, err error) {
 		// The commit is taken from origin's answer, not from the ref the
 		// fetch writes: that ref is in the main checkout's .git, which a
 		// sandboxed agent may write to.
-		id, err := remoteCommit(it.Repo.Path, b)
-		if err != nil {
-			return warnings, &FetchError{Repo: it.Repo.Name, Branch: b, Err: err}
-		}
 		remote := "origin/" + b
-		refspec := "+refs/heads/" + b + ":refs/remotes/" + remote
-		if _, err := gitOrigin(it.Repo.Path, "fetch", "--quiet", "origin", refspec); err != nil {
+		id, err := baseCommit(*it, b)
+		if err != nil {
 			return warnings, &FetchError{Repo: it.Repo.Name, Branch: b, Err: err}
 		}
 		afterFetch(it.Repo.Path)
@@ -564,6 +613,43 @@ func (p *Plan) Sync() (warnings []string, err error) {
 		}
 	}
 	return warnings, nil
+}
+
+// planFresh is how long the commit the plan had origin name for the base
+// (PlanItem.BaseID) stands for origin's base, in place of asking again.
+const planFresh = time.Minute
+
+// baseCommit fetches origin's branch b, the base of it, and is the commit
+// origin named for it: the plan's answer while it is fresh; else the
+// answer of one fetch, with a git that can say (see fetchOrigin); else
+// ls-remote's, and a fetch after it.
+func baseCommit(it PlanItem, b string) (string, error) {
+	remote := "origin/" + b
+	// A plan from over the client socket has lost its monotonic clock: one
+	// set back makes its answer older, not fresher.
+	if age := time.Since(it.BaseAt); isCommitID(it.BaseID) && it.Base == remote && age >= 0 && age < planFresh {
+		return it.BaseID, nil
+	}
+	ref := "refs/remotes/" + remote
+	refspec := "+refs/heads/" + b + ":" + ref
+	if hasPorcelain() {
+		f, err := fetchOrigin(it.Repo.Path, refspec)
+		if err != nil {
+			return "", err
+		}
+		if id := f.ids[ref]; id != "" {
+			return id, nil
+		}
+		return "", fmt.Errorf("origin did not say which commit %s is at", b)
+	}
+	id, err := remoteCommit(it.Repo.Path, b)
+	if err != nil {
+		return "", err
+	}
+	if _, err := gitOrigin(it.Repo.Path, "fetch", "--quiet", "origin", refspec); err != nil {
+		return "", err
+	}
+	return id, nil
 }
 
 // afterFetch is called by Sync once the base is fetched: a seam for the

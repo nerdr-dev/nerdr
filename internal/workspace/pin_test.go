@@ -181,16 +181,17 @@ func TestUnpinnedBaseIsTrustedOnlyForTheUser(t *testing.T) {
 			if !tc.unfetched {
 				run(t, a.Path, "git", "remote", "remove", "origin")
 			}
-			// The agent's commit is where the base is: on main.
 			evil := evilCommit(t, a.Path, marks)
-			setRef(t, a.Path, "refs/heads/main", evil)
-			setRef(t, a.Path, "refs/remotes/origin/main", evil)
 
 			for _, sandboxed := range []bool{true, false} {
 				plan, err := MakePlan(filepath.Join(filepath.Dir(a.Path), "worktrees"), "feat", []Repo{a})
 				if err != nil {
 					t.Fatal(err)
 				}
+				// The agent's commit is where the base is, on main, put
+				// there after the plan's fetch.
+				setRef(t, a.Path, "refs/heads/main", evil)
+				setRef(t, a.Path, "refs/remotes/origin/main", evil)
 				plan.Unfetched, plan.Sandboxed = tc.unfetched, sandboxed
 				if _, err := plan.Sync(); err != nil {
 					t.Fatal(err)
