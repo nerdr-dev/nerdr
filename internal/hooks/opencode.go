@@ -40,10 +40,27 @@ var OpenCodePlugin []byte
 // line out to keep their own edits — is left alone.
 const OpenCodeMarker = "// nerdr: installed and kept up to date by nerdr."
 
-// OpenCodePluginHome is where the plugin goes in the home folder, for
-// every opencode.
+// OpenCodePluginHome is where the plugin goes for every opencode: in
+// opencode's global config folder, as nerdr's environment has it (see
+// OpenCodeConfigDir).
 func OpenCodePluginHome(home string) string {
-	return filepath.Join(home, ".config", "opencode", "plugins", "nerdr.js")
+	return filepath.Join(OpenCodeConfigDir(home, os.Getenv), "plugins", "nerdr.js")
+}
+
+// OpenCodeConfigDir is the global config folder opencode loads plugins
+// from, in an environment getenv reads: OPENCODE_CONFIG_DIR, as it is
+// given, when set; else opencode under XDG_CONFIG_HOME, when set; else
+// ~/.config/opencode — the folder opencode itself takes for its config.
+// (With OPENCODE_CONFIG_DIR set, opencode loads plugins from the XDG one
+// too, so a plugin nerdr put there before is not lost.)
+func OpenCodeConfigDir(home string, getenv func(string) string) string {
+	if dir := getenv("OPENCODE_CONFIG_DIR"); dir != "" {
+		return dir
+	}
+	if x := getenv("XDG_CONFIG_HOME"); x != "" {
+		return filepath.Join(x, "opencode")
+	}
+	return filepath.Join(home, ".config", "opencode")
 }
 
 // OpenCodePluginProject is where it goes in dir, the folder an opencode

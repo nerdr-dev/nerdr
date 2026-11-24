@@ -265,6 +265,8 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 	dotHome := t.TempDir()
 	dotfiles := t.TempDir()
 	t.Setenv("HOME", dotHome)
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	_ = os.MkdirAll(filepath.Join(dotfiles, "copilot"), 0o755)
 	_ = os.MkdirAll(filepath.Join(dotfiles, "opencode"), 0o755)
 	_ = os.MkdirAll(filepath.Join(dotfiles, "gemini"), 0o755)

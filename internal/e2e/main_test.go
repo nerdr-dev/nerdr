@@ -25,6 +25,10 @@ func TestMain(m *testing.M) {
 			os.Unsetenv(k)
 		}
 	}
+	// The tests give nerdr its own HOME and XDG_CONFIG_HOME, and so
+	// opencode's config folder, where it installs its plugin; this would
+	// take it out of them, to the user's own (see hooks.OpenCodeConfigDir).
+	os.Unsetenv("OPENCODE_CONFIG_DIR")
 	dir, err := os.MkdirTemp("", "nerdr-e2e-bin")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
