@@ -54,12 +54,14 @@ func OpenCodePluginHome(home string, getenv func(string) string) string {
 // opencode loads plugins from the XDG one too with OPENCODE_CONFIG_DIR
 // set, so a plugin nerdr put there before is not lost, and a relative
 // OPENCODE_CONFIG_DIR, which each opencode takes from the folder it
-// starts in, is passed over for it.
+// starts in, is passed over for it. A relative XDG_CONFIG_HOME is passed
+// over too, as XDG says: nerdr would write it under its own working
+// folder, not the worktree an opencode starts in.
 func OpenCodeConfigDir(home string, getenv func(string) string) string {
 	if dir := getenv("OPENCODE_CONFIG_DIR"); filepath.IsAbs(dir) {
 		return dir
 	}
-	if x := getenv("XDG_CONFIG_HOME"); x != "" {
+	if x := getenv("XDG_CONFIG_HOME"); filepath.IsAbs(x) {
 		return filepath.Join(x, "opencode")
 	}
 	return filepath.Join(home, ".config", "opencode")
