@@ -339,55 +339,55 @@ func runOpenCodePlugin(t *testing.T, src string, args []string, env ...string) s
 // and one the user took over left alone.
 func TestOpenCodePluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("OPENCODE_CONFIG_DIR", "")
-	t.Setenv("XDG_CONFIG_HOME", "")
-	file := OpenCodePluginHome(home)
+	file := OpenCodePluginHome(home, func(string) string { return "" })
 	if file != filepath.Join(home, ".config", "opencode", "plugins", "nerdr.js") {
 		t.Fatalf("home: %s", file)
 	}
 	if p := OpenCodePluginProject("/w"); p != filepath.Join("/w", ".opencode", "plugins", "nerdr.js") || !strings.HasSuffix(p, filepath.FromSlash(OpenCodePluginExclude)) {
 		t.Fatalf("project: %s", p)
 	}
-	if wrote, err := InstallOpenCodePlugin(file); !wrote || err != nil {
+	if wrote, err := InstallOpenCodePluginHome(file); !wrote || err != nil {
 		t.Fatalf("first install: %v %v", wrote, err)
 	}
-	if wrote, _ := InstallOpenCodePlugin(file); wrote {
+	if wrote, _ := InstallOpenCodePluginHome(file); wrote {
 		t.Fatal("an up-to-date install should write nothing")
 	}
 	_ = os.WriteFile(file, []byte(OpenCodeMarker+" old\n"), 0o644)
-	if wrote, _ := InstallOpenCodePlugin(file); !wrote {
+	if wrote, _ := InstallOpenCodePluginHome(file); !wrote {
 		t.Fatal("nerdr's outdated copy was not updated")
 	}
 	if b, _ := os.ReadFile(file); !bytes.Equal(b, OpenCodePlugin) {
 		t.Fatal("the update did not write the plugin")
 	}
 	_ = os.WriteFile(file, []byte("// mine\n"), 0o644)
-	if wrote, _ := InstallOpenCodePlugin(file); wrote {
+	if wrote, _ := InstallOpenCodePluginHome(file); wrote {
 		t.Fatal("the user's own copy was replaced")
 	}
 }
 
 // TestOpenCodePluginHomeIsOpenCodesConfigDir covers where the plugin goes
-// for every opencode: the folder opencode takes its config from —
-// OPENCODE_CONFIG_DIR, else XDG_CONFIG_HOME's opencode, else
-// ~/.config/opencode — and that one there, even outside the home folder,
-// is installed as the home folder's: through a symbolic link to the
-// folder, as dotfiles have it, but not into a FIFO.
+// for every opencode: the folder opencode takes its config from in the
+// environment given — OPENCODE_CONFIG_DIR, else XDG_CONFIG_HOME's
+// opencode, else ~/.config/opencode, and past an OPENCODE_CONFIG_DIR that
+// is relative — and that one there, even outside the home folder, is
+// installed through a symbolic link to the folder, as dotfiles have it,
+// but not into a FIFO.
 func TestOpenCodePluginHomeIsOpenCodesConfigDir(t *testing.T) {
 	for _, tc := range []struct {
 		name, configDir, xdg string
 		want                 func(home, out string) string
 	}{
-		{"OPENCODE_CONFIG_DIR", "oc", "xdg", func(_, out string) string { return filepath.Join(out, "oc") }},
-		{"XDG_CONFIG_HOME", "", "xdg", func(_, out string) string { return filepath.Join(out, "xdg", "opencode") }},
+		{"OPENCODE_CONFIG_DIR", "/oc", "/xdg", func(_, out string) string { return filepath.Join(out, "oc") }},
+		{"XDG_CONFIG_HOME", "", "/xdg", func(_, out string) string { return filepath.Join(out, "xdg", "opencode") }},
 		{"neither", "", "", func(home, _ string) string { return filepath.Join(home, ".config", "opencode") }},
+		{"relative OPENCODE_CONFIG_DIR", "oc", "/xdg", func(_, out string) string { return filepath.Join(out, "xdg", "opencode") }},
+		{"relative OPENCODE_CONFIG_DIR alone", "oc", "", func(home, _ string) string { return filepath.Join(home, ".config", "opencode") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, out := t.TempDir(), t.TempDir() // out: outside the home folder
 			t.Setenv("HOME", home)
 			set := func(name, v string) {
-				if v != "" {
+				if strings.HasPrefix(v, "/") {
 					v = filepath.Join(out, v)
 				}
 				t.Setenv(name, v)
@@ -395,15 +395,9 @@ func TestOpenCodePluginHomeIsOpenCodesConfigDir(t *testing.T) {
 			set("OPENCODE_CONFIG_DIR", tc.configDir)
 			set("XDG_CONFIG_HOME", tc.xdg)
 			dir := tc.want(home, out)
-			file := OpenCodePluginHome(home)
+			file := OpenCodePluginHome(home, os.Getenv)
 			if want := filepath.Join(dir, "plugins", "nerdr.js"); file != want {
 				t.Fatalf("plugin at %s, want %s", file, want)
-			}
-			if got := OpenCodeConfigDir(home, os.Getenv); got != dir {
-				t.Fatalf("config dir %s, want %s", got, dir)
-			}
-			if !isHomeOpenCodePlugin(file) {
-				t.Fatal("not taken for the home folder's plugin")
 			}
 
 			// The folder a symbolic link to dotfiles: followed.
@@ -414,7 +408,7 @@ func TestOpenCodePluginHomeIsOpenCodesConfigDir(t *testing.T) {
 			if err := os.Symlink(dotfiles, dir); err != nil {
 				t.Fatal(err)
 			}
-			if wrote, err := InstallOpenCodePlugin(file); !wrote || err != nil {
+			if wrote, err := InstallOpenCodePluginHome(file); !wrote || err != nil {
 				t.Fatalf("install: %v %v", wrote, err)
 			}
 			if b, _ := os.ReadFile(filepath.Join(dotfiles, "plugins", "nerdr.js")); !bytes.Equal(b, OpenCodePlugin) {
@@ -424,7 +418,7 @@ func TestOpenCodePluginHomeIsOpenCodesConfigDir(t *testing.T) {
 			// A FIFO in its place: refused, without blocking.
 			_ = os.Remove(file)
 			if err := syscall.Mkfifo(file, 0o600); err == nil {
-				if _, err := InstallOpenCodePlugin(file); err == nil {
+				if _, err := InstallOpenCodePluginHome(file); err == nil {
 					t.Fatal("a FIFO was taken for the plugin")
 				}
 			}

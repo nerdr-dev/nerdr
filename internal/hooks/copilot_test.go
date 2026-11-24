@@ -217,7 +217,7 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 		run func(string) error
 	}{
 		{".copilot", func(d string) error { _, err := InstallCopilotPlugin(CopilotPluginProject(d)); return err }},
-		{".opencode", func(d string) error { _, err := InstallOpenCodePlugin(OpenCodePluginProject(d)); return err }},
+		{".opencode", func(d string) error { _, err := InstallOpenCodePluginProject(d); return err }},
 		{".agents", func(d string) error { _, _, err := InstallAgyHooks(AgyHooksProject(d)); return err }},
 	} {
 		w := t.TempDir()
@@ -233,7 +233,7 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 	// the hardlink target untouched.
 	wtHard := t.TempDir()
 	ocPath := OpenCodePluginProject(wtHard)
-	if _, err := InstallOpenCodePlugin(ocPath); err != nil {
+	if _, err := InstallOpenCodePluginProject(wtHard); err != nil {
 		t.Fatal(err)
 	}
 	hardTarget := filepath.Join(wtHard, "target.js")
@@ -242,7 +242,7 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 	}
 	_ = os.Remove(ocPath)
 	if err := os.Link(hardTarget, ocPath); err == nil {
-		if _, err := InstallOpenCodePlugin(ocPath); err != nil {
+		if _, err := InstallOpenCodePluginProject(wtHard); err != nil {
 			t.Fatalf("InstallOpenCodePlugin over hardlink: %v", err)
 		}
 		if got, _ := os.ReadFile(hardTarget); string(got) != OpenCodeMarker+"\nold\n" {
@@ -255,7 +255,7 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 	ocFifo := OpenCodePluginProject(wtFifo)
 	_ = os.MkdirAll(filepath.Dir(ocFifo), 0o755)
 	if err := syscall.Mkfifo(ocFifo, 0o600); err == nil {
-		if _, err := InstallOpenCodePlugin(ocFifo); err == nil {
+		if _, err := InstallOpenCodePluginProject(wtFifo); err == nil {
 			t.Fatal("InstallOpenCodePlugin accepted a FIFO")
 		}
 	}
@@ -277,7 +277,7 @@ func TestCopilotPluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 		}
 	}
 	if err := os.Symlink(filepath.Join(dotfiles, "opencode"), filepath.Join(dotHome, ".config", "opencode")); err == nil {
-		if _, err := InstallOpenCodePlugin(OpenCodePluginHome(dotHome)); err != nil {
+		if _, err := InstallOpenCodePluginHome(OpenCodePluginHome(dotHome, os.Getenv)); err != nil {
 			t.Fatalf("home symlinked .config/opencode failed: %v", err)
 		}
 	}

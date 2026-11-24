@@ -525,7 +525,7 @@ func TestSandboxWarnsAreTheHomeInstall(t *testing.T) {
 	c.Cfg.Install = config.InstallHome
 	warns := c.sandboxWarns(&Tab{})
 	skillsDir := filepath.Join(home, ".claude", "skills")
-	plugin := hooks.OpenCodePluginHome(home)
+	plugin := c.OpenCodePluginHome(home)
 	for _, want := range []string{skillsDir, plugin, filepath.Dir(plugin), hooks.AgyHooksHome(home)} {
 		if !slices.Contains(warns, want) {
 			t.Errorf("%s is not among the warns: %q", want, warns)

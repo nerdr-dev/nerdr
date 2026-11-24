@@ -41,20 +41,22 @@ var OpenCodePlugin []byte
 const OpenCodeMarker = "// nerdr: installed and kept up to date by nerdr."
 
 // OpenCodePluginHome is where the plugin goes for every opencode: in
-// opencode's global config folder, as nerdr's environment has it (see
-// OpenCodeConfigDir).
-func OpenCodePluginHome(home string) string {
-	return filepath.Join(OpenCodeConfigDir(home, os.Getenv), "plugins", "nerdr.js")
+// opencode's global config folder in the environment getenv reads, the
+// one the agent starts with (see OpenCodeConfigDir).
+func OpenCodePluginHome(home string, getenv func(string) string) string {
+	return filepath.Join(OpenCodeConfigDir(home, getenv), "plugins", "nerdr.js")
 }
 
 // OpenCodeConfigDir is the global config folder opencode loads plugins
 // from, in an environment getenv reads: OPENCODE_CONFIG_DIR, as it is
 // given, when set; else opencode under XDG_CONFIG_HOME, when set; else
 // ~/.config/opencode — the folder opencode itself takes for its config.
-// (With OPENCODE_CONFIG_DIR set, opencode loads plugins from the XDG one
-// too, so a plugin nerdr put there before is not lost.)
+// opencode loads plugins from the XDG one too with OPENCODE_CONFIG_DIR
+// set, so a plugin nerdr put there before is not lost, and a relative
+// OPENCODE_CONFIG_DIR, which each opencode takes from the folder it
+// starts in, is passed over for it.
 func OpenCodeConfigDir(home string, getenv func(string) string) string {
-	if dir := getenv("OPENCODE_CONFIG_DIR"); dir != "" {
+	if dir := getenv("OPENCODE_CONFIG_DIR"); filepath.IsAbs(dir) {
 		return dir
 	}
 	if x := getenv("XDG_CONFIG_HOME"); x != "" {
@@ -73,11 +75,12 @@ func OpenCodePluginProject(dir string) string {
 // put in a worktree takes up, for keeping it out of git.
 const OpenCodePluginExclude = "/.opencode/plugins/nerdr.js"
 
-// InstallOpenCodePlugin puts the plugin in file, and reports whether it
-// wrote it. One already there is replaced only when it is nerdr's and
-// differs.
-func InstallOpenCodePlugin(file string) (bool, error) {
-	return installOpenCodePlugin(file, !isHomeOpenCodePlugin(file))
+// InstallOpenCodePluginHome puts the plugin in file, OpenCodePluginHome,
+// and reports whether it wrote it. One already there is replaced only
+// when it is nerdr's and differs. As in the home folder, symbolic links
+// to the folder — dotfiles — are followed.
+func InstallOpenCodePluginHome(file string) (bool, error) {
+	return installOpenCodePlugin(file, false)
 }
 
 // InstallOpenCodePluginProject puts the plugin in a worktree's
@@ -85,11 +88,6 @@ func InstallOpenCodePlugin(file string) (bool, error) {
 // worktree.
 func InstallOpenCodePluginProject(wtDir string) (bool, error) {
 	return installOpenCodePlugin(OpenCodePluginProject(wtDir), true)
-}
-
-func isHomeOpenCodePlugin(file string) bool {
-	home, err := os.UserHomeDir()
-	return err == nil && home != "" && filepath.Clean(file) == filepath.Clean(OpenCodePluginHome(home))
 }
 
 func installOpenCodePlugin(file string, worktree bool) (bool, error) {
