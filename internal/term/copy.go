@@ -28,7 +28,10 @@ type Copy struct {
 	scroll int
 	w, h   int
 	copied string
-	out    CopyOut
+	// copiedAt is when copied came from core: after the program put it
+	// there, by however long it took to come.
+	copiedAt time.Time
+	out      CopyOut
 	// drawnOn is the frame the copy was last drawn on; see Drawn.
 	drawnOn atomic.Uint64
 }
@@ -129,7 +132,7 @@ func (c *Copy) Apply(msg *ScreenMsg) error {
 	v.ExitAfter = time.Duration(msg.ExitAfter) * time.Millisecond
 	c.started = time.Now().Add(-v.ExitAfter)
 	if msg.Copied != "" {
-		c.copied = msg.Copied
+		c.copied, c.copiedAt = msg.Copied, time.Now()
 	}
 	c.gen++
 	v.Gen = c.gen
@@ -307,6 +310,16 @@ func (c *Copy) SendMouse(ev MouseEvent) bool {
 	return true
 }
 
+// ReportsMouse reports whether SendMouse would have core's program told of
+// ev, as Pane.ReportsMouse; not knowing the encoding it asked for, it
+// says no for what only SGR can tell.
+func (c *Copy) ReportsMouse(ev MouseEvent) bool {
+	c.mu.Lock()
+	lvl := c.view.Mouse
+	c.mu.Unlock()
+	return mouseReport(ev, lvl, false) != nil
+}
+
 func (c *Copy) WantsMouse() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -341,11 +354,17 @@ func (c *Copy) Size() (int, int) {
 }
 
 func (c *Copy) TakeCopied() string {
+	s, _ := c.TakeCopiedAt()
+	return s
+}
+
+// TakeCopiedAt is TakeCopied, and when it came from core.
+func (c *Copy) TakeCopiedAt() (string, time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	s := c.copied
+	s, at := c.copied, c.copiedAt
 	c.copied = ""
-	return s
+	return s, at
 }
 
 func (c *Copy) Exited() (bool, error, time.Duration) {

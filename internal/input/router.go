@@ -41,13 +41,12 @@ type Router struct {
 	mu   sync.Mutex
 	sink func([]byte)
 	send func(any)
-	// owner is whose sink is: what PassthroughTo named. typedTo is the
-	// owner input last went straight to, and typedAt when: taken with the
-	// sink it went to, so keys typed to one owner are never counted for
-	// the next. Guarded by mu.
-	owner   any
-	typedTo any
-	typedAt time.Time
+	// owner is whose sink is: what PassthroughTo named. typed is the
+	// last times input went straight to a sink, and to whose: taken with
+	// the sink it went to, so keys typed to one owner are never counted
+	// for the next. Guarded by mu.
+	owner any
+	typed Inputs
 	// prefixed is set from the prefix key until the program has had its
 	// PrefixMsg (PrefixSeen): until then input stays the program's, however
 	// often the program, not yet knowing of the prefix, says to pass it
@@ -132,19 +131,44 @@ func (r *Router) LastInput() time.Time {
 	return time.Time{}
 }
 
-// LastTyped is when keys last went straight to a sink, and the owner
-// PassthroughTo gave that sink. Zero and nil before they have.
-func (r *Router) LastTyped() (time.Time, any) {
+// TypedTo reports whether keys went straight to owner's sink (the owner
+// PassthroughTo gave it) in the d up to at.
+func (r *Router) TypedTo(owner any, at time.Time, d time.Duration) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.typedAt, r.typedTo
+	return r.typed.To(owner, at, d)
 }
 
-// typed notes input going straight to owner's sink.
-func (r *Router) typed(owner any) {
+// noteTyped notes input going straight to owner's sink.
+func (r *Router) noteTyped(owner any) {
 	r.mu.Lock()
-	r.typedTo, r.typedAt = owner, time.Now()
+	r.typed.Note(owner, time.Now())
 	r.mu.Unlock()
+}
+
+// Inputs is the last times input went to someone, and to whom.
+type Inputs struct {
+	at [16]time.Time
+	to [16]any
+	n  int
+}
+
+// Note notes input to owner at t.
+func (in *Inputs) Note(owner any, t time.Time) {
+	i := in.n % len(in.at)
+	in.at[i], in.to[i] = t, owner
+	in.n++
+}
+
+// To reports whether input went to owner in the d up to at.
+func (in *Inputs) To(owner any, at time.Time, d time.Duration) bool {
+	for i := range min(in.n, len(in.at)) {
+		t := in.at[i]
+		if in.to[i] == owner && !t.IsZero() && !at.Before(t) && at.Sub(t) < d {
+			return true
+		}
+	}
+	return false
 }
 
 // Run copies input until src fails. Call it in its own goroutine.
@@ -198,7 +222,7 @@ func (r *Router) route(b []byte) {
 			}
 		}
 		if cut > 0 {
-			r.typed(owner)
+			r.noteTyped(owner)
 			sink(b[:cut])
 		}
 		b = b[cut:]
@@ -286,7 +310,7 @@ func (r *Router) flushHeld() {
 	sink, owner := r.sink, r.owner
 	r.mu.Unlock()
 	if r.pass.Load() && sink != nil {
-		r.typed(owner)
+		r.noteTyped(owner)
 		sink(b)
 	} else {
 		_, _ = r.pw.Write(b)

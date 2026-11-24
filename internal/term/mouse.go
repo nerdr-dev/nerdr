@@ -95,17 +95,40 @@ func (p *Pane) SendMouse(ev MouseEvent) bool {
 	if exited || lvl < 0 {
 		return false
 	}
+	if r := mouseReport(ev, lvl, sgr); r != nil {
+		p.Write(r)
+	}
+	return true
+}
+
+// ReportsMouse reports whether SendMouse would tell the program of ev:
+// not only that it takes the mouse, but that it asked for events of ev's
+// kind and ev can be put in its encoding.
+func (p *Pane) ReportsMouse(ev MouseEvent) bool {
+	p.mu.Lock()
+	lvl, sgr := p.mouseLevel(), p.mouseSgr
+	exited := p.exited
+	p.mu.Unlock()
+	return !exited && mouseReport(ev, lvl, sgr) != nil
+}
+
+// mouseReport is what tells a program at mouse level lvl, in SGR or the
+// legacy encoding, of ev; nil when it is not told.
+func mouseReport(ev MouseEvent, lvl int, sgr bool) []byte {
+	if lvl < 0 {
+		return nil
+	}
 	wheel := ev.Button >= ansi.MouseWheelUp && ev.Button <= ansi.MouseWheelRight
 	switch {
 	case ev.Kind == MouseRelease && (lvl == 0 || wheel):
-		return true // X10 reports presses only; a wheel has no release
+		return nil // X10 reports presses only; a wheel has no release
 	case ev.Kind == MouseMotion && lvl < 2:
-		return true
+		return nil
 	case ev.Kind == MouseMotion && ev.Button == ansi.MouseNone && lvl < 3:
-		return true
+		return nil
 	}
 	if ev.X < 0 || ev.Y < 0 {
-		return true
+		return nil
 	}
 	btn := ev.Button
 	if ev.Kind == MouseRelease && !sgr {
@@ -113,14 +136,15 @@ func (p *Pane) SendMouse(ev MouseEvent) bool {
 	}
 	b := ansi.EncodeMouseButton(btn, ev.Kind == MouseMotion, ev.Shift, ev.Alt, ev.Ctrl)
 	if b == 0xff {
-		return true
+		return nil
 	}
 	if sgr {
-		p.Write([]byte(ansi.MouseSgr(b, ev.X, ev.Y, ev.Kind == MouseRelease)))
-	} else if ev.X < 223 && ev.Y < 223 {
-		p.Write([]byte(ansi.MouseX10(b, ev.X, ev.Y)))
+		return []byte(ansi.MouseSgr(b, ev.X, ev.Y, ev.Kind == MouseRelease))
 	}
-	return true
+	if ev.X < 223 && ev.Y < 223 {
+		return []byte(ansi.MouseX10(b, ev.X, ev.Y))
+	}
+	return nil
 }
 
 // Point is a cell in the pane's scrollback and screen together: Line 0 is

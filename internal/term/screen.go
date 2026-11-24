@@ -31,6 +31,7 @@ type Screen struct {
 	// copied is what the program last put on the clipboard with OSC 52,
 	// until the app takes it; see TakeCopied.
 	copied   string
+	copiedAt time.Time // when copied came
 	cursorOn bool
 	// Modes the program has asked for that change what keys and pastes must
 	// look like on the way in; see Pane.Input.
@@ -92,7 +93,7 @@ func NewScreen(w, h int) *Screen {
 	// drop. A query for what is on the clipboard is never answered.
 	s.emu.RegisterOscHandler(52, func(data []byte) bool {
 		if text, ok := clipboardSet(data); ok {
-			s.copied = text
+			s.copied, s.copiedAt = text, time.Now()
 		}
 		return true
 	})
@@ -227,11 +228,17 @@ func (s *Screen) setMode(m ansi.Mode, on bool) {
 // TakeCopied is what the program has put on the clipboard since it was
 // last asked, or "".
 func (s *Screen) TakeCopied() string {
+	text, _ := s.TakeCopiedAt()
+	return text
+}
+
+// TakeCopiedAt is TakeCopied, and when the program put it there.
+func (s *Screen) TakeCopiedAt() (string, time.Time) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	text := s.copied
+	text, at := s.copied, s.copiedAt
 	s.copied = ""
-	return text
+	return text, at
 }
 
 // Title is the window title the program last set.
