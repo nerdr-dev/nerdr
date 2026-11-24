@@ -169,7 +169,6 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		m.fleet.Bump()
 		m.shareOverlaps()
 	case core.DetectStartMsg:
-		m.herdrBefore = m.Herdr.State()
 		m.look()
 	case core.DetectDoneMsg:
 		return toCore(m.detected(ev.Now))

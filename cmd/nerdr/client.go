@@ -168,9 +168,6 @@ func runClient(start bool, remote string) error {
 		fmt.Fprintln(os.Stderr, "nerdr: could not keep the layout:", serr)
 	}
 	model.Close()
-	// Gone from the herdr pane it ran in, if any, however it ended: the
-	// core it leaves working is not in that pane.
-	model.Herdr.Release()
 	if why := model.GoneErr(); why != "" {
 		return errors.New(why)
 	}

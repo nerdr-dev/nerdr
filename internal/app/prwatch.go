@@ -63,10 +63,6 @@ func (m *Model) tellPRNews(news []state.PRNews) {
 		body += fmt.Sprintf(" (and %d more)", len(news)-1)
 	}
 	core.Debugf("pr notify: %s: %s", title, body)
-	if m.Herdr != nil {
-		m.Herdr.Notify(title, body, "request")
-		return
-	}
 	go core.DesktopNotify(title, body)
 }
 

@@ -16,7 +16,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The mouse, as herdr has it: click a group or a tab to go to it, right-
+// The mouse: click a group or a tab to go to it, right-
 // click one for what can be done to it, ≡ for everything else, + for a new
 // tab. Every dialog's keys are buttons, its lists can be clicked, and a
 // click outside a menu closes it. The wheel scrolls whatever it is over;
@@ -469,7 +469,7 @@ func (m *Model) shownScroll(t *core.Tab) int {
 
 // copySelection puts the selected text on the clipboard: through the
 // terminal (OSC 52, which reaches the clipboard of the machine in front of
-// you over SSH and through herdr), and the local clipboard's own way too
+// you over SSH and through tmux), and the local clipboard's own way too
 // where there is one.
 func (m *Model) copySelection(p core.Program) {
 	if c, ok := p.(*term.Copy); ok && m.someScreens() != nil {

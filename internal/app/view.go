@@ -46,7 +46,7 @@ var (
 	lightSymbols bool
 )
 
-// light is a tab's traffic light, as herdr draws it: a filled circle for
+// light is a tab's traffic light: a filled circle for
 // something that wants a look (working, needs input, done and not yet
 // seen), a hollow one once it has been seen or has nothing to show.
 func light(s core.Status) string {
@@ -55,7 +55,7 @@ func light(s core.Status) string {
 
 func lightGlyph(s core.Status) string {
 	if lightSymbols {
-		// herdr's symbols, which keep the colours too.
+		// Symbols, which keep the colours too.
 		switch s {
 		case core.StBlocked:
 			return "×"

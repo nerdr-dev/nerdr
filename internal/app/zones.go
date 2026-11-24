@@ -13,8 +13,7 @@ import (
 // whole screen is drawn, View finds the markers, notes where each zone
 // ended up and takes the markers out again. So the geometry is never
 // worked out twice — a click hits what was actually drawn there, however
-// the bars were truncated or a dialog's lines wrapped. herdr keeps its
-// hit areas the same way, from the drawing.
+// the bars were truncated or a dialog's lines wrapped.
 //
 // A marker is ESC [ <id> z (start) or ESC [ <id> ; 1 z (end): a control
 // sequence no terminal acts on, zero cells wide to lipgloss and ansi, and

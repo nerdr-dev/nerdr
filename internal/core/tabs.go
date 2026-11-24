@@ -17,7 +17,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/detect"
-	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/holder"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
@@ -41,8 +40,8 @@ func NewTabID() string {
 var TabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK", "NERDR_GROK_HOOK",
 	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_BIN", "NERDR_DATA_DIR", EnvByAgent, holder.EnvNested}
 
-// HostVars are left out of what an agent or terminal of a tab inherits,
-// as herdr leaves them out of its panes. The first say nerdr was started
+// HostVars are left out of what an agent or terminal of a tab inherits.
+// The first say nerdr was started
 // by an agent, and a tab's agent would take itself for one of its
 // subagents, or carry on its session; the rest name the terminal or
 // multiplexer nerdr runs in, which a pane is not: an agent that finds
@@ -81,9 +80,10 @@ func (m *Core) TabEnv(t *Tab) []string {
 
 // ChildEnvFrom is the environment an agent of t runs with, built on base.
 func ChildEnvFrom(base []string, t *Tab) []string {
-	env := slices.DeleteFunc(herdr.ChildEnv(base), func(kv string) bool {
+	// herdr's variables are set for the tab in hooks.go, none inherited.
+	env := slices.DeleteFunc(slices.Clone(base), func(kv string) bool {
 		name, _, _ := strings.Cut(kv, "=")
-		return slices.Contains(TabVars, name) || slices.Contains(HostVars, name)
+		return strings.HasPrefix(name, "HERDR_") || slices.Contains(TabVars, name) || slices.Contains(HostVars, name)
 	})
 	var paths []string
 	for _, w := range t.Worktrees {
@@ -109,7 +109,7 @@ func ChildEnvFrom(base []string, t *Tab) []string {
 }
 
 // WithUserEnv is env with the variables of the agent's config section
-// added, all but nerdr's and herdr's own: those tell the agent which tab
+// added, all but the NERDR and HERDR_ ones: those tell the agent which tab
 // it is in and where to report, and one set wrong would report for another.
 func WithUserEnv(env, user []string) []string {
 	out := append([]string{}, env...)
@@ -822,7 +822,7 @@ func (t *Tab) HookKey() string {
 
 // Attention ranks how much a tab needs the user: blocked first, then
 // finished work, then work in progress, then a turn over with a process
-// left running: not idle, or herdr is told so and tells of it as done.
+// left running.
 func (t *Tab) Attention() int {
 	switch t.Lit() {
 	case StBlocked:

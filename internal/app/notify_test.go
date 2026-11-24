@@ -31,7 +31,7 @@ func TestBackgroundTabSaysSoInTheBar(t *testing.T) {
 	now := time.Now()
 	m.notifyChange(shown, true, now)
 	m.notifyChange(behind, false, now)
-	m.flushNotes("")
+	m.flushNotes()
 	if len(m.notes) != 0 {
 		t.Fatalf("desktop notes while in nerdr: %+v", m.notes)
 	}
@@ -49,7 +49,7 @@ func TestBackgroundTabsShareTheBar(t *testing.T) {
 	now := time.Now()
 	m.notifyChange(a, false, now)
 	m.notifyChange(b, false, now)
-	m.flushNotes("")
+	m.flushNotes()
 	if !strings.Contains(m.toastText, "a: claude is done") || !strings.Contains(m.toastText, "b: claude needs input") {
 		t.Fatalf("bar: %q", m.toastText)
 	}

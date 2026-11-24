@@ -28,7 +28,7 @@ const (
 	EnterAfter = 300 * time.Millisecond
 	// StallAfter is how long after enter an agent that has neither started
 	// working, asked something, nor drawn anything counts as not having
-	// taken the message (herdr's agent_prompt_stalled).
+	// taken the message.
 	StallAfter = 5 * time.Second
 	// EnterAgainAfter is how long after enter an agent with a hook that has
 	// not reported taking the prompt up gets enter again, up to
