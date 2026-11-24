@@ -106,18 +106,29 @@ func (m *Model) handleMouse(ev tea.MouseMsg) tea.Cmd {
 		return m.dragMouse(ev)
 	}
 	if isWheel(ev) && !m.wheelHeard() {
+		m.quiet = true // the screen is as it was
 		return nil
 	}
 	before := m.hover
 	tip := m.hoverMouse(ev)
+	h := m.hover
+	noTip := !before.shown && !h.shown
 	if plainMotion(ev) && !m.needAllMotion() {
 		// A tip that is up follows the pointer, so only with none up does
 		// the screen stay as it was.
-		h := m.hover
-		m.sameFrame = !before.shown && !h.shown && h.tip == before.tip && h.seq == before.seq
+		m.sameFrame = noTip && h.tip == before.tip && h.seq == before.seq
 		return tip
 	}
-	return tea.Batch(tip, m.routeMouse(ev))
+	m.wheelSkipped = false
+	cmd := tea.Batch(tip, m.routeMouse(ev))
+	if m.wheelSkipped && noTip {
+		// A turn of the wheel held back by wheelStep changes nothing, and
+		// is not drawn again: drawing takes time, and the turns that come
+		// meanwhile would queue up behind it, each a step when its turn
+		// came, long after the hand had stopped.
+		m.quiet = true
+	}
+	return cmd
 }
 
 // routeMouse passes a mouse event on to what is under it.
@@ -690,13 +701,17 @@ func (m *Model) agentWidth() int {
 const wheelGap = 80 * time.Millisecond
 
 // wheelStep reports whether the wheel may step to another tab or group
-// now, and if so counts the step.
+// now, and if so counts the step. The gap is from when the step was
+// drawn (see View), not from when it began: a step can take longer than
+// wheelGap to draw, and the turns that queued up meanwhile would each be
+// a step of their own, going on long after the wheel has stopped.
 func (m *Model) wheelStep() bool {
 	now := time.Now()
 	if now.Sub(m.lastWheelStep) < wheelGap {
+		m.wheelSkipped = true
 		return false
 	}
-	m.lastWheelStep = now
+	m.lastWheelStep, m.wheelStepped = now, true
 	return true
 }
 
