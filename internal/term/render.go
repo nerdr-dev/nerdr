@@ -1,6 +1,7 @@
 package term
 
 import (
+	"bytes"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -129,13 +130,50 @@ type Look struct {
 }
 
 // WheelEvent is the wheel turned a step, up (to older text) or down, in
-// the middle of a screen of w×h.
+// the middle of a screen of w×h, or as near it as the legacy encoding
+// can say: there, the step goes at any size.
 func WheelEvent(up bool, w, h int) MouseEvent {
 	btn := ansi.MouseWheelDown
 	if up {
 		btn = ansi.MouseWheelUp
 	}
-	return MouseEvent{Kind: MousePress, Button: btn, X: w / 2, Y: h / 2}
+	return MouseEvent{Kind: MousePress, Button: btn, X: min(w/2, maxLegacy), Y: min(h/2, maxLegacy)}
+}
+
+// maxLegacy is the furthest cell the legacy mouse encoding can say.
+const maxLegacy = 222
+
+// wheelReport is what tells the program of a step of the wheel, up or
+// down, if it is on the alternate screen and told of the wheel; nil when
+// not. Screen.mu is held.
+func (s *Screen) wheelReport(up bool) []byte {
+	if s.exited || !s.emu.IsAltScreen() {
+		return nil
+	}
+	return mouseReport(WheelEvent(up, s.emu.Width(), s.emu.Height()), s.mouseLevel(), s.mouseSgr)
+}
+
+// Scrolls is TextLook's Alt and Wheel, without the text.
+func (s *Screen) Scrolls() (alt, wheel bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.emu.IsAltScreen(), s.wheelReport(true) != nil
+}
+
+// Wheel turns the wheel n steps, up or down, over the program, if it is
+// on the alternate screen and told of the wheel, as TextLook's Wheel says;
+// it reports whether it was, and sends nothing when not. What it is, and
+// the steps going to the program, are one look: the program cannot leave
+// the screen or let the mouse go between.
+func (p *Pane) Wheel(up bool, n int) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	r := p.wheelReport(up)
+	if r == nil {
+		return false
+	}
+	p.queue(bytes.Repeat(r, max(n, 0)), -1) // queue does not take mu
+	return true
 }
 
 // TextLook is Text, the size of the screen, and whether the program
@@ -145,7 +183,7 @@ func (s *Screen) TextLook(n int) Look {
 	defer s.mu.Unlock()
 	w, h := s.emu.Width(), s.emu.Height()
 	alt := s.emu.IsAltScreen()
-	wheel := alt && !s.exited && mouseReport(WheelEvent(true, w, h), s.mouseLevel(), s.mouseSgr) != nil
+	wheel := s.wheelReport(true) != nil
 	sb := s.emu.ScrollbackLen()
 	if alt {
 		sb = 0
