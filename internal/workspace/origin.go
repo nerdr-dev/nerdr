@@ -15,7 +15,8 @@ import (
 // three times per repository: a fetch to see whether the branch is there,
 // an ls-remote for the commit of main, and a fetch of main. Now the plan's
 // one fetch says both, and its answer serves Sync while it is fresh
-// (planFresh).
+// (planFresh). Over https, the login git gets for the first is given to
+// the others from the same place (see login.go).
 
 // hasPorcelain says whether git has fetch --porcelain (2.41 on), which
 // says what origin named for every ref it fetched. Without it, nerdr asks
