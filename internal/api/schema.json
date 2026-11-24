@@ -476,7 +476,7 @@
       "type": "object"
     },
     "ReadRequest": {
-      "description": "The last lines (80 if not given) of what an agent or a terminal shows, as plain text. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "description": "The last lines (80 if not given) of what an agent or a terminal shows, as plain text, and the size of its screen, which the lines are laid out for. target is an agent's or a terminal's ID; agent works too, for an agent.",
       "properties": {
         "agent": {
           "type": "string"
@@ -498,14 +498,22 @@
       "type": "object"
     },
     "ReadResult": {
-      "description": "ReadResult is read's result: what the agent or terminal shows.",
+      "description": "ReadResult is read's result: what the agent or terminal shows, and the size of its screen, which the text is laid out for; 0 when nothing runs.",
       "properties": {
+        "cols": {
+          "type": "integer"
+        },
+        "rows": {
+          "type": "integer"
+        },
         "text": {
           "type": "string"
         }
       },
       "required": [
-        "text"
+        "text",
+        "cols",
+        "rows"
       ],
       "type": "object"
     },
@@ -555,6 +563,12 @@
         },
         {
           "$ref": "#/$defs/TypeRequest"
+        },
+        {
+          "$ref": "#/$defs/ViewRequest"
+        },
+        {
+          "$ref": "#/$defs/UnviewRequest"
         },
         {
           "$ref": "#/$defs/AnswerRequest"
@@ -839,7 +853,7 @@
       "type": "object"
     },
     "TypeRequest": {
-      "description": "Type into an agent or a terminal now: text as a paste, then keys. Give text, keys or both.",
+      "description": "Type into an agent or a terminal now: text as a paste, then keys. Give text, keys or both. Viewed by this connection, the program gets the view's size.",
       "properties": {
         "agent": {
           "type": "string"
@@ -863,6 +877,68 @@
       },
       "required": [
         "op"
+      ],
+      "type": "object"
+    },
+    "UnviewRequest": {
+      "description": "Stop showing an agent or a terminal: the size of the client active in it before holds, or the size it has.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "op": {
+          "const": "unview"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
+    "ViewRequest": {
+      "description": "Show an agent or a terminal at cols × rows (brought within 20–500 × 5–300): the client active in a program last, the one that viewed it first, typed to it or changed the size it shows it at, sets its size; the others show the same screen. Say it again within 60 seconds, every 20 as a rule, while it is shown, or the view runs out; it goes too when the connection closes. The result is the size the program has now, the view's own or that of a client active in it since. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "cols": {
+          "type": "integer"
+        },
+        "id": {},
+        "op": {
+          "const": "view"
+        },
+        "rows": {
+          "type": "integer"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op",
+        "cols",
+        "rows"
+      ],
+      "type": "object"
+    },
+    "ViewResult": {
+      "description": "ViewResult is view's result: the size the agent's or terminal's program has now, the view's own or that of a client active in it since.",
+      "properties": {
+        "cols": {
+          "type": "integer"
+        },
+        "rows": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cols",
+        "rows"
       ],
       "type": "object"
     },
@@ -1050,6 +1126,22 @@
       },
       "result": {
         "type": "object"
+      }
+    },
+    "unview": {
+      "request": {
+        "$ref": "#/$defs/UnviewRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "view": {
+      "request": {
+        "$ref": "#/$defs/ViewRequest"
+      },
+      "result": {
+        "$ref": "#/$defs/ViewResult"
       }
     },
     "wake": {

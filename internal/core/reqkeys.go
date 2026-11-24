@@ -109,7 +109,9 @@ func (q FocusProgram) Do(m *Core) Cmd {
 	return nil
 }
 
-// ResizeProgram is program Ref shown W×H.
+// ResizeProgram is program Ref shown W×H in the client. The program gets
+// that size unless a viewer of the API was active in it since (see
+// views.go).
 type ResizeProgram struct {
 	Ref  ProgramRef
 	W, H int
@@ -117,7 +119,7 @@ type ResizeProgram struct {
 
 func (q ResizeProgram) Do(m *Core) Cmd {
 	if p := m.Program(q.Ref); p != nil {
-		p.Resize(q.W, q.H)
+		clientShows(&m.Views, ClientViewer, q.Ref, q.W, q.H, p, false)
 	}
 	return nil
 }

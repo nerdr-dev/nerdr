@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -93,6 +94,14 @@ type ScreenServer struct {
 	conn *attach.Conn
 	post func(RequestEv)
 	rest *clientParts
+	// sizes are core's claims on the programs' sizes; nil for a client
+	// whose size is not counted; who is the client's name among the
+	// viewers. focused are the programs the client
+	// last said have its focus: focus said again, as the client does when
+	// core tells it of a terminal opened, is not the user active there.
+	sizes   *Views
+	who     string
+	focused map[ProgramRef]bool
 	// posted counts the requests of what the user does in a screen still
 	// on their way through the loop: while there are any, the next go that
 	// way too, to keep their order.
@@ -142,6 +151,9 @@ func serveScreens(conn *attach.Conn, post func(RequestEv), rest *clientParts) *S
 		reset: map[ProgramRef]bool{},
 		shown: map[ProgramRef]*shownScreen{},
 	}
+	if rest != nil {
+		s.sizes, s.who = rest.sizes, rest.viewer
+	}
 	conn.OnBehind(func() {
 		s.behind()
 		if rest != nil {
@@ -157,6 +169,8 @@ type clientParts struct {
 	other  func(b []byte) // a message of another kind
 	behind func()         // what waited for the client was dropped
 	gone   func()         // the connection has closed
+	sizes  *Views         // core's, for the client's claims on them
+	viewer string         // the client's name among the viewers
 }
 
 func (s *ScreenServer) read() {
@@ -204,6 +218,19 @@ func (s *ScreenServer) read() {
 // reports whether it did: when not, it is for the loop, and counted while
 // it is on its way.
 func (s *ScreenServer) direct(r Request) bool {
+	// The user active in a program in the client gives it the client's
+	// size, if a viewer of the API had it: with what they did, in one go,
+	// here when that is done here, else on the loop in its turn.
+	fresh := s.newFocus(r)
+	act, ok := clientActive(r)
+	counts := ok && fresh && s.sizes != nil && act.Plugin == ""
+	if _, loop := r.(KeysTo); loop && counts {
+		// For the loop, counted as the rest on their way there: keys that
+		// follow wait for it.
+		s.posted.Add(1)
+		s.post(RequestEv{R: clientDid{who: s.who, r: r, act: true}, Done: func() { s.posted.Add(-1) }})
+		return true
+	}
 	var ref ProgramRef
 	switch q := r.(type) {
 	case Type:
@@ -221,34 +248,71 @@ func (s *ScreenServer) direct(r Request) bool {
 	}
 	s.mu.Lock()
 	sc := s.shown[ref]
+	_, onScreen := s.views[ref]
 	s.mu.Unlock()
 	if sc == nil || s.posted.Load() > 0 {
+		if s.sizes != nil {
+			r = clientDid{who: s.who, r: r, act: counts, unseen: !onScreen}
+		}
 		s.posted.Add(1)
 		s.post(RequestEv{R: r, Done: func() { s.posted.Add(-1) }})
 		return true
 	}
-	switch q := r.(type) {
-	case Type:
-		if sc.typed != nil {
-			sc.typed.Feed(q.B)
+	do := func() {
+		switch q := r.(type) {
+		case Type:
+			if sc.typed != nil {
+				sc.typed.Feed(q.B)
+			}
+			if q.User {
+				sc.pane.MarkAsked()
+			}
+			sc.pane.Input(q.B)
+		case WriteRaw:
+			sc.pane.Write(q.B)
+		case Mouse:
+			if q.User {
+				userMouse(sc.pane, q.Ev)
+			}
+			sc.pane.SendMouse(q.Ev)
+		case FocusProgram:
+			sc.pane.Focus(q.In)
+		case ResizeProgram:
+			clientShows(s.sizes, s.who, q.Ref, q.W, q.H, sc.pane, !onScreen)
 		}
-		if q.User {
-			sc.pane.MarkAsked()
-		}
-		sc.pane.Input(q.B)
-	case WriteRaw:
-		sc.pane.Write(q.B)
-	case Mouse:
-		if q.User {
-			userMouse(sc.pane, q.Ev)
-		}
-		sc.pane.SendMouse(q.Ev)
-	case FocusProgram:
-		sc.pane.Focus(q.In)
-	case ResizeProgram:
-		sc.pane.Resize(q.W, q.H)
+	}
+	// A client gone: what it does goes nowhere, checked as it goes in. Its
+	// size is not taken as it comes (see Views.show), under the same lock.
+	_, sizing := r.(ResizeProgram)
+	switch {
+	case sizing:
+		do()
+	case counts:
+		s.sizes.Act(ref.Pane, s.who, time.Now(), sc.pane, do)
+	case s.sizes != nil:
+		s.sizes.By(s.who, do)
+	default:
+		do()
 	}
 	return true
+}
+
+// newFocus reports whether r is other than focus said again: the client
+// says it when core tells it of a terminal opened beside, which is not
+// the user moving to the program.
+func (s *ScreenServer) newFocus(r Request) bool {
+	q, ok := r.(FocusProgram)
+	if !ok {
+		return true
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.focused == nil {
+		s.focused = map[ProgramRef]bool{}
+	}
+	was := s.focused[q.Ref]
+	s.focused[q.Ref] = q.In
+	return !was
 }
 
 // stop lets go of the screens once the client has gone.

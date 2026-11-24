@@ -231,6 +231,14 @@ func (m *Model) settingRows() []settingRow {
 				"A tab is left running while it has a task waiting to be sent, a question, a code review going on, or an agent that would start a new conversation. Terminals beside the agent keep running. Tabs gone cold sleep from the start, whatever this says.\n" +
 				"0 means agents are never put to sleep.",
 			example: `sleep_after = 60`},
+		{key: "headless_cols", kind: sInt, lo: 0, hi: 500, def: "0",
+			desc: "The columns an agent or terminal starts at when no window shows it yet, such as one started from the API, or by a phone, with nerdr's window closed. Once a window or an app shows it, it takes that one's size.\n" +
+				"0 means 120.",
+			example: `headless_cols = 160`},
+		{key: "headless_rows", kind: sInt, lo: 0, hi: 300, def: "0",
+			desc: "The rows an agent or terminal starts at when no window shows it yet, as headless_cols.\n" +
+				"0 means 40.",
+			example: `headless_rows = 50`},
 		b("close_merged", "true",
 			"When a tab's pull request is merged, its panel says so: the work is in main, and x closes the tab. The tab is never closed for you.\n"+
 				"Turn it off if you do not want that line.",

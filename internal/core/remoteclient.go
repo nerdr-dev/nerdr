@@ -133,7 +133,12 @@ const (
 // showed, for the session, but tells nothing. Its fields are guarded by
 // Core.Mu.
 type RemoteClient struct {
-	conn    *attach.Conn
+	conn *attach.Conn
+	// viewer is its name among the viewers of the programs' sizes;
+	// cleared is set once its going has been seen to, nothing more of its
+	// to come.
+	viewer  string
+	cleared bool
 	screens *ScreenServer
 	state   ClientState
 	sent    Sent
@@ -173,13 +178,23 @@ var _ Client = (*RemoteClient)(nil)
 // sent all of core's state, and what core tells it, from here; its requests
 // go to post, to be done on core's loop. Mu is held.
 func (m *Core) AttachClient(conn *attach.Conn, post func(RequestEv)) *RemoteClient {
-	rc := &RemoteClient{conn: conn, post: post}
+	m.clients++
+	rc := &RemoteClient{conn: conn, post: post, viewer: fmt.Sprintf("client:%d", m.clients)}
 	if old, ok := m.Client.(*RemoteClient); ok {
+		// The client before has gone, or goes now: its sizes go with it,
+		// what it still says of them counting for nothing, the API's
+		// viewers' left holding. This one claims the sizes it shows
+		// afresh, each claim its being active there.
+		if old.viewer != "" && !old.cleared {
+			m.viewerGone(old.viewer)
+		}
 		rc.state = old.state // what the last showed, until this one says
 		old.gone.Store(true)
 		rc.out = old.takeNotices()
 	}
 	parts := &clientParts{
+		sizes:  &m.Views,
+		viewer: rc.viewer,
 		behind: func() { rc.behind.Store(true) },
 		gone: func() {
 			rc.gone.Store(true)
@@ -198,6 +213,17 @@ func (m *Core) AttachClient(conn *attach.Conn, post func(RequestEv)) *RemoteClie
 type clientGone struct{ rc *RemoteClient }
 
 func (q clientGone) Do(m *Core) Cmd {
+	if q.rc == nil {
+		return nil // from the wire: no client's
+	}
+	// Its sizes go with it, whether it is still the client or not: those
+	// of the API's viewers left hold. Its connection has closed: nothing
+	// more of its can come.
+	if q.rc.viewer != "" {
+		m.viewerGone(q.rc.viewer)
+		m.Views.Forget(q.rc.viewer)
+	}
+	q.rc.cleared = true
 	if m.Client == q.rc {
 		m.Screens = nil
 		// No one carries the moves on; the tabs stay here. No one is
@@ -221,6 +247,11 @@ func (rc *RemoteClient) read(b []byte, post func(RequestEv)) {
 		if err != nil {
 			Debugf("client: %v", err)
 			r = noRequest{}
+		}
+		if q, ok := r.(KeysTo); ok && q.Ref.Plugin == "" {
+			// The keyboard given to a program, as the TUI asks for it: the
+			// user active there, in its turn.
+			r = clientDid{who: rc.viewer, r: q, act: true}
 		}
 		post(RequestEv{R: r, Done: func() {
 			rc.out = append(rc.out, done)
@@ -422,6 +453,9 @@ func (rc *RemoteClient) AgentVisible(a TabRef) bool {
 }
 func (rc *RemoteClient) DialogClosed() bool { return !rc.gone.Load() && rc.state.DialogClosed }
 func (rc *RemoteClient) TabSize(a TabRef) (int, int) {
+	if rc.gone.Load() {
+		return 0, 0 // what it showed is no size for a program to start at
+	}
 	for _, s := range rc.state.Sizes {
 		if s.A == a && s.P == (PaneRef{}) {
 			return s.W, s.H
@@ -430,6 +464,9 @@ func (rc *RemoteClient) TabSize(a TabRef) (int, int) {
 	return rc.state.Fresh.W, rc.state.Fresh.H
 }
 func (rc *RemoteClient) ShellSize(t TabRef, p PaneRef) (int, int) {
+	if rc.gone.Load() {
+		return 0, 0
+	}
 	for _, s := range rc.state.Sizes {
 		if s.T == t && s.P == p {
 			return s.W, s.H

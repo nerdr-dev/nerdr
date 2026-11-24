@@ -71,6 +71,7 @@ func (m *Core) takeUpAgent(t *Tab) bool {
 		return false
 	}
 	w, h := m.Client.TabSize(m.Ref(t))
+	w, h = m.startSize(m.PaneRef(t.PaneOf()), w, h)
 	t.Pane = m.attachHeld(p, w, h)
 	t.PidStart = t.Pane.StartTime()
 	t.HookID = p.Secret
@@ -142,6 +143,7 @@ func (m *Core) takeUpShell(t *Tab, p holder.Prog, l Label) {
 	pt := &PaneTab{Kind: PaneShell, N: l.N, Opened: time.Now()}
 	m.AddPane(t, pt, true)
 	w, h := m.Client.ShellSize(m.Ref(t), m.PaneRef(pt))
+	w, h = m.startSize(m.PaneRef(pt), w, h)
 	pt.Shell = m.attachHeld(p, w, h)
 	m.Tell(TermsMsg{T: m.Ref(t)})
 }
