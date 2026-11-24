@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/term"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -192,31 +193,30 @@ func (m *Core) apiAgentByID(id string) (*Tab, error) {
 // APIRead is the last lines of what the agent or terminal pane id shows,
 // as text.
 func (m *Core) APIRead(id string, lines int) (string, error) {
-	text, _, _, err := m.APIReadSized(id, lines)
-	return text, err
+	l, err := m.APIReadLook(id, lines)
+	return l.Text, err
 }
 
-// APIReadSized is APIRead, and the columns and rows of the screen the text
-// is read from, in the same look.
-func (m *Core) APIReadSized(id string, lines int) (string, int, int, error) {
+// APIReadLook is APIRead, with the size of the screen the text is read
+// from and whether the program scrolls itself (see APIScroll), in the
+// same look.
+func (m *Core) APIReadLook(id string, lines int) (term.Look, error) {
 	if lines <= 0 {
 		lines = ReadLines
 	}
 	if a := TabList(m.Tabs).Find(id); a != nil {
 		if a.Pane == nil {
-			return "", 0, 0, fmt.Errorf("the agent is not running: %s", StateName(a.Light))
+			return term.Look{}, fmt.Errorf("the agent is not running: %s", StateName(a.Light))
 		}
-		text, w, h := a.Pane.TextSized(lines)
-		return text, w, h, nil
+		return a.Pane.TextLook(lines), nil
 	}
 	if _, p := TabList(m.Tabs).FindPane(id); p != nil && p.Kind == PaneShell {
 		if p.Shell == nil {
-			return "", 0, 0, errors.New("the terminal is not running")
+			return term.Look{}, errors.New("the terminal is not running")
 		}
-		text, w, h := p.Shell.TextSized(lines)
-		return text, w, h, nil
+		return p.Shell.TextLook(lines), nil
 	}
-	return "", 0, 0, fmt.Errorf("there is no agent or terminal %q", id)
+	return term.Look{}, fmt.Errorf("there is no agent or terminal %q", id)
 }
 
 // APISend adds text to agent id's messages, to be typed in when it is at
@@ -286,22 +286,9 @@ func (m *Core) APITypeBy(who, id, text string, keys []string) error {
 	if err != nil {
 		return err
 	}
-	var ref ProgramRef
-	if a := TabList(m.Tabs).Find(id); a != nil {
-		if a.Pane == nil {
-			return fmt.Errorf("the agent is not running: %s", StateName(a.Light))
-		}
-		ref = ProgramRef{Pane: m.PaneRef(a.PaneOf())}
-	} else if _, p := TabList(m.Tabs).FindPane(id); p != nil && p.Kind == PaneShell {
-		if !running(p) {
-			return errors.New("the terminal is not running")
-		}
-		ref = ProgramRef{Pane: m.PaneRef(p)}
-	} else {
-		return fmt.Errorf("there is no agent or terminal %q", id)
-	}
-	if m.Program(ref) == nil {
-		return errors.New("nothing runs there")
+	ref, _, err := m.apiRunning(id)
+	if err != nil {
+		return err
 	}
 	typeIn := func() {
 		if text != "" {
@@ -316,6 +303,76 @@ func (m *Core) APITypeBy(who, id, text string, keys []string) error {
 		return nil
 	}
 	m.Views.Act(ref.Pane, who, time.Now(), m.Program(ref), typeIn)
+	return nil
+}
+
+// apiRunning is the program of the agent or terminal pane id, which must
+// be running, and what refers to it.
+func (m *Core) apiRunning(id string) (ProgramRef, Program, error) {
+	var ref ProgramRef
+	if a := TabList(m.Tabs).Find(id); a != nil {
+		if a.Pane == nil {
+			return ref, nil, fmt.Errorf("the agent is not running: %s", StateName(a.Light))
+		}
+		ref = ProgramRef{Pane: m.PaneRef(a.PaneOf())}
+	} else if _, p := TabList(m.Tabs).FindPane(id); p != nil && p.Kind == PaneShell {
+		if !running(p) {
+			return ref, nil, errors.New("the terminal is not running")
+		}
+		ref = ProgramRef{Pane: m.PaneRef(p)}
+	} else {
+		return ref, nil, fmt.Errorf("there is no agent or terminal %q", id)
+	}
+	prog := m.Program(ref)
+	if prog == nil {
+		return ref, nil, errors.New("nothing runs there")
+	}
+	return ref, prog, nil
+}
+
+// MaxScroll is the most wheel steps one APIScroll turns; more are as many.
+const MaxScroll = 50
+
+// APIScroll turns the wheel n steps over the agent or terminal pane id,
+// for viewer who ("" for none): up, to older text, when n is positive,
+// down when it is negative, as nerdr's window does over a full-screen
+// program, which keeps its history itself. Only a program on the
+// alternate screen that is told of the wheel scrolls; for any other it is
+// an error, and nothing is sent: no arrow keys in place of the wheel, as
+// an agent takes up for its earlier prompts. n is brought within
+// ±MaxScroll; 0 does nothing. Scrolling counts as who being active there,
+// as typing does.
+func (m *Core) APIScroll(who, id string, n int) error {
+	if m.Quitting {
+		return ErrAPIQuitting
+	}
+	ref, prog, err := m.apiRunning(id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return nil
+	}
+	up := n > 0
+	n = min(max(n, -n), MaxScroll)
+	w, h := prog.Size()
+	switch {
+	case !prog.AltScreen():
+		return errors.New("the program does not scroll: it is not on the alternate screen, so read has all it shows")
+	case !prog.ReportsMouse(term.WheelEvent(up, w, h)):
+		return errors.New("the program does not scroll: it does not take the mouse wheel")
+	}
+	turn := func() {
+		w, h := prog.Size() // who's size, if it took it just now
+		for range n {
+			prog.SendMouse(term.WheelEvent(up, w, h))
+		}
+	}
+	if who == "" {
+		turn()
+		return nil
+	}
+	m.Views.Act(ref.Pane, who, time.Now(), prog, turn)
 	return nil
 }
 

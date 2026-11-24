@@ -476,7 +476,7 @@
       "type": "object"
     },
     "ReadRequest": {
-      "description": "The last lines (80 if not given) of what an agent or a terminal shows, as plain text, and the size of its screen, which the lines are laid out for. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "description": "The last lines (80 if not given) of what an agent or a terminal shows, as plain text, the size of its screen, which the lines are laid out for, whether it is on the alternate screen (alt), and whether scroll works on it now (wheel). target is an agent's or a terminal's ID; agent works too, for an agent.",
       "properties": {
         "agent": {
           "type": "string"
@@ -500,6 +500,10 @@
     "ReadResult": {
       "description": "ReadResult is read's result: what the agent or terminal shows, and the size of its screen, which the text is laid out for; 0 when nothing runs.",
       "properties": {
+        "alt": {
+          "description": "alt is true when the program is full-screen, on the alternate screen, which keeps no scrollback: the text is only what fits, the rest of its history the program's own.",
+          "type": "boolean"
+        },
         "cols": {
           "type": "integer"
         },
@@ -508,12 +512,18 @@
         },
         "text": {
           "type": "string"
+        },
+        "wheel": {
+          "description": "wheel is true when scroll works now: the program is on the alternate screen and takes the mouse wheel. Left out by a nerdr without scroll.",
+          "type": "boolean"
         }
       },
       "required": [
         "text",
         "cols",
-        "rows"
+        "rows",
+        "alt",
+        "wheel"
       ],
       "type": "object"
     },
@@ -563,6 +573,9 @@
         },
         {
           "$ref": "#/$defs/TypeRequest"
+        },
+        {
+          "$ref": "#/$defs/ScrollRequest"
         },
         {
           "$ref": "#/$defs/ViewRequest"
@@ -622,6 +635,28 @@
       "required": [
         "op",
         "agent"
+      ],
+      "type": "object"
+    },
+    "ScrollRequest": {
+      "description": "Turn the mouse wheel over a full-screen agent or terminal, which keeps its history itself: lines steps, up (to older text) when positive, down when negative, at most 50 either way (more is 50), 0 none. It works only while read says wheel; otherwise it is an error saying the program does not scroll, and nothing is sent. Viewed by this connection, the program gets the view's size first, as with type. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "lines": {
+          "type": "integer"
+        },
+        "op": {
+          "const": "scroll"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
       ],
       "type": "object"
     },
@@ -900,7 +935,7 @@
       "type": "object"
     },
     "ViewRequest": {
-      "description": "Show an agent or a terminal at cols × rows (brought within 20–500 × 5–300): the client active in a program last, the one that viewed it first, typed to it or changed the size it shows it at, sets its size; the others show the same screen. Say it again within 60 seconds, every 20 as a rule, while it is shown, or the view runs out; it goes too when the connection closes. The result is the size the program has now, the view's own or that of a client active in it since. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "description": "Show an agent or a terminal at cols × rows (brought within 20–500 × 5–300): the client active in a program last, the one that viewed it first, typed to it, scrolled it or changed the size it shows it at, sets its size; the others show the same screen. Say it again within 60 seconds, every 20 as a rule, while it is shown, or the view runs out; it goes too when the connection closes. The result is the size the program has now, the view's own or that of a client active in it since. target is an agent's or a terminal's ID; agent works too, for an agent.",
       "properties": {
         "agent": {
           "type": "string"
@@ -1083,6 +1118,14 @@
     "review": {
       "request": {
         "$ref": "#/$defs/ReviewRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "scroll": {
+      "request": {
+        "$ref": "#/$defs/ScrollRequest"
       },
       "result": {
         "type": "object"

@@ -6,6 +6,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -109,11 +110,44 @@ func (s *Screen) Text(n int) string {
 // TextSized is Text, and the size of the screen it is read from, in one
 // look: the columns the lines are laid out for, and the rows.
 func (s *Screen) TextSized(n int) (string, int, int) {
+	l := s.TextLook(n)
+	return l.Text, l.Cols, l.Rows
+}
+
+// Look is what a program shows at one moment, as TextLook reads it.
+type Look struct {
+	// Text is the last lines shown, as Text has them.
+	Text string
+	// Cols and Rows are the size of the screen the lines are laid out for.
+	Cols, Rows int
+	// Alt is the program being on the alternate screen, which keeps no
+	// scrollback: what scrolled off it only the program has.
+	Alt bool
+	// Wheel is the program on the alternate screen and told of the wheel
+	// (see WheelEvent), so it scrolls its own history when turned.
+	Wheel bool
+}
+
+// WheelEvent is the wheel turned a step, up (to older text) or down, in
+// the middle of a screen of w×h.
+func WheelEvent(up bool, w, h int) MouseEvent {
+	btn := ansi.MouseWheelDown
+	if up {
+		btn = ansi.MouseWheelUp
+	}
+	return MouseEvent{Kind: MousePress, Button: btn, X: w / 2, Y: h / 2}
+}
+
+// TextLook is Text, the size of the screen, and whether the program
+// scrolls itself, all in one look.
+func (s *Screen) TextLook(n int) Look {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	w, h := s.emu.Width(), s.emu.Height()
+	alt := s.emu.IsAltScreen()
+	wheel := alt && !s.exited && mouseReport(WheelEvent(true, w, h), s.mouseLevel(), s.mouseSgr) != nil
 	sb := s.emu.ScrollbackLen()
-	if s.emu.IsAltScreen() {
+	if alt {
 		sb = 0
 	}
 	var lines []string
@@ -140,5 +174,5 @@ func (s *Screen) TextSized(n int) (string, int, int) {
 	if n > 0 && len(lines) > n {
 		lines = lines[len(lines)-n:]
 	}
-	return strings.Join(lines, "\n"), w, h
+	return Look{Text: strings.Join(lines, "\n"), Cols: w, Rows: h, Alt: alt, Wheel: wheel}
 }
