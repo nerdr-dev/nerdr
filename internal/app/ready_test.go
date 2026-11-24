@@ -34,14 +34,22 @@ func TestReviewWaitsForReady(t *testing.T) {
 	if tb.ReviewAsk == nil || tb.ReviewAsk.Focus != "the locking" {
 		t.Fatalf("ready not kept: %v", tb.ReviewAsk)
 	}
-	tb.Light = core.StIdle
+	tb.Light = core.StDone
 	if m.home().Core.AfterTurn(tb) == nil {
 		t.Fatal("the end of the turn ready was said in should look at the worktree")
 	}
+	// The agent is done, and the review not started: the look that starts
+	// it is on its way, and the work in the tab goes on.
+	if !tb.WorkGoesOn() {
+		t.Fatal("work over while the look that starts the review is on its way")
+	}
 	m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto, Changed: true, Tree: "t1"})
 	t.Cleanup(func() { m.home().Core.EndReview(tb, "done", false) })
-	if tb.Review == nil || tb.Review.Focus != "the locking" || tb.ReviewAsk != nil {
-		t.Fatalf("review %+v, ask %v", tb.Review, tb.ReviewAsk)
+	if tb.Review == nil || tb.Review.Focus != "the locking" || tb.ReviewAsk != nil || tb.ReviewLook {
+		t.Fatalf("review %+v, ask %v, look %v", tb.Review, tb.ReviewAsk, tb.ReviewLook)
+	}
+	if !tb.WorkGoesOn() {
+		t.Fatal("work over while the review goes on")
 	}
 	if p := tb.Review.Seats[0].R.PaneOf(); p == nil || p.Kind != core.PaneReview || m.focused(tb) == p {
 		t.Fatalf("the reviewer should have a pane of its own, leaving the keyboard where it was: %+v", p)
@@ -73,6 +81,12 @@ func TestReadyWithAutoOff(t *testing.T) {
 	}
 	if m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Focus: "the locking"}) == nil || tb.ReviewAsk == nil {
 		t.Fatal("ready with auto off should look at the worktree for a review")
+	}
+	// Nothing to review: the look settles it, and the work is over.
+	tb.Light = core.StDone
+	m.home().Core.OnTree(core.TreeMsg{T: tb, Why: core.TreeAuto})
+	if tb.Review != nil || tb.ReviewLook || tb.WorkGoesOn() {
+		t.Fatalf("review %+v, look %v: work goes on with nothing to review", tb.Review, tb.ReviewLook)
 	}
 }
 

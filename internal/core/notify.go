@@ -13,6 +13,11 @@ import (
 // state, so an agent flickering between states does not spam.
 const NotifyAgain = 20 * time.Second
 
+// HoldDone is how long news of an agent done is held at least, for what
+// it handed its work on to to be seen at work: a reviewer, or another
+// agent in the tab. See WorkGoesOn.
+const HoldDone = 2 * time.Second
+
 // InAppFor is how long a tab's news stays in the bar.
 const InAppFor = 6 * time.Second
 

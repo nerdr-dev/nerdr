@@ -769,6 +769,10 @@ type Tab struct {
 	// review, to what it wants looked at most and who it asked to review
 	// it, until the review starts; see onReady.
 	ReviewAsk *ReadyAsk
+	// ReviewLook is set while the look at the worktree after a turn is
+	// on its way, which may start a review or go on with one; see
+	// AfterTurn and WorkGoesOn.
+	ReviewLook bool
 
 	// HookID is the id the tab's agent reports to nerdr's socket under;
 	// see hookKey.
