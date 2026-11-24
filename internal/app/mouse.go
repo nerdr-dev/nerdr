@@ -99,8 +99,9 @@ func (m *Model) syncMouse() tea.Cmd {
 
 func (m *Model) handleMouse(ev tea.MouseMsg) tea.Cmd {
 	if m.editor != nil {
-		m.editor.SendMouse(paneMouse(ev, 0, 0))
-		m.noteClick(m.editor, ev)
+		if m.editor.SendMouse(paneMouse(ev, 0, 0)) {
+			m.noteClick(m.editor, ev)
+		}
 		return nil
 	}
 	if m.drag != dragNone {
@@ -346,8 +347,9 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 			rx, ry, rw, rh := m.paneRect(t, m.focused(t))
 			x := min(max(ev.X-rx, 0), rw-1)
 			y := min(max(ev.Y-ry, 0), rh-1)
-			m.screen(t).SendMouse(paneMouse(ev, x, y))
-			m.noteClick(m.screen(t), ev)
+			if p := m.screen(t); p.SendMouse(paneMouse(ev, x, y)) {
+				m.noteClick(p, ev)
+			}
 		}
 		return nil
 
@@ -560,8 +562,8 @@ func (m *Model) copyText(text string) {
 // what it got as long as ever.
 const copyWindow = 2 * time.Second
 
-// noteClick notes a button pressed or let go that was passed to p, for
-// checkCopied: an agent that has the mouse selects and copies itself.
+// noteClick notes a button pressed or let go that p took (SendMouse said
+// so), for checkCopied: an agent that has the mouse selects and copies itself.
 func (m *Model) noteClick(p core.Program, ev tea.MouseMsg) {
 	if isWheel(ev) || ev.Action == tea.MouseActionMotion {
 		return
@@ -585,7 +587,14 @@ func (m *Model) checkCopied() {
 		from = m.keyPane()
 	}
 	now := time.Now()
-	typed := m.router != nil && now.Sub(m.router.LastTyped()) < copyWindow
+	// Keys count for the program they went to, whatever has the keyboard
+	// now.
+	var typedTo any
+	if m.router != nil {
+		if at, to := m.router.LastTyped(); now.Sub(at) < copyWindow {
+			typedTo = to
+		}
+	}
 	var panes []core.Program
 	if m.editor != nil {
 		panes = append(panes, m.editor)
@@ -604,7 +613,7 @@ func (m *Model) checkCopied() {
 			continue
 		}
 		clicked := m.clicked == p && now.Sub(m.clickedAt) < copyWindow
-		if p == from && (typed || clicked) {
+		if p == from && (typedTo == any(p) || clicked) {
 			m.copyText(text)
 			continue
 		}

@@ -862,14 +862,14 @@ func (m *Model) syncInput() {
 	if m.editor != nil {
 		if exited, _, _ := m.editor.Exited(); !exited {
 			m.router.PassFKeys(true)
-			m.router.Passthrough(m.editor.Input)
+			m.router.PassthroughTo(m.editor.Input, m.editor)
 			return
 		}
 	}
 	t := m.Cur()
 	if d, ok := m.dialog.(*loginDialog); ok && !m.prefix {
 		// What is typed goes to ssh, logging in.
-		m.router.Passthrough(d.write)
+		m.router.PassthroughTo(d.write, d)
 		return
 	}
 	if m.home().Core.Quitting || m.prefix || m.dialog != nil || m.scrolling || t == nil || grey(m.machineOf(t)) {
@@ -878,7 +878,7 @@ func (m *Model) syncInput() {
 	}
 	if p := m.pluginUIPane(); p != nil {
 		// A plugin's screen in F5; F1-F6 and the prefix stay nerdr's.
-		m.router.Passthrough(p.Input)
+		m.router.PassthroughTo(p.Input, p)
 		return
 	}
 	p := m.keyPane()
@@ -902,7 +902,7 @@ func (m *Model) syncInput() {
 		}
 	}
 	m.router.PassFKeys(f.Kind == core.PaneShell && p.AltScreen())
-	m.router.Passthrough(p.Input)
+	m.router.PassthroughTo(p.Input, p)
 }
 
 // keysTarget is an agent with the keyboard: its pane, and which agent is in

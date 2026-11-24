@@ -37,13 +37,17 @@ type Router struct {
 	fkeys atomic.Bool
 	// last is when the terminal last sent anything, in Unix nanoseconds.
 	last atomic.Int64
-	// typed is when input last went straight to the sink, in Unix
-	// nanoseconds: keys typed to the program with the keyboard.
-	typed atomic.Int64
 
 	mu   sync.Mutex
 	sink func([]byte)
 	send func(any)
+	// owner is whose sink is: what PassthroughTo named. typedTo is the
+	// owner input last went straight to, and typedAt when: taken with the
+	// sink it went to, so keys typed to one owner are never counted for
+	// the next. Guarded by mu.
+	owner   any
+	typedTo any
+	typedAt time.Time
 	// prefixed is set from the prefix key until the program has had its
 	// PrefixMsg (PrefixSeen): until then input stays the program's, however
 	// often the program, not yet knowing of the prefix, says to pass it
@@ -93,10 +97,14 @@ func (r *Router) SetSend(send func(any)) {
 
 // Passthrough sends input straight to sink until called again; a nil sink
 // sends everything to bubbletea.
-func (r *Router) Passthrough(sink func([]byte)) {
+func (r *Router) Passthrough(sink func([]byte)) { r.PassthroughTo(sink, nil) }
+
+// PassthroughTo is Passthrough, saying whose sink is: LastTyped names it
+// for what is typed to it.
+func (r *Router) PassthroughTo(sink func([]byte), owner any) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.sink = sink
+	r.sink, r.owner = sink, owner
 	r.pass.Store(sink != nil && !r.prefixed)
 }
 
@@ -124,13 +132,19 @@ func (r *Router) LastInput() time.Time {
 	return time.Time{}
 }
 
-// LastTyped is when keys last went straight to the program with the
-// keyboard (Passthrough's sink). Zero before they have.
-func (r *Router) LastTyped() time.Time {
-	if n := r.typed.Load(); n != 0 {
-		return time.Unix(0, n)
-	}
-	return time.Time{}
+// LastTyped is when keys last went straight to a sink, and the owner
+// PassthroughTo gave that sink. Zero and nil before they have.
+func (r *Router) LastTyped() (time.Time, any) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.typedAt, r.typedTo
+}
+
+// typed notes input going straight to owner's sink.
+func (r *Router) typed(owner any) {
+	r.mu.Lock()
+	r.typedTo, r.typedAt = owner, time.Now()
+	r.mu.Unlock()
 }
 
 // Run copies input until src fails. Call it in its own goroutine.
@@ -166,7 +180,7 @@ func (r *Router) route(b []byte) {
 	}
 	for len(b) > 0 {
 		r.mu.Lock()
-		sink, send := r.sink, r.send
+		sink, send, owner := r.sink, r.send, r.owner
 		r.mu.Unlock()
 		if !r.pass.Load() || sink == nil {
 			r.toProgram(b)
@@ -184,7 +198,7 @@ func (r *Router) route(b []byte) {
 			}
 		}
 		if cut > 0 {
-			r.typed.Store(time.Now().UnixNano())
+			r.typed(owner)
 			sink(b[:cut])
 		}
 		b = b[cut:]
@@ -269,10 +283,10 @@ func (r *Router) flushHeld() {
 		return
 	}
 	r.mu.Lock()
-	sink := r.sink
+	sink, owner := r.sink, r.owner
 	r.mu.Unlock()
 	if r.pass.Load() && sink != nil {
-		r.typed.Store(time.Now().UnixNano())
+		r.typed(owner)
 		sink(b)
 	} else {
 		_, _ = r.pw.Write(b)
