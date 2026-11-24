@@ -20,24 +20,6 @@ const InAppFor = 6 * time.Second
 type Note struct {
 	T           *Tab
 	Title, Body string
-	Blocked     bool
-}
-
-// HerdrNotifies reports whether herdr notifies of its pane's state changing
-// from before to after, as nerdr reported them: when it comes to ask
-// something, and when it goes idle from working or asking (herdr's
-// notification_toast_for_state_change). From unknown to idle it says
-// nothing, so a tab done then is nerdr's to tell of.
-func HerdrNotifies(before, after string) bool {
-	switch {
-	case before == after:
-		return false
-	case after == "blocked":
-		return true
-	case after == "idle":
-		return before == "working" || before == "blocked"
-	}
-	return false
 }
 
 // desktopNotify shows a notification, if the system has a way to.

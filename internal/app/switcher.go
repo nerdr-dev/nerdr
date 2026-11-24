@@ -171,7 +171,6 @@ func (r *renamer) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		m.dialog = nil
 		if name := strings.TrimSpace(r.input.Value()); name != "" && m.fleet.TabIndex(r.t) >= 0 {
 			m.do(core.RenameTab{T: m.fleet.Ref(r.t), Name: name})
-			m.reportHerdr()
 		}
 		return nil
 	}

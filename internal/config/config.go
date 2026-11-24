@@ -47,9 +47,6 @@ type Config struct {
 	Layout string `toml:"layout" scope:"client"`
 	// Agents overrides how each agent kind is started.
 	Agents map[agents.Kind]agents.Spec `toml:"agents" scope:"core"`
-	// HerdrFocusJump, when running inside herdr, switches to the tab that
-	// needs attention when herdr gives nerdr's pane focus.
-	HerdrFocusJump *bool `toml:"herdr_focus_jump" scope:"client"`
 	// Notify is when an agent's tab tells you it needs you: a desktop
 	// notification while nerdr's window does not have focus, a message in
 	// the bar while you are in another tab. "blocked" (an agent needs
@@ -327,10 +324,6 @@ func defaults(c Config) Config {
 	case "normal", "wide", "small", "agent", "panel":
 	default:
 		c.Layout = "normal"
-	}
-	if c.HerdrFocusJump == nil {
-		t := true
-		c.HerdrFocusJump = &t
 	}
 	switch c.Notify {
 	case "":

@@ -260,9 +260,7 @@ func TestEndToEnd(t *testing.T) {
 	bin := build(t)
 	root, scratch := setup(t)
 	agentLog := filepath.Join(scratch, "agent.log")
-	herdrLog := filepath.Join(scratch, "herdr.log")
 	fake, _ := filepath.Abs("fakeagent.sh")
-	fakeHerdr, _ := filepath.Abs("fakeherdr.sh")
 
 	cfgDir := filepath.Join(scratch, "config")
 	_ = os.MkdirAll(filepath.Join(cfgDir, "nerdr"), 0o755)
@@ -279,8 +277,6 @@ func TestEndToEnd(t *testing.T) {
 		"XDG_CONFIG_HOME="+cfgDir,
 		"XDG_STATE_HOME="+filepath.Join(scratch, "state"),
 		"FAKE_LOG="+agentLog,
-		"FAKE_HERDR_LOG="+herdrLog,
-		"HERDR_ENV=1", "HERDR_PANE_ID=w9:p9", "HERDR_BIN_PATH="+fakeHerdr,
 		"TERM=xterm-256color",
 	)
 
@@ -323,14 +319,6 @@ func TestEndToEnd(t *testing.T) {
 	// A question from the agent shows as blocked.
 	h.keys("ask\r")
 	h.waitFor("Do you want to proceed?", 3*time.Second)
-	time.Sleep(700 * time.Millisecond)
-	if !strings.Contains(readFile(herdrLog), "--state blocked") {
-		t.Fatalf("herdr was not told the tab is blocked:\n%s", readFile(herdrLog))
-	}
-	// herdr's sidebar gets the tabs summed up.
-	if !strings.Contains(readFile(herdrLog), "--token summary=1 tab · 1 needs input") {
-		t.Fatalf("herdr was not given the summary:\n%s", readFile(herdrLog))
-	}
 	h.keys("1\r")
 	h.waitFor("answered 1", 3*time.Second)
 
@@ -358,20 +346,6 @@ func TestEndToEnd(t *testing.T) {
 	h.waitTabBar("1:feat-y claude", 2*time.Second)
 	h.waitGone("answered 1", 2*time.Second)
 
-	// 10: tab 2 asks a question while tab 1 is shown; herdr focusing
-	// nerdr's pane (a click on it in herdr's agent list) opens tab 2.
-	h.waitFor("? for shortcuts", 5*time.Second)
-	h.keys("ask\r")
-	h.waitFor("Do you want to proceed?", 3*time.Second)
-	h.keys(prefix + "]\r")
-	h.waitTabBar("1:feat-x claude", 2*time.Second)
-	time.Sleep(500 * time.Millisecond)
-	h.keys("\x1b[O")
-	h.keys("\x1b[I")
-	h.waitTabBar("1:feat-y claude", 3*time.Second)
-	h.keys("2\r")
-	h.waitFor("answered 2", 3*time.Second)
-
 	// The review panel takes the keyboard and gives it back.
 	h.keys(prefix + "\t")
 	h.waitTabBar("review", 2*time.Second)
@@ -380,9 +354,6 @@ func TestEndToEnd(t *testing.T) {
 
 	// 9: quit and start again; both tabs come back, resuming.
 	quit(t, h)
-	if !strings.Contains(readFile(herdrLog), "release-agent") {
-		t.Fatalf("herdr was not told nerdr left:\n%s", readFile(herdrLog))
-	}
 
 	h = start(t, bin, root, env)
 	h.waitTabBar("multi (1)", 10*time.Second)

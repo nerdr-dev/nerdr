@@ -451,7 +451,6 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	} else if pr := m.program(m.fleet.Tabs()[m.Active].OwnPane()); pr != nil {
 		pr.Focus(true)
 	}
-	m.reportHerdr()
 	return tea.Batch(cmds...)
 }
 
@@ -472,11 +471,9 @@ func (m *Model) quit(away bool) tea.Cmd {
 	var panes []*term.Pane
 	wait := func() {}
 	m.shutdown.Do(func() { panes, wait = m.stopping() })
-	h := m.Herdr
 	return func() tea.Msg {
 		core.StopPanes(panes)
 		wait()
-		h.Release()
 		return quitReadyMsg{}
 	}
 }

@@ -70,7 +70,7 @@ func TestFunctionKeys(t *testing.T) {
 
 	// Finished while the window was out of focus: a filled light. Once the
 	// window has focus again: a hollow one.
-	h.keys("\x1b[O") // herdr takes focus away
+	h.keys("\x1b[O") // the terminal takes focus away
 	h.keys("work\r")
 	h.waitTabBar("● 1:fk", 3*time.Second)
 	h.waitFor("done", 5*time.Second)

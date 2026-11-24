@@ -156,26 +156,6 @@ func TestResumeCommandFollowsTheConversation(t *testing.T) {
 	}
 }
 
-func TestHerdrNotifies(t *testing.T) {
-	for _, c := range []struct {
-		before, after string
-		want          bool
-	}{
-		{"working", "idle", true},
-		{"blocked", "idle", true},
-		{"working", "blocked", true},
-		{"", "blocked", true},
-		{"unknown", "idle", false}, // herdr says nothing: nerdr must
-		{"", "idle", false},
-		{"idle", "working", false},
-		{"idle", "idle", false},
-	} {
-		if got := core.HerdrNotifies(c.before, c.after); got != c.want {
-			t.Errorf("%q → %q: %v", c.before, c.after, got)
-		}
-	}
-}
-
 // opencode's manifest, like herdr's, has no rule for its idle screen: a
 // screen no rule knows is how it looks when done, and must not keep a
 // working tab working for ever.
@@ -334,9 +314,8 @@ func TestBackgroundProcessRanksBelowWork(t *testing.T) {
 	}
 }
 
-// A tab with only a process left running is not idle to herdr: were the
-// active idle tab picked instead, herdr would tell of the turn as done. Work
-// in another tab still wins over it.
+// A tab with only a process left running needs you more than an idle
+// one. Work in another tab still wins over it.
 func TestNeediestTakesABackgroundProcess(t *testing.T) {
 	idle := &core.Tab{AgentState: core.Agent{Light: core.StIdle}}
 	background := &core.Tab{AgentState: core.Agent{Light: core.StBackground}}

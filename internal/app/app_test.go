@@ -1,16 +1,11 @@
 package app
 
 import (
-	"os"
-	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/fleet"
-	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -98,52 +93,6 @@ func TestIssueNumber(t *testing.T) {
 		if (want > 0) != ok || (ok && n != want) {
 			t.Errorf("%q: %d %v", s, n, ok)
 		}
-	}
-}
-
-func TestNotesInsideHerdr(t *testing.T) {
-	dir := t.TempDir()
-	log := filepath.Join(dir, "herdr.log")
-	bin := filepath.Join(dir, "herdr")
-	script := "#!/bin/sh\necho \"$@\" >> " + log + "\n"
-	if err := os.WriteFile(bin, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	top := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "top"}, Light: core.StBlocked}}
-	other := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "other"}, Light: core.StDone}}
-	m := &Model{fleet: fleet.New(&fleet.Machine{Core: core.Core{Tabs: []*core.Tab{top, other}}}), Herdr: herdr.NewClient(bin, "w1:p1"), blurred: true}
-	m.home().Core.Client = m
-	m.home().Core.Cfg.Notify = "all"
-	now := time.Now()
-	m.notifyChange(top, false, now)
-	m.notifyChange(other, false, now)
-	m.notifyChange(other, false, now) // again at once: dropped
-	if len(m.notes) != 2 {
-		t.Fatalf("notes = %d", len(m.notes))
-	}
-	before := m.Herdr.State()
-	m.reportHerdr() // the pane turns blocked: herdr notifies of top itself
-	m.flushNotes(before)
-
-	// Wait for the report as well as the notification: both run in the
-	// background, and one still writing the log fails TempDir's cleanup.
-	deadline := time.Now().Add(3 * time.Second)
-	for {
-		data, _ := os.ReadFile(log)
-		got := string(data)
-		if strings.Contains(got, "notification show") && strings.Contains(got, "pane report-metadata") {
-			if strings.Contains(got, "notification show nerdr · top") {
-				t.Fatalf("notified of the tab herdr notifies of:\n%s", got)
-			}
-			if !strings.Contains(got, "notification show nerdr · other --body  is done --sound done") {
-				t.Fatalf("log:\n%s", got)
-			}
-			return
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("no notification:\n%s", got)
-		}
-		time.Sleep(20 * time.Millisecond)
 	}
 }
 

@@ -13,16 +13,10 @@ import (
 // While you are in nerdr, in another tab, it says so in the bar instead:
 // the tab bar shows it too, but its light is easy to miss, and a desktop
 // notification for something on screen is noise.
-//
-// Inside herdr it goes through herdr instead (`herdr notification show`),
-// which delivers it the way the user has set herdr up. herdr already
-// notifies when the state nerdr reports for its pane changes — that of the
-// tab most in need — so that tab is left to herdr; nerdr covers the tabs
-// behind it, whose changes herdr never hears of.
 
 // notifyChange is called when a tab's light has changed; visible is whether
-// you are looking at the tab. A notification due is held until the tick's
-// report to herdr is made; see flushNotes.
+// you are looking at the tab. A notification due is held until the end of
+// the tick; see flushNotes.
 func (m *Model) notifyChange(t *core.Tab, visible bool, now time.Time) {
 	if !m.blurred && visible {
 		return // you are looking at it
@@ -55,7 +49,7 @@ func (m *Model) notifyChange(t *core.Tab, visible bool, now time.Time) {
 		m.inAppTabs = append(m.inAppTabs, o)
 		return
 	}
-	m.notes = append(m.notes, core.Note{T: o, Title: "nerdr · " + name, Body: body, Blocked: t.Light == core.StBlocked})
+	m.notes = append(m.notes, core.Note{T: o, Title: "nerdr · " + name, Body: body})
 }
 
 // toastSeen is called for a tab you are looking at: news of it in the bar
@@ -77,9 +71,8 @@ func (m *Model) toastSeen(t *core.Tab) {
 	}
 }
 
-// flushNotes sends the notifications gathered this tick. herdrBefore is
-// the state nerdr had reported to herdr before it.
-func (m *Model) flushNotes(herdrBefore string) {
+// flushNotes sends the notifications gathered this tick.
+func (m *Model) flushNotes() {
 	if len(m.inApp) > 0 {
 		// Several in one tick share the bar.
 		m.say(catAgents, strings.Join(m.inApp, " · ")+" · "+m.pk("n")+" goes there", core.InAppFor)
@@ -88,26 +81,9 @@ func (m *Model) flushNotes(herdrBefore string) {
 	}
 	notes := m.notes
 	m.notes = nil
-	if m.Herdr == nil {
-		for _, n := range notes {
-			core.Debugf("notify %s: desktop: %s", n.T.Name, n.Body)
-			go core.DesktopNotify(n.Title, n.Body)
-		}
-		return
-	}
-	_, top := m.fleet.Neediest()
-	herdrNotified := core.HerdrNotifies(herdrBefore, m.Herdr.State())
 	for _, n := range notes {
-		if herdrNotified && n.T == top {
-			core.Debugf("notify %s: left to herdr", n.T.Name)
-			continue // herdr notifies of its own pane's change
-		}
-		core.Debugf("notify %s: through herdr: %s", n.T.Name, n.Body)
-		sound := "done"
-		if n.Blocked {
-			sound = "request"
-		}
-		m.Herdr.Notify(n.Title, n.Body, sound)
+		core.Debugf("notify %s: desktop: %s", n.T.Name, n.Body)
+		go core.DesktopNotify(n.Title, n.Body)
 	}
 }
 

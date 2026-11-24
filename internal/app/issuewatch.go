@@ -72,10 +72,6 @@ func (m *Model) tellIssueNews(news []state.IssueNews) {
 	}
 	title := "nerdr · " + label
 	core.Debugf("issue notify: %s: %s", title, what)
-	if m.Herdr != nil {
-		m.Herdr.Notify(title, what, "request")
-		return
-	}
 	go core.DesktopNotify(title, what)
 }
 

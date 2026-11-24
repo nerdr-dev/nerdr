@@ -13,7 +13,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/fleet"
-	"github.com/nerdr-dev/nerdr/internal/herdr"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/reviewsource"
@@ -39,12 +38,6 @@ type Model struct {
 	// look.go.
 	tabLooks  map[*core.Tab]*tabLook
 	paneLooks map[*core.PaneTab]*paneLook
-	// Herdr is the herdr pane nerdr runs in, when it does: the client's
-	// terminal, which core does not know of.
-	Herdr *herdr.Client
-	// herdrBefore is the state reported to herdr when the last look at the
-	// agents began; see flushNotes.
-	herdrBefore string
 	// Active is the index in Tabs of the tab in front, the client's own:
 	// core knows only what Front says.
 	Active int
@@ -183,7 +176,7 @@ type Model struct {
 	panelScreens map[*core.Tab]review.Screen
 	paneBars     map[*core.Tab]*barRow
 
-	// blurred is set while the terminal (herdr) has taken focus away from
+	// blurred is set while the terminal has taken focus away from
 	// nerdr's window: then even the active tab is not being looked at.
 	blurred bool
 
@@ -386,7 +379,6 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 			Wake: make(chan struct{}, 1),
 		}}),
 		router:      router,
-		Herdr:       herdr.Detect(),
 		review:      review.NewEmbedded(review.Local{}),
 		reviewWidth: cfg.PanelWidth,
 		splitWidth:  50,
@@ -743,15 +735,13 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		core.Debugf("focus")
 		m.blurred = false
 		m.wheelHeld = true // a glide begun elsewhere may still be coming
-		cmd := m.onHerdrFocus()
 		if t := m.Cur(); t != nil {
 			m.focusTerms(t)
 			if m.dwelt() {
 				m.do(core.SeeAgent{A: m.fleet.Ref(t), Glance: true})
 			}
 		}
-		m.reportHerdr()
-		return cmd
+		return nil
 
 	case tea.BlurMsg:
 		core.Debugf("blur")
@@ -928,8 +918,7 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 	}
 	m.tellOn(m.tellingOn(), core.KeepAwake{})
 	m.keepScreen(now)
-	m.reportHerdr()
-	m.flushNotes(m.herdrBefore)
+	m.flushNotes()
 	return nil
 }
 
@@ -1140,7 +1129,6 @@ func (m *Model) selectTab(i int) tea.Cmd {
 		m.resizePanes() // the tab may have changed sides, or have the window
 	}
 	m.saveLayout()
-	m.reportHerdr()
 	var ask tea.Cmd
 	if m.dialog == nil && t.Spinoff != nil {
 		ask = m.openSpinoff(t)
@@ -1181,7 +1169,6 @@ func (m *Model) Shutdown() {
 		m.fleet.Unlock()
 		core.StopPanes(panes)
 		wait()
-		m.Herdr.Release()
 	})
 }
 

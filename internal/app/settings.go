@@ -137,7 +137,7 @@ func (m *Model) settingRows() []settingRow {
 		{label: "Keys and mouse"},
 		{key: "prefix", kind: sText, def: `"ctrl+q"`, restart: true,
 			desc: "The key you press before every nerdr command. Press it, let go, then press the command's key: with ctrl+q, ctrl+q and then t opens a shell in the tab's worktree.\n" +
-				"Any ctrl+<letter> works. Pick one your agents do not use themselves, or they never get it; herdr uses ctrl+b.",
+				"Any ctrl+<letter> works. Pick one your agents do not use themselves, or they never get it.",
 			example: `prefix = "ctrl+a"`},
 		{key: "mouse", kind: sBool, def: "true", restart: true,
 			desc: "Lets you use the mouse in nerdr: click a tab to go to it, click menus and buttons, scroll with the wheel and drag to select text.\n" +
@@ -256,10 +256,6 @@ func (m *Model) settingRows() []settingRow {
 			"Starts claude with nerdr's status line, which tells nerdr how much of your Claude plan's rate limits is used, for the usage dialog. It then shows your own status line, if you have set one in claude's settings, or a short one of nerdr's.\n"+
 				"Turn it off to leave claude's status line alone; the usage dialog then has codex's limits only.",
 			`claude_status_line = false`),
-		b("herdr_focus_jump", "true",
-			"Only when nerdr runs inside herdr: when herdr moves you to nerdr's pane, nerdr goes straight to the tab that needs you.\n"+
-				"Turn it off to stay in the tab you were in.",
-			`herdr_focus_jump = false`),
 		{key: "github_refresh", kind: sInt, lo: 15, hi: 3600, def: "90",
 			desc: "How many seconds apart nerdr asks GitHub about the pull request of the tab on screen, and of a tab whose agent is working: its CI checks, reviews and whether it is merged.\n" +
 				"nerdr's other questions to GitHub follow along, in the same proportion: at 90, tabs out of sight are asked about every 10 minutes, the lists of pull requests and issues in F2 and the watch on your pull requests for notifications every 2 minutes, and new issues assigned to you every 5 minutes. At 180, all of them are twice as far apart.\n" +

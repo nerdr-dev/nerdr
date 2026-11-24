@@ -150,8 +150,6 @@ func TestWheelBurst(t *testing.T) {
 // once it has been still, it is.
 func TestWheelAfterFocus(t *testing.T) {
 	m := testModel(t)
-	no := false
-	m.home().Core.Cfg.HerdrFocusJump = &no
 	m.View()
 	wheel := func() {
 		m.lastWheelStep = time.Time{} // not what this is about

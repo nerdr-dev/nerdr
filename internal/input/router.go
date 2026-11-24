@@ -2,7 +2,7 @@
 // and nerdr itself.
 //
 // While an agent has focus, keystrokes are passed to it byte for byte, the
-// way tmux or herdr would: re-encoding them through a key parser would lose
+// way tmux would: re-encoding them through a key parser would lose
 // what the parser does not know (shift+enter, a paste's exact bytes, keys
 // in modes the parser never enabled). Only the prefix key is taken out; it
 // hands the next key to nerdr as a command. Mouse reports are taken out
@@ -211,8 +211,8 @@ func (r *Router) route(b []byte) {
 			return
 		}
 
-		// Focus reports are nerdr's: they say whether herdr (or the
-		// terminal) has given this window focus. Mouse reports are nerdr's
+		// Focus reports are nerdr's: they say whether the terminal
+		// has given this window focus. Mouse reports are nerdr's
 		// too; see the package comment.
 		cut, kind, n := r.nextSpecial(b)
 		if kind == 0 {

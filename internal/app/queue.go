@@ -23,7 +23,7 @@ import (
 // interrupting it, and how one message goes to several agents. The rest
 // wait for you to put them in, when you have seen what the agent did.
 //
-// Sending follows herdr's `agent prompt`: nothing is typed into an agent
+// Sending: nothing is typed into an agent
 // that is asking something (blocked); the text goes in as a paste, in the
 // agent's own paste mode, with enter after it; and if the agent then shows
 // no sign of taking it up within stallAfter, the submission counts as

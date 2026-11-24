@@ -211,7 +211,6 @@ func (m *Model) reposDone(t *core.Tab, text string) tea.Cmd {
 		m.branchPanel = nil
 	}
 	m.resizePanes()
-	m.reportHerdr() // its group may have changed
 	m.toast(text)
 	return tea.Batch(m.pinReview(), m.syncPRPanel(), m.resize())
 }

@@ -114,7 +114,7 @@ func (a *Agent) Classify(visible bool, now time.Time) {
 		if res.Rule == detect.FallbackRule && a.Raw == detect.Working && man.KnowsIdle() {
 			// A screen no rule knows says nothing: an agent that was
 			// working is not taken to be done because of it. Unless the
-			// manifest has no idle rule, as herdr's opencode has not: then
+			// manifest has no idle rule, as opencode's has not: then
 			// the fallback is the idle screen, and the quiet screen below
 			// is what tells a pause from the end of the turn.
 			res.State = detect.Working
@@ -173,7 +173,7 @@ func (a *Agent) Classify(visible bool, now time.Time) {
 // report needs no debounce, and says when a turn is over, which the screen
 // cannot always tell from a pause between steps. But some changes come
 // with no report, and then a screen that clearly shows the state (a rule
-// marked visible, as herdr has it) wins:
+// marked visible) wins:
 //
 //   - a question on the screen is a question, whatever was reported:
 //     claude's trust prompt, an MCP server's, have no hook;
