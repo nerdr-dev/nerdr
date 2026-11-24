@@ -104,6 +104,14 @@ type ReadResult struct {
 	Text string `json:"text"`
 	Cols int    `json:"cols"`
 	Rows int    `json:"rows"`
+	// Alt is true when the program is full-screen, on the alternate
+	// screen, which keeps no scrollback: the text is only what fits, the
+	// rest of its history the program's own.
+	Alt bool `json:"alt"`
+	// Wheel is true when scroll works now: the program is on the
+	// alternate screen and takes the mouse wheel. Left out by a nerdr
+	// without scroll.
+	Wheel bool `json:"wheel"`
 }
 
 // ViewResult is view's result: the size the agent's or terminal's program
@@ -554,8 +562,8 @@ func (c *conn) do(r Request) (any, error) {
 			id = r.Agent
 		}
 		return s.call(false, func(m *core.Core) (any, core.Cmd, error) {
-			text, w, h, err := m.APIReadSized(id, r.Lines)
-			return ReadResult{Text: text, Cols: w, Rows: h}, nil, err
+			l, err := m.APIReadLook(id, r.Lines)
+			return ReadResult{Text: l.Text, Cols: l.Cols, Rows: l.Rows, Alt: l.Alt, Wheel: l.Wheel}, nil, err
 		})
 	case "send":
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
@@ -575,6 +583,14 @@ func (c *conn) do(r Request) (any, error) {
 		}
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
 			return nil, nil, m.APITypeBy(c.viewer, id, r.Text, r.Keys)
+		})
+	case "scroll":
+		id := r.Target
+		if id == "" {
+			id = r.Agent
+		}
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			return nil, nil, m.APIScroll(c.viewer, id, r.Lines)
 		})
 	case "view":
 		id := r.Target
@@ -672,7 +688,7 @@ func (c *conn) do(r Request) (any, error) {
 	case "":
 		return nil, errors.New("a request needs an op")
 	}
-	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_tab and quit", r.Op)
+	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, scroll, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_tab and quit", r.Op)
 }
 
 // closeTab closes tab id, as the TUI's close dialog does, and answers once

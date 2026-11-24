@@ -1,6 +1,6 @@
 ---
 title: Requests
-description: Everything a program can ask of nerdr's API — the state, an agent's screen and the size it is shown at, messages, keys, answers, new tabs, terminals and agents, reviews, closing tabs and quitting.
+description: Everything a program can ask of nerdr's API — the state, an agent's screen, scrolling it and the size it is shown at, messages, keys, answers, new tabs, terminals and agents, reviews, closing tabs and quitting.
 ---
 
 A request is one line of JSON with an `op`, what to do, and the
@@ -28,6 +28,7 @@ as nerdr runs. A tab's ID is also the ID of its first agent.
 | [`read`](#read) | `target`, `lines` | What an agent or terminal shows |
 | [`send`](#send) | `agent`, `text` | Queue a message for an agent |
 | [`type`](#type) | `target`, `text`, `keys` | Type into an agent or terminal now |
+| [`scroll`](#scroll) | `target`, `lines` | Scroll a full-screen agent's history |
 | [`view`](#view) | `target`, `cols`, `rows` | Show an agent or terminal at your screen's size |
 | [`unview`](#unview) | `target` | Stop showing it |
 | [`answer`](#answer) | `question`, `yes` | Answer one of nerdr's questions |
@@ -142,13 +143,20 @@ shows, as plain text:
 ```
 
 ```json
-{"id":2,"result":{"text":"Do you want to proceed?\n❯ 1. Yes\n  2. No, and tell Claude what to do differently\n","cols":120,"rows":40}}
+{"id":2,"result":{"text":"Do you want to proceed?\n❯ 1. Yes\n  2. No, and tell Claude what to do differently\n","cols":120,"rows":40,"alt":true,"wheel":true}}
 ```
 
 `target` is an agent's or a terminal's ID (`agent` works too, for an
 agent). An agent that is not running is an error. `cols` and `rows` are
 the size of its screen, the one the lines are laid out for: see
 [`view`](#view).
+
+`alt` is true when the program is full-screen, on the terminal's
+alternate screen. That screen keeps no scrollback: the text is only what
+fits on it, and the rest of the program's history only the program has.
+`wheel` is true when, on top of that, the program takes the mouse wheel,
+so [`scroll`](#scroll) works on it now. Both are read in the same look
+as the text. A nerdr older than `scroll` leaves them out.
 
 ## send
 
@@ -185,6 +193,33 @@ If this connection [views](#view) the agent or terminal, it gets this
 connection's size first, as when you type in nerdr's window. The same
 goes for [`send`](#send).
 
+## scroll
+
+Turns the mouse wheel over a full-screen agent or terminal, so it
+scrolls its own history, as the wheel does in nerdr's window:
+
+```json
+{"id":9,"op":"scroll","target":"9f3c01aa","lines":3}
+```
+
+`lines` is how many steps of the wheel: up, to older text, when
+positive, down when negative. A program scrolls as far for each as it
+does for a step of a real wheel, often three lines. At most 50 steps go
+either way, more being taken as 50; `0` does nothing. The answer is
+`{"id":…,"result":{}}`; [`read`](#read) again to see where it got to.
+
+It works only while `read` says `wheel`: the program is on the
+alternate screen and takes the mouse. Otherwise the answer is an error
+saying the program `does not scroll`, and nothing is sent. Keys are not
+sent in place of the wheel, as `up` makes many agents bring back an
+earlier prompt. A program on the main screen has its history in the
+text `read` gives.
+
+If this connection [views](#view) the program, scrolling counts as
+being active in it, as typing does: it gets this connection's size
+first. `target` is an agent's or a terminal's ID (`agent` works too,
+for an agent). A nerdr older than `scroll` answers `no op "scroll"`.
+
 ## view
 
 Shows an agent or a terminal at the size of your screen, `cols` columns
@@ -200,9 +235,9 @@ by `rows` rows, so the program lays itself out for it:
 
 A program has one size, while nerdr's window, a phone and a tablet may
 all show it. The one that was active in it last sets it: that viewed it
-first, typed to it (`type`, `send`), or changed the size it shows it
-at; in nerdr's window, typing, clicking or moving to it, or resizing
-the window. The others show the same screen at a size not their own,
+first, typed to it (`type`, `send`), scrolled it (`scroll`), or
+changed the size it shows it at; in nerdr's window, typing, clicking or
+moving to it, or resizing the window. The others show the same screen at a size not their own,
 wrapped or cut. The result is the size the program has now: yours, or
 that of one active in it since.
 
