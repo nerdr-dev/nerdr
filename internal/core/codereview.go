@@ -163,6 +163,7 @@ func (m *Core) AfterTurn(t *Tab) Cmd {
 	}
 	if run := t.Review; run != nil {
 		if run.Phase == Fixing && t.FindMessage(run.FixMsg) < 0 {
+			t.ReviewLook = true
 			return m.LookAtTree(t, TreeFixed, Reviewer{})
 		}
 		return nil
@@ -173,6 +174,7 @@ func (m *Core) AfterTurn(t *Tab) Cmd {
 	if t.ReviewAsk == nil && (!m.Cfg.Review.Auto || m.WaitsForReady(t)) {
 		return nil
 	}
+	t.ReviewLook = true
 	return m.LookAtTree(t, TreeAuto, Reviewer{})
 }
 
@@ -591,6 +593,30 @@ func (t *Tab) Lit() Status {
 	return s
 }
 
+// WorkGoesOn reports whether the work in agent t's tab is not over: one
+// of its agents, or a reviewer of one, still at it or starting; a review
+// under way, or the look at the worktree that may start one; or a
+// message on its way to one of them, waiting to be typed in or typed in
+// and not yet taken up. An agent done then has handed its part on, as to
+// a reviewer or another agent in the tab, and its being done is not yet
+// news. A queue the user paused, or an agent that has exited, carries
+// nothing on.
+func (t *Tab) WorkGoesOn() bool {
+	o := t.Owner()
+	for _, a := range append([]*Tab{o}, o.ExtraAgents()...) {
+		switch {
+		case a.Review != nil || a.ReviewLook:
+			return true
+		case a.AgentLit().AtWork() || a.Light == StStarting:
+			return true
+		case a.Light == StExited || a.Light == StAsleep:
+		case a.AwaitWork || a.NextAuto() >= 0 && !a.QueuePaused:
+			return true
+		}
+	}
+	return false
+}
+
 // inTabRank ranks the lights of the agents in one tab for Lit: as
 // StatusRank does, but with work going on over work done, which
 // StatusRank puts first only between tabs, where a done one is another
@@ -733,6 +759,9 @@ func (t *Tab) IdleUnasked() bool {
 // OnTree goes on from a look at a tab's worktree.
 func (m *Core) OnTree(msg TreeMsg) Cmd {
 	t := msg.T
+	if msg.Why != TreeHand {
+		t.ReviewLook = false // what comes of it is settled here
+	}
 	if !m.Live(t) {
 		return nil
 	}

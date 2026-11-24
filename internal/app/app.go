@@ -342,6 +342,9 @@ type Model struct {
 
 	// notes are the notifications due this tick; see notify.go.
 	notes []core.Note
+	// heldDone are the agents done whose news waits for the work in
+	// their tab to be over, with when each was done; see holdDone.
+	heldDone map[*core.Tab]time.Time
 
 	// entered is the tab last come to; see attention.go.
 	entered *core.Tab
@@ -918,6 +921,7 @@ func (m *Model) detected(now time.Time) tea.Cmd {
 	}
 	m.tellOn(m.tellingOn(), core.KeepAwake{})
 	m.keepScreen(now)
+	m.releaseDone(now)
 	m.flushNotes()
 	return nil
 }

@@ -65,6 +65,7 @@ func (m *Model) askReviewDone() {
 // notifyReview tells of a review's conclusion as a finished turn is told
 // of.
 func (m *Model) notifyReview(t *core.Tab, brief string) {
+	m.dropHeldDone(t.Owner())
 	if !m.cfg().NotifyOn("done") || (!m.blurred && t == m.Cur()) {
 		return
 	}
