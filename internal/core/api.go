@@ -363,7 +363,7 @@ func (m *Core) APIScroll(who, id string, n int) error {
 	steps := max(n, -n)
 	// Looked at first, so a scroll refused takes no size; and again as the
 	// steps go, in one look with them (see term.Pane.Wheel). The step
-	// goes at any size (see term.WheelEvent), so the size who takes does
+	// goes at any size (see term.Pane.Wheel), so the size who takes does
 	// not change the answer.
 	if err := scrolls(tp.Scrolls()); err != nil {
 		return err

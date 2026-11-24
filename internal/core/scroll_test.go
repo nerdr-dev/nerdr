@@ -236,3 +236,18 @@ func TestAPIScrollLegacyAtAnySize(t *testing.T) {
 	want += step(ansi.MouseWheelDown, 222, 20)
 	sp.wait(t, "down 1 at 500×40", want)
 }
+
+// TestAPIScrollSGRAtTheMiddle: in SGR, which says any cell, the step goes
+// at the very middle of a wide screen, not where the legacy encoding
+// would have to stop.
+func TestAPIScrollSGRAtTheMiddle(t *testing.T) {
+	m, p, sp := scrollCore(t)
+	p.Feed([]byte(altOn + mouseOn))
+	if _, _, err := m.APIView("api:1", "t1", 500, 40); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.APIScroll("api:1", "t1", 1); err != nil {
+		t.Fatal(err)
+	}
+	sp.wait(t, "up 1 at 500×40", "\x1b[<64;251;21M")
+}
