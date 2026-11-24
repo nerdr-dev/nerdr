@@ -552,10 +552,9 @@ func (m *Model) copyText(text string) {
 }
 
 // copyWindow is how soon after the user clicked in or typed to a
-// program its OSC 52 is put on the clipboard. A program copies at once,
-// on the button let go or the key that asked for it; the clipboard keeps
-// what it got as long as ever.
-const copyWindow = 2 * time.Second
+// program its OSC 52 is put on the clipboard. The clipboard keeps what it
+// got as long as ever.
+const copyWindow = term.CopyWindow
 
 // sendMouse passes ev, at (x, y) in p, to p, and reports whether p takes
 // the mouse, as SendMouse. A button pressed or let go that p is told of
@@ -564,12 +563,15 @@ const copyWindow = 2 * time.Second
 // in X10 mode, say) is not.
 func (m *Model) sendMouse(p core.Program, ev tea.MouseMsg, x, y int) bool {
 	pe := paneMouse(ev, x, y)
-	told := !isWheel(ev) && ev.Action != tea.MouseActionMotion && p.ReportsMouse(pe)
+	// Timed before it is sent: the program may copy before SendMouse is
+	// back.
+	now := time.Now()
+	told := term.IsClick(pe) && p.ReportsMouse(pe)
 	if !p.SendMouse(pe) {
 		return false
 	}
 	if told {
-		m.clicks.Note(p, time.Now())
+		m.clicks.Note(p, now)
 	}
 	return true
 }

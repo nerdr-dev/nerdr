@@ -24,8 +24,10 @@ import (
 type View struct {
 	Frame
 	// Mouse is the most the program has asked to be told of the mouse, as
-	// an index into mouseModes; -1 when it has not asked.
-	Mouse int
+	// an index into mouseModes; -1 when it has not asked. MouseSgr is
+	// whether it is told in SGR.
+	Mouse    int
+	MouseSgr bool
 	// Scroll is how many lines back the frame shows.
 	Scroll    int
 	Exited    bool
@@ -33,8 +35,10 @@ type View struct {
 	ExitAfter time.Duration
 	Busy      bool
 	// Copied is what the program has put on the clipboard since the last
-	// view, taken from it.
-	Copied string
+	// view, taken from it; CopiedAsked whether it came just after the
+	// user's input reached the program (see MarkAsked).
+	Copied      string
+	CopiedAsked bool
 }
 
 // ViewInto is FrameInto, into v, with the rest of what a client is told.
@@ -42,7 +46,7 @@ type View struct {
 func (p *Pane) ViewInto(v *View, scroll int) {
 	p.FrameInto(&v.Frame, scroll)
 	p.mu.Lock()
-	v.Mouse = p.mouseLevel()
+	v.Mouse, v.MouseSgr = p.mouseLevel(), p.mouseSgr
 	if p.exited {
 		v.Mouse = -1
 	}
@@ -51,7 +55,7 @@ func (p *Pane) ViewInto(v *View, scroll int) {
 	if p.exitErr != nil {
 		v.ExitErr = p.exitErr.Error()
 	}
-	v.Copied, p.copied = p.copied, ""
+	v.Copied, v.CopiedAsked, p.copied = p.copied, p.copiedAsked, ""
 	p.mu.Unlock()
 	v.Scroll = scroll
 	if v.Alt {
@@ -77,12 +81,16 @@ type ScreenMsg struct {
 	Title      string `json:"title,omitempty"`
 	Incomplete bool   `json:"inc,omitempty"`
 	Mouse      int    `json:"mouse"`
+	MouseSgr   bool   `json:"sgr,omitempty"`
 	Exited     bool   `json:"exited,omitempty"`
 	ExitErr    string `json:"err,omitempty"`
 	// ExitAfter is View.ExitAfter in milliseconds.
 	ExitAfter int64  `json:"after,omitempty"`
 	Busy      bool   `json:"busy,omitempty"`
 	Copied    string `json:"copied,omitempty"`
+	// CopiedAsked is View.CopiedAsked: a client from before it was sent
+	// takes no copy as asked.
+	CopiedAsked bool `json:"asked,omitempty"`
 
 	Full   bool        `json:"full,omitempty"`
 	Shift  int         `json:"shift,omitempty"`
@@ -147,9 +155,9 @@ func (s *RowsSender) Msg() ScreenMsg {
 	msg := ScreenMsg{
 		W: c.W, H: c.H, Top: c.Top, Scrollback: c.Scrollback, Scroll: c.Scroll,
 		CursorX: c.CursorX, CursorY: c.CursorY, Cursor: c.Cursor, Alt: c.Alt,
-		Title: c.Title, Incomplete: c.Incomplete, Mouse: c.Mouse,
+		Title: c.Title, Incomplete: c.Incomplete, Mouse: c.Mouse, MouseSgr: c.MouseSgr,
 		Exited: c.Exited, ExitErr: c.ExitErr, ExitAfter: c.ExitAfter.Milliseconds(),
-		Busy: c.Busy, Copied: c.Copied,
+		Busy: c.Busy, Copied: c.Copied, CopiedAsked: c.CopiedAsked,
 	}
 	full := !s.sent || p.W != c.W || p.H != c.H || len(p.Rows) != len(c.Rows)
 	if s.styles == nil {
@@ -186,7 +194,7 @@ func (msg *ScreenMsg) Unchanged(last *ScreenMsg) bool {
 	}
 	a, b := *msg, *last
 	a.Styles, a.Rows, a.ExitAfter = nil, nil, 0
-	b.Styles, b.Rows, b.ExitAfter, b.Full, b.Shift, b.Copied = nil, nil, 0, false, 0, ""
+	b.Styles, b.Rows, b.ExitAfter, b.Full, b.Shift, b.Copied, b.CopiedAsked = nil, nil, 0, false, 0, "", a.CopiedAsked
 	return reflect.DeepEqual(a, b)
 }
 

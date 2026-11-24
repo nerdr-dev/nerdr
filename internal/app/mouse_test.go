@@ -603,6 +603,31 @@ func TestOSC52OnlyWhenAsked(t *testing.T) {
 	want("editor asked", "selected", "typed", "typed on", "editor")
 }
 
+// sendingProgram copies at once when it is sent a click, before
+// SendMouse is back, and notes when it was sent it.
+type sendingProgram struct {
+	*term.Pane
+	sent time.Time
+}
+
+func (p *sendingProgram) SendMouse(ev term.MouseEvent) bool {
+	p.sent = time.Now()
+	time.Sleep(5 * time.Millisecond)
+	return p.Pane.SendMouse(ev)
+}
+
+// A click is timed before it is sent: a program that copies before
+// SendMouse is back still copies after the click.
+func TestClickTimedBeforeSent(t *testing.T) {
+	m := testModel(t)
+	p := &sendingProgram{Pane: &term.Pane{Screen: term.NewScreen(40, 5)}}
+	p.Feed([]byte("\x1b[?1000h\x1b[?1006h"))
+	m.sendMouse(p, tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease}, 1, 1)
+	if !m.clicks.To(p, p.sent, copyWindow) {
+		t.Fatal("the click was timed after it was sent")
+	}
+}
+
 // TestClickPRNumber: on the active tab, a click on its PR's number opens
 // the PR in the browser, with a tip saying so; the right and the middle
 // button still do what they do on the tab, and on another tab a click

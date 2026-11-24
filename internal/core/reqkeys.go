@@ -30,17 +30,39 @@ func (q KeysTo) Do(m *Core) Cmd {
 }
 
 // Type is B typed into program Ref, as Program.Input takes it.
+// User is set when the user typed it, in a client: what the program copies
+// just after counts as asked for (see term.Screen.MarkAsked).
 type Type struct {
-	Ref ProgramRef
-	B   []byte
+	Ref  ProgramRef
+	B    []byte
+	User bool `json:",omitempty"`
 }
 
 func (q Type) Do(m *Core) Cmd {
 	KeysTo{q.Ref}.Do(m)
 	if p := m.Program(q.Ref); p != nil {
+		if q.User {
+			markAsked(p)
+		}
 		p.Input(q.B)
 	}
 	return nil
+}
+
+// markAsked notes that the user's input reaches p now, if p is one of
+// core's own programs.
+func markAsked(p any) {
+	if a, ok := p.(interface{ MarkAsked() }); ok {
+		a.MarkAsked()
+	}
+}
+
+// userMouse notes, before ev is sent to p, that the user clicked in p, if
+// p is told of the click.
+func userMouse(p Program, ev term.MouseEvent) {
+	if term.IsClick(ev) && p.ReportsMouse(ev) {
+		markAsked(p)
+	}
 }
 
 // WriteRaw is B written to program Ref as it is.
@@ -57,13 +79,18 @@ func (q WriteRaw) Do(m *Core) Cmd {
 }
 
 // Mouse is a mouse event for program Ref, in its screen's cells.
+// User is set for what the user did, in a client, as Type's.
 type Mouse struct {
-	Ref ProgramRef
-	Ev  term.MouseEvent
+	Ref  ProgramRef
+	Ev   term.MouseEvent
+	User bool `json:",omitempty"`
 }
 
 func (q Mouse) Do(m *Core) Cmd {
 	if p := m.Program(q.Ref); p != nil {
+		if q.User {
+			userMouse(p, q.Ev)
+		}
 		p.SendMouse(q.Ev)
 	}
 	return nil
