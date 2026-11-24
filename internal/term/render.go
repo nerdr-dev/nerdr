@@ -125,19 +125,18 @@ type Look struct {
 	// scrollback: what scrolled off it only the program has.
 	Alt bool
 	// Wheel is the program on the alternate screen and told of the wheel
-	// (see WheelEvent), so it scrolls its own history when turned.
+	// (see wheelReport), so it scrolls its own history when turned.
 	Wheel bool
 }
 
-// WheelEvent is the wheel turned a step, up (to older text) or down, in
-// the middle of a screen of w×h, or as near it as the legacy encoding
-// can say: there, the step goes at any size.
-func WheelEvent(up bool, w, h int) MouseEvent {
+// wheelEvent is the wheel turned a step, up (to older text) or down, in
+// the middle of a screen of w×h.
+func wheelEvent(up bool, w, h int) MouseEvent {
 	btn := ansi.MouseWheelDown
 	if up {
 		btn = ansi.MouseWheelUp
 	}
-	return MouseEvent{Kind: MousePress, Button: btn, X: min(w/2, maxLegacy), Y: min(h/2, maxLegacy)}
+	return MouseEvent{Kind: MousePress, Button: btn, X: w / 2, Y: h / 2}
 }
 
 // maxLegacy is the furthest cell the legacy mouse encoding can say.
@@ -150,7 +149,13 @@ func (s *Screen) wheelReport(up bool) []byte {
 	if s.exited || !s.emu.IsAltScreen() {
 		return nil
 	}
-	return mouseReport(WheelEvent(up, s.emu.Width(), s.emu.Height()), s.mouseLevel(), s.mouseSgr)
+	ev := wheelEvent(up, s.emu.Width(), s.emu.Height())
+	if !s.mouseSgr {
+		// As near the middle as the legacy encoding can say: the step
+		// goes at any size.
+		ev.X, ev.Y = min(ev.X, maxLegacy), min(ev.Y, maxLegacy)
+	}
+	return mouseReport(ev, s.mouseLevel(), s.mouseSgr)
 }
 
 // Scrolls is TextLook's Alt and Wheel, without the text.
