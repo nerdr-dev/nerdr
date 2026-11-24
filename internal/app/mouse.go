@@ -100,6 +100,7 @@ func (m *Model) syncMouse() tea.Cmd {
 func (m *Model) handleMouse(ev tea.MouseMsg) tea.Cmd {
 	if m.editor != nil {
 		m.editor.SendMouse(paneMouse(ev, 0, 0))
+		m.noteClick(m.editor, ev)
 		return nil
 	}
 	if m.drag != dragNone {
@@ -346,6 +347,7 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 			x := min(max(ev.X-rx, 0), rw-1)
 			y := min(max(ev.Y-ry, 0), rh-1)
 			m.screen(t).SendMouse(paneMouse(ev, x, y))
+			m.noteClick(m.screen(t), ev)
 		}
 		return nil
 
@@ -415,6 +417,7 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 	// With shift held, a program that has the mouse still lets nerdr
 	// select: that is how terminals do it.
 	if !m.scrolling && !ev.Shift && p.SendMouse(paneMouse(ev, x, y)) {
+		m.noteClick(p, ev)
 		if press {
 			m.drag = dragAgent
 		}
@@ -551,10 +554,38 @@ func (m *Model) copyText(text string) {
 	m.toast("sent " + n + " to the terminal's clipboard; if it is not there, install xclip, xsel or wl-clipboard")
 }
 
-// checkCopied drains program OSC 52 requests without forwarding them.
-// Focus and recent input are not consent to replace the clipboard. Only
-// nerdr's explicit user selection/copy actions call copyText.
+// copyWindow is how soon after the user clicked in or typed to a
+// program its OSC 52 is put on the clipboard. A program copies at once,
+// on the button let go or the key that asked for it; the clipboard keeps
+// what it got as long as ever.
+const copyWindow = 2 * time.Second
+
+// noteClick notes a button pressed or let go that was passed to p, for
+// checkCopied: an agent that has the mouse selects and copies itself.
+func (m *Model) noteClick(p core.Program, ev tea.MouseMsg) {
+	if isWheel(ev) || ev.Action == tea.MouseActionMotion {
+		return
+	}
+	m.clicked, m.clickedAt = p, time.Now()
+}
+
+// checkCopied puts on the clipboard what a program has copied with OSC 52
+// — what is selected in an agent that has the mouse, or its own copy
+// command — but only from the program with the keyboard, and only just
+// after the user clicked in it or typed to it: a copy is theirs to make.
+// Any program can print OSC 52 (an agent, one in a sandbox among them, or
+// a file it shows), and what is put on the clipboard unasked is what the
+// user pastes next, into a shell perhaps. Moving the mouse over a program
+// is not asking, nor is focus alone. The rest is let go.
 func (m *Model) checkCopied() {
+	var from core.Program
+	if m.editor != nil {
+		from = m.editor
+	} else if m.dialog == nil {
+		from = m.keyPane()
+	}
+	now := time.Now()
+	typed := m.router != nil && now.Sub(m.router.LastTyped()) < copyWindow
 	var panes []core.Program
 	if m.editor != nil {
 		panes = append(panes, m.editor)
@@ -568,9 +599,16 @@ func (m *Model) checkCopied() {
 		if p == nil {
 			continue
 		}
-		if text := p.TakeCopied(); text != "" {
-			core.Debugf("osc 52: %d bytes from a program, not put on the clipboard", len(text))
+		text := p.TakeCopied()
+		if text == "" {
+			continue
 		}
+		clicked := m.clicked == p && now.Sub(m.clickedAt) < copyWindow
+		if p == from && (typed || clicked) {
+			m.copyText(text)
+			continue
+		}
+		core.Debugf("osc 52: %d bytes from a program not asked to copy, not put on the clipboard", len(text))
 	}
 }
 

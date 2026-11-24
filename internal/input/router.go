@@ -37,6 +37,9 @@ type Router struct {
 	fkeys atomic.Bool
 	// last is when the terminal last sent anything, in Unix nanoseconds.
 	last atomic.Int64
+	// typed is when input last went straight to the sink, in Unix
+	// nanoseconds: keys typed to the program with the keyboard.
+	typed atomic.Int64
 
 	mu   sync.Mutex
 	sink func([]byte)
@@ -121,6 +124,15 @@ func (r *Router) LastInput() time.Time {
 	return time.Time{}
 }
 
+// LastTyped is when keys last went straight to the program with the
+// keyboard (Passthrough's sink). Zero before they have.
+func (r *Router) LastTyped() time.Time {
+	if n := r.typed.Load(); n != 0 {
+		return time.Unix(0, n)
+	}
+	return time.Time{}
+}
+
 // Run copies input until src fails. Call it in its own goroutine.
 func (r *Router) Run() {
 	buf := make([]byte, 16*1024)
@@ -172,6 +184,7 @@ func (r *Router) route(b []byte) {
 			}
 		}
 		if cut > 0 {
+			r.typed.Store(time.Now().UnixNano())
 			sink(b[:cut])
 		}
 		b = b[cut:]
@@ -259,6 +272,7 @@ func (r *Router) flushHeld() {
 	sink := r.sink
 	r.mu.Unlock()
 	if r.pass.Load() && sink != nil {
+		r.typed.Store(time.Now().UnixNano())
 		sink(b)
 	} else {
 		_, _ = r.pw.Write(b)
