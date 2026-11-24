@@ -281,6 +281,9 @@ type Model struct {
 	// wheelHeard.
 	lastWheelStep, lastWheel time.Time
 	wheelHeld                bool
+	// wheelStepped says a step of the wheel's is still to be drawn, and
+	// wheelSkipped that wheelStep held back the turn being handled.
+	wheelStepped, wheelSkipped bool
 
 	// prPanel is all your pull requests as the review panel's F2 shows
 	// them, and prPanelShown whether it did at the last look; see

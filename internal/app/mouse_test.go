@@ -145,6 +145,27 @@ func TestWheelBurst(t *testing.T) {
 	}
 }
 
+// TestWheelSlowStep: a step that takes longer than wheelGap to draw does
+// not let the turns queued up meanwhile step on, each in its turn; they
+// are let go without drawing the screen again.
+func TestWheelSlowStep(t *testing.T) {
+	m := testModel(t)
+	m.View()
+	y := m.tabRow()
+	m.Update(tea.MouseMsg{X: 5, Y: y, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	after := m.Cur().Name
+	// The step took a long while to handle, and is drawn only now.
+	m.lastWheelStep = m.lastWheelStep.Add(-2 * wheelGap)
+	m.View()
+	m.Update(tea.MouseMsg{X: 5, Y: y, Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
+	if m.Cur().Name != after {
+		t.Fatalf("a queued turn stepped on to %s", m.Cur().Name)
+	}
+	if !m.sameFrame {
+		t.Fatal("a turn held back drew the screen again")
+	}
+}
+
 // TestWheelAfterFocus: the wheel is not heard while nerdr is in the
 // background, nor after it gets the focus back while the wheel goes on;
 // once it has been still, it is.

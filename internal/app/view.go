@@ -150,6 +150,10 @@ func (m *Model) View() string {
 		frame = strings.Join(m.drawTip(strings.Split(frame, "\n")), "\n")
 	}
 	m.frame = frame
+	if m.wheelStepped {
+		// The wheel's gap runs from here; see wheelStep.
+		m.lastWheelStep, m.wheelStepped = time.Now(), false
+	}
 	return frame
 }
 
