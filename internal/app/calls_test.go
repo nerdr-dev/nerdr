@@ -46,6 +46,9 @@ func TestCallsDialog(t *testing.T) {
 		t.Fatalf("no dialog waiting for core:\n%s", view)
 	}
 	m.Update(cmd()) // core's answer
+	// The tab's own commands: those of all are the whole package's tests',
+	// of which its one git diff may not be among the most.
+	m.dialog.(*callsDialog).pick = tb.Name
 	view := ansi.Strip(m.View())
 	if !strings.Contains(view, "git and gh calls") || !strings.Contains(view, "elsewhere") || !strings.Contains(view, "git diff") {
 		t.Fatalf("no dialog:\n%s", view)
