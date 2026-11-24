@@ -99,9 +99,7 @@ func (m *Model) syncMouse() tea.Cmd {
 
 func (m *Model) handleMouse(ev tea.MouseMsg) tea.Cmd {
 	if m.editor != nil {
-		if m.editor.SendMouse(paneMouse(ev, 0, 0)) {
-			m.noteClick(m.editor, ev)
-		}
+		m.sendMouse(m.editor, ev, 0, 0)
 		return nil
 	}
 	if m.drag != dragNone {
@@ -347,9 +345,7 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 			rx, ry, rw, rh := m.paneRect(t, m.focused(t))
 			x := min(max(ev.X-rx, 0), rw-1)
 			y := min(max(ev.Y-ry, 0), rh-1)
-			if p := m.screen(t); p.SendMouse(paneMouse(ev, x, y)) {
-				m.noteClick(p, ev)
-			}
+			m.sendMouse(m.screen(t), ev, x, y)
 		}
 		return nil
 
@@ -418,8 +414,7 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 	}
 	// With shift held, a program that has the mouse still lets nerdr
 	// select: that is how terminals do it.
-	if !m.scrolling && !ev.Shift && p.SendMouse(paneMouse(ev, x, y)) {
-		m.noteClick(p, ev)
+	if !m.scrolling && !ev.Shift && m.sendMouse(p, ev, x, y) {
 		if press {
 			m.drag = dragAgent
 		}
@@ -562,13 +557,21 @@ func (m *Model) copyText(text string) {
 // what it got as long as ever.
 const copyWindow = 2 * time.Second
 
-// noteClick notes a button pressed or let go that p took (SendMouse said
-// so), for checkCopied: an agent that has the mouse selects and copies itself.
-func (m *Model) noteClick(p core.Program, ev tea.MouseMsg) {
-	if isWheel(ev) || ev.Action == tea.MouseActionMotion {
-		return
+// sendMouse passes ev, at (x, y) in p, to p, and reports whether p takes
+// the mouse, as SendMouse. A button pressed or let go that p is told of
+// is noted, for checkCopied: an agent that has the mouse selects and
+// copies itself. One it takes the mouse for but is not told of (a release
+// in X10 mode, say) is not.
+func (m *Model) sendMouse(p core.Program, ev tea.MouseMsg, x, y int) bool {
+	pe := paneMouse(ev, x, y)
+	told := !isWheel(ev) && ev.Action != tea.MouseActionMotion && p.ReportsMouse(pe)
+	if !p.SendMouse(pe) {
+		return false
 	}
-	m.clicked, m.clickedAt = p, time.Now()
+	if told {
+		m.clicks.Note(p, time.Now())
+	}
+	return true
 }
 
 // checkCopied puts on the clipboard what a program has copied with OSC 52
@@ -586,15 +589,6 @@ func (m *Model) checkCopied() {
 	} else if m.dialog == nil {
 		from = m.keyPane()
 	}
-	now := time.Now()
-	// Keys count for the program they went to, whatever has the keyboard
-	// now.
-	var typedTo any
-	if m.router != nil {
-		if at, to := m.router.LastTyped(); now.Sub(at) < copyWindow {
-			typedTo = to
-		}
-	}
 	var panes []core.Program
 	if m.editor != nil {
 		panes = append(panes, m.editor)
@@ -608,12 +602,16 @@ func (m *Model) checkCopied() {
 		if p == nil {
 			continue
 		}
-		text := p.TakeCopied()
+		text, at := p.TakeCopiedAt()
 		if text == "" {
 			continue
 		}
-		clicked := m.clicked == p && now.Sub(m.clickedAt) < copyWindow
-		if p == from && (typedTo == any(p) || clicked) {
+		// A click passed to it or keys typed to it — not to what has the
+		// keyboard now — must have come before the copy: input after one
+		// made unasked does not make it asked.
+		clicked := m.clicks.To(p, at, copyWindow)
+		typed := m.router != nil && m.router.TypedTo(p, at, copyWindow)
+		if p == from && (typed || clicked) {
 			m.copyText(text)
 			continue
 		}

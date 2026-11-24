@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -450,8 +451,10 @@ func TestTerminalBesideTheAgentScrollsAndCopies(t *testing.T) {
 }
 
 // A program's OSC 52 reaches the clipboard only from the program with the
-// keyboard, just after a click was passed to it or keys typed to it:
-// neither focus, being shown, nor the mouse moving over it is asking.
+// keyboard, just after a click was passed to it or keys typed to it, and
+// before the copy came: neither focus, being shown, the mouse moving over
+// it, a click it was not told of, nor input after an unasked copy is
+// asking.
 func TestOSC52OnlyWhenAsked(t *testing.T) {
 	m := testModel(t)
 	var copied []string
@@ -461,6 +464,7 @@ func TestOSC52OnlyWhenAsked(t *testing.T) {
 	panes := make([]*term.Pane, 4)
 	for i := range panes {
 		panes[i] = &term.Pane{Screen: term.NewScreen(40, 5)}
+		panes[i].Feed([]byte("\x1b[?1000h\x1b[?1006h")) // takes the mouse, SGR
 	}
 	tabs := m.home().Core.Tabs
 	tabs[0].Pane, tabs[1].Pane, tabs[2].Pane = panes[0], panes[1], panes[2]
@@ -470,15 +474,26 @@ func TestOSC52OnlyWhenAsked(t *testing.T) {
 	if m.keyPane() != core.Program(panes[0]) {
 		t.Fatal("the agent of the first tab should have the keyboard")
 	}
-	osc := func(text string) {
-		for _, p := range panes {
+	all := []*term.Pane{panes[0], panes[1], panes[2], panes[3]}
+	feed := func(text string) {
+		for _, p := range all {
 			p.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\x07"))
 		}
+	}
+	check := func() {
 		m.checkCopied()
-		for i, p := range panes {
+		for i, p := range all {
 			if got := p.TakeCopied(); got != "" {
 				t.Errorf("pane %d retained %q for replay", i, got)
 			}
+		}
+	}
+	osc := func(text string) { feed(text); check() }
+	release := tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease}
+	want := func(what string, w ...string) {
+		t.Helper()
+		if !slices.Equal(copied, w) {
+			t.Fatalf("%s: copied %q, want %q", what, copied, w)
 		}
 	}
 
@@ -492,33 +507,44 @@ func TestOSC52OnlyWhenAsked(t *testing.T) {
 		t.Fatal("input was not recorded")
 	}
 	osc("unasked")
-	// Nor is the mouse moving over it.
-	m.noteClick(panes[0], tea.MouseMsg{Action: tea.MouseActionMotion})
-	m.noteClick(panes[0], tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress})
+	// Nor is the mouse moving over it, or the wheel.
+	m.sendMouse(panes[0], tea.MouseMsg{Action: tea.MouseActionMotion}, 1, 1)
+	m.sendMouse(panes[0], tea.MouseMsg{Button: tea.MouseButtonWheelUp, Action: tea.MouseActionPress}, 1, 1)
 	osc("moved")
-	if len(copied) != 0 {
-		t.Fatalf("forwarded program clipboard writes unasked: %q", copied)
-	}
+	want("unasked")
 
 	// A button let go in the agent: its copy is the user's, and only its.
-	m.noteClick(panes[0], tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	m.sendMouse(panes[0], release, 1, 1)
 	osc("selected")
-	if len(copied) != 1 || copied[0] != "selected" {
-		t.Fatalf("copied %q, want the agent's selection once", copied)
-	}
+	want("after a release", "selected")
 	// Long after, not.
-	m.clickedAt = time.Now().Add(-2 * copyWindow)
+	m.clicks = input.Inputs{}
+	m.clicks.Note(panes[0], time.Now().Add(-2*copyWindow))
 	osc("later")
 	// A click in a program without the keyboard counts for nothing.
-	m.noteClick(panes[1], tea.MouseMsg{Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	m.sendMouse(panes[1], release, 1, 1)
 	osc("other")
-	if len(copied) != 1 {
-		t.Fatalf("copied %q, want only the agent's selection", copied)
+	want("stale or elsewhere", "selected")
+	// A copy made unasked is not made asked by a click after it.
+	m.clicks = input.Inputs{}
+	feed("before the click")
+	m.sendMouse(panes[0], release, 1, 1)
+	check()
+	want("click after", "selected")
+	// A release in X10 mode is not reported, so it does not count.
+	m.clicks = input.Inputs{}
+	panes[0].Feed([]byte("\x1b[?1000l\x1b[?1006l\x1b[?9h"))
+	if !m.sendMouse(panes[0], release, 1, 1) {
+		t.Fatal("a program in X10 mode takes the mouse")
 	}
+	osc("x10 release")
+	want("x10 release", "selected")
+	panes[0].Feed([]byte("\x1b[?9l\x1b[?1000h\x1b[?1006h"))
 
 	// Keys typed to the agent count for it, and for nothing else: not for
 	// the pane the keyboard moves to next, and keys typed to a dialog not
 	// for the agent.
+	m.clicks = input.Inputs{}
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	m.router = input.New(pr, 0x11)
@@ -531,39 +557,50 @@ func TestOSC52OnlyWhenAsked(t *testing.T) {
 	}
 	typeTo(panes[0])
 	osc("typed")
-	if len(copied) != 2 || copied[1] != "typed" {
-		t.Fatalf("copied %q, want what the agent copied after typing", copied)
-	}
+	want("typed", "selected", "typed")
+	// Typing on before the copy is taken does not undo it.
+	typeTo(panes[0])
+	feed("typed on")
+	typeTo(panes[0])
+	check()
+	want("typed on", "selected", "typed", "typed on")
 	m.tl(tabs[0]).on = tabs[0].PaneList[1]
 	if m.keyPane() != core.Program(panes[3]) {
 		t.Fatal("the terminal should have the keyboard")
 	}
 	osc("moved on")
 	m.tl(tabs[0]).on = tabs[0].PaneList[0]
+	// From here, with no keys typed to the agent yet.
+	m.router.PassthroughTo(nil, nil)
+	r2, w2 := io.Pipe()
+	defer w2.Close()
+	m.router = input.New(r2, 0x11)
+	go m.router.Run()
+	pw = w2
 	typeTo(&loginDialog{})
 	osc("to a dialog")
-	if len(copied) != 2 {
-		t.Fatalf("copied %q, want nothing typed to another counted", copied)
-	}
+	want("typed elsewhere", "selected", "typed", "typed on")
+	// Keys typed after an unasked copy do not make it asked.
+	feed("before the keys")
+	typeTo(panes[0])
+	check()
+	want("keys after", "selected", "typed", "typed on")
 
 	// A click an editor did not ask for is not passed to it, nor counts.
 	m.router.PassthroughTo(nil, nil)
 	ed := &term.Pane{Screen: term.NewScreen(40, 5)}
 	m.editor = ed
+	all = append(all, ed)
 	m.handleMouse(tea.MouseMsg{X: 1, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 	ed.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("editor")) + "\x07"))
-	m.checkCopied()
-	if len(copied) != 2 || ed.TakeCopied() != "" {
-		t.Fatalf("copied %q, want an editor's unasked copy let go", copied)
-	}
+	check()
+	want("editor unasked", "selected", "typed", "typed on")
 	// One that asked for the mouse: the click is its, and so its copy.
 	ed.Feed([]byte("\x1b[?1000h\x1b[?1006h"))
 	m.handleMouse(tea.MouseMsg{X: 1, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 	ed.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("editor")) + "\x07"))
-	m.checkCopied()
-	if len(copied) != 3 || copied[2] != "editor" {
-		t.Fatalf("copied %q, want the editor's copy after a click it took", copied)
-	}
+	check()
+	want("editor asked", "selected", "typed", "typed on", "editor")
 }
 
 // TestClickPRNumber: on the active tab, a click on its PR's number opens

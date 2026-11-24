@@ -24,6 +24,8 @@ type Program interface {
 	// Write is b as it is, with nothing put in or around it.
 	Write(b []byte)
 	SendMouse(ev term.MouseEvent) bool
+	// ReportsMouse reports whether SendMouse tells the program of ev.
+	ReportsMouse(ev term.MouseEvent) bool
 	WantsAllMotion() bool
 	Focus(in bool)
 	Resize(w, h int)
@@ -31,6 +33,8 @@ type Program interface {
 
 	// TakeCopied is what the program last put on the clipboard, once.
 	TakeCopied() string
+	// TakeCopiedAt is TakeCopied, and when the copy came.
+	TakeCopiedAt() (string, time.Time)
 	Exited() (bool, error, time.Duration)
 	// Busy reports whether a terminal's shell runs a command.
 	Busy() bool
