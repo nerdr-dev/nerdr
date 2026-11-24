@@ -516,18 +516,53 @@ func TestOSC52OnlyWhenAsked(t *testing.T) {
 		t.Fatalf("copied %q, want only the agent's selection", copied)
 	}
 
-	// Keys typed to the agent.
+	// Keys typed to the agent count for it, and for nothing else: not for
+	// the pane the keyboard moves to next, and keys typed to a dialog not
+	// for the agent.
 	pr, pw := io.Pipe()
+	defer pw.Close()
 	m.router = input.New(pr, 0x11)
 	got := make(chan []byte, 1)
-	m.router.Passthrough(func(b []byte) { got <- append([]byte(nil), b...) })
 	go m.router.Run()
-	_, _ = pw.Write([]byte("/copy\r"))
-	<-got
+	typeTo := func(owner any) {
+		m.router.PassthroughTo(func(b []byte) { got <- append([]byte(nil), b...) }, owner)
+		_, _ = pw.Write([]byte("/copy\r"))
+		<-got
+	}
+	typeTo(panes[0])
 	osc("typed")
-	_ = pw.Close()
 	if len(copied) != 2 || copied[1] != "typed" {
 		t.Fatalf("copied %q, want what the agent copied after typing", copied)
+	}
+	m.tl(tabs[0]).on = tabs[0].PaneList[1]
+	if m.keyPane() != core.Program(panes[3]) {
+		t.Fatal("the terminal should have the keyboard")
+	}
+	osc("moved on")
+	m.tl(tabs[0]).on = tabs[0].PaneList[0]
+	typeTo(&loginDialog{})
+	osc("to a dialog")
+	if len(copied) != 2 {
+		t.Fatalf("copied %q, want nothing typed to another counted", copied)
+	}
+
+	// A click an editor did not ask for is not passed to it, nor counts.
+	m.router.PassthroughTo(nil, nil)
+	ed := &term.Pane{Screen: term.NewScreen(40, 5)}
+	m.editor = ed
+	m.handleMouse(tea.MouseMsg{X: 1, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	ed.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("editor")) + "\x07"))
+	m.checkCopied()
+	if len(copied) != 2 || ed.TakeCopied() != "" {
+		t.Fatalf("copied %q, want an editor's unasked copy let go", copied)
+	}
+	// One that asked for the mouse: the click is its, and so its copy.
+	ed.Feed([]byte("\x1b[?1000h\x1b[?1006h"))
+	m.handleMouse(tea.MouseMsg{X: 1, Y: 1, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
+	ed.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte("editor")) + "\x07"))
+	m.checkCopied()
+	if len(copied) != 3 || copied[2] != "editor" {
+		t.Fatalf("copied %q, want the editor's copy after a click it took", copied)
 	}
 }
 
