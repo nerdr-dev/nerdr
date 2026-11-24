@@ -26,6 +26,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/attach"
@@ -85,6 +86,9 @@ type Request struct {
 	Remove bool `json:"remove,omitempty"`
 	// By is review's: the kind of agent to review with.
 	By string `json:"by,omitempty"`
+	// Cols and Rows are view's: the size the client shows the program at.
+	Cols int `json:"cols,omitempty"`
+	Rows int `json:"rows,omitempty"`
 }
 
 // Answer is the core's answer to a request: Result, or Error.
@@ -94,9 +98,19 @@ type Answer struct {
 	Error  string          `json:"error,omitempty"`
 }
 
-// ReadResult is read's result: what the agent or terminal shows.
+// ReadResult is read's result: what the agent or terminal shows, and the
+// size of its screen, which the text is laid out for; 0 when nothing runs.
 type ReadResult struct {
 	Text string `json:"text"`
+	Cols int    `json:"cols"`
+	Rows int    `json:"rows"`
+}
+
+// ViewResult is view's result: the size the agent's or terminal's program
+// has now, the view's own or that of a client active in it since.
+type ViewResult struct {
+	Cols int `json:"cols"`
+	Rows int `json:"rows"`
 }
 
 // NewTabResult is new_tab's result: the branch of the tab being made.
@@ -144,7 +158,10 @@ type Server struct {
 
 	mu    sync.Mutex
 	conns map[*conn]bool
-	wg    sync.WaitGroup
+	// viewers counts the connections, to name each a viewer of its own
+	// (see core.Views).
+	viewers int
+	wg      sync.WaitGroup
 	// subs are the connections subscribed to events, and last the state
 	// the events were last told from.
 	subs map[*conn]bool
@@ -242,6 +259,8 @@ func (s *Server) accept() {
 		}
 		c := newConn(s, nc)
 		s.mu.Lock()
+		s.viewers++
+		c.viewer = fmt.Sprintf("api:%d", s.viewers)
 		select {
 		case <-s.done:
 			s.mu.Unlock()
@@ -259,6 +278,13 @@ func (s *Server) accept() {
 			delete(s.conns, c)
 			delete(s.subs, c)
 			s.mu.Unlock()
+			if c.viewed.Load() {
+				// Its views go with it: the sizes of the others hold.
+				s.cfg.Post(core.Call{F: func(m *core.Core) core.Cmd {
+					m.APIViewerGone(c.viewer)
+					return nil
+				}})
+			}
 		}()
 	}
 }
@@ -361,6 +387,10 @@ func (s *Server) watch() {
 type conn struct {
 	s  *Server
 	nc net.Conn
+	// viewer is its name among the viewers of the programs; viewed is set
+	// once it has said it shows one.
+	viewer string
+	viewed atomic.Bool
 
 	wmu sync.Mutex // one line at a time
 	// events wait here for the writer, which drops them while the client
@@ -524,12 +554,16 @@ func (c *conn) do(r Request) (any, error) {
 			id = r.Agent
 		}
 		return s.call(false, func(m *core.Core) (any, core.Cmd, error) {
-			text, err := m.APIRead(id, r.Lines)
-			return ReadResult{Text: text}, nil, err
+			text, w, h, err := m.APIReadSized(id, r.Lines)
+			return ReadResult{Text: text, Cols: w, Rows: h}, nil, err
 		})
 	case "send":
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
-			return nil, nil, m.APISend(r.Agent, r.Text)
+			if err := m.APISend(r.Agent, r.Text); err != nil {
+				return nil, nil, err
+			}
+			m.APIActive(c.viewer, r.Agent)
+			return nil, nil, nil
 		})
 	case "type":
 		id := r.Target
@@ -540,7 +574,28 @@ func (c *conn) do(r Request) (any, error) {
 			return nil, errors.New("give text, keys or both")
 		}
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
-			return nil, nil, m.APIType(id, r.Text, r.Keys)
+			return nil, nil, m.APITypeBy(c.viewer, id, r.Text, r.Keys)
+		})
+	case "view":
+		id := r.Target
+		if id == "" {
+			id = r.Agent
+		}
+		c.viewed.Store(true)
+		return s.call(false, func(m *core.Core) (any, core.Cmd, error) {
+			w, h, err := m.APIView(c.viewer, id, r.Cols, r.Rows)
+			if err != nil {
+				return nil, nil, err
+			}
+			return ViewResult{Cols: w, Rows: h}, nil, nil
+		})
+	case "unview":
+		id := r.Target
+		if id == "" {
+			id = r.Agent
+		}
+		return s.call(false, func(m *core.Core) (any, core.Cmd, error) {
+			return nil, nil, m.APIUnview(c.viewer, id)
 		})
 	case "answer":
 		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
@@ -617,7 +672,7 @@ func (c *conn) do(r Request) (any, error) {
 	case "":
 		return nil, errors.New("a request needs an op")
 	}
-	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_tab and quit", r.Op)
+	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_tab and quit", r.Op)
 }
 
 // closeTab closes tab id, as the TUI's close dialog does, and answers once

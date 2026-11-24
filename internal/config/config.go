@@ -135,6 +135,11 @@ type Config struct {
 	// left running in a tab nobody looks at before nerdr stops it, to
 	// carry its conversation on when the tab is visited. 0 for never.
 	SleepAfter int `toml:"sleep_after" scope:"core"`
+	// HeadlessCols and HeadlessRows are the size, in columns and rows,
+	// an agent or terminal starts at that no window shows yet, such as
+	// one started from the API with nerdr's window closed. 0 for 120×40.
+	HeadlessCols int `toml:"headless_cols" scope:"core"`
+	HeadlessRows int `toml:"headless_rows" scope:"core"`
 	// StatusLights is how the status lights are drawn: "dots", coloured
 	// circles, or "symbols", a shape of its own for each state, for
 	// those who cannot tell the colours apart.
@@ -356,6 +361,8 @@ func defaults(c Config) Config {
 		c.StatusLights = "dots"
 	}
 	c.SleepAfter = min(max(c.SleepAfter, 0), 24*60)
+	c.HeadlessCols = min(max(c.HeadlessCols, 0), 500)
+	c.HeadlessRows = min(max(c.HeadlessRows, 0), 300)
 	if c.PaneMinWidth <= 0 {
 		c.PaneMinWidth = DefaultPaneMinWidth
 	}

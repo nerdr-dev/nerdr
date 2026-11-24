@@ -102,6 +102,13 @@ var wcwidth = func() *runewidth.Condition {
 // Text is the last n lines of what the program shows, its scrollback
 // first, as plain text, the blank lines at the end left out.
 func (s *Screen) Text(n int) string {
+	text, _, _ := s.TextSized(n)
+	return text
+}
+
+// TextSized is Text, and the size of the screen it is read from, in one
+// look: the columns the lines are laid out for, and the rows.
+func (s *Screen) TextSized(n int) (string, int, int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	w, h := s.emu.Width(), s.emu.Height()
@@ -133,5 +140,5 @@ func (s *Screen) Text(n int) string {
 	if n > 0 && len(lines) > n {
 		lines = lines[len(lines)-n:]
 	}
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n"), w, h
 }

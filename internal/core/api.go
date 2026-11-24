@@ -192,22 +192,31 @@ func (m *Core) apiAgentByID(id string) (*Tab, error) {
 // APIRead is the last lines of what the agent or terminal pane id shows,
 // as text.
 func (m *Core) APIRead(id string, lines int) (string, error) {
+	text, _, _, err := m.APIReadSized(id, lines)
+	return text, err
+}
+
+// APIReadSized is APIRead, and the columns and rows of the screen the text
+// is read from, in the same look.
+func (m *Core) APIReadSized(id string, lines int) (string, int, int, error) {
 	if lines <= 0 {
 		lines = ReadLines
 	}
 	if a := TabList(m.Tabs).Find(id); a != nil {
 		if a.Pane == nil {
-			return "", fmt.Errorf("the agent is not running: %s", StateName(a.Light))
+			return "", 0, 0, fmt.Errorf("the agent is not running: %s", StateName(a.Light))
 		}
-		return a.Pane.Text(lines), nil
+		text, w, h := a.Pane.TextSized(lines)
+		return text, w, h, nil
 	}
 	if _, p := TabList(m.Tabs).FindPane(id); p != nil && p.Kind == PaneShell {
 		if p.Shell == nil {
-			return "", errors.New("the terminal is not running")
+			return "", 0, 0, errors.New("the terminal is not running")
 		}
-		return p.Shell.Text(lines), nil
+		text, w, h := p.Shell.TextSized(lines)
+		return text, w, h, nil
 	}
-	return "", fmt.Errorf("there is no agent or terminal %q", id)
+	return "", 0, 0, fmt.Errorf("there is no agent or terminal %q", id)
 }
 
 // APISend adds text to agent id's messages, to be typed in when it is at
@@ -263,6 +272,13 @@ func APIKeyBytes(keys []string) ([]byte, error) {
 // terminal pane id, at once: to answer what an agent asks on its screen,
 // or to run a command in a terminal. A message is APISend's.
 func (m *Core) APIType(id, text string, keys []string) error {
+	return m.APITypeBy("", id, text, keys)
+}
+
+// APITypeBy is APIType by the API's viewer who: if it shows the program,
+// that counts as it being active there, its size the program's, once
+// what is typed is known to go in, just before it does.
+func (m *Core) APITypeBy(who, id, text string, keys []string) error {
 	if m.Quitting {
 		return ErrAPIQuitting
 	}
@@ -287,12 +303,19 @@ func (m *Core) APIType(id, text string, keys []string) error {
 	if m.Program(ref) == nil {
 		return errors.New("nothing runs there")
 	}
-	if text != "" {
-		Type{Ref: ref, B: Paste(text)}.Do(m)
+	typeIn := func() {
+		if text != "" {
+			Type{Ref: ref, B: Paste(text)}.Do(m)
+		}
+		if len(b) > 0 {
+			Type{Ref: ref, B: b}.Do(m)
+		}
 	}
-	if len(b) > 0 {
-		Type{Ref: ref, B: b}.Do(m)
+	if who == "" {
+		typeIn()
+		return nil
 	}
+	m.Views.Act(ref.Pane, who, time.Now(), m.Program(ref), typeIn)
 	return nil
 }
 
@@ -416,4 +439,92 @@ func (m *Core) APIWake(id string) (Cmd, error) {
 		return nil, fmt.Errorf("there is no tab %q", id)
 	}
 	return WakeTab{T: m.Ref(t.Owner())}.Do(m), nil
+}
+
+// apiPane is the pane of the agent or terminal id, or why there is none.
+func (m *Core) apiPane(id string) (*PaneTab, error) {
+	if a := TabList(m.Tabs).Find(id); a != nil {
+		if p := a.PaneOf(); p != nil {
+			return p, nil
+		}
+		return nil, fmt.Errorf("the agent %q has no pane", id)
+	}
+	if _, p := TabList(m.Tabs).FindPane(id); p != nil && p.Kind == PaneShell {
+		return p, nil
+	}
+	return nil, fmt.Errorf("there is no agent or terminal %q", id)
+}
+
+// APISize is the size of the program of the agent or terminal id, columns
+// and rows; 0, 0 when none runs there.
+func (m *Core) APISize(id string) (int, int) {
+	p, err := m.apiPane(id)
+	if err != nil {
+		return 0, 0
+	}
+	if prog := m.Program(ProgramRef{Pane: m.PaneRef(p)}); prog != nil {
+		return prog.Size()
+	}
+	return 0, 0
+}
+
+// APIView has the API's viewer who show the agent or terminal id at w×h,
+// brought within the sizes a view may claim, for ViewTTL unless it says so
+// again (see views.go), and is the size its program has now: who's when
+// it leads, else another viewer's.
+func (m *Core) APIView(who, id string, w, h int) (int, int, error) {
+	if m.Quitting {
+		return 0, 0, ErrAPIQuitting
+	}
+	if w <= 0 || h <= 0 {
+		return 0, 0, errors.New("give the cols and rows the view shows")
+	}
+	p, err := m.apiPane(id)
+	if err != nil {
+		return 0, 0, err
+	}
+	w, h = ClampView(w, h)
+	ref := m.PaneRef(p)
+	var prog sized
+	if pr := m.Program(ProgramRef{Pane: ref}); pr != nil {
+		prog = pr
+	}
+	m.Views.ShowApply(ref, who, w, h, ViewTTL, time.Now(), prog, false)
+	if pw, ph := m.APISize(id); pw > 0 {
+		return pw, ph, nil
+	}
+	w, h, _ = m.Views.Size(ref, time.Now())
+	return w, h, nil
+}
+
+// APIUnview takes who's claim on the size of the agent or terminal id
+// away, the size of the claims left holding.
+func (m *Core) APIUnview(who, id string) error {
+	p, err := m.apiPane(id)
+	if err != nil {
+		return err
+	}
+	ref := m.PaneRef(p)
+	if m.Views.Drop(ref, who) {
+		m.applyView(ref)
+	}
+	return nil
+}
+
+// APIActive counts who as active in the agent or terminal id, typing to
+// it, if it shows it: its size is the program's from now.
+func (m *Core) APIActive(who, id string) {
+	p, err := m.apiPane(id)
+	if err != nil {
+		return
+	}
+	ref := m.PaneRef(p)
+	m.Views.Act(ref, who, time.Now(), m.paneProgram(ref), nil)
+}
+
+// APIViewerGone takes away the claims of who, whose connection closed:
+// what it asked was done before this comes, so nothing more of its can.
+func (m *Core) APIViewerGone(who string) {
+	m.viewerGone(who)
+	m.Views.Forget(who)
 }

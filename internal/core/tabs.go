@@ -649,6 +649,7 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 		}
 	}
 	w, h := m.Client.TabSize(m.Ref(t))
+	w, h = m.startSize(m.PaneRef(t.PaneOf()), w, h)
 	spec := spawn.Spec{Argv: l.Argv, Dir: t.Dir, Env: WithUserEnv(m.AgentEnv(t), l.Env), W: w, H: h}
 	m.Hold(&spec, AgentHeldLabel(t), t.InSandbox, t.HookKey())
 	p, err := term.StartWith(m.Programs(), spec, m.Notify)

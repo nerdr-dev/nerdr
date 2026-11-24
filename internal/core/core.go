@@ -39,6 +39,11 @@ type Core struct {
 	// gives it, with Mu held: the API's, for what it passes on (see
 	// internal/api). It must not wait.
 	Observe func(Event) `json:"-"`
+	// Views are the clients' claims on the size of each pane's program;
+	// see views.go.
+	Views Views `json:"-"`
+	// clients counts the clients attached, to name each a viewer.
+	clients int
 	// Asking is what waits for the user to answer, the first asked first;
 	// see Asked.
 	Asking  []*Question

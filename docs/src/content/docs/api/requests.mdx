@@ -1,6 +1,6 @@
 ---
 title: Requests
-description: Everything a program can ask of nerdr's API — the state, an agent's screen, messages, keys, answers, new tabs, terminals and agents, reviews, closing tabs and quitting.
+description: Everything a program can ask of nerdr's API — the state, an agent's screen and the size it is shown at, messages, keys, answers, new tabs, terminals and agents, reviews, closing tabs and quitting.
 ---
 
 A request is one line of JSON with an `op`, what to do, and the
@@ -28,6 +28,8 @@ as nerdr runs. A tab's ID is also the ID of its first agent.
 | [`read`](#read) | `target`, `lines` | What an agent or terminal shows |
 | [`send`](#send) | `agent`, `text` | Queue a message for an agent |
 | [`type`](#type) | `target`, `text`, `keys` | Type into an agent or terminal now |
+| [`view`](#view) | `target`, `cols`, `rows` | Show an agent or terminal at your screen's size |
+| [`unview`](#unview) | `target` | Stop showing it |
 | [`answer`](#answer) | `question`, `yes` | Answer one of nerdr's questions |
 | [`seen`](#seen) | `agent` | Look at an agent, as visiting it does |
 | [`wake`](#wake) | `tab` | Wake a sleeping tab |
@@ -140,11 +142,13 @@ shows, as plain text:
 ```
 
 ```json
-{"id":2,"result":{"text":"Do you want to proceed?\n❯ 1. Yes\n  2. No, and tell Claude what to do differently\n"}}
+{"id":2,"result":{"text":"Do you want to proceed?\n❯ 1. Yes\n  2. No, and tell Claude what to do differently\n","cols":120,"rows":40}}
 ```
 
 `target` is an agent's or a terminal's ID (`agent` works too, for an
-agent). An agent that is not running is an error.
+agent). An agent that is not running is an error. `cols` and `rows` are
+the size of its screen, the one the lines are laid out for: see
+[`view`](#view).
 
 ## send
 
@@ -177,6 +181,57 @@ A key is a single character, typed as it is, or one of: `enter`, `esc`,
 `home`, `end`, `pageup`, `pagedown`, `ctrl-a`, `ctrl-c`, `ctrl-d`,
 `ctrl-e`, `ctrl-l`, `ctrl-o`, `ctrl-r`, `ctrl-t`, `ctrl-u`, `ctrl-z`.
 
+If this connection [views](#view) the agent or terminal, it gets this
+connection's size first, as when you type in nerdr's window. The same
+goes for [`send`](#send).
+
+## view
+
+Shows an agent or a terminal at the size of your screen, `cols` columns
+by `rows` rows, so the program lays itself out for it:
+
+```json
+{"id":7,"op":"view","target":"9f3c01aa","cols":48,"rows":30}
+```
+
+```json
+{"id":7,"result":{"cols":48,"rows":30}}
+```
+
+A program has one size, while nerdr's window, a phone and a tablet may
+all show it. The one that was active in it last sets it: that viewed it
+first, typed to it (`type`, `send`), or changed the size it shows it
+at; in nerdr's window, typing, clicking or moving to it, or resizing
+the window. The others show the same screen at a size not their own,
+wrapped or cut. The result is the size the program has now: yours, or
+that of one active in it since.
+
+Say `view` again every 20 seconds or so while you show the program. A
+view not said again within 60 seconds runs out, and so does every view
+of a connection that closes: a phone locked or a machine asleep is not
+left setting the size. Saying it again at the same size keeps the view,
+but does not take the size back from one active since; at another
+size, it does. When the view that sets the size goes, the one active
+before it takes over; with none left, the program keeps the size it
+has. A program no one has shown starts at 120 × 40 (see
+`headless_cols` in the [configuration](../../configure/configuration/)).
+
+`cols` is brought within 20 to 500, and `rows` within 5 to 300.
+`target` is an agent's or a terminal's ID (`agent` works too, for an
+agent).
+
+## unview
+
+Stops showing an agent or a terminal, when you leave its screen or the
+app goes to the background:
+
+```json
+{"id":8,"op":"unview","target":"9f3c01aa"}
+```
+
+The size of the one active in it before you holds, or, with no one
+left, the size it has.
+
 ## answer
 
 Answers one of nerdr's [questions](#questions): `yes` true or false.
@@ -184,7 +239,7 @@ nerdr goes on as if you had answered in its window, and the question
 goes from every client.
 
 ```json
-{"id":7,"op":"answer","question":4,"yes":true}
+{"id":9,"op":"answer","question":4,"yes":true}
 ```
 
 A question already answered, or timed out, is an error.
@@ -196,7 +251,7 @@ agent turns `idle`, and messages that were held back because you typed
 to it go on. A phone app sends this when you open an agent.
 
 ```json
-{"id":8,"op":"seen","agent":"9f3c01aa"}
+{"id":10,"op":"seen","agent":"9f3c01aa"}
 ```
 
 ## wake
@@ -205,7 +260,7 @@ Wakes the agents of a tab that were put to sleep while it was not
 looked at (`sleep_after`).
 
 ```json
-{"id":9,"op":"wake","tab":"9f3c01aa"}
+{"id":11,"op":"wake","tab":"9f3c01aa"}
 ```
 
 ## repos
@@ -213,11 +268,11 @@ looked at (`sleep_after`).
 The repositories nerdr finds, to make a tab in:
 
 ```json
-{"id":10,"op":"repos"}
+{"id":12,"op":"repos"}
 ```
 
 ```json
-{"id":10,"result":[{"name":"api","path":"/home/you/develop/api"},{"name":"web","path":"/home/you/develop/web"}]}
+{"id":12,"result":[{"name":"api","path":"/home/you/develop/api"},{"name":"web","path":"/home/you/develop/web"}]}
 ```
 
 ## new_tab
@@ -227,7 +282,7 @@ Makes a tab on a new branch `branch` in the repositories named in
 started with `task`.
 
 ```json
-{"id":11,"op":"new_tab","repos":["api"],"branch":"fix-timeout",
+{"id":13,"op":"new_tab","repos":["api"],"branch":"fix-timeout",
  "agent":"claude","task":"The /orders call times out on large carts; find out why and fix it"}
 ```
 
@@ -252,11 +307,11 @@ as the TUI's new-terminal key does. nerdr's window keeps the keyboard
 where it is.
 
 ```json
-{"id":12,"op":"new_terminal","tab":"9f3c01aa"}
+{"id":14,"op":"new_terminal","tab":"9f3c01aa"}
 ```
 
 ```json
-{"id":12,"result":{"id":"c4d5e6f7"}}
+{"id":14,"result":{"id":"c4d5e6f7"}}
 ```
 
 The result is the terminal's ID, to [`type`](#type) a command into and
@@ -270,11 +325,11 @@ others, working in the same worktree. nerdr's window keeps the keyboard
 where it is.
 
 ```json
-{"id":13,"op":"new_agent","tab":"9f3c01aa","agent":"codex","task":"Write the tests for the redirect"}
+{"id":15,"op":"new_agent","tab":"9f3c01aa","agent":"codex","task":"Write the tests for the redirect"}
 ```
 
 ```json
-{"id":13,"result":{"id":"1b2e77d0"}}
+{"id":15,"result":{"id":"1b2e77d0"}}
 ```
 
 - `agent` is one of `state`'s `agents`, and must be given. `model` is
@@ -290,7 +345,7 @@ Starts a code review of an agent's work, the same way the TUI's review
 pane does, or adds a reviewer to the review going on.
 
 ```json
-{"id":14,"op":"review","agent":"9f3c01aa","by":"codex"}
+{"id":16,"op":"review","agent":"9f3c01aa","by":"codex"}
 ```
 
 - `by` is the kind of agent to review with, one of `state`'s `agents`.
@@ -312,11 +367,11 @@ Closes a tab, stopping every agent, terminal and reviewer in it, as the
 TUI's close dialog does.
 
 ```json
-{"id":15,"op":"close_tab","tab":"9f3c01aa","remove":true}
+{"id":17,"op":"close_tab","tab":"9f3c01aa","remove":true}
 ```
 
 ```json
-{"id":15,"result":{"text":"closed fix-login and deleted its worktree"}}
+{"id":17,"result":{"text":"closed fix-login and deleted its worktree"}}
 ```
 
 - Without `remove`, the worktrees and branches are kept, and the tab
@@ -344,10 +399,10 @@ terminal and plugin stops, and the tabs are kept for the next time nerdr
 starts there. A window open on it closes. `nerdr stop` sends this.
 
 ```json
-{"id":16,"op":"quit"}
+{"id":18,"op":"quit"}
 ```
 
-The answer, `{"id":16,"result":{}}`, says nerdr is quitting, and the
+The answer, `{"id":18,"result":{}}`, says nerdr is quitting, and the
 connection then closes. While the agents stop it can close before the
 answer comes: a program that sent `quit` can take the connection closing
 as the same answer. A `quit` to a nerdr already quitting is answered

@@ -106,6 +106,8 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 | `cold_days` | `5` | Mark tabs cold after this many idle days; `0` never. |
 | `sleep_after` | `0` | Minutes before agents that are done, seen and out of sight are stopped; they continue when you visit the tab. `0` never. See [Agents asleep](../../use/progress/#agents-asleep). |
 | `close_merged` | `true` | Say in a tab's status panel when its pull requests are merged. |
+| `headless_cols` | `120` | Columns an agent or terminal starts at when no window or app shows it yet, such as one started from the [API](../../api/requests/#view) with nerdr's window closed. `0` for the default. |
+| `headless_rows` | `40` | Rows, the same way. |
 
 ## Notifications and GitHub
 
@@ -260,7 +262,8 @@ nerdr:
 The rest are read by the machine the agents run on, from
 `~/.config/nerdr/config.toml` there: `[agents]`, `[review]`, `shell`,
 `repo_dirs`, `worktrees_dir`, `data_dir`, `install`, `enabled_skills`,
-`max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `github_refresh`,
+`max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `headless_cols`,
+`headless_rows`, `github_refresh`,
 `claude_status_line`, `confirm_plugin_runs` and `keep_awake`, and the
 plugins beside that file. An agent's command and sandbox on your laptop
 never apply on a server. With nerdr on one machine, it is all one file.

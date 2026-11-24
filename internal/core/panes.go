@@ -209,6 +209,7 @@ func (m *Core) newTermIn(t *Tab, quiet bool, argv []string, env ...string) (*Pan
 	p := &PaneTab{Kind: PaneShell, N: n}
 	cmd := m.AddPane(t, p, quiet)
 	w, h := m.Client.ShellSize(m.Ref(t), m.PaneRef(p))
+	w, h = m.startSize(m.PaneRef(p), w, h)
 	env = append(append(m.TabEnv(t), "NERDR_SHELL=1"), env...)
 	spec := spawn.Spec{Argv: argv, Dir: t.Dir, Env: env, W: w, H: h}
 	m.Hold(&spec, Label{Kind: HeldShell, Tab: t.ID, N: n}, false, "")
