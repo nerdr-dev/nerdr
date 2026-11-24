@@ -32,7 +32,12 @@ type Screen struct {
 	// until the app takes it; see TakeCopied.
 	copied   string
 	copiedAt time.Time // when copied came
-	cursorOn bool
+	// askedAt is when the user's input last reached the program
+	// (MarkAsked), and copiedAsked whether copied came in the CopyWindow
+	// after it: core says so to a client, whose clock may not be its.
+	askedAt     time.Time
+	copiedAsked bool
+	cursorOn    bool
 	// Modes the program has asked for that change what keys and pastes must
 	// look like on the way in; see Pane.Input.
 	appCursor      bool
@@ -93,7 +98,9 @@ func NewScreen(w, h int) *Screen {
 	// drop. A query for what is on the clipboard is never answered.
 	s.emu.RegisterOscHandler(52, func(data []byte) bool {
 		if text, ok := clipboardSet(data); ok {
-			s.copied, s.copiedAt = text, time.Now()
+			now := time.Now()
+			s.copied, s.copiedAt = text, now
+			s.copiedAsked = !s.askedAt.IsZero() && now.Sub(s.askedAt) < CopyWindow
 		}
 		return true
 	})
@@ -223,6 +230,19 @@ func (s *Screen) setMode(m ansi.Mode, on bool) {
 	case ansi.ModeFocusEvent:
 		s.focusEvents = on
 	}
+}
+
+// CopyWindow is how soon after the user's input a program's copy (OSC 52)
+// counts as asked for: a program copies at once, on the key or the button
+// let go that asks it to.
+const CopyWindow = 2 * time.Second
+
+// MarkAsked notes that the user's input — keys, or a click the program is
+// told of — reaches the program now.
+func (s *Screen) MarkAsked() {
+	s.mu.Lock()
+	s.askedAt = time.Now()
+	s.mu.Unlock()
 }
 
 // TakeCopied is what the program has put on the clipboard since it was

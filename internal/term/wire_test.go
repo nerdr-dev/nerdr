@@ -1,6 +1,7 @@
 package term
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -317,3 +318,68 @@ func TestScreenMsgUnchanged(t *testing.T) {
 		}
 	}
 }
+
+// A copy counts as asked for only when the user's input reached the
+// program before it (MarkAsked), as core sees it; a client takes one core
+// does not say was asked as not, however late it comes. The mouse modes
+// go with the screen, so a client knows a click far right reaches an SGR
+// program.
+func TestCopiedAskedGoesWithTheScreen(t *testing.T) {
+	proc := &runningProc{heldProc: newHeldProc(nil), stop: make(chan struct{})}
+	p := Attach(proc, 300, 5, Taken{}, func() {})
+	t.Cleanup(func() { close(proc.stop); p.Close() })
+	p.Feed([]byte("\x1b[?1000h\x1b[?1006h"))
+	osc := func(text string) {
+		p.Feed([]byte("\x1b]52;c;" + base64.StdEncoding.EncodeToString([]byte(text)) + "\x07"))
+	}
+	c := NewCopy(300, 5, &noOut{})
+	var snd RowsSender
+	send := func() {
+		t.Helper()
+		p.ViewInto(snd.View(), 0)
+		b, err := snd.Next()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var msg ScreenMsg
+		if err := json.Unmarshal(b, &msg); err != nil {
+			t.Fatal(err)
+		}
+		if err := c.Apply(&msg); err != nil {
+			t.Fatal(err)
+		}
+	}
+	send()
+	far := MouseEvent{Button: ansi.MouseLeft, Kind: MouseRelease, X: 250, Y: 1}
+	if !p.ReportsMouse(far) || !c.ReportsMouse(far) {
+		t.Fatal("a release far right reaches an SGR program, and its copy should know")
+	}
+
+	osc("unasked")
+	p.MarkAsked() // input after the copy was made
+	send()
+	if text, at := c.TakeCopiedAt(); text != "unasked" || !at.IsZero() {
+		t.Fatalf("a copy made before the input came as %q at %v, want it not asked", text, at)
+	}
+	osc("asked")
+	send()
+	if text, at := c.TakeCopiedAt(); text != "asked" || at.IsZero() {
+		t.Fatalf("a copy just after the input came as %q at %v, want it asked", text, at)
+	}
+	p.mu.Lock()
+	p.askedAt = time.Now().Add(-2 * CopyWindow)
+	p.mu.Unlock()
+	osc("late")
+	send()
+	if _, at := c.TakeCopiedAt(); !at.IsZero() {
+		t.Fatal("a copy long after the input should not be asked")
+	}
+}
+
+// runningProc is a heldProc that runs until stop is closed.
+type runningProc struct {
+	*heldProc
+	stop chan struct{}
+}
+
+func (p *runningProc) Wait() error { <-p.stop; return nil }

@@ -112,6 +112,13 @@ func (p *Pane) ReportsMouse(ev MouseEvent) bool {
 	return !exited && mouseReport(ev, lvl, sgr) != nil
 }
 
+// IsClick reports whether ev is a button pressed or let go: not the
+// pointer moving, nor the wheel.
+func IsClick(ev MouseEvent) bool {
+	wheel := ev.Button >= ansi.MouseWheelUp && ev.Button <= ansi.MouseWheelRight
+	return ev.Kind != MouseMotion && !wheel
+}
+
 // mouseReport is what tells a program at mouse level lvl, in SGR or the
 // legacy encoding, of ev; nil when it is not told.
 func mouseReport(ev MouseEvent, lvl int, sgr bool) []byte {

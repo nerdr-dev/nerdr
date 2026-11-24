@@ -232,10 +232,16 @@ func (s *ScreenServer) direct(r Request) bool {
 		if sc.typed != nil {
 			sc.typed.Feed(q.B)
 		}
+		if q.User {
+			sc.pane.MarkAsked()
+		}
 		sc.pane.Input(q.B)
 	case WriteRaw:
 		sc.pane.Write(q.B)
 	case Mouse:
+		if q.User {
+			userMouse(sc.pane, q.Ev)
+		}
 		sc.pane.SendMouse(q.Ev)
 	case FocusProgram:
 		sc.pane.Focus(q.In)
@@ -631,10 +637,10 @@ type copyOut struct {
 	ref ProgramRef
 }
 
-func (o copyOut) Input(b []byte) { o.c.send(Type{Ref: o.ref, B: slices.Clone(b)}) }
+func (o copyOut) Input(b []byte) { o.c.send(Type{Ref: o.ref, B: slices.Clone(b), User: true}) }
 func (o copyOut) Write(b []byte) { o.c.send(WriteRaw{Ref: o.ref, B: slices.Clone(b)}) }
 func (o copyOut) Mouse(ev term.MouseEvent) {
-	o.c.send(Mouse{Ref: o.ref, Ev: ev})
+	o.c.send(Mouse{Ref: o.ref, Ev: ev, User: true})
 }
 func (o copyOut) Focus(in bool)     { o.c.send(FocusProgram{Ref: o.ref, In: in}) }
 func (o copyOut) Resize(w, h int)   { o.c.send(ResizeProgram{Ref: o.ref, W: w, H: h}) }

@@ -291,3 +291,41 @@ func TestCopiedUnseenLetGo(t *testing.T) {
 		t.Fatalf("%q kept for when it is shown", s)
 	}
 }
+
+// TestCopiedAskedOverAConnection: a client takes a program's copy as asked
+// for only when core saw the user's keys reach the program before it: not
+// one made before, however late it comes, and not keys core sent itself.
+func TestCopiedAskedOverAConnection(t *testing.T) {
+	// unasked at once; after a line read, asked.
+	p, err := term.Start([]string{"sh", "-c", `printf '\033]52;c;dW5hc2tlZA==\007ready\n'; read l; printf '\033]52;c;YXNrZWQ=\007copied\n'; read l; printf '\033]52;c;YXBp\007api\n'; sleep 30`}, t.TempDir(), os.Environ(), 40, 10, func() {})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(p.Close)
+	tb := &Tab{Pane: p}
+	tb.Agent = agents.Codex
+	c := &Core{Tabs: []*Tab{tb}}
+	ref := ProgramRef{Pane: c.PaneRef(tb.OwnPane())}
+	cl := screensOver(t, c)
+	cp := cl.Program(ref)
+	until(t, "the first copy", cl, cp, 0, func(f term.Frame) bool { return shows(f, "ready") })
+	time.Sleep(50 * time.Millisecond)
+	if text, at := cp.TakeCopiedAt(); text != "unasked" || !at.IsZero() {
+		t.Fatalf("a copy before any input came as %q at %v, want not asked", text, at)
+	}
+	cp.Input([]byte("go\r")) // the user's, through the copy
+	until(t, "the asked copy", cl, cp, 0, func(f term.Frame) bool { return shows(f, "copied") })
+	time.Sleep(50 * time.Millisecond)
+	if text, at := cp.TakeCopiedAt(); text != "asked" || at.IsZero() {
+		t.Fatalf("a copy just after the user's keys came as %q at %v, want asked", text, at)
+	}
+	time.Sleep(term.CopyWindow + 50*time.Millisecond) // the user's keys long past
+	c.Mu.Lock()
+	Type{Ref: ref, B: []byte("go\r")}.Do(c) // as the API types
+	c.Mu.Unlock()
+	until(t, "the API's copy", cl, cp, 0, func(f term.Frame) bool { return shows(f, "api") })
+	time.Sleep(50 * time.Millisecond)
+	if text, at := cp.TakeCopiedAt(); text != "api" || !at.IsZero() {
+		t.Fatalf("a copy after keys core typed itself came as %q at %v, want not asked", text, at)
+	}
+}

@@ -29,7 +29,8 @@ type Copy struct {
 	w, h   int
 	copied string
 	// copiedAt is when copied came from core: after the program put it
-	// there, by however long it took to come.
+	// there, by however long it took to come. It is zero when core did not
+	// see the user's input reach the program just before (CopiedAsked).
 	copiedAt time.Time
 	out      CopyOut
 	// drawnOn is the frame the copy was last drawn on; see Drawn.
@@ -127,12 +128,15 @@ func (c *Copy) Apply(msg *ScreenMsg) error {
 	v := &c.view
 	v.W, v.H, v.Top, v.Scrollback, v.Scroll = msg.W, msg.H, msg.Top, msg.Scrollback, msg.Scroll
 	v.CursorX, v.CursorY, v.Cursor, v.Alt = msg.CursorX, msg.CursorY, msg.Cursor, msg.Alt
-	v.Title, v.Incomplete, v.Mouse = msg.Title, msg.Incomplete, msg.Mouse
+	v.Title, v.Incomplete, v.Mouse, v.MouseSgr = msg.Title, msg.Incomplete, msg.Mouse, msg.MouseSgr
 	v.Exited, v.ExitErr, v.Busy = msg.Exited, msg.ExitErr, msg.Busy
 	v.ExitAfter = time.Duration(msg.ExitAfter) * time.Millisecond
 	c.started = time.Now().Add(-v.ExitAfter)
 	if msg.Copied != "" {
-		c.copied, c.copiedAt = msg.Copied, time.Now()
+		c.copied, c.copiedAt = msg.Copied, time.Time{}
+		if msg.CopiedAsked {
+			c.copiedAt = time.Now()
+		}
 	}
 	c.gen++
 	v.Gen = c.gen
@@ -311,13 +315,12 @@ func (c *Copy) SendMouse(ev MouseEvent) bool {
 }
 
 // ReportsMouse reports whether SendMouse would have core's program told of
-// ev, as Pane.ReportsMouse; not knowing the encoding it asked for, it
-// says no for what only SGR can tell.
+// ev, as Pane.ReportsMouse, by the mouse modes core last said it asked for.
 func (c *Copy) ReportsMouse(ev MouseEvent) bool {
 	c.mu.Lock()
-	lvl := c.view.Mouse
+	lvl, sgr := c.view.Mouse, c.view.MouseSgr
 	c.mu.Unlock()
-	return mouseReport(ev, lvl, false) != nil
+	return mouseReport(ev, lvl, sgr) != nil
 }
 
 func (c *Copy) WantsMouse() bool {
@@ -358,7 +361,9 @@ func (c *Copy) TakeCopied() string {
 	return s
 }
 
-// TakeCopiedAt is TakeCopied, and when it came from core.
+// TakeCopiedAt is TakeCopied, and when it came from core: zero when core
+// did not see the user's input reach the program just before it, so
+// nothing the client saw counts as asking for it.
 func (c *Copy) TakeCopiedAt() (string, time.Time) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
