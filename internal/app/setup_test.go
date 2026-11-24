@@ -208,6 +208,8 @@ func TestFirstStartAsksWhereWorktreesGo(t *testing.T) {
 func TestOpenCodePluginGoesWithTheSkills(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("OPENCODE_CONFIG_DIR", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
 	m := tabsModel(t)
 	m.home().Core.Cfg.Install = config.InstallHome
 	m.home().Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.OpenCode: {Command: []string{"sh"}}}
