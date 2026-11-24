@@ -114,6 +114,9 @@ func countingHelper(t *testing.T) (log, password string) {
 		t.Fatal(err)
 	}
 	t.Setenv("GIT_CONFIG_GLOBAL", global)
+	// Not the system's helpers either: git on macOS has osxkeychain there,
+	// which would answer before this one and keep what it was given.
+	t.Setenv("GIT_CONFIG_NOSYSTEM", "1")
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	// The test's origin has a certificate of its own.
 	t.Setenv("GIT_SSL_NO_VERIFY", "1")
