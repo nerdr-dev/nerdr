@@ -17,6 +17,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1394,12 +1395,23 @@ func gitRun(timeout time.Duration, hooks bool, dir string, args ...string) (stri
 }
 
 func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) (string, error) {
+	return gitRunWith(timeout, env, dir, nil, nil, args...)
+}
+
+// gitRunWith is gitRunEnv with settings given to git (-c key=value) and
+// files open in it from fd 3 on.
+func gitRunWith(timeout time.Duration, env []string, dir string, settings []string, files []*os.File, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	cmd := gitsafe.CommandContext(ctx, dir, args...)
-	if env != nil {
-		cmd.Env = env
+	var all []string
+	for _, s := range settings {
+		all = append(all, "-c", s)
 	}
+	cmd := gitsafe.CommandContext(ctx, dir, append(all, args...)...)
+	if env != nil {
+		cmd.Env = slices.Clip(env)
+	}
+	cmd.ExtraFiles = files
 	cmd.Env = append(cmd.Env, "GIT_TERMINAL_PROMPT=0")
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -1426,7 +1438,7 @@ func gitRunEnv(timeout time.Duration, env []string, dir string, args ...string) 
 // repo. Where an agent has run in a sandbox it is the one transport nerdr
 // runs, over ssh or https alone, and not at all when gitsafe.OriginEnv
 // says why not; a fetch then leaves the submodules alone, their config
-// being in the worktree.
+// being in the worktree. Over https it logs in once for many (withLogin).
 func gitOrigin(repo string, args ...string) (string, error) {
 	env, why := gitsafe.OriginEnv(repo)
 	if why != "" {
@@ -1435,7 +1447,7 @@ func gitOrigin(repo string, args ...string) (string, error) {
 	if gitsafe.RepoSandboxed(repo) && args[0] == "fetch" {
 		args = append([]string{"fetch", "--no-recurse-submodules"}, args[1:]...)
 	}
-	return gitRunEnv(fetchTimeout, env, repo, args...)
+	return withLogin(repo, env, args)
 }
 
 // sandboxNote is what nerdr holds back in the repository dir is in, an
