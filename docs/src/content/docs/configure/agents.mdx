@@ -188,6 +188,7 @@ and deny.
 | `sandboxed` | `true` for every agent whose `command` is a sandbox | nerdr then holds the agent back on the hook socket, and checks its sandbox before each start. |
 | `command` | The sandbox, then the agent's own program as a word of its own | The check runs nerdr where that word is. For a wrapper that picks the agent some other way, by an option or by default, set `check_command`. |
 | `check_command` | Only for such a wrapper: a command that runs the program after it in the agent's sandbox | The check runs through it instead. See [the check](#checking-a-wrapper-that-picks-the-agent-itself). |
+| `sandbox_check` | `"always"` (the default) or `"once"` | How often the sandbox is checked. With `"once"`, a check that passed is not made again while the core runs. See [Checking once](#checking-once). |
 | `install` | `"worktree"` | nerdr's skills and plugins go in each tab's folder, where only that tab's agent can change them. See [below](#where-nerdr-installs-install). |
 | `data_dir` | A folder in the worktree, such as `".nerdr"` | Each tab's agent writes only its own notes, reviews and handoffs. See [below](#where-the-records-are-kept-data_dir). |
 
@@ -524,6 +525,7 @@ The check runs before every sandboxed launch, including with
 `NERDR_HOLDER=0`, using that launch's folder and environment. Results are not cached: a wrapper's policy can change
 with its files, configuration, environment or working directory. After
 correcting the sandbox, restart the agent to have it checked again.
+To check less often, see [Checking once](#checking-once).
 
 nerdr puts the check where the agent's program is in `command`: the last
 word named as the agent is (`claude`, `codex`, `cursor-agent`, …, or the
@@ -543,6 +545,39 @@ The check catches a sandbox set up wrong.
 It does not stop an agent that gets out some other way, and it says
 nothing about D-Bus, sockets in `/run/user/$UID`, services on localhost,
 your SSH agent or other credentials.
+
+### Checking once
+
+The check starts the sandbox once more before the agent, which can take
+a while with a sandbox that is slow to start, such as a container. For an
+agent you start often, you can have nerdr check only until a check has
+passed:
+
+```toml
+[agents.copilot]
+command = ["my-sandbox", "--", "copilot"]
+sandboxed = true
+sandbox_check = "once"
+```
+
+nerdr then remembers a check that passed for as long as its core runs,
+and starts the agent without checking again, noting so in the core's log.
+It checks again when what the check depended on changes: the agent's
+settings in the config (`command`, `args`, `env`, `check_command`, …),
+the paths it tried, and with them the repository, since its main
+checkout's `.git` is among them, or nerdr's own program. A new tab in a
+repository already checked is not checked again: its folder and
+environment are not among them. A check that refused the agent, or could
+not tell, is never remembered, so the next start is checked again. Once
+the core starts again, so does the check.
+
+What you give up: a sandbox whose policy changes while the core runs,
+through its own files or configuration, the environment or the folder it
+is started in, is not checked until the core starts again. An agent in a
+sandbox that has come to let it through could then reach nerdr's client
+socket, and with it do anything you can. Use `"once"` with a wrapper
+whose policy is fixed by its command, and leave the default for one that
+reads it from the folder it runs in.
 
 ### Checking a wrapper that picks the agent itself
 

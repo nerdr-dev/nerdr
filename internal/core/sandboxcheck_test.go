@@ -15,6 +15,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
 	"github.com/nerdr-dev/nerdr/internal/sandboxcheck"
+	"github.com/nerdr-dev/nerdr/internal/spawn"
 	"github.com/nerdr-dev/nerdr/internal/statedir"
 )
 
@@ -190,6 +191,96 @@ func TestASandboxThatDeniesTheClientSocketIsNotWarnedOf(t *testing.T) {
 	c, tb, cl := checkedCore(t, runsCodex+"exec bwrap --dev-bind / / --tmpfs \"$NERDR_CLIENT_DIR\" --unshare-pid -- \"$@\"\n")
 	if notes, started := check(t, c, tb, cl); len(notes) != 0 || !started {
 		t.Errorf("started %v, notices %q", started, notes)
+	}
+}
+
+// With sandbox_check = "once", a check that passed is not made again
+// while the core runs, unless what it depended on changes; one that
+// refused is made again, and so is every check with the default.
+func TestSandboxCheckOnce(t *testing.T) {
+	// The check runs a nerdr at a path of its own, which an update can
+	// put another one at.
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(t.TempDir(), "nerdr")
+	copyFile(t, exe, bin)
+	oldBin := spawn.Bin
+	spawn.Bin = func() (string, error) { return bin, nil }
+	t.Cleanup(func() { spawn.Bin = oldBin })
+	c, tb, _ := checkedCore(t, runsCodex+"exec \"$@\"\n")
+	spec := c.Cfg.Agents[agents.Codex]
+	spec.SandboxCheck = agents.CheckOnce
+	c.Cfg.Agents[agents.Codex] = spec
+	run := func() *SandboxCheckedMsg {
+		check := c.CheckSandbox(tb, nil)
+		if check == nil {
+			return nil
+		}
+		ev := check()
+		return &ev
+	}
+	ev := run()
+	if ev == nil || !ev.Refused() {
+		t.Fatalf("first check: %+v", ev)
+	}
+	c.OnSandboxChecked(*ev)
+	if ev = run(); ev == nil {
+		t.Fatal("a check that refused was not made again")
+	}
+	// As one that passed: the wrapper here is no sandbox.
+	ev.OK, ev.Result = true, sandboxcheck.Result{}
+	if why := c.OnSandboxChecked(*ev); why != "" {
+		t.Fatal(why)
+	}
+	if c.CheckSandbox(tb, nil) != nil {
+		t.Error("checked again after one passed")
+	}
+	// A new tab in the same repository is not checked again.
+	other := *tb
+	other.Dir = filepath.Join(filepath.Dir(tb.Dir), "another-worktree")
+	if c.CheckSandbox(&other, []string{"NERDR_TAB=another"}) != nil {
+		t.Error("a new tab in the same repository checked again")
+	}
+	changed := spec
+	changed.Args = []string{"--model", "x"}
+	c.Cfg.Agents[agents.Codex] = changed
+	if c.CheckSandbox(tb, nil) == nil {
+		t.Error("not checked again after the agent's settings changed")
+	}
+	always := spec
+	always.SandboxCheck = ""
+	c.Cfg.Agents[agents.Codex] = always
+	if c.CheckSandbox(tb, nil) == nil {
+		t.Error("checked once only by default")
+	}
+	c.Cfg.Agents[agents.Codex] = spec
+	if c.CheckSandbox(tb, nil) != nil {
+		t.Error("checked again after one passed, back to once")
+	}
+	// nerdr updated in place: its path the same, the file another.
+	next := bin + ".new"
+	if err := os.WriteFile(next, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Rename(next, bin); err != nil {
+		t.Fatal(err)
+	}
+	if c.CheckSandbox(tb, nil) == nil {
+		t.Error("not checked again after nerdr was replaced at its path")
+	}
+}
+
+// copyFile copies from to to, as an executable.
+func copyFile(t *testing.T, from, to string) {
+	t.Helper()
+	b, err := os.ReadFile(from)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(to, b, 0o755); err != nil {
+		t.Fatal(err)
 	}
 }
 

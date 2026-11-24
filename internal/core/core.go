@@ -174,6 +174,11 @@ type Core struct {
 	// not at every start. Not saved: a core that starts again says it once
 	// more.
 	sandboxWarned map[agents.Kind]string
+	// sandboxPassed are the checks that passed of agents with
+	// sandbox_check = "once", by what each depended on (see onceKey):
+	// those are not made again. Not saved: a core that starts again
+	// checks once more.
+	sandboxPassed map[string]bool
 	// Copy is set in a client's copy of core's state (see Mirror): what
 	// core reads from disk, the copy has only as core sent it.
 	Copy bool `json:"-"`

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -46,6 +47,10 @@ type SandboxCheckedMsg struct {
 	Why    string
 	// Took is how long the check took, for the log.
 	Took time.Duration
+	// once is, for an agent with sandbox_check = "once", what the check
+	// depends on, kept in Core.sandboxPassed when it passes; "" for one
+	// checked before every launch.
+	once string
 }
 
 // Refused reports whether the agent is not to start: the check found its
@@ -64,8 +69,14 @@ func (ev SandboxCheckedMsg) Refused() bool {
 // policy than the agent's; it is the user's to say it does not. Unknown
 // results refuse the launch too: native tool sandboxes cannot be verified
 // by running a probe outside them. Results are not cached because the
-// wrapper's policy can depend on the folder, environment or mutable files.
-// m.Mu is held; the returned check runs away from it.
+// wrapper's policy can depend on the folder, environment or mutable files;
+// but an agent with sandbox_check = "once" is not checked again once a
+// check has passed, for as long as the core runs, unless what that check
+// depended on changes: the agent's spec, the wrapper, the paths it tried.
+// Not its folder or environment, which differ for every tab, so that a
+// new tab of the same repository is not checked again: that is what the
+// user gives up for a quicker start. m.Mu is held; the returned check runs
+// away from it.
 func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 	if !m.SandboxedKind(t.Agent) {
 		return nil
@@ -123,6 +134,14 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 	if m.Held != nil {
 		target.Pids = append(target.Pids, m.Held.Client.Pid())
 	}
+	once := ""
+	if specs[kind].SandboxCheck == agents.CheckOnce {
+		once = onceKey(kind, specs[kind], wrapper, bin, fileID(bin), target)
+		if m.sandboxPassed[once] {
+			Logf("sandbox check: %s not checked again: a check passed already, and sandbox_check is \"once\"", kind)
+			return nil
+		}
+	}
 	spec := spawn.Spec{Argv: sandboxcheck.Argv(wrapper, bin, target), Dir: t.Dir, Env: env, PTY: true, W: 120, H: 24}
 	m.Hold(&spec, Label{Kind: HeldCheck, Tab: t.ID}, true, "")
 	progs := m.Programs()
@@ -140,8 +159,41 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		if !ok {
 			return SandboxCheckedMsg{Kind: kind, Why: noAnswer, Took: took}
 		}
-		return SandboxCheckedMsg{Kind: kind, Result: r, OK: true, Took: took}
+		return SandboxCheckedMsg{Kind: kind, Result: r, OK: true, Took: took, once: once}
 	}
+}
+
+// onceKey is what a check of kind's sandbox depends on but its folder and
+// environment, as one string, for sandbox_check = "once" to tell a check
+// that passed from one still to make. Not target's nonce, which is new
+// every time. binID is the file bin is now (see fileID): bin is often a
+// path that outlives an update of nerdr, and the check is nerdr's.
+func onceKey(kind agents.Kind, spec agents.Spec, wrapper []string, bin, binID string, target sandboxcheck.Target) string {
+	target.Nonce = ""
+	b, _ := json.Marshal(struct {
+		Kind    agents.Kind
+		Spec    agents.Spec
+		Wrapper []string
+		Bin     string
+		BinID   string
+		Target  sandboxcheck.Target
+	}{kind, spec, wrapper, bin, binID, target})
+	return string(b)
+}
+
+// fileID tells the file path leads to now from another put there since:
+// its device and inode, size and time of change; "" when it cannot be
+// read, which a later one that can differs from.
+func fileID(path string) string {
+	st, err := os.Stat(path)
+	if err != nil {
+		return ""
+	}
+	id := fmt.Sprintf("%d %d", st.Size(), st.ModTime().UnixNano())
+	if sys, ok := st.Sys().(*syscall.Stat_t); ok {
+		id = fmt.Sprintf("%d %d %s", sys.Dev, sys.Ino, id)
+	}
+	return id
 }
 
 // RunCheck starts s with progs and is what it printed, once it has
@@ -211,6 +263,12 @@ func (m *Core) OnSandboxChecked(ev SandboxCheckedMsg) string {
 		Logf("sandbox check (%v): %s's sandbox keeps it from the client socket, the API's and the holder", took, ev.Kind)
 	}
 	m.sandboxWarn(ev)
+	if why == "" && ev.once != "" {
+		if m.sandboxPassed == nil {
+			m.sandboxPassed = map[string]bool{}
+		}
+		m.sandboxPassed[ev.once] = true
+	}
 	return why
 }
 
