@@ -2,11 +2,14 @@ package core
 
 import (
 	"bytes"
+	"math"
 	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/spawn"
@@ -129,6 +132,16 @@ func TestAPIScrollTurnsTheWheel(t *testing.T) {
 	}
 	want += strings.Repeat(down, MaxScroll)
 	sp.wait(t, "0, then down 1000", want)
+	if err := m.APIScroll("", "t1", math.MinInt); err != nil {
+		t.Fatal(err)
+	}
+	want += strings.Repeat(down, MaxScroll)
+	sp.wait(t, "down the most an int says", want)
+	if err := m.APIScroll("", "t1", math.MaxInt); err != nil {
+		t.Fatal(err)
+	}
+	want += strings.Repeat(up, MaxScroll)
+	sp.wait(t, "up the most an int says", want)
 	if err := m.APIScroll("", "nope", 1); err == nil {
 		t.Fatal("scrolled no program")
 	}
@@ -186,4 +199,40 @@ func TestAPIScrollIsActivity(t *testing.T) {
 		t.Fatalf("%d×%d after scrolling, want the scroller's 40×20", w, h)
 	}
 	sp.wait(t, "a step up at the middle of 40×20", "\x1b[<64;21;11M")
+}
+
+// TestAPIScrollLegacyAtAnySize: in the legacy mouse encoding, which says
+// no cell past 222, the wheel turns at any size a viewer takes, wider or
+// narrower than the program was: the step goes as near the middle as it
+// can say.
+func TestAPIScrollLegacyAtAnySize(t *testing.T) {
+	m, p, sp := scrollCore(t)
+	p.Feed([]byte(altOn + "\x1b[?1000h")) // no SGR
+	step := func(btn ansi.MouseButton, x, y int) string {
+		return ansi.MouseX10(ansi.EncodeMouseButton(btn, false, false, false, false), x, y)
+	}
+	if _, _, err := m.APIView("api:1", "t1", 100, 30); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := m.APIView("api:2", "t1", 500, 40); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ := p.Size(); w != 500 {
+		t.Fatalf("%d wide, want the last viewer's 500", w)
+	}
+	// From 500 to 100: the middle, 50.
+	if err := m.APIScroll("api:1", "t1", 2); err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat(step(ansi.MouseWheelUp, 50, 15), 2)
+	sp.wait(t, "up 2 at 100×30", want)
+	// From 100 to 500: as near its middle, 250, as can be said.
+	if err := m.APIScroll("api:2", "t1", -1); err != nil {
+		t.Fatal(err)
+	}
+	if w, _ := p.Size(); w != 500 {
+		t.Fatalf("%d wide after scrolling, want the scroller's 500", w)
+	}
+	want += step(ansi.MouseWheelDown, 222, 20)
+	sp.wait(t, "down 1 at 500×40", want)
 }

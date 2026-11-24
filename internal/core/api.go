@@ -1,6 +1,7 @@
 package core
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"slices"
@@ -346,33 +347,49 @@ func (m *Core) APIScroll(who, id string, n int) error {
 	if m.Quitting {
 		return ErrAPIQuitting
 	}
-	ref, prog, err := m.apiRunning(id)
+	ref, _, err := m.apiRunning(id)
 	if err != nil {
 		return err
 	}
+	tp, _ := m.termOf(ref)
+	if tp == nil {
+		return errors.New("nothing runs there")
+	}
+	n = min(max(n, -MaxScroll), MaxScroll)
 	if n == 0 {
 		return nil
 	}
 	up := n > 0
-	n = min(max(n, -n), MaxScroll)
-	w, h := prog.Size()
-	switch {
-	case !prog.AltScreen():
-		return errors.New("the program does not scroll: it is not on the alternate screen, so read has all it shows")
-	case !prog.ReportsMouse(term.WheelEvent(up, w, h)):
-		return errors.New("the program does not scroll: it does not take the mouse wheel")
+	steps := max(n, -n)
+	// Looked at first, so a scroll refused takes no size; and again as the
+	// steps go, in one look with them (see term.Pane.Wheel). The step
+	// goes at any size (see term.WheelEvent), so the size who takes does
+	// not change the answer.
+	if err := scrolls(tp.Scrolls()); err != nil {
+		return err
 	}
 	turn := func() {
-		w, h := prog.Size() // who's size, if it took it just now
-		for range n {
-			prog.SendMouse(term.WheelEvent(up, w, h))
+		if !tp.Wheel(up, steps) {
+			err = cmp.Or(scrolls(tp.Scrolls()), errors.New("the program does not scroll: it changed as the wheel turned"))
 		}
 	}
 	if who == "" {
 		turn()
-		return nil
+	} else {
+		m.Views.Act(ref.Pane, who, time.Now(), m.Program(ref), turn)
 	}
-	m.Views.Act(ref.Pane, who, time.Now(), prog, turn)
+	return err
+}
+
+// scrolls is why a program does not scroll, on the alternate screen or
+// not and told of the wheel or not; nil when it does.
+func scrolls(alt, wheel bool) error {
+	switch {
+	case !alt:
+		return errors.New("the program does not scroll: it is not on the alternate screen, so read has all it shows")
+	case !wheel:
+		return errors.New("the program does not scroll: it does not take the mouse wheel")
+	}
 	return nil
 }
 
