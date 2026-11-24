@@ -32,6 +32,26 @@ func TildePath(p, home string) string {
 	return p
 }
 
+// OpenCodePluginHome is where install = "home" puts nerdr's plugin for
+// every opencode: in the config folder opencode takes in the environment
+// it starts with, BaseEnv with the env of the config's opencode over it
+// (see hooks.OpenCodeConfigDir). m.Mu is held.
+func (m *Core) OpenCodePluginHome(home string) string {
+	env, base := m.Cfg.Agents[agents.OpenCode].Env, m.BaseEnv()
+	return hooks.OpenCodePluginHome(home, func(name string) string {
+		if v, ok := env[name]; ok {
+			return v
+		}
+		v := ""
+		for _, kv := range base { // the last wins, as in WithUserEnv
+			if k, val, _ := strings.Cut(kv, "="); k == name {
+				v = val
+			}
+		}
+		return v
+	})
+}
+
 // InstallProjectSkills puts the skills in the folder t's agent starts in,
 // when the setting says so, and keeps them — and a notes folder inside the
 // worktrees — out of git. Mu is held throughout; a start does the same
@@ -218,8 +238,8 @@ func (m *Core) applySkills(trust func(write bool) (bool, error)) string {
 		if slices.Contains(m.Available(), agents.OpenCode) {
 			// With the skills, nerdr's plugin, which tells nerdr what
 			// opencode is doing.
-			file := hooks.OpenCodePluginHome(home)
-			if ok, err := hooks.InstallOpenCodePlugin(file); err != nil {
+			file := m.OpenCodePluginHome(home)
+			if ok, err := hooks.InstallOpenCodePluginHome(file); err != nil {
 				return "opencode plugin: " + err.Error()
 			} else if ok {
 				wrote = append(wrote, TildePath(file, home))

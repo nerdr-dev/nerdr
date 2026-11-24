@@ -214,7 +214,7 @@ func TestOpenCodePluginGoesWithTheSkills(t *testing.T) {
 	m.home().Core.Cfg.Install = config.InstallHome
 	m.home().Core.Cfg.Agents = map[agents.Kind]agents.Spec{agents.OpenCode: {Command: []string{"sh"}}}
 	note := m.home().Core.ApplySkills()
-	if _, err := os.Stat(hooks.OpenCodePluginHome(home)); err != nil {
+	if _, err := os.Stat(m.home().Core.OpenCodePluginHome(home)); err != nil {
 		t.Fatalf("no plugin in the home folder: %v", err)
 	}
 	if !strings.Contains(note, "~/.config/opencode/plugins/nerdr.js") {

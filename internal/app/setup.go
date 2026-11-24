@@ -247,7 +247,7 @@ func (d *setupDialog) view(m *Model, w, h int) string {
 		where = append(where, core.TildePath(tg.Dir, home)+" ("+strings.Join(names, ", ")+")")
 	}
 	if slices.Contains(m.dialogOn().Core.Available(), agents.OpenCode) {
-		where = append(where, core.TildePath(hooks.OpenCodePluginHome(home), home)+" (opencode's plugin, which says what it is doing)")
+		where = append(where, core.TildePath(m.dialogOn().Core.OpenCodePluginHome(home), home)+" (opencode's plugin, which says what it is doing)")
 	}
 	if slices.Contains(m.dialogOn().Core.Available(), agents.Copilot) {
 		// Not in the home folder: see core.CopilotPlugin.

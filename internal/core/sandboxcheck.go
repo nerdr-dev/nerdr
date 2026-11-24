@@ -406,7 +406,7 @@ func (m *Core) sandboxWarns(*Tab) []string {
 	}
 	var files []string
 	if slices.Contains(kinds, agents.OpenCode) {
-		files = append(files, hooks.OpenCodePluginHome(home))
+		files = append(files, m.OpenCodePluginHome(home))
 	}
 	if slices.Contains(kinds, agents.Antigravity) {
 		files = append(files, hooks.AgyHooksHome(home))
