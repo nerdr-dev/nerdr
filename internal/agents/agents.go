@@ -72,7 +72,20 @@ type Spec struct {
 	// CheckCommand is set for a wrapper that does not take the agent's
 	// program as a word of its own; see core's CheckSandbox.
 	CheckCommand []string `toml:"check_command"`
+	// SandboxCheck is how often the sandbox is checked: CheckOnce, or
+	// before every launch, as anything else is taken to mean.
+	SandboxCheck string `toml:"sandbox_check"`
 }
+
+// SandboxCheck values. CheckAlways is the default: any other value than
+// CheckOnce is taken as it.
+const (
+	CheckAlways = "always"
+	// CheckOnce checks the sandbox until a check passes, and not again
+	// for as long as the core runs, unless what the check depends on
+	// changes; see core's CheckSandbox.
+	CheckOnce = "once"
+)
 
 // openCodeConfigEnv is the variable opencode reads inline config from.
 const openCodeConfigEnv = "OPENCODE_CONFIG_CONTENT"

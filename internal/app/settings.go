@@ -355,6 +355,12 @@ func (m *Model) settingRows() []settingRow {
 					"Empty: the check runs through command, with nerdr in place of the agent's program.\n" +
 					"If this command gives nerdr another sandbox policy than the agent's, the check does not try the sandbox the agent gets.",
 				example: `check_command = ["my-sandbox", "exec", "--"]`},
+			settingRow{table: table, key: "sandbox_check", kind: sChoice, choices: []string{agents.CheckAlways, agents.CheckOnce}, def: `"always"`,
+				desc: "With sandboxed on: how often nerdr checks the sandbox before the agent starts, which takes as long as the sandbox takes to start.\n" +
+					"always: before every start, in that tab's folder and environment.\n" +
+					"once: until a check passes, then not again while nerdr's core runs, unless this agent's settings, the wrapper or the repository change. " +
+					"Quicker, but a sandbox whose own files or environment loosen it meanwhile is not noticed until the core starts again.",
+				example: `sandbox_check = "once"`},
 			settingRow{table: "review.args", key: string(k), label: "review args", kind: sList,
 				desc:    "Arguments added when this agent reviews another's work, after its args. Reviewers are told not to change files; this is where you make sure they cannot, with the agent's own read-only mode.",
 				example: reviewArgsExample(k)},
