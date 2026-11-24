@@ -116,6 +116,10 @@ type Model struct {
 	cfgWhat      map[string]string
 	restartNoted map[string]string
 	router       *input.Router
+	// clicked is the program a click was last passed to, and clickedAt
+	// when: a copy it makes just after is the user's (see checkCopied).
+	clicked   core.Program
+	clickedAt time.Time
 
 	started time.Time // when the last input was first asked for: input counts from then
 	// screenKeeper keeps the screen on, made the first time it is wanted;

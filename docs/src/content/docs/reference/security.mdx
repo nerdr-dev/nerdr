@@ -55,10 +55,13 @@ about it, and what is left for your sandbox to do.
   a plugin run that needs it does not run when its time to be answered
   runs out. Nothing is approved by itself.
 
-nerdr discards OSC 52 clipboard requests printed by programs, including
-the focused agent, terminal or editor. Copy text using nerdr's own
-selection instead. Recent input or a visible pane does not authorize a
-program to replace the clipboard.
+nerdr passes on an OSC 52 clipboard request printed by a program only
+when it comes from the pane with the keyboard within two seconds of a
+click passed to that program or keys typed to it: a selection made in an
+agent that has the mouse, or its copy command. Requests from any other
+pane, or with no such input, such as one printed by a file the agent
+shows, are discarded. Focus alone, a visible pane, or the mouse moving
+over a program does not authorize it to replace the clipboard.
 
 While the client is disconnected, nerdr keeps the latest 64 distinct
 notices, up to 64 KiB of encoded messages in total. Repeated notices move
