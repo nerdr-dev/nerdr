@@ -368,8 +368,7 @@ func TestOpenCodePluginInstallUpdatesOnlyNerdrs(t *testing.T) {
 // TestOpenCodePluginHomeIsOpenCodesConfigDir covers where the plugin goes
 // for every opencode: the folder opencode takes its config from in the
 // environment given — OPENCODE_CONFIG_DIR, else XDG_CONFIG_HOME's
-// opencode, else ~/.config/opencode, and past an OPENCODE_CONFIG_DIR that
-// is relative — and that one there, even outside the home folder, is
+// opencode, else ~/.config/opencode, and past either when relative — and that one there, even outside the home folder, is
 // installed through a symbolic link to the folder, as dotfiles have it,
 // but not into a FIFO.
 func TestOpenCodePluginHomeIsOpenCodesConfigDir(t *testing.T) {
@@ -382,6 +381,8 @@ func TestOpenCodePluginHomeIsOpenCodesConfigDir(t *testing.T) {
 		{"neither", "", "", func(home, _ string) string { return filepath.Join(home, ".config", "opencode") }},
 		{"relative OPENCODE_CONFIG_DIR", "oc", "/xdg", func(_, out string) string { return filepath.Join(out, "xdg", "opencode") }},
 		{"relative OPENCODE_CONFIG_DIR alone", "oc", "", func(home, _ string) string { return filepath.Join(home, ".config", "opencode") }},
+		{"relative XDG_CONFIG_HOME", "", "xdg", func(home, _ string) string { return filepath.Join(home, ".config", "opencode") }},
+		{"both relative", "oc", "xdg", func(home, _ string) string { return filepath.Join(home, ".config", "opencode") }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			home, out := t.TempDir(), t.TempDir() // out: outside the home folder
