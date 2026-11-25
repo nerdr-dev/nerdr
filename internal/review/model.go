@@ -472,7 +472,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Nothing else falls through: the review layout's keys act on
 			// panes that aren't on screen, and silently toggling the base
 			// diff or the file filter from here would only surprise.
-			if k := msg.String(); k == "q" || k == "ctrl+c" {
+			if k := msg.String(); k == "q" || k == "esc" || k == "ctrl+c" {
 				return m, m.quit()
 			}
 			return m, nil
