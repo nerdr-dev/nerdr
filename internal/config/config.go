@@ -58,6 +58,10 @@ type Config struct {
 	ClaudeStatusLine *bool `toml:"claude_status_line" scope:"core"`
 	// TabDetails shows each tab's change, PR and CI state in the tab bar.
 	TabDetails *bool `toml:"tab_details" scope:"client"`
+	// BottomBar is a row along the bottom of the screen: what wants a look
+	// in all the tabs, the active tab's branch, changes and pull request,
+	// and its tasks and the saved prompts, each a button for its screen.
+	BottomBar *bool `toml:"bottom_bar" scope:"client"`
 	// TabBar is where the repositories and their tabs are shown: "top",
 	// two rows over the agent, or "left", two lists beside it, the
 	// repositories over the active one's tabs; "left-small" is those
@@ -331,6 +335,10 @@ func defaults(c Config) Config {
 	if c.TabDetails == nil {
 		t := true
 		c.TabDetails = &t
+	}
+	if c.BottomBar == nil {
+		t := true
+		c.BottomBar = &t
 	}
 	switch c.TabBar {
 	case "top", "left", "left-small":

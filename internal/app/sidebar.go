@@ -473,13 +473,13 @@ func (m *Model) sideBarRow() string {
 		st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("231")).Bold(true)
 		left = st.Render(" ") + m.lightTip(t.Lit(), tabBarBg, "") + st.Render(" "+t.Name+" ") +
 			lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("248")).Render(string(t.Agent)+" ")
-		if m.showDetails {
+		if m.showDetails && m.footRows() == 0 {
 			if d := m.details(t, tabBarBg, true); d != "" {
 				left += d + bar.Render(" ")
 			}
 		}
 	}
-	warning := m.overlapWarning()
+	warning := m.topWarning()
 	msg, _ := m.barStatus()
 	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-1)
 	return joinBar(left, warning+msg, m.width, bar)
@@ -510,7 +510,7 @@ func (m *Model) sideWheel(ev tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	y := ev.Y - m.barRows()
-	rh := m.sideRepoH(m.height-m.barRows(), m.sideSmall)
+	rh := m.sideRepoH(m.bodyH(), m.sideSmall)
 	if y < rh {
 		return m.stepGroup(wheelDir(ev))
 	}

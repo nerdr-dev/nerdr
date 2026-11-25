@@ -59,6 +59,7 @@ and quit moves to the prefix letter. Menus and hints follow.
 |---|---|---|
 | `tab_bar` | `"left"` | Where the tabs go: `top`, `left`, or `left-small` (status lights only). |
 | `tab_details` | `true` | Changes, pull request and CI in the tab list. |
+| `bottom_bar` | `true` | A row along the bottom: on the left, failing CI, pull request and issue news, tabs waiting and tabs merged across all tabs; in the middle, the active tab's branch, ahead and behind, files not committed, commits not pushed, lines changed and pull request; on the right, its tasks and the saved prompts. Each is a button for its screen. Off, the news and the active tab's details are in the bar at the top. |
 | `key_panel` | `false` | nerdr's keys and what each does, all the time, in a narrow column on the right; a group's keys open below it when its key is pressed. Off, they show in a box in the middle after the prefix. |
 | `prefix_hint` | `true` | A box in the middle of the screen with every key after the prefix, the most used first, when you wait a moment after it. |
 | `pane_min_width` | `60` | The narrowest a pane is shown side by side, in columns; past it, the panes used longest ago fold away. |
@@ -257,7 +258,7 @@ keys about what you see and how nerdr reaches you are read where you run
 nerdr:
 
 `prefix`, `mouse`, `function_keys`, `tab_bar`, `tab_details`,
-`key_panel`, `prefix_hint`, `pane_min_width`, `diff_colors`,
+`bottom_bar`, `key_panel`, `prefix_hint`, `pane_min_width`, `diff_colors`,
 `status_lights`, `fps`, `notify`, `pr_notify`, `issue_notify`,
 `editor`, `worktree_editor`, `browser`,
 `keep_screen_on`, `keep_screen_max` and `[[servers]]`.

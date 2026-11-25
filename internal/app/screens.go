@@ -121,7 +121,7 @@ func (m *Model) closePanel() tea.Cmd {
 // dlgRect is where the panel's dialog is on the screen: its top-left
 // corner and its size, over the agent and its panes.
 func (m *Model) dlgRect() (x, y, w, h int) {
-	mw, bh := m.mainW(), max(m.height-m.barRows(), 3)
+	mw, bh := m.mainW(), max(m.bodyH(), 3)
 	w = max(min(mw-4, mw*9/10), min(mw, 40))
 	h = max(bh-2, min(bh, 10))
 	return m.sideW() + (mw-w)/2, m.barRows() + (bh-h)/2, w, h

@@ -385,9 +385,12 @@ type Model struct {
 	looking bool
 
 	showDetails bool
-	hideGroups  bool // the repository row put away; see showGroups
-	sideBar     bool // the repositories and tabs left of the body; see sidebar.go
-	sideSmall   bool // and made small, to their lights
+	// bottomBar is whether the row along the bottom is shown; see
+	// bottombar.go.
+	bottomBar  bool
+	hideGroups bool // the repository row put away; see showGroups
+	sideBar    bool // the repositories and tabs left of the body; see sidebar.go
+	sideSmall  bool // and made small, to their lights
 
 	// groupRow and tabRows are what the bars showed when last drawn, the
 	// tab row's per group; see barscroll.go. roomAsked is set while a new
@@ -417,6 +420,7 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		splitWidth:  50,
 		lastInGroup: map[string]core.TabRef{},
 		showDetails: *cfg.TabDetails,
+		bottomBar:   cfg.BottomBar == nil || *cfg.BottomBar,
 		sideBar:     cfg.TabBar == "left" || cfg.TabBar == "left-small",
 		sideSmall:   cfg.TabBar == "left-small",
 		mouse:       mouseCells,
@@ -1028,7 +1032,7 @@ func (m *Model) agentArea() (int, int) {
 			w = rw
 		}
 	}
-	return max(w, 12), max(m.height-m.barRows(), 5)
+	return max(w, 12), max(m.bodyH(), 5)
 }
 
 // mainW is the columns of the body left of the menu's column.
