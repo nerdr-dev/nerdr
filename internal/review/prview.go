@@ -46,8 +46,9 @@ var screens = [...]struct {
 	{"f2", modePRs, "github", "github"},
 	{"f3", modeMessages, "tasks", "tasks"},
 	{"f4", modeSkills, "skills", "skills"},
-	{"f5", modePlugins, "plugins", "plugins"},
-	{"f6", modeHistory, "history", "history"},
+	// The plugins have no F-key: they open in a pane (nerdr's prefix t p).
+	{"", modePlugins, "plugins", "plugins"},
+	{"f5", modeHistory, "history", "history"},
 }
 
 // menuModes are the screens the menu has, in its order.
@@ -62,7 +63,7 @@ func (m Model) menuModes() []uiMode {
 // keyMode is the screen function key k goes to, if the menu has it.
 func (m Model) keyMode(k string) (uiMode, bool) {
 	for _, s := range screens {
-		if s.key == k {
+		if s.key != "" && s.key == k {
 			return s.mode, true
 		}
 	}
@@ -78,11 +79,29 @@ func (m Model) screenKey(i int) string {
 	return strings.ToUpper(screens[i].key)
 }
 
+// ScreenFKey is screen i's F-key ("f5"), "" for one that has none.
+func ScreenFKey(i int) string {
+	if i < 0 || i >= len(screens) {
+		return ""
+	}
+	return screens[i].key
+}
+
+// ScreenOfFKey is the screen F-key k ("f5") opens.
+func ScreenOfFKey(k string) (int, bool) {
+	for i, s := range screens {
+		if s.key != "" && s.key == k {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
 // menu is the top-level menu's labels, in menuModes' order.
 func (m Model) menu() []string {
 	var labels []string
 	for i, s := range screens {
-		l := m.screenKey(i) + " " + s.label
+		l := strings.TrimSpace(m.screenKey(i) + " " + s.label)
 		if s.mode == modePRs && (m.prNews || m.issueNews) {
 			l += " ◆"
 		}
@@ -99,12 +118,12 @@ func (m Model) Messages() bool { return m.mode == modeMessages }
 // nerdr draws as it does the messages.
 func (m Model) Skills() bool { return m.mode == modeSkills }
 
-// Plugins reports whether the panel is showing the plugins (F5), which
+// Plugins reports whether the panel is showing the plugins, which
 // nerdr draws as it does the messages.
 func (m Model) Plugins() bool { return m.mode == modePlugins }
 
 // History reports whether the panel is showing what nerdr has said in
-// its bar (F6), which nerdr draws as it does the messages.
+// its bar, which nerdr draws as it does the messages.
 func (m Model) History() bool { return m.mode == modeHistory }
 
 // PRView is which of F2's views the panel shows.
@@ -203,7 +222,7 @@ type Screen struct {
 	view PRView
 }
 
-// ScreenNames are the menu's screens' names, F1 to F6.
+// ScreenNames are the menu's screens' names, F1 to F5.
 func ScreenNames() []string {
 	var out []string
 	for _, s := range screens {
@@ -212,7 +231,7 @@ func ScreenNames() []string {
 	return out
 }
 
-// ScreenShort are the menu's screens' short names, F1 to F6, for nerdr's
+// ScreenShort are the menu's screens' short names, F1 to F5, for nerdr's
 // column of F-keys.
 func ScreenShort() []string {
 	var out []string

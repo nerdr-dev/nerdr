@@ -231,9 +231,9 @@ func (m Model) menuShown(width int) []string {
 // review layout's own keys live in its panes; the PR screen has no panes to
 // move between, so almost nothing is left to say here.
 func (m Model) globalHints() string {
-	menu := "m or F1-F6 menu"
+	menu := "m or F1-F5 menu"
 	if m.screensHint != "" {
-		menu = "m or " + m.screensHint + " menu"
+		menu = "m menu, or " + m.screensHint
 	}
 	if m.mode != modeReview {
 		return menu + " · esc agent"

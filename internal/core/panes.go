@@ -465,7 +465,7 @@ const (
 // The review panel's screens a view pane can show.
 const (
 	ViewChanges = 0 // F1
-	ViewPlugins = 4 // F5
+	ViewPlugins = 4 // no F-key: the prefix and t p
 )
 
 // PaneTab is one of a tab's panes.

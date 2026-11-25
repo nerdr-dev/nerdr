@@ -14,7 +14,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 )
 
-// What F5 reads and writes of the user's plugins, where core is: the
+// What the plugins pane reads and writes of the user's plugins, where core is: the
 // plugins run here. A client asks core, by a Job of its own, and is told
 // the answer by it: core does it away from its loop, as it reads disk.
 

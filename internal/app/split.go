@@ -76,7 +76,7 @@ func (m *Model) toggleSplit() tea.Cmd {
 	t := m.Cur()
 	other := m.neighbour(t)
 	if other == nil {
-		m.toast(m.commandOff("z v"))
+		m.toast(m.commandOff("l v"))
 		return nil
 	}
 	return m.splitWith(other, t)

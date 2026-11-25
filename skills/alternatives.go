@@ -24,7 +24,7 @@ The command sends an existing summary. It cannot recover decisions and context f
      nerdr plugin run NAME --PARAM VALUE
      nerdr plugin stop NAME
 
-These replace listing, running and stopping plugins directly. Plugin permissions and confirmations still apply; plugins marked for the user only open in F5. Without the skill, the agent loses guidance on finding a plugin for your task, choosing parameters, handling watch output and making plugins.`
+These replace listing, running and stopping plugins directly. Plugin permissions and confirmations still apply; plugins marked for the user only open in the plugins pane (ctrl+q t p). Without the skill, the agent loses guidance on finding a plugin for your task, choosing parameters, handling watch output and making plugins.`
 	case "nerdr-request-review":
 		return `CLI: nerdr request-review "Look especially at the retry loop"
      nerdr request-review --agent codex "Review focus"

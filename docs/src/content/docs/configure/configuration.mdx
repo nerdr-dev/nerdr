@@ -45,7 +45,7 @@ connected.
 |---|---|---|
 | `prefix` | `"ctrl+q"` | The key before every nerdr command: any `ctrl+<letter>`. Avoid keys your agents use. |
 | `mouse` | `true` | Clicks, menus, the wheel and selecting text. Off, the terminal keeps its own selection. |
-| `function_keys` | `true` | Label the panel's screens F1–F6. Off, label them with `ctrl+q e 1`…`e 6`, for keyboards where the F-keys are hard to reach. |
+| `function_keys` | `true` | Label the panel's screens F1–F5. Off, label them with their `ctrl+q` keys (`g c`, `g g`, `e`, `k`, `h`), for keyboards where the F-keys are hard to reach. |
 
 If the prefix letter is also a command key, that command moves to `q`,
 and quit moves to the prefix letter. Menus and hints follow.
@@ -56,7 +56,8 @@ and quit moves to the prefix letter. Menus and hints follow.
 |---|---|---|
 | `tab_bar` | `"left"` | Where the tabs go: `top`, `left`, or `left-small` (status lights only). |
 | `tab_details` | `true` | Changes, pull request and CI in the tab list. |
-| `key_panel` | `false` | nerdr's keys and what each does, all the time, in a narrow column on the right; a group's keys open below it when its key is pressed. Off, they show over the bottom rows after the prefix. |
+| `key_panel` | `false` | nerdr's keys and what each does, all the time, in a narrow column on the right; a group's keys open below it when its key is pressed. Off, they show in a box in the middle after the prefix. |
+| `prefix_hint` | `true` | A box in the middle of the screen with every key after the prefix, the most used first, when you wait a moment after it. |
 | `pane_min_width` | `60` | The narrowest a pane is shown side by side, in columns; past it, the panes used longest ago fold away. |
 | `diff_colors` | `"nerdr"` | Colours of the changes in F1: `nerdr` or `github`. |
 | `status_lights` | `"dots"` | `dots`, or `symbols`: ◐ working, ◎ background process, × needs input, ✓ done. |
@@ -153,7 +154,7 @@ nerdr.
 
 logind lets only a login session block sleep. nerdr on a server, started
 over ssh by the nerdr in front of you, is in none, so it blocks idle
-alone, and notes so in the [history (F6)](../../panel/history/), not in
+alone, and notes so in the [history (F5)](../../panel/history/), not in
 the bar. That holds off logind's own suspend when idle (`IdleAction`),
 which is all a server without a desktop has, but not a suspend asked
 for, such as a desktop's after it has been idle a while. For a server
@@ -243,7 +244,7 @@ ssh = "box"           # the host as ssh knows it; the name when left out
 folder = "~/src"      # the folder there whose tabs nerdr shows; ~ when left out
 ```
 
-The Machines dialog (`ctrl+q k`) adds and removes servers here too.
+The Machines dialog (`ctrl+q d`) adds and removes servers here too.
 
 ## Which machine a setting is for
 
@@ -252,7 +253,7 @@ keys about what you see and how nerdr reaches you are read where you run
 nerdr:
 
 `prefix`, `mouse`, `function_keys`, `tab_bar`, `tab_details`,
-`key_panel`, `pane_min_width`, `diff_colors`,
+`key_panel`, `prefix_hint`, `pane_min_width`, `diff_colors`,
 `status_lights`, `fps`, `notify`, `pr_notify`, `issue_notify`,
 `editor`, `worktree_editor`, `browser`,
 `keep_screen_on`, `keep_screen_max` and `[[servers]]`.

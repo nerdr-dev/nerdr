@@ -232,13 +232,12 @@ func (m *Model) draw() string {
 			body = overlay(body, box, m.width)
 		}
 	}
-	if m.prefix && !(m.nav && m.sideW() > 0) && !m.railShown() {
-		// What the prefix can be followed by, over the bottom rows, until
-		// the next key. Not while the arrows walk the sidebar: it would
-		// hide the tabs walked, and the bar says what the arrows do.
+	if m.hintShown() {
+		// What the prefix can be followed by, in a box in the middle,
+		// until the next key.
 		m.hintZones = len(m.zoneFns)
-		hint := m.prefixHint(m.width)
-		copy(body[max(len(body)-len(hint), 0):], hint)
+		box := m.area(m.prefixHint(m.width, len(body)), func(*Model, tea.MouseMsg) tea.Cmd { return nil })
+		body = overlay(body, box, m.width)
 	}
 	return bars + "\n" + strings.Join(body, "\n")
 }
@@ -574,7 +573,7 @@ func (m *Model) overlapWarning() string {
 		n += len(o.Files)
 	}
 	return m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("214")).
-		Render(" ⚠ "+core.Plural(n, "file")+" also changed in "+ov[0].With.Name+moreTabs(len(ov)-1)+" · "+m.pk("i i")+" "),
+		Render(" ⚠ "+core.Plural(n, "file")+" also changed in "+ov[0].With.Name+moreTabs(len(ov)-1)+" · "+m.pk("g g")+" "),
 		(*Model).showBranchPR), "Other tabs change some of the same files · click: which")
 }
 
@@ -591,7 +590,7 @@ func (m *Model) repoLabel(g string) string {
 	return m.tip(m.onClick(s, func(m *Model) tea.Cmd {
 		m.hideGroups = false
 		return nil
-	}), "Repository "+g+" · "+m.pk("g")+": next · click or "+m.pk("z b")+": show all repositories")
+	}), "Repository "+g+" · "+m.pk("]")+": next · click or "+m.pk("l b")+": show all repositories")
 }
 
 // tabMouse handles the mouse on tab t in the tab bar: a click goes to it,
@@ -699,61 +698,6 @@ func overlayAt(body []string, box string, w, left, top int) []string {
 		body[y] = prefix + "\x1b[0m" + padTo(l, bw) + "\x1b[0m" + suffix
 	}
 	return body
-}
-
-// prefixHint lists the commands the prefix key leads to, wrapped to w
-// columns: shown while nerdr waits for the key after the prefix, so the
-// keys never have to be remembered. At the top it has the keys most used,
-// a line to a group; in a group (prefix i, say), the group's keys.
-func (m *Model) prefixHint(w int) []string {
-	bg := lipgloss.Color("236")
-	keySt := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("81")).Bold(true)
-	txtSt := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("252"))
-	heading := txtSt.Bold(true).Foreground(accent)
-	groups := core.CommandGroups()
-	if m.sideW() > 0 {
-		groups = sideArrows(groups)
-	}
-	inGroup := false
-	if g, ok := core.KeyGroups()[m.keyGroup]; ok {
-		groups, inGroup = []core.CommandGroup{g}, true
-	}
-	var lines []string
-	for _, group := range groups {
-		cur := heading.Render(" "+group.Title) + txtSt.Render("   ")
-		for _, e := range group.Entries {
-			if e.Rare {
-				continue
-			}
-			entry := e
-			key := e.Key
-			if !inGroup && !panelKey(e.Run) {
-				key = m.shownKeys(key) // a group's keys come after its own
-			}
-			part := keySt.Render(key) + txtSt.Render(" "+e.Label+"   ")
-			if m.commandOff(e.Run) != "" {
-				off := txtSt.Foreground(lipgloss.Color("241"))
-				part = off.Render(key) + off.Render(" "+e.Label+"   ")
-			}
-			if lipgloss.Width(cur)+lipgloss.Width(part) > w && lipgloss.Width(cur) > 1 {
-				lines = append(lines, padBg(cur, w, txtSt))
-				cur = txtSt.Render("   ")
-			}
-			part = ansi.Truncate(part, max(1, w-1), "…")
-			part = m.onClick(part, func(m *Model) tea.Cmd { return m.keyClick(entry) })
-			cur += part
-		}
-		lines = append(lines, padBg(cur, w, txtSt))
-	}
-	room := max(1, m.height-m.barRows()-2)
-	pages := max(1, (len(lines)+room-1)/room)
-	m.prefixPage = min(m.prefixPage, pages-1)
-	start := m.prefixPage * room
-	visible := lines[start:min(len(lines), start+room)]
-	if pages > 1 {
-		visible = append(visible, padBg(txtSt.Render(" PgUp / PgDn: more commands"), w, txtSt))
-	}
-	return visible
 }
 
 func padBg(s string, w int, st lipgloss.Style) string {

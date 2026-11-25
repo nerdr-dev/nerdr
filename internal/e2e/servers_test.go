@@ -144,7 +144,7 @@ func TestServerLogin(t *testing.T) {
 	logins := func() int { return strings.Count(readFile(filepath.Join(scratch, "ssh.log")), "\n") }
 	machines := func(h *harness, want string) {
 		t.Helper()
-		h.keys(prefix + "k")
+		h.keys(prefix + "d")
 		h.waitFor("Machines", 5*time.Second)
 		h.waitFor(want, 10*time.Second)
 	}
@@ -152,7 +152,7 @@ func TestServerLogin(t *testing.T) {
 	// Added in the TUI: it pauses for ssh's password.
 	h := startArgs(t, bin, root, env, 160, 40)
 	newCrashTab(h)
-	h.keys(prefix + "k")
+	h.keys(prefix + "d")
 	h.waitFor("Machines", 5*time.Second)
 	h.keys("a")
 	h.waitFor("Add a server", 5*time.Second)

@@ -383,8 +383,8 @@ func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 	return btn("terminal", "t t", "A terminal in the worktree, in a new pane", func(m *Model) tea.Cmd { return m.newShell() }) + sp +
 		btn("agent", "t a", "Another agent in the same worktree, in a new conversation", (*Model).openNewAgent) + sp +
 		btn("review", "t r", "A second agent reviews the work of the agent whose pane has the keyboard", (*Model).newReviewPane) + sp +
-		btn("changes", "z e", "The code changes in a new pane, with a file and diff of its own; F1 alone is a dialog", func(m *Model) tea.Cmd { return m.newView(core.ViewChanges) }) + sp +
-		btn("plugins", "e 5", "The plugins in a new pane, with a plugin of its own", func(m *Model) tea.Cmd { return m.newView(core.ViewPlugins) }) + sp
+		btn("changes", "t c", "The code changes in a new pane, with a file and diff of its own; F1 alone is a dialog", func(m *Model) tea.Cmd { return m.newView(core.ViewChanges) }) + sp +
+		btn("plugins", "t p", "The plugins in a new pane, with a plugin of its own", func(m *Model) tea.Cmd { return m.newView(core.ViewPlugins) }) + sp
 }
 
 // goToPane goes to tab t and gives its pane p the keyboard.

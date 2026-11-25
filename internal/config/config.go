@@ -65,15 +65,18 @@ type Config struct {
 	TabBar string `toml:"tab_bar" scope:"client"`
 	// FunctionKeys is whether the review panel's menu and nerdr's hints
 	// name its screens by F1-F4. Off, they name the prefix keys that do
-	// the same (prefix e 1 to e 4), for a keyboard where the F-keys are
+	// the same (the prefix and g c, g g, e, k, h), for a keyboard where the F-keys are
 	// hard to reach: a Mac laptop's are brightness and volume unless fn
 	// is held. F1-F4 work either way.
 	FunctionKeys *bool `toml:"function_keys" scope:"client"`
 	// KeyPanel is whether a narrow column on the right shows the prefix's
 	// keys all the time, each with what it does, a group opening below
-	// itself when its key is pressed. Off, they show over the bottom rows
-	// while nerdr waits for the key after the prefix.
+	// itself when its key is pressed. Off, they show in a box in the middle
+	// while nerdr waits for the key after the prefix (prefix_hint).
 	KeyPanel *bool `toml:"key_panel" scope:"client"`
+	// PrefixHint is whether a box in the middle of the screen lists the
+	// keys after the prefix, when nerdr has waited a moment for the next.
+	PrefixHint *bool `toml:"prefix_hint" scope:"client"`
 	// PaneMinWidth is the narrowest, in columns, a tab's panes are shown
 	// side by side: past it, the ones used longest ago are minimised to
 	// the row over them.
@@ -350,7 +353,7 @@ func defaults(c Config) Config {
 	if c.PaneMinWidth <= 0 {
 		c.PaneMinWidth = DefaultPaneMinWidth
 	}
-	for _, b := range []**bool{&c.CloseMerged, &c.PRNotify, &c.IssueNotify, &c.FunctionKeys, &c.ClaudeStatusLine} {
+	for _, b := range []**bool{&c.CloseMerged, &c.PRNotify, &c.IssueNotify, &c.FunctionKeys, &c.PrefixHint, &c.ClaudeStatusLine} {
 		if *b == nil {
 			t := true
 			*b = &t

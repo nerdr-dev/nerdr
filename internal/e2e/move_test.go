@@ -97,7 +97,7 @@ func TestMoveTabToServer(t *testing.T) {
 	}
 	// The tab is box's alone now.
 	h.waitFor("closed crash — the worktree is kept", 10*time.Second)
-	h.keys(prefix + "k")
+	h.keys(prefix + "d")
 	h.waitFor("this machine  0 tabs", 5*time.Second)
 	h.waitFor("box  1 tab", 5*time.Second)
 	h.keys("\x1b")

@@ -37,7 +37,7 @@ question.*
   if you like. [Agents →](https://nerdr.app/configure/agents/)
 - **Your own scripts as plugins.** Custom scripts (like rebuilding Docker or
   seeding a database) that agents can run with parameters, or that you can
-  run directly in `F5`. [Plugins →](https://nerdr.app/configure/plugins/)
+  run directly in a pane (`ctrl+q t p`). [Plugins →](https://nerdr.app/configure/plugins/)
 - **Build on it.** An API lets your own programs follow the agents and
   talk to them: notifications, a phone app, a chat bot.
   [Build on nerdr →](https://nerdr.app/api/overview/)

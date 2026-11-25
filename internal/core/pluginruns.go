@@ -236,7 +236,7 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 		reply(hooks.Answer{Err: clean.Line(p.Name) + " is broken: " + clean.Line(p.Err)})
 		return nil
 	case len(p.Run) == 0:
-		reply(hooks.Answer{Err: clean.Line(p.Name) + " has no run: it is for the user, in nerdr's F5"})
+		reply(hooks.Answer{Err: clean.Line(p.Name) + " has no run: it is for the user, in nerdr's plugins pane"})
 		return nil
 	}
 	p, key, err := plugin.Fresh(p)
@@ -394,7 +394,7 @@ func (m *Core) OnReadRun(r hooks.Report, from *Tab) {
 	run.Proc.Read(r.Offset, Answerer(r))
 }
 
-// pumpRuns takes what the runs printed since, for F5, their screens and
+// pumpRuns takes what the runs printed since, for the plugins pane, their screens and
 // the agents watching with them, and ends those that have ended. A run
 // whose command no longer reads it, or whose agent is gone, is stopped.
 func (m *Core) PumpRuns(now time.Time) {
@@ -566,7 +566,7 @@ func (m *Core) StopAgentRuns(r hooks.Report, a *Tab) {
 	Answerer(r)(hooks.Answer{Text: "Stopping " + strings.Join(stopped, ", ") + ": it ends within a few seconds."})
 }
 
-// stopPickedRun is s in F5: the user stops the run of the plugin picked.
+// stopPickedRun is s in the plugins pane: the user stops the run of the plugin picked.
 func (m *Core) StopPickedRun(t *Tab, p plugin.Plugin) {
 	run := m.PluginRunOf(t, p)
 	if !run.Running() || run.StopBy != "" {

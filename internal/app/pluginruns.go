@@ -20,7 +20,7 @@ import (
 // runs it as the user, outside any sandbox the agent is in: the user
 // allowed what is in it, and perhaps says yes to the run. nerdr keeps
 // what it prints, which the command waiting on it reads and prints for
-// the agent (see pluginexec.go). F5 opens to show the user, the plugin's
+// the agent (see pluginexec.go). The plugins pane opens to show the user, the plugin's
 // light on in the list and a line saying who runs it; the plugin says what
 // more is shown, in its plugin.toml's show (see plugin.ShowValues). A
 // plugin's screen, when it runs, is told the same, to show the run as it
@@ -43,7 +43,7 @@ func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun)
 	}
 	if m.focus == core.FocusReview {
 		if !m.panelPlugins() {
-			m.toast(clean.Line(run.Agent) + " runs the plugin " + clean.Line(name) + " · " + m.screenKey(5) + " shows it")
+			m.toast(clean.Line(run.Agent) + " runs the plugin " + clean.Line(name) + " · " + m.pk("t p") + " shows it")
 		}
 		return nil
 	}
@@ -102,7 +102,7 @@ func (m *Model) runState(run *core.PluginRun) (string, string) {
 	return light(core.StBlocked), fmt.Sprintf("exit %d · %s", run.Exit, agent)
 }
 
-// runLines are the lines F5 shows of run, of plugin p, w wide, above
+// runLines are the lines the plugins pane shows of run, of plugin p, w wide, above
 // its output: who runs it and how long, or how it ended; and the values
 // it was given, when p shows them.
 func (m *Model) runLines(p plugin.Plugin, run *core.PluginRun, w int) []string {
@@ -147,7 +147,7 @@ func (m *Model) runLines(p plugin.Plugin, run *core.PluginRun, w int) []string {
 	return out
 }
 
-// runOutput is what run printed, as F5 shows it: a rule saying it is what
+// runOutput is what run printed, as the plugins pane shows it: a rule saying it is what
 // the agent gets back, and its last lines, n rows in all, w wide.
 func (m *Model) runOutput(run *core.PluginRun, w, n int) []string {
 	agent := clean.Line(run.Agent)

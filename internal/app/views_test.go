@@ -77,7 +77,7 @@ func TestViewPanes(t *testing.T) {
 }
 
 // TestViewKeys: F5 goes to the tab's plugins pane, opening one when it
-// has none; F1 to its changes pane when it has one, else the dialog; z e
+// has none; F1 to its changes pane when it has one, else the dialog; t c
 // puts the F1 dialog in a pane.
 func TestViewKeys(t *testing.T) {
 	m := paneModel(t)
@@ -86,15 +86,15 @@ func TestViewKeys(t *testing.T) {
 	if !m.panelDlg || len(viewPanes(tb, core.ViewChanges)) != 0 {
 		t.Fatal("F1 with no changes pane should be the dialog")
 	}
-	m.runCommand("z e")
+	m.runCommand("t c")
 	changes := viewPanes(tb, core.ViewChanges)
 	if m.panelDlg || len(changes) != 1 || m.focused(tb) != changes[0] {
-		t.Fatal("z e should put the F1 dialog in a pane, with the keyboard")
+		t.Fatal("t c should put the F1 dialog in a pane, with the keyboard")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	plugins := viewPanes(tb, core.ViewPlugins)
 	if len(plugins) != 1 || m.focused(tb) != plugins[0] {
-		t.Fatal("F5 should open the plugins in a pane, with the keyboard")
+		t.Fatal("t p should open the plugins in a pane, with the keyboard")
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyF1})
 	if m.panelDlg || m.focused(tb) != changes[0] {
@@ -104,9 +104,9 @@ func TestViewKeys(t *testing.T) {
 	if m.focused(tb) != tb.OwnPane() {
 		t.Fatal("F1 in the changes pane should go back to the agent")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	if len(viewPanes(tb, core.ViewPlugins)) != 1 || m.focused(tb) != plugins[0] {
-		t.Fatal("F5 should go to the plugins pane there is, not open another")
+		t.Fatal("t p should go to the plugins pane there is, not open another")
 	}
 }
 
@@ -202,7 +202,7 @@ func TestClickInAViewGivesItTheKeyboard(t *testing.T) {
 	writePlugin(t, plugins, "second", "cat\n")
 	m := paneModel(t)
 	tb := m.Cur()
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	p := viewPanes(tb, core.ViewPlugins)[0]
 	m.focusPane(tb, tb.OwnPane())
 	m.View()

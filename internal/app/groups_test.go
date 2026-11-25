@@ -89,13 +89,13 @@ func TestWalkingTabsKeepsThePrefix(t *testing.T) {
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m.handleKey(tea.KeyMsg{Type: tea.KeyRight})
 	walked := m.Cur()
-	m.handleKey(keyMsg("i"))
-	if !m.prefix || m.keyGroup != "i" || m.nav {
-		t.Fatalf("i after walking opens the group: prefix %v, group %q, nav %v", m.prefix, m.keyGroup, m.nav)
+	m.handleKey(keyMsg("g"))
+	if !m.prefix || m.keyGroup != "g" || m.nav {
+		t.Fatalf("g after walking opens the group: prefix %v, group %q, nav %v", m.prefix, m.keyGroup, m.nav)
 	}
-	m.handleKey(keyMsg("i"))
+	m.handleKey(keyMsg("g"))
 	if m.Cur() != walked || !m.panelBranchPR() || m.focus != core.FocusReview || m.prefix {
-		t.Fatalf("i i after walking: F2 %v, focus %v, prefix %v", m.panelBranchPR(), m.focus, m.prefix)
+		t.Fatalf("g g after walking: F2 %v, focus %v, prefix %v", m.panelBranchPR(), m.focus, m.prefix)
 	}
 	m.dialog = nil
 	m.selectTab(0)
@@ -103,7 +103,7 @@ func TestWalkingTabsKeepsThePrefix(t *testing.T) {
 	// esc in a group goes back to the prefix's own keys; a key the group
 	// does not have ends it, and is not typed to the agent.
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	m.handleKey(keyMsg("z"))
+	m.handleKey(keyMsg("l"))
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
 	if !m.prefix || m.keyGroup != "" {
 		t.Fatalf("esc in a group: prefix %v, group %q", m.prefix, m.keyGroup)
@@ -140,7 +140,7 @@ func TestRepositoryRow(t *testing.T) {
 	}
 
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	m.handleKey(keyMsg("z"))
+	m.handleKey(keyMsg("l"))
 	m.handleKey(keyMsg("b"))
 	row := bars()[0]
 	if m.barRows() != 1 || !strings.HasPrefix(row, " app › ") || !strings.Contains(row, "login") || !strings.Contains(row, "? help") {
@@ -151,7 +151,7 @@ func TestRepositoryRow(t *testing.T) {
 	}
 
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	m.handleKey(keyMsg("z"))
+	m.handleKey(keyMsg("l"))
 	m.handleKey(keyMsg("b"))
 	if m.barRows() != 2 {
 		t.Fatal("b again brings the row back")

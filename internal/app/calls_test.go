@@ -41,7 +41,7 @@ func TestCallsDialog(t *testing.T) {
 	if mine.Git != 2 || mine.Gh != 1 {
 		t.Fatalf("the tab's calls: %+v", mine)
 	}
-	cmd := m.run("g", keyMsg("g"))
+	cmd := m.run("g l", keyMsg("l"))
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "asking this machine's core") {
 		t.Fatalf("no dialog waiting for core:\n%s", view)
 	}
@@ -82,7 +82,7 @@ func TestCallsDialogOfACoreElsewhere(t *testing.T) {
 		t.Fatalf("bar says %q", m.toastText)
 	}
 
-	if cmd := m.run("g", keyMsg("g")); cmd != nil {
+	if cmd := m.run("g l", keyMsg("l")); cmd != nil {
 		if msg := cmd(); msg != nil {
 			m.Update(msg)
 		}

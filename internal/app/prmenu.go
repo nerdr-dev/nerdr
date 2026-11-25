@@ -27,7 +27,7 @@ type tabPanel struct {
 }
 
 // showBranchPR is F2 on the tab's branches and its pull request, with the
-// keyboard: where ctrl+q i i takes you.
+// keyboard: where ctrl+q g g takes you.
 func (m *Model) showBranchPR() tea.Cmd {
 	if m.Cur() == nil {
 		return nil

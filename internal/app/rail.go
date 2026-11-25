@@ -1,7 +1,6 @@
 package app
 
 import (
-	"strconv"
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -86,9 +85,14 @@ func (m *Model) keyRows(inner int) []keyRow {
 	}
 	keys, _ := m.screenMenuKeys()
 	for i, name := range review.ScreenNames() {
-		key := "F" + strconv.Itoa(i+1)
+		run := review.ScreenFKey(i)
+		key := strings.ToUpper(run)
 		if i < len(keys) {
 			key = keys[i]
+		}
+		if run == "" { // the plugins, a pane of their own
+			run = "t p"
+			key = m.shownKeys(run)
 		}
 		more := ""
 		if i == 1 && m.review.News() {
@@ -102,7 +106,7 @@ func (m *Model) keyRows(inner int) []keyRow {
 			text = lipgloss.NewStyle().Background(tabActiveBg).Foreground(lipgloss.Color("231")).Bold(true).
 				Render(padTo(ansi.Strip(text), inner))
 		}
-		rows = append(rows, keyRow{text: text, entry: &core.CommandEntry{Key: key, Label: name, Run: "f" + strconv.Itoa(i+1)}})
+		rows = append(rows, keyRow{text: text, entry: &core.CommandEntry{Key: key, Label: name, Run: run}})
 	}
 
 	groups := core.CommandGroups()

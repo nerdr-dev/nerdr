@@ -465,7 +465,7 @@ func (m *Model) savedBody(w, h int) []string {
 		lines = append(lines, " "+dim("No saved prompts yet."), "",
 			" "+dim("Keep what you type into agents again and again, such as"),
 			" "+dim("\"commit, push and open a pull request\", and pick it here"),
-			" "+dim("or with "+m.pk("l")+" instead of writing it out."))
+			" "+dim("or with "+m.pk("p")+" instead of writing it out."))
 	}
 	s.cursor = min(max(s.cursor, 0), max(len(s.list)-1, 0))
 	foot := []string{"",

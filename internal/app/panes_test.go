@@ -74,7 +74,7 @@ func TestPanesFoldTheOldestWhenNarrow(t *testing.T) {
 		t.Fatal("going to the agent shows it, the terminal used longest ago folding in its place")
 	}
 	// The review panel takes room: only the pane with the keyboard is left.
-	m.runCommand("z e")
+	m.runCommand("t c")
 	if !m.paneShown(tb, agent) || m.paneShown(tb, second) {
 		t.Fatal("beside the panel, the pane with the keyboard stays")
 	}

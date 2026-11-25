@@ -63,7 +63,7 @@ func TestPanelShellAndSwitchAgent(t *testing.T) {
 	h.waitGone("─ terminal ─", 3*time.Second)
 
 	// Every PR is in F2, with the keyboard; esc gives it back.
-	h.keys(prefix + "i")
+	h.keys(prefix + "g")
 	h.keys("p")
 	h.waitFor("my pull requests", 3*time.Second)
 	h.waitFor("tab: open in a tab", 3*time.Second)
