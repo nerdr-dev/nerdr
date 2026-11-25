@@ -731,7 +731,12 @@ func TestGlobalPluginsAreInTheGlobalTab(t *testing.T) {
 func TestGlobalPluginScreen(t *testing.T) {
 	cfg := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", cfg)
-	home := t.TempDir()
+	// Resolved: on macOS the temp dir is under /var, a link to
+	// /private/var, and the screen's $PWD is the real path.
+	home, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("HOME", home)
 	m := testModel(t)
 	m.router = input.New(nil, 0x11)

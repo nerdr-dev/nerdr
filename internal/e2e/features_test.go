@@ -85,6 +85,10 @@ func TestFeatures(t *testing.T) {
 	h.waitFor("Task", 2*time.Second)
 	h.keys("second\t") // tick automatic delivery before saving
 	h.keys("\r")
+	// The tasks are a dialog over the agent: esc puts it away.
+	h.waitFor("No tasks yet.", 10*time.Second)
+	h.keys("\x1b")
+	h.waitGone("No tasks yet.", 2*time.Second)
 	h.waitFor("got: second", 10*time.Second)
 
 	// A terminal runs in the worktree beside the agent, and goes away
@@ -106,11 +110,11 @@ func TestFeatures(t *testing.T) {
 	h.keys("renamed\r")
 	h.waitTabBar("1:renamed", 2*time.Second)
 
-	// The agent changes a file: the tab bar shows it.
+	// The agent changes a file: the bottom bar shows it.
 	h.keys("work\r")
 	h.waitFor("done", 8*time.Second)
 	// .env and setup-ran are new files too: 1 line each, and new.txt.
-	h.waitTabBar("+3−0", 30*time.Second)
+	h.waitBottomBar("+3−0", 30*time.Second)
 
 	// The tab panel pushes the branch.
 	h.keys(prefix + "g")
@@ -130,7 +134,7 @@ func TestFeatures(t *testing.T) {
 	h.keys("work\r")
 	h.waitFor("done", 8*time.Second)
 	h.waitTabBar("⚠", 40*time.Second)
-	h.waitTabBar("also changed in renamed", time.Second)
+	h.waitBottomBar("also changed in renamed", time.Second)
 
 	// Find the first tab by name.
 	h.keys(prefix + "f")
@@ -138,13 +142,16 @@ func TestFeatures(t *testing.T) {
 	h.keys("ren")
 	h.keys("\r")
 	h.waitGone("Go to tab", 2*time.Second)
-	h.waitTabBar("also changed in feat-r", 5*time.Second)
+	h.waitBottomBar("also changed in feat-r", 5*time.Second)
 
 	// One message to both tabs of the group.
 	h.keys(prefix + "M")
 	h.waitFor("Task to several tabs", 2*time.Second)
 	h.keys("bcast")
 	h.keys("\r")
+	h.waitFor("No tasks yet.", 10*time.Second)
+	h.keys("\x1b")
+	h.waitGone("No tasks yet.", 2*time.Second)
 	h.waitFor("got: bcast", 10*time.Second)
 	h.keys(prefix + "n\r")
 	h.waitFor("got: bcast", 10*time.Second)
