@@ -4,7 +4,6 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -17,8 +16,8 @@ import (
 // the prefix waits for one of them (prefix a, say), the rest dimmed; with
 // the prefix pressed the column lights up. Off, or where the window has
 // no room for it, the hint line over the bottom rows says the same after
-// the prefix (prefixHint). The F-keys open the review panel's screens at
-// the top of it.
+// the prefix (prefixHint). The review panel's screens are in the groups
+// with the rest (g c, g g, e, k, h, t p), so have no list of their own.
 
 // keyPanelW is the columns of the key panel, its frame included.
 const keyPanelW = 30
@@ -77,38 +76,6 @@ func (m *Model) keyRows(inner int) []keyRow {
 		rows = append(rows, keyRow{text: st.Render(ansi.Truncate(" "+title, inner, "…")), open: open})
 	}
 
-	// The F-keys first: the screens of the review panel.
-	head("Panel", false)
-	shown := -1
-	if m.panelShown() {
-		shown = m.review.ScreenIndex()
-	}
-	keys, _ := m.screenMenuKeys()
-	for i, name := range review.ScreenNames() {
-		run := review.ScreenFKey(i)
-		key := strings.ToUpper(run)
-		if i < len(keys) {
-			key = keys[i]
-		}
-		if run == "" { // the plugins, a pane of their own
-			run = "t p"
-			key = m.shownKeys(run)
-		}
-		more := ""
-		if i == 1 && m.review.News() {
-			more = "◆"
-		}
-		text := item(" ", key, name, false, inGroup, "")
-		if more != "" {
-			text = ansi.Truncate(text, inner-1, "") + warn(more)
-		}
-		if i == shown {
-			text = lipgloss.NewStyle().Background(tabActiveBg).Foreground(lipgloss.Color("231")).Bold(true).
-				Render(padTo(ansi.Strip(text), inner))
-		}
-		rows = append(rows, keyRow{text: text, entry: &core.CommandEntry{Key: key, Label: name, Run: run}})
-	}
-
 	groups := core.CommandGroups()
 	if m.sideW() > 0 {
 		groups = sideArrows(groups)
@@ -125,8 +92,13 @@ func (m *Model) keyRows(inner int) []keyRow {
 				more = core.OnOff(open, " ▾", " ▸")
 			}
 			key := m.shownKeys(e.Key)
+			text := item(" ", key, e.Label, m.commandOff(e.Run) != "", e.Rare || (inGroup && !open), more)
+			if e.Run == "g" && m.review.News() {
+				// News of your pull requests or issues, which F2 shows.
+				text = ansi.Truncate(text, inner-1, "") + warn("◆")
+			}
 			rows = append(rows, keyRow{
-				text:  item(" ", key, e.Label, m.commandOff(e.Run) != "", e.Rare || (inGroup && !open), more),
+				text:  text,
 				open:  open,
 				entry: &e,
 			})

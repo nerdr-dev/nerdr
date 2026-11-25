@@ -259,13 +259,6 @@ func TestFunctionKeysOff(t *testing.T) {
 	if got := m.screenKey(3); got != "ctrl+q e" {
 		t.Fatalf("screenKey(3) = %q", got)
 	}
-	on := true
-	m.home().Core.Cfg.KeyPanel = &on
-	m.resize()
-	v := ansi.Strip(m.View())
-	if !strings.Contains(v, "gc  code changes") || strings.Contains(v, "F1  code changes") {
-		t.Fatalf("the key panel should name gc, not F1:\n%s", v)
-	}
 }
 
 // ] and [ after the prefix go to the next and previous repository, as in
@@ -385,8 +378,13 @@ func TestKeyPanel(t *testing.T) {
 		t.Fatal("key_panel should show the column")
 	}
 	rail := func() string { return ansi.Strip(strings.Join(m.railLines(60), "\n")) }
-	if v := rail(); !strings.Contains(v, "F1  code changes") || !strings.Contains(v, "a   Agent") || strings.Contains(v, "Note for yourself") {
+	if v := rail(); !strings.Contains(v, "a   Agent") || strings.Contains(v, "Note for yourself") {
 		t.Fatalf("the panel should list the keys, its groups closed:\n%s", v)
+	}
+	// The review panel's screens are in the groups, with no list of their
+	// own: the groups start at the top, navigation first.
+	if v := rail(); strings.Contains(v, "F1  code changes") || !strings.HasPrefix(strings.TrimSpace(strings.Split(v, "\n")[1]), "│ Overview and navigation") {
+		t.Fatalf("the panel should start with Overview and navigation, with no Panel:\n%s", v)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
 	m.handleKey(keyMsg("a"))
