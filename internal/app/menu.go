@@ -10,9 +10,8 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/core"
 )
 
-// menu is a list of commands that pops up where it was asked for: the
-// ≡ button's menu of everything nerdr does, or what can be done to the
-// tab or group that was right-clicked. It is the mouse's way to every
+// menu is a list of commands that pops up where it was asked for: what
+// can be done to the tab or group that was right-clicked, and the like. It is the mouse's way to every
 // command, and it shows the key each one has after the prefix, so the
 // keys are learnt by using it.
 type menu struct {
@@ -175,21 +174,6 @@ func (mu *menu) view(m *Model, w, h int) string {
 	}
 	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).
 		Render(strings.Join(rows, "\n"))
-}
-
-// openMenu shows the menu of everything nerdr does.
-func (m *Model) openMenu(x, y int) {
-	var items []menuItem
-	for _, group := range core.AllCommands() {
-		items = append(items, menuItem{label: group.Title})
-		for _, entry := range group.Entries {
-			e := entry
-			items = append(items, menuItem{label: e.Label, key: e.Key, off: m.commandOff(e.Run), run: func(m *Model) tea.Cmd {
-				return m.runCommand(e.Run)
-			}})
-		}
-	}
-	m.dialog = &menu{items: items, x: x, y: y, hi: 1}
 }
 
 // tabItems are the commands on the active tab, as they are in the menus.

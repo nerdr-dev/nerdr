@@ -42,10 +42,10 @@ func lastShape(sent []string) string {
 func TestPointerFollowsTheScreen(t *testing.T) {
 	sent := pointerLog(t)
 	m := testModel(t)
-	clickOn(t, m, "≡ menu", tea.MouseButtonLeft)
+	clickOn(t, m, "logout", tea.MouseButtonRight)
 	mu, ok := m.dialog.(*menu)
 	if !ok {
-		t.Fatalf("dialog %T after ≡", m.dialog)
+		t.Fatalf("dialog %T after a right-click on a tab", m.dialog)
 	}
 	x, y := at(t, m, mu.items[1].label)
 	m.Update(tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionMotion})

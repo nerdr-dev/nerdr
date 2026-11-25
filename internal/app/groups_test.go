@@ -143,7 +143,7 @@ func TestRepositoryRow(t *testing.T) {
 	m.handleKey(keyMsg("l"))
 	m.handleKey(keyMsg("b"))
 	row := bars()[0]
-	if m.barRows() != 1 || !strings.HasPrefix(row, " app › ") || !strings.Contains(row, "login") || !strings.Contains(row, "? help") {
+	if m.barRows() != 1 || !strings.HasPrefix(row, " app › ") || !strings.Contains(row, "login") || !strings.Contains(row, "? commands") {
 		t.Fatalf("put away: the tab row names the repository and has the messages: %q", row)
 	}
 	if w, h := m.agentArea(); h != m.height-1 || w != m.width-m.railCols() {
@@ -160,7 +160,7 @@ func TestRepositoryRow(t *testing.T) {
 	// With one repository there is no row to show, nor a name to give.
 	m.home().Core.Tabs = m.home().Core.Tabs[:2]
 	row = bars()[0]
-	if m.barRows() != 1 || !strings.HasPrefix(row, " ○ 1:login") || !strings.Contains(row, "? help") {
+	if m.barRows() != 1 || !strings.HasPrefix(row, " ○ 1:login") || !strings.Contains(row, "? commands") {
 		t.Fatalf("one repository, one row: %q", row)
 	}
 }

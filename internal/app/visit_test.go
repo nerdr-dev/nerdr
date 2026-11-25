@@ -15,8 +15,16 @@ import (
 func TestMenusRemainReachableInSmallTerminal(t *testing.T) {
 	m := testModel(t)
 	m.height, m.width = 18, 60
-	m.openMenu(0, 0)
-	mu := m.dialog.(*menu)
+	// A menu longer than the screen: every command, as a long list.
+	var items []menuItem
+	for _, g := range core.AllCommands() {
+		items = append(items, menuItem{label: g.Title})
+		for _, e := range g.Entries {
+			items = append(items, menuItem{label: e.Label, key: e.Key, run: func(*Model) tea.Cmd { return nil }})
+		}
+	}
+	mu := &menu{items: items, hi: 1}
+	m.dialog = mu
 	for range len(mu.items) {
 		mu.key(m, keyMsg("down"))
 	}

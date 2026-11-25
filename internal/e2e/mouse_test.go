@@ -125,22 +125,15 @@ func TestMouse(t *testing.T) {
 	h.click("enter save")
 	h.waitTabBar("2:renamed", 2*time.Second)
 
-	// ≡ has everything; a click outside puts it away.
-	h.click("≡ menu")
-	h.waitFor("Overview and navigation", 2*time.Second)
-	h.keys("\x1b[<0;3;38M\x1b[<0;3;38m")
-	h.waitGone("Overview and navigation", 2*time.Second)
-	h.click("≡ menu")
-	h.keys(strings.Repeat("\x1b[6~", 10)) // scroll to Settings and help
-	h.waitFor("All commands", 2*time.Second)
-	h.click("All commands")
+	// ? commands has everything.
+	h.click("? commands")
 	h.waitFor("type to filter", 2*time.Second)
 	h.keys("\x1b")
 	h.waitGone("type to filter", 2*time.Second)
 }
 
 // TestMouseNewTabFromGroupMenu opens a tab for another repository from
-// ≡'s New tab, and one for the same repository from the group's menu.
+// the command palette's New tab, and one for the same repository from the group's menu.
 func TestMouseNewTabFromGroupMenu(t *testing.T) {
 	bin := build(t)
 	root, scratch := setup(t)
@@ -165,8 +158,8 @@ func TestMouseNewTabFromGroupMenu(t *testing.T) {
 	h.waitTabBar("1:one", 10*time.Second)
 
 	// With one repository there is no group bar, and the tab row's + is
-	// for that repository: ≡'s New tab is for any.
-	h.click("≡ menu")
+	// for that repository: the palette's New tab is for any.
+	h.click("? commands")
 	h.click("New tab")
 	h.waitFor("Repositories in", 2*time.Second)
 	h.click("repoB")

@@ -217,7 +217,7 @@ func (m *Model) settingRows() []settingRow {
 			`key_panel = true`),
 		b("prefix_hint", "true",
 			"Shows a box in the middle of the screen with every key you can press after the prefix, the most used first, when you wait a moment after pressing it. A key marked › opens a group of its own: its keys then show in the box, and esc or backspace goes back.\n"+
-				"Turn it off once you know the keys by heart. The ≡ menu and the prefix and ? list them all still.",
+				"Turn it off once you know the keys by heart. The prefix and ? (the command palette) list them all still.",
 			`prefix_hint = false`),
 		{key: "pane_min_width", kind: sInt, lo: 20, hi: 400, def: "60",
 			desc: "The narrowest, in columns, the panes of a tab are shown side by side: its agent, and the terminals, agents and reviews opened beside it.\n" +
