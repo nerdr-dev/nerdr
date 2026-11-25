@@ -283,8 +283,8 @@ func TestAllPRsInPanel(t *testing.T) {
 	// News while on F1: F2 is marked, and going there shows it.
 	m.handleKey(keyMsg("f1"))
 	m.home().Core.TellPRNews([]state.PRNews{{Key: core.PrKey(app.Path, 7), Repo: "app", Number: 7, What: "approved by ann"}})
-	if menu := ansi.Strip(strings.Join(m.railLines(30), "\n")); !strings.Contains(menu, "github◆") {
-		t.Fatalf("F2 not marked: %s", menu)
+	if menu := ansi.Strip(strings.Join(m.railLines(30), "\n")); !strings.Contains(menu, "Git/GitHub ▸◆") {
+		t.Fatalf("Git/GitHub, where F2 is, not marked: %s", menu)
 	}
 	m.handleKey(keyMsg("f2"))
 	if !m.review.AllPRs() {
