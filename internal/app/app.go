@@ -221,7 +221,9 @@ type Model struct {
 	// hintZones on the prefix hint's.
 	zoneFns                []zoneFn
 	zoneTips               []string
+	zoneAreas              []bool // zones drawn with area, not shown with a hand
 	hover                  hover
+	hand                   bool // the pointer was made a hand (see pointer.go)
 	zoneRects              []zoneRect
 	dialogZones, hintZones int
 	// frame is the screen as last drawn, and sameFrame says the last

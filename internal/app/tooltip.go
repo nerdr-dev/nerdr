@@ -32,6 +32,7 @@ type hover struct {
 	x, y  int
 	tip   string // the tip under the pointer, "" for none
 	shown bool   // tip is up
+	seen  bool   // the pointer has been heard from, so x and y are where it is
 	seq   int    // counts the tips the pointer has come to
 }
 

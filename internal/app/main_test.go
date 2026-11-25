@@ -11,5 +11,6 @@ import (
 func TestMain(m *testing.M) {
 	os.Unsetenv("OPENCODE_CONFIG_DIR")
 	os.Unsetenv("XDG_CONFIG_HOME")
+	setPointer = func(string) {} // not onto the terminal running the tests
 	os.Exit(m.Run())
 }

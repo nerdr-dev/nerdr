@@ -98,6 +98,9 @@ func (m *Model) syncMouse() tea.Cmd {
 }
 
 func (m *Model) handleMouse(ev tea.MouseMsg) tea.Cmd {
+	// Where the pointer is, for the tips and its shape: an event of any
+	// kind says, a drag's too.
+	m.hover.x, m.hover.y, m.hover.seen = ev.X, ev.Y, true
 	if m.editor != nil {
 		m.sendMouse(m.editor, ev, 0, 0)
 		return nil
