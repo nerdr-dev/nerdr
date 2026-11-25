@@ -6,15 +6,16 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/review"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
-// The global tab, at the far right of the tab bar: the global plugins
-// (see plugin.Global), which are no tab's, and so are not in any tab's
-// plugins pane.
-// It is the plugins screen of a panel of its own, over the whole of the
-// window's main area, with the keyboard while it is shown. The tab that
-// was active stays so underneath: going to a tab, or esc, leaves it.
+// The global plugins' dialog, behind the prefix and v only: the global
+// plugins (see plugin.Global), which are no tab's, and so are not in any
+// tab's plugins pane. It is called the global tab here, as it was one.
+// It is the plugins screen of a panel of its own, a dialog over the
+// window's main area as the panel's is, with the keyboard while it is
+// shown. The tab that was active stays so underneath: going to a tab, esc
+// or a click outside it closes it. It opens by itself on a global plugin an
+// agent runs, with open_global_plugins (see showPluginRun).
 //
 // The global plugins are a machine's: the tab shows those of one machine,
 // home at first, and ctrl+o goes on to the next.
@@ -123,30 +124,19 @@ func (m *Model) globalNextMachine() bool {
 	return false
 }
 
-// globalLines draws the global tab, w×h.
-func (m *Model) globalLines(w, h int) []string {
-	return m.panelLines(w, h)
-}
-
-// globalChip is the global tab in the tab bar: a button to it, lit while
-// it is shown.
-func (m *Model) globalChip() string {
-	st := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("250"))
-	if m.global.shown {
-		st = lipgloss.NewStyle().Background(m.activeBg()).Foreground(lipgloss.Color("231")).Bold(true)
-	}
-	return m.tip(m.onClick(st.Render(" ◆ global "), func(m *Model) tea.Cmd {
-		if m.global.shown {
-			return nil
-		}
-		return m.showGlobal()
-	}), "Global plugins: one for all tabs · "+m.pk("v"))
-}
-
-// globalMouse is a click or the wheel on the global tab, at the window's
-// main area: its panel's, as the dialog's are.
+// globalMouse is a click or the wheel over the window's main area while
+// the global plugins' dialog is open: in it, its panel's, as the panel
+// dialog's are; a click outside closes it.
 func (m *Model) globalMouse(ev tea.MouseMsg) tea.Cmd {
-	ev.X, ev.Y = ev.X-m.sideW(), ev.Y-m.barRows()
+	x, y, w, h := m.dlgRect()
+	if ev.X < x || ev.X >= x+w || ev.Y < y || ev.Y >= y+h {
+		if ev.Action == tea.MouseActionPress && ev.Button == tea.MouseButtonLeft {
+			m.leaveGlobal()
+			return m.resize()
+		}
+		return nil
+	}
+	ev.X, ev.Y = ev.X-x, ev.Y-y
 	if ev.Action == tea.MouseActionPress && ev.Button == tea.MouseButtonLeft {
 		m.drag = dragReview
 	}

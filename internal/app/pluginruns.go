@@ -38,10 +38,21 @@ func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun)
 		return nil // its light says it runs
 	}
 	if p.IsGlobal() {
-		// No tab's plugins pane has it: the global tab, not taken from the user.
-		if m.global.shown && m.plugins.uiFocus == "" {
-			m.pickPlugin(nil, p.Dir)
+		// No tab's plugins pane has it: the global plugins' dialog, which
+		// opens on it with open_global_plugins, but is not taken from the
+		// user, nor put over another dialog or a panel they are in.
+		mc := m.machineOf(t)
+		switch {
+		case m.global.shown:
+			if m.plugins.uiFocus == "" && m.globalOn() == mc {
+				m.pickPlugin(nil, p.Dir)
+			}
 			return nil
+		case m.openGlobalPlugins() && m.dialog == nil && !m.panelDlg && m.focus != core.FocusReview && !m.inViewPane():
+			m.global.on = mc
+			cmd := m.showGlobal()
+			m.pickPlugin(nil, p.Dir)
+			return cmd
 		}
 		m.toast(t.Name + ": " + clean.Line(run.Agent) + " runs the global plugin " + clean.Line(name) + " · " + m.pk("v") + " shows it")
 		return nil
@@ -78,6 +89,21 @@ func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun)
 		return nil
 	})
 	return tea.Batch(cmd, pick, m.resize())
+}
+
+// inViewPane reports whether the user is in a pane of the panel's, the
+// code changes or the plugins, of the active tab: one with the keyboard,
+// whose keys the global plugins' dialog must not take.
+func (m *Model) inViewPane() bool {
+	t := m.Cur()
+	return m.viewIn != nil || t != nil && m.focus == core.FocusAgent && m.focused(t).Kind == core.PaneView
+}
+
+// openGlobalPlugins reports whether the global plugins' dialog opens by
+// itself on a global plugin an agent runs (open_global_plugins).
+func (m *Model) openGlobalPlugins() bool {
+	b := m.cfg().OpenGlobalPlugins
+	return b == nil || *b
 }
 
 // pickPlugin picks the plugin in dir in the panel's list, its screen
@@ -136,6 +162,7 @@ func (m *Model) runLines(p plugin.Plugin, run *core.PluginRun, w int) []string {
 	for i, l := range wrapRows(head, w-2, 2) {
 		out = append(out, core.OnOff(i == 0, " "+lt+" ", "   ")+l)
 	}
+	out = append(out, m.flowLines(p, run, w)...)
 	if p.Shows(plugin.ShowValues) {
 		names := make([]string, 0, len(run.Values))
 		for k := range run.Values {
@@ -154,6 +181,87 @@ func (m *Model) runLines(p plugin.Plugin, run *core.PluginRun, w int) []string {
 		}
 	}
 	return out
+}
+
+// flowPulse is how long a way between an agent and a plugin stays lit
+// after something went along it.
+const flowPulse = 2 * time.Second
+
+var (
+	flowLit  = lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
+	flowDone = lipgloss.NewStyle().Foreground(lightColours[core.StDone])
+	flowBad  = lipgloss.NewStyle().Foreground(lightColours[core.StBlocked])
+)
+
+// flowIn and flowOut say whether something went from run's agent to its
+// plugin, or back, within flowPulse of now: the values when it started,
+// what it printed, and how it ended.
+func flowIn(run *core.PluginRun, now time.Time) bool { return now.Sub(run.Started) < flowPulse }
+func flowOut(run *core.PluginRun, now time.Time) bool {
+	return !run.OutAt.IsZero() && now.Sub(run.OutAt) < flowPulse ||
+		!run.Running() && now.Sub(run.Ended) < flowPulse
+}
+
+// flowMark is what a plugin's row in the list shows of run's flow: an
+// arrow lit for a while after something went in or came back.
+func flowMark(run *core.PluginRun) string {
+	now := time.Now()
+	var s string
+	if flowIn(run, now) {
+		s += flowLit.Render(" ▶")
+	}
+	if flowOut(run, now) {
+		s += flowLit.Render(" ◀")
+	}
+	return s
+}
+
+// flowLines are two lines drawing what went between run's agent and
+// plugin p, w wide: the values the agent gave it, and what it gave back,
+// each way lit for a while after something went along it.
+func (m *Model) flowLines(p plugin.Plugin, run *core.PluginRun, w int) []string {
+	now := time.Now()
+	agent, name := clean.Line(run.Agent), clean.Line(p.Name)
+	at := func(t time.Time) string { return dim(t.Format("15:04:05")) }
+	line := func(arrow, what, when string) string {
+		left := "   " + agent + " " + arrow + " " + name + "  "
+		room := w - lipgloss.Width(left) - lipgloss.Width(when) - 2
+		return left + ansi.Truncate(what, max(room, 1), "…") + "  " + when
+	}
+
+	// In: the values, given as it starts.
+	in := flowDone.Render("━━▶")
+	if flowIn(run, now) {
+		in = flowLit.Render("━━▶")
+	}
+	what := core.Plural(len(run.Values), "value")
+	if len(run.Values) == 0 {
+		what = "no values"
+	} else if p.Shows(plugin.ShowValues) {
+		what += ", below" // the values, whole, as runLines shows them
+	}
+	out := []string{line(in, "got "+what, at(run.Started))}
+
+	// Back: what it printed, and how it ended.
+	n := len(run.Lines())
+	back := core.Plural(n, "line") + fmt.Sprintf(", %d bytes", run.Pumped)
+	var arrow, when string
+	switch {
+	case n == 0 && run.Pumped == 0 && run.Running():
+		arrow, back, when = dim("◀┄┄"), "nothing back yet", ""
+	case run.Running():
+		arrow, back, when = flowDone.Render("◀━━"), "gives back "+back, at(run.OutAt)
+	case run.Watch && run.StopBy != "":
+		arrow, back, when = flowDone.Render("◀━━"), "gave back "+back+" · stopped", at(run.Ended)
+	case run.Exit == 0:
+		arrow, back, when = flowDone.Render("◀━━"), "gave back "+back+" · ended ok", at(run.Ended)
+	default:
+		arrow, back, when = flowBad.Render("◀━━"), "gave back "+back+fmt.Sprintf(" · failed, exit %d", run.Exit), at(run.Ended)
+	}
+	if flowOut(run, now) {
+		arrow = flowLit.Render("◀━━")
+	}
+	return append(out, line(arrow, back, when))
 }
 
 // runOutput is what run printed, as the plugins pane shows it: a rule saying it is what

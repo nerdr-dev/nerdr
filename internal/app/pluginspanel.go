@@ -558,7 +558,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 			text = "No global plugins. A plugin in " + dir + " with scope = \"global\" in its " + plugin.File +
 				" is here, one for all tabs, and in no tab's plugins pane. See https://nerdr.app/configure/plugins/."
 		case len(m.pluginsMachine(t).Core.Plugins.List) > 0:
-			text = "No private plugins, each tab's own. The global ones, one for all tabs, are in the global tab, at the far right: " +
+			text = "No private plugins, each tab's own. The global ones, one for all tabs, are in a dialog of their own: " +
 				m.pk("v") + ". See https://nerdr.app/configure/plugins/."
 		}
 		for _, l := range wrapLines(text, textW, 20) {
@@ -616,7 +616,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		}
 		if run := m.pluginsMachine(t).Core.PluginRunOf(t, q); run != nil {
 			lt, what := m.runState(run)
-			name += "  " + lt + " " + dim(what)
+			name += "  " + lt + " " + dim(what) + flowMark(run)
 		}
 		head = append(head, m.onClick(ansi.Truncate(cursor+mark+" "+name, w, "…"), func(m *Model) tea.Cmd {
 			if m.plugins.cursor != i {

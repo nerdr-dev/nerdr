@@ -83,18 +83,20 @@ A **global** plugin is there once, for all tabs. Set `scope = "global"`
 for a job there is no sense in running twice at once, such as starting
 the docker stack:
 
-- It is not in any tab's plugins pane, but in the global tab, `◆ global`
-  at the far right of the tab bar (at the foot of the repositories in the
-  sidebar), or the prefix and `v`. Its one screen keeps running whichever
-  tab is active, and when you leave the global tab.
+- It is not in any tab's plugins pane, but in the global plugins'
+  dialog over the window, which the prefix and `v` opens. It opens
+  by itself when an agent runs the plugin, unless `open_global_plugins
+  = false` is in nerdr's config, or the plugin's `open` is `false`. Its
+  one screen keeps running whichever tab is active, and when you close
+  the dialog.
 - It runs one run at a time. While an agent of one tab runs it, an
   agent of another that asks is refused, and told who runs it; every
-  the global tab shows the run, and `s` there stops it. An agent's
+  the global plugins' dialog shows the run, and `s` there stops it. An agent's
   own watch of it is taken over by its new run, as with a private one.
 - Its run is no agent's: it goes on when the agent that started it, or
   its tab, is gone, and when the agent's command stops waiting on it, as
   agents cut a command off after a minute or two. It runs until it ends,
-  you stop it in the global tab, or nerdr quits. What a watch prints goes to its
+  you stop it in the global plugins' dialog, or nerdr quits. What a watch prints goes to its
   agent while that agent is there.
 - Its screen and runs run in your home folder, without the tab's
   variables (`NERDR_TAB`, `NERDR_WORKTREES`): they are no tab's. Give
@@ -170,6 +172,12 @@ result: green for exit status 0, red with the status for anything else.
 If you are using another of the panel's screens, nerdr leaves it alone
 and tells you about the run instead, as it does for a run in another
 tab.
+
+Below the run's line, two lines draw what goes between the agent and the
+plugin: `1:claude ━━▶ save-text` with the values it got, and
+`1:claude ◀━━ save-text` with what it gave back and how it ended, each
+with its time. A way is lit for two seconds after something goes along
+it, and the plugin's row in the list shows `▶` or `◀` meanwhile.
 
 `show` sets what else the pane shows:
 
@@ -278,7 +286,7 @@ shows what is in the selected plugin's folder and `y` allows it. `d`
 takes the allowance back for every version of it in the folder, so later
 runs and screens wait for a new yes; a screen or watch already running
 goes on. A tab's plugins pane lists the private plugins; the global ones
-are in the global tab, which works the same way. For a plugin with `ui`,
+are in the global plugins' dialog (the prefix and `v`), which works the same way. For a plugin with `ui`,
 `enter` starts its program below the list, in the tab's folder (in your
 home folder for a global plugin), and gives it the keyboard. It keeps running
 when you switch screens. Use any terminal UI: a shell script with `read`, `gum`, `fzf`,
