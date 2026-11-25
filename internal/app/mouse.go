@@ -17,8 +17,8 @@ import (
 )
 
 // The mouse: click a group or a tab to go to it, right-
-// click one for what can be done to it, ≡ for everything else, + for a new
-// tab. Every dialog's keys are buttons, its lists can be clicked, and a
+// click one for what can be done to it, ? commands (or a right-click on
+// the agent) for everything else, + for a new tab. Every dialog's keys are buttons, its lists can be clicked, and a
 // click outside a menu closes it. The wheel scrolls whatever it is over;
 // the rule between the agent and the review panel can be dragged.
 //
@@ -463,7 +463,7 @@ func (m *Model) agentMouse(ev tea.MouseMsg, x, y int) tea.Cmd {
 		m.selPane = p
 		m.drag = dragSelect
 	case press && ev.Button == tea.MouseButtonRight:
-		m.openMenu(ev.X, ev.Y)
+		cmd = tea.Batch(cmd, m.openPalette())
 	}
 	return cmd
 }

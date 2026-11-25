@@ -179,8 +179,8 @@ func TestRepositoriesLeaveRoomForMessages(t *testing.T) {
 	if w := ansi.StringWidth(row[:at]); w > 120-msgRoom || w < 120/3 {
 		t.Fatalf("the repositories take %d columns, want up to %d: %q", w, 120-msgRoom, row)
 	}
-	if !strings.Contains(row, "▸") || !strings.Contains(row, "≡ menu") {
-		t.Fatalf("hidden repositories counted, menu kept: %q", row)
+	if !strings.Contains(row, "▸") {
+		t.Fatalf("hidden repositories not counted: %q", row)
 	}
 	if m.groupRow.hidden == 0 {
 		t.Fatal("twelve repositories in 70 columns, none hidden")

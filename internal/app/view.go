@@ -317,7 +317,7 @@ func (m *Model) activeBg() lipgloss.Color {
 
 // barStatus is what the right of the bars shows: nerdr's messages — the
 // badges and the help as a rule, in their place the prefix's state or a
-// toast — and the menu button. reserve is the columns the entries on the
+// toast. Its "? commands" opens the palette of every command. reserve is the columns the entries on the
 // left leave them: msgRoom, or what the badges need when that is more,
 // though never more than half the row. It is kept whether a message
 // shows or not, so the entries do not move about as messages come and go.
@@ -334,8 +334,8 @@ func (m *Model) hostBadge() string {
 		Render(" "+host+" "), "The agents of these tabs run on "+host)
 }
 
-func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
-	hint := " " + m.pk("?") + " help "
+func (m *Model) barStatus() (msg string, reserve int) {
+	hint := " " + m.pk("?") + " commands "
 	if m.focus == core.FocusReview {
 		hint = " review · esc → agent" + hint
 	}
@@ -347,7 +347,7 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	status += m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
 		func(m *Model) tea.Cmd {
 			return m.openPalette()
-		}), "All commands")
+		}), "Every command nerdr has, to search and run")
 	msg = status
 	switch {
 	case m.prefix:
@@ -372,16 +372,8 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 	case m.toastText != "" && time.Now().Before(m.toastUntil):
 		msg = lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("214")).Render(" " + m.toastText + " ")
 	}
-	if m.mouseOn() {
-		menuBtn = m.tip(m.zone(buttonStyle.Render(" ≡ menu "), func(m *Model, ev tea.MouseMsg) tea.Cmd {
-			if ev.Action == tea.MouseActionPress && !isWheel(ev) {
-				m.openMenu(ev.X, m.barRows())
-			}
-			return nil
-		}), "Everything nerdr does")
-	}
-	reserve = min(max(msgRoom, lipgloss.Width(status)+lipgloss.Width(menuBtn)), m.width/2)
-	return msg, menuBtn, reserve
+	reserve = min(max(msgRoom, lipgloss.Width(status)), m.width/2)
+	return msg, reserve
 }
 
 // groupBar is the repository row, over the tab row: one entry per group
@@ -390,7 +382,7 @@ func (m *Model) barStatus() (msg, menuBtn string, reserve int) {
 func (m *Model) groupBar() string {
 	bar := lipgloss.NewStyle().Background(tabBarBg)
 	cur := m.curGroup()
-	msg, menuBtn, reserve := m.barStatus()
+	msg, reserve := m.barStatus()
 
 	gs := m.fleet.Groups()
 	items := make([]barItem, len(gs))
@@ -440,8 +432,8 @@ func (m *Model) groupBar() string {
 		})
 	left += plus
 	// A message longer than the room it has is cut, not the repositories.
-	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(menuBtn)-1)
-	return joinBar(left, msg+menuBtn, m.width, bar)
+	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-1)
+	return joinBar(left, msg, m.width, bar)
 }
 
 // groupBarBg is the repository row's background: darker than the tab
@@ -450,7 +442,7 @@ const groupBarBg = "233"
 
 // groupRowBg gives the repository row its own background. The row is
 // drawn on the bars' background, as the tab row is, from parts shared
-// with it (the messages, the menu button, the scroll markers); its
+// with it (the messages, the scroll markers); its
 // background is swapped afterwards rather than passed down to each.
 func groupRowBg(s string) string {
 	return strings.ReplaceAll(s, "48;5;"+string(tabBarBg), "48;5;"+groupBarBg)
@@ -528,12 +520,12 @@ func (m *Model) tabBar() string {
 		}), "New worktree, in this repository, with a tab of its own")
 	}
 	warning := m.overlapWarning()
-	var repo, msg, menuBtn string
+	var repo, msg string
 	reserve := lipgloss.Width(warning)
 	if !m.showGroups() {
 		m.groupRow = barRow{} // not drawn, so nothing hidden in it
 		var r int
-		msg, menuBtn, r = m.barStatus()
+		msg, r = m.barStatus()
 		reserve += r
 		if len(m.fleet.Groups()) > 1 {
 			repo = m.repoLabel(g)
@@ -555,8 +547,8 @@ func (m *Model) tabBar() string {
 			return nil
 		}) + plus
 	// A message longer than the room it has is cut, not the tabs.
-	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(menuBtn)-1)
-	return joinBar(left, warning+msg+menuBtn, m.width, bar)
+	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-1)
+	return joinBar(left, warning+msg, m.width, bar)
 }
 
 // overlapWarning is the warning in the bar that other tabs change some of
