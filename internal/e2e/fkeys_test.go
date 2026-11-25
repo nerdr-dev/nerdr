@@ -33,16 +33,20 @@ func TestFunctionKeys(t *testing.T) {
 	h.waitFor("Agent:", 2*time.Second)
 	h.keys("\r")
 	h.waitFor("? for shortcuts", 10*time.Second)
-	// F2/F1 reach the review panel while the agent has the keyboard,
-	// in both encodings terminals use, and do not reach the agent.
+	// F2/F1 open their dialogs while the agent has the keyboard, in both
+	// encodings terminals use, and do not reach the agent: F1 over F2's
+	// dialog goes to its own, and F1 again closes it.
 	for _, seq := range []string{"\x1bOQ", "\x1b[12~"} {
 		h.keys(seq)
 		h.waitFor("pull request · ", 3*time.Second)
 		h.keys("\x1bOP")
 		h.waitGone("pull request · ", 3*time.Second)
+		h.waitFor("changed files", 3*time.Second)
 	}
 	h.keys("\x1bOP")
-	// The F-keys give the panel the keyboard; the prefix and a a take it back.
+	h.waitGone("changed files", 3*time.Second)
+	h.keys("\x1bOP")
+	// The F-keys give the dialog the keyboard; the prefix and a a take it back.
 	h.waitFor("review · esc → agent", 3*time.Second)
 	h.keys(prefix + "a")
 	h.keys("a")

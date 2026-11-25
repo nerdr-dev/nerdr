@@ -42,8 +42,13 @@ func TestPlugins(t *testing.T) {
 	h.keys("\r")
 	h.waitFor("? for shortcuts", 10*time.Second)
 
-	f5 := "\x1b[15~"
-	h.keys(f5)
+	// The prefix and t p open the plugins pane, and in it go between
+	// the list and a plugin's screen.
+	plugins := func() {
+		h.keys(prefix + "t")
+		h.keys("p")
+	}
+	plugins()
 	h.waitFor("echo-ui", 3*time.Second)
 	h.waitFor("hello-ui", time.Second)
 	h.waitFor("Echoes a line.", time.Second)
@@ -55,8 +60,8 @@ func TestPlugins(t *testing.T) {
 	h.waitFor("ready", 3*time.Second)
 	h.keys("abc\r")
 	h.waitFor("got-abc", 3*time.Second)
-	// F5 goes back to the list; the screen keeps running.
-	h.keys(f5)
+	// t p goes back to the list; the screen keeps running.
+	plugins()
 	h.waitFor("runs · enter", 3*time.Second)
 
 	// So is the next, with what is in it.

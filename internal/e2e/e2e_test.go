@@ -237,6 +237,26 @@ func (h *harness) bars() string {
 	return strings.Join(lines[:min(3, len(lines))], "\n")
 }
 
+// waitBottomBar waits for what in the bar along the bottom, which has the
+// active tab's git: its branch, lines changed and pull request.
+func (h *harness) waitBottomBar(what string, timeout time.Duration) {
+	h.t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if strings.Contains(h.bottomBar(), what) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	h.t.Fatalf("timed out waiting for %q in the bottom bar:\n%s", what, h.bottomBar())
+}
+
+// bottomBar is the last row that is not empty.
+func (h *harness) bottomBar() string {
+	lines := strings.Split(strings.TrimRight(h.screen(), " \n"), "\n")
+	return lines[len(lines)-1]
+}
+
 // gotoTab moves between groups until the tab named name is the active one.
 func (h *harness) gotoTab(name string) {
 	h.t.Helper()
@@ -313,8 +333,11 @@ func TestEndToEnd(t *testing.T) {
 	h.waitFor("done", 5*time.Second)
 	h.waitTabBar("○", 5*time.Second)
 
-	// 12: the review panel lists the file the agent wrote.
+	// 12: F1's code changes list the file the agent wrote; esc closes them.
+	h.keys("\x1bOP")
 	h.waitFor("new.txt", 5*time.Second)
+	h.keys("\x1b")
+	h.waitGone("changed files", 2*time.Second)
 
 	// A question from the agent shows as blocked.
 	h.keys("ask\r")
@@ -346,8 +369,8 @@ func TestEndToEnd(t *testing.T) {
 	h.waitTabBar("1:feat-y claude", 2*time.Second)
 	h.waitGone("answered 1", 2*time.Second)
 
-	// The review panel takes the keyboard and gives it back.
-	h.keys(prefix + "\t")
+	// The code changes dialog takes the keyboard and gives it back.
+	h.keys("\x1bOP")
 	h.waitTabBar("review", 2*time.Second)
 	h.keys("\x1b")
 	h.waitGone("review · esc", 2*time.Second)
