@@ -105,7 +105,7 @@ func (m *Model) sideRepoH(h int, small bool) int {
 	if h < 10 {
 		return 0
 	}
-	rows := len(m.fleet.Groups())
+	rows := len(m.fleet.Groups()) + 1 // and the global tab
 	if m.mouseOn() {
 		rows++ // + new repo
 	}
@@ -284,6 +284,11 @@ func (m *Model) repoList(w, h int, small bool) []string {
 		lines = append(lines, m.tip(m.onClick(plusStyle.UnsetBackground().Render(plus), (*Model).openNewRepoDialog),
 			"Work in a repository: pick one, make one, or clone one"))
 	}
+	// The global tab, of no repository: last, below them.
+	if m.global.shown {
+		at = len(lines)
+	}
+	lines = append(lines, m.sideGlobal(w-2, small))
 	if small {
 		return framed(fitLines(sideWindow(lines, at, h-2), w-2, h-2), w, h, "", walking)
 	}
@@ -301,7 +306,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 	at := 0
 	for n, i := range m.fleet.GroupTabs(g) {
 		t := m.fleet.Tabs()[i]
-		active := i == m.Active
+		active := i == m.Active && !m.global.shown
 		if active {
 			at = len(lines)
 		}
@@ -346,6 +351,13 @@ func (m *Model) tabList(w, h int, small bool) []string {
 			}
 			return m.openWizard()
 		}), "New worktree, in this repository, with a tab of its own"))
+	}
+	if m.sideRepoH(m.height-m.barRows(), small) == 0 {
+		// No room for the repositories, where the global tab is: last here.
+		if m.global.shown {
+			at = len(lines)
+		}
+		lines = append(lines, m.sideGlobal(w-2, small))
 	}
 	title := "tabs"
 	if g != "" {
@@ -542,4 +554,22 @@ func sideArrows(groups []core.CommandGroup) []core.CommandGroup {
 		out[i] = core.CommandGroup{Title: g.Title, Entries: entries}
 	}
 	return out
+}
+
+// sideGlobal is the global tab in the sidebar's list, w wide: lit while it
+// is shown, and a click goes to it.
+func (m *Model) sideGlobal(w int, small bool) string {
+	bg := entryBg(m.global.shown, false)
+	st := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
+	if m.global.shown {
+		st = lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
+	}
+	name := " ◆ global"
+	if small {
+		name = " ◆"
+	}
+	line := ansi.Truncate(st.Render(name), w, "…")
+	line += st.Render(strings.Repeat(" ", max(w-lipgloss.Width(line), 0)))
+	return m.tip(m.onClick(line, func(m *Model) tea.Cmd { return m.showGlobal() }),
+		"Global plugins: one for all tabs · "+m.pk("v"))
 }

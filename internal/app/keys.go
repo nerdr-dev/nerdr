@@ -79,6 +79,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return m.inDialogView(func() tea.Cmd { return m.dialog.key(m, msg) })
 	}
+	if m.global.shown && msg.String() == "ctrl+o" && m.globalNextMachine() {
+		return nil
+	}
 	if panelKey(msg.String()) {
 		// The review panel's menu, whichever side has the keyboard — and
 		// out of the scrollback, which would take them for its own. The
@@ -266,7 +269,7 @@ func prefixCommand(k string) bool {
 	switch k {
 	case "c", "C", "x", "tab", "o", "<", ",", ">", ".",
 		"b", "pgup", "s", "q", "?", ":", "t",
-		"m", "M", "w", "n", "f", " ", "r", "h", "p", "u", "/", "j", "k", "e", "d", "i":
+		"m", "M", "w", "n", "f", " ", "r", "h", "p", "u", "/", "j", "k", "e", "d", "i", "v":
 		return true
 	}
 	return core.IsGroup(k)
@@ -466,7 +469,15 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.resize()
 	case "t c":
 		return m.togglePane()
+	case "v":
+		return m.toggleGlobal()
 	case "t p":
+		if m.global.shown {
+			// In the global tab, between its list and the plugin's screen,
+			// as in a plugins pane.
+			m.togglePluginUI()
+			return nil
+		}
 		return m.screenPane(core.ViewPlugins)
 	case "g c", "e", "k", "h":
 		// F1-F5 without the function keys: a Mac laptop's are the

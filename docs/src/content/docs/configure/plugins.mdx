@@ -33,6 +33,7 @@ show = ["values", "output"]   # what the pane shows of an agent's run
 open = true          # the pane opens on it when an agent runs it
 confirm = false      # you say yes to each agent's run
 watch = false        # run goes on, and what it prints goes to the agent
+scope = "private"    # or "global": one for all tabs
 
 [[params]]
 name        = "repos"
@@ -68,6 +69,36 @@ description = "Build without the cache."
 - `watch` is optional: `true` for a run that goes on until it is
   stopped, and tells the agent what it finds (see
   [A plugin that watches](#a-plugin-that-watches)).
+- `scope` is optional: `"private"` (the default) or `"global"` (see
+  [Private and global plugins](#private-and-global-plugins)).
+
+## Private and global plugins
+
+A **private** plugin is each tab's own. Every tab has its own screen of
+it and its own runs, in the tab's folder with the tab's variables, so
+several tabs can run it side by side: a test runner, a seed script for
+the tab's database, a preview deploy of the tab's branch.
+
+A **global** plugin is there once, for all tabs. Set `scope = "global"`
+for a job there is no sense in running twice at once, such as starting
+the docker stack:
+
+- It is not in any tab's plugins pane, but in the global tab, `◆ global`
+  at the far right of the tab bar (at the foot of the repositories in the
+  sidebar), or the prefix and `v`. Its one screen keeps running whichever
+  tab is active, and when you leave the global tab.
+- It runs one run at a time. While an agent of one tab runs it, an
+  agent of another that asks is refused, and told who runs it; every
+  the global tab shows the run, and `s` there stops it. An agent's
+  own watch of it is taken over by its new run, as with a private one.
+- Its run is no agent's: it goes on when the agent that started it, or
+  its tab, is gone, and when the agent's command stops waiting on it, as
+  agents cut a command off after a minute or two. It runs until it ends,
+  you stop it in the global tab, or nerdr quits. What a watch prints goes to its
+  agent while that agent is there.
+- Its screen and runs run in your home folder, without the tab's
+  variables (`NERDR_TAB`, `NERDR_WORKTREES`): they are no tab's. Give
+  the paths it needs in its scripts, or as parameters.
 
 ## Parameters
 
@@ -246,8 +277,10 @@ The plugins pane (`ctrl+q t p`) lists the plugins, each with its description and
 shows what is in the selected plugin's folder and `y` allows it. `d`
 takes the allowance back for every version of it in the folder, so later
 runs and screens wait for a new yes; a screen or watch already running
-goes on. For a plugin with `ui`, `enter` starts its program below the
-list, in the tab's folder, and gives it the keyboard. It keeps running
+goes on. A tab's plugins pane lists the private plugins; the global ones
+are in the global tab, which works the same way. For a plugin with `ui`,
+`enter` starts its program below the list, in the tab's folder (in your
+home folder for a global plugin), and gives it the keyboard. It keeps running
 when you switch screens. Use any terminal UI: a shell script with `read`, `gum`, `fzf`,
 bubbletea, textual.
 
@@ -257,7 +290,8 @@ list to the agent, and `x` in the list stops the program. When it ends,
 its last screen stays until `enter` starts it again.
 
 The screen gets the tab's variables (`NERDR_WORKTREES`, a JSON list of
-the tab's worktrees, among them), `NERDR_PLUGIN` and `NERDR_PLUGIN_DIR`.
+the tab's worktrees, among them), `NERDR_PLUGIN` and `NERDR_PLUGIN_DIR`;
+a global plugin's screen gets no tab's.
 To do what an agent would, it runs its own `run`, or `"$NERDR_BIN"
 plugin run NAME …`.
 

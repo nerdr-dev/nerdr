@@ -25,12 +25,12 @@ func paneScreen(i int) bool { return i == core.ViewChanges || i == core.ViewPlug
 
 // panelShown reports whether the panel is on screen: as the dialog, or,
 // while one is being handled, a view pane.
-func (m *Model) panelShown() bool { return m.panelDlg || m.viewIn != nil }
+func (m *Model) panelShown() bool { return m.panelDlg || m.viewIn != nil || m.global.shown }
 
 // showPanel shows the panel as a dialog over the window; a view pane
 // being handled is already shown.
 func (m *Model) showPanel() {
-	if m.viewIn == nil {
+	if m.viewIn == nil && !m.global.shown {
 		m.panelDlg = true
 	}
 }
@@ -51,6 +51,8 @@ func (m *Model) screenPressed(msg tea.KeyMsg) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	// Another screen is the tab's: it leaves the global tab.
+	m.leaveGlobal()
 	if t := m.Cur(); t != nil && i == core.ViewChanges && m.viewOfScreen(t, i) != nil {
 		return m.screenPane(i)
 	}

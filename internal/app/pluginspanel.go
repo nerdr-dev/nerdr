@@ -21,8 +21,13 @@ import (
 // them the screen of one that has its own (its ui), running for the
 // active tab in a terminal of the panel's.
 //
-// A plugin's screen runs as long as its tab, whichever screen is shown,
-// and is drawn only on the plugins screen. While it has the keyboard every key goes to it
+// A tab's plugins pane lists the private plugins, each tab having its own
+// screen and runs of them. The global ones, of which there is one screen,
+// and one run at a time, for all tabs, are in the global tab instead (see
+// global.go), the same screen with a pluginsView of its own.
+//
+// A private plugin's screen runs as long as its tab, a global one's until
+// it is stopped, whichever screen is shown, and is drawn only on the plugins screen. While it has the keyboard every key goes to it
 // but F1-F5 and the prefix: the prefix and t p goes back to the list, and from the list to
 // the screen again.
 
@@ -39,6 +44,9 @@ type pluginsView struct {
 	// on is the machine whose plugins list is: that of the tab shown. Each
 	// machine has plugins of its own.
 	on *fleet.Machine
+	// global is set for the global tab's: it lists the global plugins,
+	// and a tab's the private ones.
+	global bool
 
 	at   time.Time
 	list []plugin.Plugin
@@ -58,7 +66,7 @@ func (m *Model) panelPlugins() bool { return m.panelShown() && m.review.Plugins(
 // last: the same for every tab of the machine.
 func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 	v := &m.plugins
-	mc := m.machineOf(t)
+	mc := m.pluginsMachine(t)
 	if mc != v.on {
 		v.on, v.at, v.askedAt = mc, time.Time{}, time.Time{}
 	}
@@ -70,10 +78,21 @@ func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 		m.tellOn(mc, core.LookForPlugins{})
 	}
 	if !mc.Core.Plugins.At.Equal(v.at) {
-		v.at, v.list, v.allowed = mc.Core.Plugins.At, mc.Core.Plugins.List, mc.Core.Plugins.Allowed
+		v.at, v.list, v.allowed = mc.Core.Plugins.At, ofScope(mc.Core.Plugins.List, v.global), mc.Core.Plugins.Allowed
 		v.repick()
 	}
 	return v.list
+}
+
+// ofScope is the global plugins of list, or the private ones.
+func ofScope(list []plugin.Plugin, global bool) []plugin.Plugin {
+	var out []plugin.Plugin
+	for _, p := range list {
+		if p.IsGlobal() == global {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // pluginsOn is the machine whose plugins the plugins pane lists; see pluginList.
@@ -81,7 +100,7 @@ func (m *Model) pluginsOn() *fleet.Machine {
 	if m.plugins.on != nil {
 		return m.plugins.on
 	}
-	return m.machineOf(m.panelTab())
+	return m.pluginsMachine(m.panelTab())
 }
 
 // repick puts the cursor on the plugin picked, in the list read anew. One
@@ -137,8 +156,8 @@ func (m *Model) pluginUIPane() core.Program {
 	if !ok || core.PluginUIKey(t, p) != m.plugins.uiFocus {
 		return nil
 	}
-	if u := m.machineOf(t).Core.PluginUIOf(t, p); u.Running() {
-		return m.programOn(m.machineOf(t), core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
+	if u := m.pluginsMachine(t).Core.PluginUIOf(t, p); u.Running() {
+		return m.programOn(m.pluginsMachine(t), core.ProgramRef{Plugin: core.PluginUIKey(t, p)})
 	}
 	return nil
 }
@@ -173,11 +192,11 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 	case "x":
 		if p, ok := m.pickedPlugin(t); ok {
-			return m.do(core.StopPluginUI{T: m.fleet.Ref(t), Dir: p.Dir})
+			return m.doOn(m.pluginsMachine(t), core.StopPluginUI{T: m.fleet.Ref(t), Dir: p.Dir})
 		}
 	case "s":
 		if p, ok := m.pickedPlugin(t); ok {
-			return m.do(core.StopPickedRun{T: m.fleet.Ref(t), Dir: p.Dir})
+			return m.doOn(m.pluginsMachine(t), core.StopPickedRun{T: m.fleet.Ref(t), Dir: p.Dir})
 		}
 	case "a":
 		if p, ok := m.pickedPlugin(t); ok {
@@ -199,7 +218,7 @@ func (m *Model) togglePluginUI() bool {
 	}
 	t := m.panelTab()
 	p, ok := m.pickedPlugin(t)
-	if !ok || !m.machineOf(t).Core.PluginUIOf(t, p).Running() {
+	if !ok || !m.pluginsMachine(t).Core.PluginUIOf(t, p).Running() {
 		return false
 	}
 	key := core.PluginUIKey(t, p)
@@ -215,7 +234,7 @@ func (m *Model) togglePluginUI() bool {
 // it does not run, once the user has allowed the plugin.
 func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 	switch {
-	case t == nil:
+	case t == nil && !p.IsGlobal():
 		m.toast("open a tab first: a plugin's screen runs in a tab's folder")
 		return nil
 	case p.Err != "":
@@ -237,7 +256,7 @@ func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 			m.toast(clean.Line(q.Name) + " changed and has no screen to start now")
 			return nil
 		}
-		if u := m.machineOf(t).Core.PluginUIOf(t, q); u.Running() && u.Key == key {
+		if u := m.pluginsMachine(t).Core.PluginUIOf(t, q); u.Running() && u.Key == key {
 			m.plugins.uiFocus = core.PluginUIKey(t, q)
 			m.setFocus(core.FocusReview)
 			return nil
@@ -292,9 +311,9 @@ func (m *Model) disallowPlugin(p plugin.Plugin) tea.Cmd {
 				"This is every version of it in this folder. A screen or a watch already running goes on; stop it in the plugins pane (the prefix and t p).",
 				"", keyHint("y") + dim(" stops allowing it · ") + keyHint("n") + dim(" keeps it allowed"),
 			},
-			yes: func(m *Model) tea.Cmd {
+			yes: m.whileGlobalStill(func(m *Model) tea.Cmd {
 				return m.disallowNow(p, key)
-			},
+			}),
 		}
 		return nil
 	})
@@ -352,9 +371,9 @@ func (m *Model) askAllowPlugin(f core.PluginFacts, again, then func(m *Model) te
 		lines:  lines,
 		scroll: renderPreview(f.Preview, p.Dir, core.MaxPreviewLines, max(boxInner(m.width)-2, 20)),
 		after:  []string{"", keyHint("y") + dim(" allows it until something in its folder changes · ") + keyHint("n") + dim(" does not")},
-		yes: func(m *Model) tea.Cmd {
+		yes: m.whileGlobalStill(func(m *Model) tea.Cmd {
 			return m.allowNow(p, key, again, then)
-		},
+		}),
 	}
 	return nil
 }
@@ -399,6 +418,18 @@ func (m *Model) pluginJob(then func(m *Model, ev any) tea.Cmd) string {
 	if m.pluginJobs == nil {
 		m.pluginJobs = map[string]func(m *Model, ev any) tea.Cmd{}
 	}
+	if still := m.globalStill(); still != nil {
+		// Asked from the global tab: the answer is of its machine, and is
+		// for it only while it shows that machine still.
+		inner := then
+		then = func(m *Model, ev any) tea.Cmd {
+			if !still(m) {
+				m.toast(globalMovedOn)
+				return nil
+			}
+			return inner(m, ev)
+		}
+	}
 	if p, t := m.viewIn, m.viewTab; p != nil {
 		inner := then
 		then = func(m *Model, ev any) tea.Cmd {
@@ -409,6 +440,39 @@ func (m *Model) pluginJob(then func(m *Model, ev any) tea.Cmd) string {
 	job := "plugin-" + strconv.Itoa(m.pluginLastJob)
 	m.pluginJobs[job] = then
 	return job
+}
+
+// globalMovedOn is said of an answer, or a yes, for the global tab that
+// came once it was left, or showed another machine's plugins.
+const globalMovedOn = "the global tab moved on before that was done: do it again there"
+
+// globalStill is, in the global tab, whether it is still as it is now:
+// shown, of the same machine. nil anywhere else, a tab's panel being of
+// its tab whatever comes.
+func (m *Model) globalStill() func(m *Model) bool {
+	if !m.global.shown || m.viewIn != nil {
+		return nil
+	}
+	mc := m.globalOn()
+	return func(m *Model) bool { return m.global.shown && m.viewIn == nil && m.globalOn() == mc }
+}
+
+// whileGlobalStill is yes, of a question asked in the global tab, done
+// only while the tab is as it was when it was asked: else on the machine
+// shown then, or the active tab's, it would allow or start what the user
+// was not asked about.
+func (m *Model) whileGlobalStill(yes func(m *Model) tea.Cmd) func(m *Model) tea.Cmd {
+	still := m.globalStill()
+	if still == nil {
+		return yes
+	}
+	return func(m *Model) tea.Cmd {
+		if !still(m) {
+			m.toast(globalMovedOn)
+			return nil
+		}
+		return yes(m)
+	}
 }
 
 // onPluginJob hands core's answer to the job of the plugins pane's it is for.
@@ -486,16 +550,25 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	keys := m.pluginKeys("↑↓", "pick", "enter", "open", "a", "allow", "d", "disallow", "esc", "agent")
 	if len(list) == 0 {
 		lines := []string{""}
-		for _, l := range wrapLines("No plugins. Put your own in "+core.TildePath(plugin.UserDir(m.machineOf(t).Core.ConfigPath()), core.HomeDir())+
-			"/NAME, each a folder with a "+plugin.File+
-			". See https://nerdr.app/configure/plugins/.", textW, 20) {
+		dir := core.TildePath(plugin.UserDir(m.pluginsMachine(t).Core.ConfigPath()), core.HomeDir())
+		text := "No plugins. Put your own in " + dir + "/NAME, each a folder with a " + plugin.File +
+			". See https://nerdr.app/configure/plugins/."
+		switch {
+		case v.global:
+			text = "No global plugins. A plugin in " + dir + " with scope = \"global\" in its " + plugin.File +
+				" is here, one for all tabs, and in no tab's plugins pane. See https://nerdr.app/configure/plugins/."
+		case len(m.pluginsMachine(t).Core.Plugins.List) > 0:
+			text = "No private plugins, each tab's own. The global ones, one for all tabs, are in the global tab, at the far right: " +
+				m.pk("v") + ". See https://nerdr.app/configure/plugins/."
+		}
+		for _, l := range wrapLines(text, textW, 20) {
 			lines = append(lines, " "+l)
 		}
 		return append(fitLines(lines, w, h-1), ansi.Truncate(keys, w, "…"))
 	}
 	p := list[v.cursor]
-	u := m.machineOf(t).Core.PluginUIOf(t, p)
-	run := m.machineOf(t).Core.PluginRunOf(t, p)
+	u := m.pluginsMachine(t).Core.PluginUIOf(t, p)
+	run := m.pluginsMachine(t).Core.PluginRunOf(t, p)
 	// What the run printed, when the plugin shows it: below the rest, or
 	// above its screen, a few rows of it.
 	output := func(top []string, rows int) []string {
@@ -527,7 +600,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		switch {
 		case q.Err != "":
 			mark = warn("!")
-		case len(q.UI) > 0 && m.machineOf(t).Core.PluginUIOf(t, q).Running():
+		case len(q.UI) > 0 && m.pluginsMachine(t).Core.PluginUIOf(t, q).Running():
 			mark = lipgloss.NewStyle().Foreground(lipgloss.Color("71")).Render("▣")
 		case len(q.UI) > 0:
 			mark = "▣"
@@ -541,7 +614,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		if q.Err == "" && !v.allowed[q.Dir] {
 			name += warn("  not allowed")
 		}
-		if run := m.machineOf(t).Core.PluginRunOf(t, q); run != nil {
+		if run := m.pluginsMachine(t).Core.PluginRunOf(t, q); run != nil {
 			lt, what := m.runState(run)
 			name += "  " + lt + " " + dim(what)
 		}
@@ -559,6 +632,9 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	pname := clean.Line(p.Name)
 	info = append(info, dim("── "+pname+" "+strings.Repeat("─", max(textW-lipgloss.Width(pname)-4, 0))))
 	info = append(info, dim(" "+ansi.Truncate(clean.Line(core.TildePath(p.Dir, core.HomeDir())), textW, "…")))
+	if p.IsGlobal() && p.Err == "" {
+		info = append(info, dim(" global: one screen, and one run at a time, for all tabs, in your home folder"))
+	}
 	if p.Err != "" {
 		for _, l := range wrapRows("broken: "+clean.Text(p.Err), textW, 6) {
 			info = append(info, warn(" "+l))
@@ -642,7 +718,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 			return m.openPluginUI(t, p)
 		})
 	out := append(top, rule)
-	mc := m.machineOf(t)
+	mc := m.pluginsMachine(t)
 	uh := max(room, 3)
 	// The panel with the keyboard sizes the screens, of which each
 	// machine runs one per plugin and tab: two plugins panes of different
@@ -684,6 +760,9 @@ func (m *Model) pluginKeys(pairs ...string) string {
 // pluginsTitle is the plugins frame's title.
 func (m *Model) pluginsTitle(t *core.Tab) string {
 	name := "plugins"
+	if m.plugins.global {
+		name = "global plugins" + onMachine(m, m.globalOn())
+	}
 	if p := m.viewIn; p != nil && p.N > 1 {
 		name = m.machineOf(m.viewTab).Core.PaneName(m.viewTab, p) // "plugins 2"
 	}
@@ -697,8 +776,8 @@ func (m *Model) pluginsTitle(t *core.Tab) string {
 // startPluginUI starts plugin p's screen in t, as allowed with key, and gives
 // it the keyboard when focus is set.
 func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key string) tea.Cmd {
-	cmd := m.do(core.StartPluginUI{T: m.fleet.Ref(t), Dir: p.Dir, Key: key})
-	if focus && m.machineOf(t).Core.PluginUIOf(t, p).Running() {
+	cmd := m.doOn(m.pluginsMachine(t), core.StartPluginUI{T: m.fleet.Ref(t), Dir: p.Dir, Key: key})
+	if focus && m.pluginsMachine(t).Core.PluginUIOf(t, p).Running() {
 		m.plugins.uiFocus = core.PluginUIKey(t, p)
 		m.pluginUIFocus(t)
 	}
@@ -719,7 +798,7 @@ func (m *Model) pluginUIFocus(t *core.Tab) {
 func (m *Model) focusedPluginKey() string {
 	key := func() string {
 		t := m.panelTab()
-		if !m.panelPlugins() || t == nil {
+		if !m.panelPlugins() || t == nil && !m.global.shown {
 			return ""
 		}
 		if p, ok := m.pickedPlugin(t); ok {
@@ -740,4 +819,13 @@ func (m *Model) focusedPluginKey() string {
 		}
 	}
 	return ""
+}
+
+// onMachine is " on NAME" for machine mc when there are several to tell
+// apart, and ctrl+o goes to the next; "" with one.
+func onMachine(m *Model, mc *fleet.Machine) string {
+	if len(m.fleet.Machines()) < 2 || mc == nil {
+		return ""
+	}
+	return " on " + clean.Line(mc.Name) + " · ctrl+o other machine"
 }

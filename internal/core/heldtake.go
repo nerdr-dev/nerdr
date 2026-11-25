@@ -108,7 +108,11 @@ func (m *Core) TakeUpHeld() {
 	}
 	for _, kind := range []string{HeldShell, HeldPluginUI, HeldRun} {
 		for {
-			p, l, ok := m.Held.take(func(l Label) bool { return l.Kind == kind && m.TabByID(l.Tab) != nil })
+			p, l, ok := m.Held.take(func(l Label) bool {
+				// A global plugin's screen is of no tab, and its run
+				// outlives the tab it was started from.
+				return l.Kind == kind && (m.TabByID(l.Tab) != nil || kind != HeldShell && l.Global)
+			})
 			if !ok {
 				break
 			}
@@ -150,7 +154,10 @@ func (m *Core) takeUpShell(t *Tab, p holder.Prog, l Label) {
 
 func (m *Core) takeUpPluginUI(t *Tab, p holder.Prog, l Label) {
 	w, h := max(m.PluginUIW, 20), max(m.PluginUIH, 5)
-	u := &PluginUI{T: t, Pane: m.attachHeld(p, w, h), Dir: l.Plugin, Key: l.Key}
+	u := &PluginUI{T: t, Pane: m.attachHeld(p, w, h), Dir: l.Plugin, Key: l.Key, Global: l.Global}
+	if l.Global {
+		u.T = nil
+	}
 	if l.Events != "" {
 		// Its program reads the file by name: it is written on.
 		if f, err := os.OpenFile(l.Events, os.O_WRONLY|os.O_APPEND|os.O_CREATE, 0o600); err == nil {
@@ -160,7 +167,7 @@ func (m *Core) takeUpPluginUI(t *Tab, p holder.Prog, l Label) {
 	if m.PluginUIs == nil {
 		m.PluginUIs = map[string]*PluginUI{}
 	}
-	m.PluginUIs[t.ID+"\x00"+l.Plugin] = u
+	m.PluginUIs[PluginKey(t, l.Plugin, l.Global)] = u
 }
 
 func (m *Core) takeUpRun(t *Tab, p holder.Prog, l Label) {
@@ -175,14 +182,14 @@ func (m *Core) takeUpRun(t *Tab, p holder.Prog, l Label) {
 	// of by the core before: only what comes after it goes to the agent
 	// watching and to the plugin's screen. What came in the moment
 	// between the last the core told of and its crash is not told again.
-	run := &PluginRun{Id: l.Run, T: t, Agent: m.AgentLabel(t, from), Dir: l.Plugin, Values: l.Values,
+	run := &PluginRun{Id: l.Run, T: t, Global: l.Global, Agent: m.RunAgentLabel(t, from, l.Global), Dir: l.Plugin, Values: l.Values,
 		Started: started, Proc: proc, From: from, ReadAt: time.Now(), Watch: l.Watch, Confined: l.Confined,
 		Pumped: int(p.Pos)}
 	v := &m.PluginRuns
 	if v.Runs == nil {
 		v.Runs, v.ByID = map[string]*PluginRun{}, map[string]*PluginRun{}
 	}
-	v.Runs[t.ID+"\x00"+l.Plugin], v.ByID[run.Id] = run, run
+	v.Runs[PluginKey(t, l.Plugin, l.Global)], v.ByID[run.Id] = run, run
 }
 
 // HeldLeft is how many programs the holder runs that no tab took up: one

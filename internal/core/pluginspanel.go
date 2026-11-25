@@ -18,7 +18,8 @@ import (
 // trusted: the screen is drawn on every frame.
 const PluginsCheckEvery = 2 * time.Second
 
-// pluginUI is a plugin's screen, started in tab t.
+// pluginUI is a plugin's screen, started in tab t, or for every tab, T
+// nil, when the plugin is global.
 type PluginUI struct {
 	T    *Tab
 	Pane *term.Pane `json:"-"`
@@ -26,6 +27,8 @@ type PluginUI struct {
 	Events *os.File `json:"-"`
 	// dir is the plugin's folder, and key the content it was started from.
 	Dir, Key string
+	// Global is set for a global plugin's screen, of no tab.
+	Global bool
 	// remoteRuns is, in a copy of core's state, whether core runs the
 	// screen's program, which the copy has no Pane of.
 	remoteRuns bool
@@ -98,6 +101,32 @@ func (m *Core) PluginGone(dir string) {
 	}
 }
 
+// ScopeChanged stops the screens and runs of the plugin in folder dir
+// started as it was before its scope changed to global (or private): kept
+// by their old key, the plugins pane, which looks them up by the new one,
+// could neither show nor stop them, and a run of the new scope could go on
+// beside them.
+func (m *Core) ScopeChanged(dir string, global bool) {
+	for k, u := range m.PluginUIs {
+		if u.Dir == dir && u.Global != global {
+			delete(m.PluginUIs, k)
+			m.Tell(PluginUIGoneMsg{Key: k})
+			u.Close()
+		}
+	}
+	for _, r := range m.PluginRuns.ByID {
+		if r.Dir == dir && r.Global != global && r.Running() && r.StopBy == "" {
+			r.StopBy = "nerdr, the plugin's scope having changed"
+			r.Proc.Stop()
+		}
+	}
+	for k, r := range m.PluginRuns.Runs {
+		if r.Dir == dir && r.Global != global {
+			delete(m.PluginRuns.Runs, k)
+		}
+	}
+}
+
 // CheckPluginsGone stops screens and runs whose plugin folder is gone, or
 // has had no plugin.toml for a while. It looks every few seconds, so a
 // watch does not outlive its plugin just because the plugins pane is not open. The look
@@ -115,9 +144,12 @@ func (m *Core) CheckPluginsGone(now time.Time) Cmd {
 	}
 	m.PluginsLooking = true
 	return func() Event {
-		ev := pluginsChecked{now: now, live: map[string]bool{}, gone: map[string]bool{}}
+		ev := pluginsChecked{now: now, live: map[string]bool{}, gone: map[string]bool{}, global: map[string]bool{}}
 		for _, p := range plugin.Find(plugin.UserDir(config.Path())) {
 			ev.live[p.Dir] = true
+			if p.Err == "" {
+				ev.global[p.Dir] = p.IsGlobal()
+			}
 		}
 		for dir := range dirs {
 			if ev.live[dir] {
@@ -136,6 +168,8 @@ func (m *Core) CheckPluginsGone(now time.Time) Cmd {
 type pluginsChecked struct {
 	now        time.Time
 	live, gone map[string]bool
+	// global is whether each plugin there, and not broken, is global.
+	global map[string]bool
 }
 
 // pluginDirsInUse are the folders of the plugins with a screen or a run.
@@ -166,6 +200,9 @@ func (m *Core) onPluginsChecked(ev pluginsChecked) {
 		switch {
 		case ev.live[dir]:
 			delete(m.PluginsMissing, dir)
+			if global, ok := ev.global[dir]; ok {
+				m.ScopeChanged(dir, global)
+			}
 		case ev.gone[dir]:
 			m.PluginGone(dir)
 		default:
@@ -186,7 +223,7 @@ func (m *Core) onPluginsChecked(ev pluginsChecked) {
 
 // PluginUIOf is p's screen in t, if one was started.
 func (m *Core) PluginUIOf(t *Tab, p plugin.Plugin) *PluginUI {
-	if t == nil {
+	if t == nil && !p.IsGlobal() {
 		return nil
 	}
 	return m.PluginUIs[PluginUIKey(t, p)]
@@ -221,11 +258,19 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 		_ = events.Close()
 		_ = os.Remove(events.Name())
 	}
-	env := append(append(m.TabEnv(t), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
+	env := append(append(m.PluginEnv(t, p), "NERDR_SHELL=1", "NERDR_PLUGIN_EVENTS="+events.Name()), p.Env(nil)...)
 	argv := p.Command(p.UI)
 	cmd := exec.Command(argv[0], argv[1:]...)
 	cmd.Env = env
-	dir, err := RunDir(t, t.Dir)
+	// A global plugin's screen is no tab's: it runs in the user's home,
+	// and goes on when the tab it was started from is closed.
+	owner, tabID, where := t, "", ""
+	if p.IsGlobal() {
+		owner = nil
+	} else {
+		tabID, where = t.ID, t.Dir
+	}
+	dir, err := PluginRunDir(t, p, where)
 	if err != nil {
 		dropEvents()
 		return fail(err)
@@ -237,7 +282,7 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 		return fail(err)
 	}
 	spec.W, spec.H = w, h
-	m.Hold(&spec, Label{Kind: HeldPluginUI, Tab: t.ID, Plugin: p.Dir, Key: key, Events: events.Name()}, false, "")
+	m.Hold(&spec, Label{Kind: HeldPluginUI, Tab: tabID, Plugin: p.Dir, Key: key, Events: events.Name(), Global: p.IsGlobal()}, false, "")
 	pane, err := term.StartWith(m.Programs(), spec, m.Notify)
 	dir.Close()
 	if err != nil {
@@ -247,11 +292,11 @@ func (m *Core) StartPluginUI(t *Tab, p plugin.Plugin, key string) bool {
 	if m.PluginUIs == nil {
 		m.PluginUIs = map[string]*PluginUI{}
 	}
-	m.PluginUIs[PluginUIKey(t, p)] = &PluginUI{T: t, Pane: pane, Events: events, Dir: p.Dir, Key: key}
+	m.PluginUIs[PluginUIKey(t, p)] = &PluginUI{T: owner, Pane: pane, Events: events, Dir: p.Dir, Key: key, Global: p.IsGlobal()}
 	if run := m.PluginRunOf(t, p); run.Running() {
-		m.PluginEvent(t, p.Dir, run.StartEvent())
+		m.PluginEvent(PluginUIKey(t, p), run.StartEvent())
 		if text := strings.Join(run.Lines(), "\n"); text != "" {
-			m.PluginEvent(t, p.Dir, map[string]any{"event": "output", "run": run.Id, "text": text + "\n"})
+			m.PluginEvent(PluginUIKey(t, p), map[string]any{"event": "output", "run": run.Id, "text": text + "\n"})
 		}
 	}
 	m.Tell(PluginUIStartedMsg{T: m.Ref(t), Key: PluginUIKey(t, p)})
@@ -280,10 +325,10 @@ func (m *Core) stopPluginUI(t *Tab, p plugin.Plugin) bool {
 }
 
 // CheckPluginUIs stops the screens of the tabs closed, and forgets their
-// runs; the Cmd is the look for plugins gone, see CheckPluginsGone.
+// runs, but for the global plugins'; the Cmd is the look for plugins gone, see CheckPluginsGone.
 func (m *Core) CheckPluginUIs() Cmd {
 	for k, u := range m.PluginUIs {
-		if !slices.Contains(m.Tabs, u.T) {
+		if u.T != nil && !slices.Contains(m.Tabs, u.T) {
 			delete(m.PluginUIs, k)
 			m.Tell(PluginUIGoneMsg{Key: k})
 			u.Close()
@@ -293,7 +338,8 @@ func (m *Core) CheckPluginUIs() Cmd {
 	look := m.CheckPluginsGone(now)
 	m.PumpRuns(now)
 	for k, r := range m.PluginRuns.Runs {
-		if !slices.Contains(m.Tabs, r.T) {
+		// A global plugin's run outlives the tab its agent was in.
+		if !r.Global && !slices.Contains(m.Tabs, r.T) {
 			if r.Running() {
 				r.Proc.Stop()
 			}
@@ -319,11 +365,11 @@ func (m *Core) PluginUIPanes() (out []*term.Pane, wait func()) {
 	return out, wait
 }
 
-// PluginEvent tells the screen of the plugin in folder dir, in t, of an
+// PluginEvent tells the plugin's screen of key (see PluginKey) of an
 // agent's run of it, when the screen runs: a JSON object a line, in the
 // file NERDR_PLUGIN_EVENTS names, which the screen reads as it grows.
-func (m *Core) PluginEvent(t *Tab, dir string, ev map[string]any) {
-	u := m.PluginUIs[t.ID+"\x00"+dir]
+func (m *Core) PluginEvent(key string, ev map[string]any) {
+	u := m.PluginUIs[key]
 	if u == nil || u.Events == nil {
 		return
 	}

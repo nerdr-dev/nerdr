@@ -80,23 +80,35 @@ func (m *Core) TabEnv(t *Tab) []string {
 
 // ChildEnvFrom is the environment an agent of t runs with, built on base.
 func ChildEnvFrom(base []string, t *Tab) []string {
-	// herdr's variables are set for the tab in hooks.go, none inherited.
-	env := slices.DeleteFunc(slices.Clone(base), func(kv string) bool {
-		name, _, _ := strings.Cut(kv, "=")
-		return strings.HasPrefix(name, "HERDR_") || slices.Contains(TabVars, name) || slices.Contains(HostVars, name)
-	})
 	var paths []string
 	for _, w := range t.Worktrees {
 		paths = append(paths, w.Path)
 	}
 	encoded, _ := json.Marshal(paths)
-	env = append(env, "NERDR_WORKTREES="+string(encoded))
+	env := append(withoutTabVars(base), "NERDR_WORKTREES="+string(encoded), "NERDR_TAB="+t.HookKey())
+	return nerdrEnv(env)
+}
+
+// GlobalEnvFrom is the environment a global plugin's programs run with,
+// built on base: nerdr's, of no tab.
+func GlobalEnvFrom(base []string) []string { return nerdrEnv(withoutTabVars(base)) }
+
+// withoutTabVars is base without the variables a tab sets: herdr's are
+// set for the tab in hooks.go, none inherited.
+func withoutTabVars(base []string) []string {
+	return slices.DeleteFunc(slices.Clone(base), func(kv string) bool {
+		name, _, _ := strings.Cut(kv, "=")
+		return strings.HasPrefix(name, "HERDR_") || slices.Contains(TabVars, name) || slices.Contains(HostVars, name)
+	})
+}
+
+// nerdrEnv is env with the variables every program nerdr starts has.
+func nerdrEnv(env []string) []string {
 	env = append(env,
 		"TERM=xterm-256color",
 		"COLORTERM=truecolor",
 		"TERM_PROGRAM=nerdr",
 		"NERDR=1",
-		"NERDR_TAB="+t.HookKey(),
 		// For the skills: the nerdr to record notes with, and where they
 		// go, which a sandboxed agent's nerdr could not read from the
 		// config. See skills/.

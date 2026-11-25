@@ -184,6 +184,8 @@ func (m *Model) draw() string {
 	var body []string
 	under := len(m.zoneFns)
 	switch {
+	case m.global.shown:
+		body = m.globalLines(m.mainW(), bodyH)
 	case m.splitShown():
 		l, r := m.sides()
 		lw, rw := m.splitWidths()
@@ -473,7 +475,7 @@ func (m *Model) tabBar() string {
 		t := m.fleet.Tabs()[i]
 		num := strconv.Itoa(n+1) + ":"
 		bg := tabBarBg
-		if i == m.Active {
+		if i == m.Active && !m.global.shown {
 			bg = m.activeBg()
 		}
 		var extra string
@@ -499,7 +501,7 @@ func (m *Model) tabBar() string {
 			}
 		}
 		var part string
-		if i == m.Active {
+		if i == m.Active && !m.global.shown {
 			st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("231")).Bold(true)
 			part = m.tabBadge(t) + st.Render(" ") + m.lightTip(t.Lit(), bg, "") + st.Render(" "+num+t.Name+" ") +
 				lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("248")).Render(string(t.Agent)+" ") + extra
@@ -526,8 +528,9 @@ func (m *Model) tabBar() string {
 		}), "New worktree, in this repository, with a tab of its own")
 	}
 	warning := m.overlapWarning()
+	global := m.globalChip()
 	var repo, msg, menuBtn string
-	reserve := lipgloss.Width(warning)
+	reserve := lipgloss.Width(warning) + lipgloss.Width(global)
 	if !m.showGroups() {
 		m.groupRow = barRow{} // not drawn, so nothing hidden in it
 		var r int
@@ -553,8 +556,8 @@ func (m *Model) tabBar() string {
 			return nil
 		}) + plus
 	// A message longer than the room it has is cut, not the tabs.
-	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(menuBtn)-1)
-	return joinBar(left, warning+msg+menuBtn, m.width, bar)
+	msg = m.fitMsg(msg, m.width-lipgloss.Width(left)-lipgloss.Width(warning)-lipgloss.Width(global)-lipgloss.Width(menuBtn)-1)
+	return joinBar(left, warning+msg+global+menuBtn, m.width, bar)
 }
 
 // overlapWarning is the warning in the bar that other tabs change some of

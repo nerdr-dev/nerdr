@@ -141,6 +141,8 @@ type Model struct {
 	reviewGen uint64
 	// panelDlg is the panel as a dialog over the window. See screens.go.
 	panelDlg bool
+	// global is the global tab, of the global plugins. See global.go.
+	global globalTab
 	// views are the view panes' panels; viewIn the one in the panel's
 	// place, in viewTab, while one is (viewDraw: being drawn); dragView
 	// the one a drag started in. See views.go.
@@ -1129,6 +1131,10 @@ func (m *Model) shareOverlapsOf(t *core.Tab) {
 // setFocus moves the keyboard between the agent and the review panel.
 // Within a view pane's panel, it is only that panel's to have or not.
 func (m *Model) setFocus(f core.FocusArea) {
+	if m.global.shown && m.viewIn == nil && f != core.FocusReview {
+		// The keyboard going back to the agent leaves the global tab.
+		m.leaveGlobal()
+	}
 	if m.viewIn != nil {
 		if f != core.FocusReview {
 			m.plugins.uiFocus = ""
@@ -1160,6 +1166,8 @@ func (m *Model) selectTab(i int) tea.Cmd {
 	if i < 0 || i >= len(m.fleet.Tabs()) {
 		return nil
 	}
+	// Going to a tab, the one active under it too, leaves the global tab.
+	m.leaveGlobal()
 	if i != m.Active {
 		m.plugins.uiFocus = ""
 	}
