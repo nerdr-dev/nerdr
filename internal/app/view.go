@@ -131,13 +131,14 @@ func (m *Model) View() string {
 	defer m.fleet.Unlock()
 	if m.sameFrame && m.frame != "" && m.frameGen == m.fleet.Gen() {
 		m.sameFrame = false
+		m.syncPointer()
 		return m.frame
 	}
 	m.sameFrame = false
 	m.sideMemoOK = false
 	m.frameGen = m.fleet.Gen()
 	term.NextFrame()
-	m.zoneFns, m.zoneTips = m.zoneFns[:0], m.zoneTips[:0]
+	m.zoneFns, m.zoneTips, m.zoneAreas = m.zoneFns[:0], m.zoneTips[:0], m.zoneAreas[:0]
 	m.dialogZones, m.hintZones = noZones, noZones
 	frame, rects := scanZones(m.draw())
 	for _, mc := range m.fleet.Machines() {
@@ -150,6 +151,7 @@ func (m *Model) View() string {
 		frame = strings.Join(m.drawTip(strings.Split(frame, "\n")), "\n")
 	}
 	m.frame = frame
+	m.syncPointer()
 	if m.wheelStepped {
 		// The wheel's gap runs from here; see wheelStep.
 		m.lastWheelStep, m.wheelStepped = time.Now(), false
@@ -221,7 +223,7 @@ func (m *Model) draw() string {
 		m.dialogZones = len(m.zoneFns)
 		// The whole box is a zone of its own, so a click on it that
 		// misses its buttons is not taken for a click outside.
-		box := m.zone(m.dialog.view(m, m.width, bodyH), func(*Model, tea.MouseMsg) tea.Cmd { return nil })
+		box := m.area(m.dialog.view(m, m.width, bodyH), func(*Model, tea.MouseMsg) tea.Cmd { return nil })
 		if a, ok := m.dialog.(anchored); ok {
 			x, y := a.anchor()
 			body = overlayAt(body, box, m.width, x, y-m.barRows())

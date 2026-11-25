@@ -163,7 +163,7 @@ func runClient(start bool, remote string) error {
 
 	_, _ = os.Stdout.WriteString(ansi.ResetModeAutoWrap)
 	_, err = p.Run()
-	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap)
+	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap + app.PointerReset)
 	if serr := state.SaveClient(model.ClientLayout(key)); serr != nil {
 		fmt.Fprintln(os.Stderr, "nerdr: could not keep the layout:", serr)
 	}

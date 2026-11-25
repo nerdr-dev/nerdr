@@ -194,7 +194,7 @@ func (m *Model) selRows(s *textSel, from, to int) []string {
 			row = ansi.Cut(row, 0, a) + selStyle.Render(ansi.Cut(row, a, b)) + ansi.Cut(row, b, 1<<20)
 		}
 		s.zones[len(m.zoneFns)] = i
-		out = append(out, m.zone(padTo(row, wide), func(m *Model, ev tea.MouseMsg) tea.Cmd {
+		out = append(out, m.area(padTo(row, wide), func(m *Model, ev tea.MouseMsg) tea.Cmd {
 			if ev.Action == tea.MouseActionPress && ev.Button == tea.MouseButtonLeft {
 				p, _ := s.pointAt(m, ev.X, ev.Y)
 				s.on, s.from, s.to = true, p, p

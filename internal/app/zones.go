@@ -35,6 +35,7 @@ func (m *Model) zone(s string, fn zoneFn) string {
 	id := len(m.zoneFns)
 	m.zoneFns = append(m.zoneFns, fn)
 	m.zoneTips = append(m.zoneTips, "")
+	m.zoneAreas = append(m.zoneAreas, false)
 	start := "\x1b[" + strconv.Itoa(id) + "z"
 	end := "\x1b[" + strconv.Itoa(id) + ";1z"
 	lines := strings.Split(s, "\n")

@@ -465,7 +465,7 @@ func run() error {
 	// a row up and leaving rows bubbletea thinks it drew on the wrong ones.
 	_, _ = os.Stdout.WriteString(ansi.ResetModeAutoWrap)
 	_, err = p.Run()
-	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap)
+	_, _ = os.Stdout.WriteString(ansi.SetModeAutoWrap + app.PointerReset)
 	model.Shutdown()
 	if err != nil && (!errors.Is(err, tea.ErrProgramKilled) || errors.Is(err, tea.ErrProgramPanic)) {
 		return err
