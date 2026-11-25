@@ -135,15 +135,19 @@ func (m *Model) settingRows() []settingRow {
 				"Turn it off if you want your terminal to handle the mouse the way it does outside nerdr.",
 			example: `mouse = false`},
 		b("function_keys", "true",
-			"Whether the review panel's screens are called F1 to F6 in its menu and hints, and opened with those keys.\n"+
-				"Turn it off if your F-keys are hard to reach, as on a Mac laptop, where they change brightness and volume unless you hold fn. The menu and hints then show the prefix keys that do the same: the prefix and e 1 for F1, up to e 4 for F4.",
+			"Whether the review panel's screens are called F1 to F5 in its menu and hints, and opened with those keys.\n"+
+				"Turn it off if your F-keys are hard to reach, as on a Mac laptop, where they change brightness and volume unless you hold fn. The menu and hints then show the prefix keys that do the same: the prefix and g c for F1, g g for F2, e for F3, k for F4 and h for F5.",
 			`function_keys = false`),
 
 		{label: "Screen"},
 		b("key_panel", "false",
 			"Shows nerdr's keys all the time in a narrow column on the right, each with what it does. The keys of a group, such as a for the agent, open below it when you press the prefix and its key.\n"+
-				"Off, the keys show over the bottom rows only while nerdr waits for the key after the prefix.",
+				"Off, the keys show in a box in the middle of the screen while nerdr waits for the key after the prefix, as prefix_hint says.",
 			`key_panel = true`),
+		b("prefix_hint", "true",
+			"Shows a box in the middle of the screen with every key you can press after the prefix, the most used first, when you wait a moment after pressing it. A key marked › opens a group of its own: its keys then show in the box, and esc or backspace goes back.\n"+
+				"Turn it off once you know the keys by heart. The ≡ menu and the prefix and ? list them all still.",
+			`prefix_hint = false`),
 		{key: "pane_min_width", kind: sInt, lo: 20, hi: 400, def: "60",
 			desc: "The narrowest, in columns, the panes of a tab are shown side by side: its agent, and the terminals, agents and reviews opened beside it.\n" +
 				"When there are more panes than fit at this width, the ones you used longest ago are minimised into the row above them. Click one there to bring it back; the one you are in is always shown.",

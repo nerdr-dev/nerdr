@@ -52,7 +52,7 @@ func (m *Model) spinoffMachines() []*fleet.Machine {
 func (d *spinoffDialog) nextMachine(m *Model) tea.Cmd {
 	ms := m.spinoffMachines()
 	if len(ms) < 2 {
-		d.err = "no other machine to make it on; " + m.pk("k") + " adds one"
+		d.err = "no other machine to make it on; " + m.pk("d") + " adds one"
 		return nil
 	}
 	at := d.target(m)

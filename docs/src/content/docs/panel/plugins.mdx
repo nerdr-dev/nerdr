@@ -1,23 +1,23 @@
 ---
-title: Plugins (F5)
-description: Your own scripts, which agents can run and which you can run directly in F5.
+title: Plugins
+description: Your own scripts, which agents can run and which you can run directly in a pane of the tab.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 A plugin is a custom script or tool — such as one that rebuilds and starts
 your Docker setup, seeds a database or deploys a preview — that agents can
-run with parameters, or that you can run directly in F5. Its description
+run with parameters, or that you can run directly in its pane. Its description
 tells the agents when to run it, so *"restart the dev stack"* is enough. To
 write one, see [Writing plugins](../../configure/plugins/).
 
-<video autoPlay loop muted playsInline controls aria-label="Claude starts the dev server and a log watch plugin; F5 shows the log, a panic reaches Claude, which hands the fix to a new tab with spinoff, and that tab fixes it and opens a pull request" style="width:100%">
+<video autoPlay loop muted playsInline controls aria-label="Claude starts the dev server and a log watch plugin; the plugins pane shows the log, a panic reaches Claude, which hands the fix to a new tab with spinoff, and that tab fixes it and opens a pull request" style="width:100%">
 	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "plugins.webm"} type="video/webm" />
 	<source src={import.meta.env.BASE_URL.replace(/\/?$/, "/") + "plugins.mp4"} type="video/mp4" />
 </video>
 
 Above, Claude starts the dev server in a terminal and `logwatch`, a plugin
-that watches its log, with its screen in F5. When the server panics, the
+that watches its log, with its screen in the plugins pane. When the server panics, the
 plugin tells Claude, which hands the fix to a new tab with a spinoff; that
 tab's agent fixes it, runs the tests and opens the pull request. The plugin
 is the `logwatch` example in
@@ -29,9 +29,14 @@ its agent. To have it all happen without you, for errors that come while
 you are away, tell the agent *"don't ask me about each tab"*; it then
 makes each tab with `nerdr tab new`, which does not ask.
 
-## The F5 screen
+## The plugins pane
 
-F5 lists your plugins, from `~/.config/nerdr/plugins`, the same in every
+Plugins have no F-key: they open in a pane of the tab, beside its agents
+and terminals. `ctrl+q t p`, or `+plugins` on a pane's frame, opens one;
+from another pane, `ctrl+q t p` goes to the tab's plugins pane, opening
+one when there is none.
+
+The pane lists your plugins, from `~/.config/nerdr/plugins`, the same in every
 tab. Each shows its description, where it is, and how agents run it with
 its parameters.
 
@@ -61,9 +66,9 @@ tells you. Any change to the plugin's folder needs a new yes. See
 
 `enter` starts the plugin's screen and gives it the keyboard. It keeps
 running when you switch screens or tabs, until its tab is closed or `x`
-stops it. While it has the keyboard, every key goes to it except F1–F6
-and the prefix: `F5` goes back to the list, and from the list to the
-screen again.
+stops it. While it has the keyboard, every key goes to it except F1–F5
+and the prefix: `ctrl+q t p` goes back to the list, and from the list to
+the screen again.
 
 ## When an agent runs a plugin
 

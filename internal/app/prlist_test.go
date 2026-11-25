@@ -133,10 +133,10 @@ func TestPanelScreenIsKeptPerTab(t *testing.T) {
 		state.Tab{ID: "b", Name: "b", Dir: "/w/b"},
 	)
 	m.selectTab(0)
-	m.handleKey(keyMsg("f5"))
+	pressPlugins(m)
 	a, b := m.home().Core.Tabs[0], m.home().Core.Tabs[1]
 	if m.viewOfScreen(a, core.ViewPlugins) == nil {
-		t.Fatal("F5 should open the plugins in a pane of tab a's")
+		t.Fatal("t p should open the plugins in a pane of tab a's")
 	}
 	m.selectTab(1)
 	if m.viewOfScreen(b, core.ViewPlugins) != nil {
@@ -161,7 +161,7 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 		state.Tab{ID: "b", Name: "b", Dir: "/w/b"},
 	)
 	m.selectTab(0)
-	m.handleKey(keyMsg("f5"))
+	pressPlugins(m)
 	f5 := m.review.Screen()
 
 	// Opened as addTab does: active first, then selected.
@@ -172,7 +172,7 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 	if m.review.Screen() != (review.Screen{}) {
 		t.Fatalf("a new tab should start on F1, got %+v", m.review.Screen())
 	}
-	m.handleKey(keyMsg("f5"))
+	pressPlugins(m)
 
 	// Closing c lands on b, which was never given a screen.
 	m.closeTab(c, false, false, nil)

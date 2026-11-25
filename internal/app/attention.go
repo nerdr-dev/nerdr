@@ -130,7 +130,7 @@ func (d *summaryDialog) view(m *Model, w, h int) string {
 	if len(lines) == 2 {
 		add(dim("Nothing happened while you were away."))
 	}
-	add("", m.keys("enter", "close", "", m.pk("h")+" shows it again"))
+	add("", m.keys("enter", "close", "", m.pk("a w")+" shows it again"))
 	return box("Since you were here · "+s.T.Name, lines, w)
 }
 

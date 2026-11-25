@@ -85,7 +85,7 @@ type (
 	// NoticeMsg is to be shown until it is read; a ToastMsg, for a moment.
 	NoticeMsg string
 
-	// HistoryMsg is kept in the TUI's history of what nerdr said (F6),
+	// HistoryMsg is kept in the TUI's history of what nerdr said (F5),
 	// as of kind Cat (HistoryInfo, HistoryWarning), without being shown
 	// in the bar: what is worth reading there, but not worth a
 	// distraction.

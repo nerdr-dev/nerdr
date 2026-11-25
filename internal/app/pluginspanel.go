@@ -16,17 +16,17 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The review panel's F5 screen: the user's plugins (see internal/plugin),
+// The review panel's plugins screen: the user's plugins (see internal/plugin),
 // each with what it does and the parameters agents give it, and below
 // them the screen of one that has its own (its ui), running for the
 // active tab in a terminal of the panel's.
 //
 // A plugin's screen runs as long as its tab, whichever screen is shown,
-// and is drawn only on F5. While it has the keyboard every key goes to it
-// but F1-F6 and the prefix: F5 goes back to the list, and from the list to
+// and is drawn only on the plugins screen. While it has the keyboard every key goes to it
+// but F1-F5 and the prefix: the prefix and t p goes back to the list, and from the list to
 // the screen again.
 
-// pluginsView is the F5 screen's state.
+// pluginsView is the plugins screen's state.
 type pluginsView struct {
 	cursor int
 	// picked is the folder of the plugin picked: the list is read again
@@ -76,7 +76,7 @@ func (m *Model) pluginList(t *core.Tab) []plugin.Plugin {
 	return v.list
 }
 
-// pluginsOn is the machine whose plugins F5 lists; see pluginList.
+// pluginsOn is the machine whose plugins the plugins pane lists; see pluginList.
 func (m *Model) pluginsOn() *fleet.Machine {
 	if m.plugins.on != nil {
 		return m.plugins.on
@@ -107,7 +107,7 @@ func (v *pluginsView) pick(i int) {
 	}
 }
 
-// pickedPlugin is the plugin picked in F5 for t, if there is one.
+// pickedPlugin is the plugin picked in the plugins pane for t, if there is one.
 func (m *Model) pickedPlugin(t *core.Tab) (plugin.Plugin, bool) {
 	list := m.pluginList(t)
 	if len(list) == 0 {
@@ -191,7 +191,7 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 	return nil
 }
 
-// togglePluginUI is F5 pressed on F5: from the list to the picked
+// togglePluginUI is the prefix and t p in the plugins pane: from the list to the picked
 // plugin's screen when it runs, and back. It reports whether it did.
 func (m *Model) togglePluginUI() bool {
 	if m.focus != core.FocusReview || !m.panelPlugins() {
@@ -251,7 +251,7 @@ func (m *Model) openPluginUI(t *core.Tab, p plugin.Plugin) tea.Cmd {
 }
 
 // allowPlugin asks the user to allow p as it is now, for agents to run
-// and its screen to start (a in F5).
+// and its screen to start (a in the plugins pane).
 func (m *Model) allowPlugin(p plugin.Plugin) tea.Cmd {
 	return m.withPluginFacts(p, func(m *Model, f core.PluginFacts) tea.Cmd {
 		q := f.P
@@ -289,7 +289,7 @@ func (m *Model) disallowPlugin(p plugin.Plugin) tea.Cmd {
 			title: "Stop allowing " + clean.Line(p.Name) + "?",
 			lines: []string{
 				"Agents will not run it, nor will its screen start, until you allow it again.",
-				"This is every version of it in this folder. A screen or a watch already running goes on; stop it in F5.",
+				"This is every version of it in this folder. A screen or a watch already running goes on; stop it in the plugins pane (the prefix and t p).",
 				"", keyHint("y") + dim(" stops allowing it · ") + keyHint("n") + dim(" keeps it allowed"),
 			},
 			yes: func(m *Model) tea.Cmd {
@@ -392,7 +392,7 @@ func (m *Model) withPluginFacts(p plugin.Plugin, then func(m *Model, f core.Plug
 	return nil
 }
 
-// pluginJob keeps then for the answer of a job of F5's asked of core,
+// pluginJob keeps then for the answer of a job of the plugins pane's asked of core,
 // and names the job.
 // Asked from a plugins pane's panel, the answer is handled in it.
 func (m *Model) pluginJob(then func(m *Model, ev any) tea.Cmd) string {
@@ -411,7 +411,7 @@ func (m *Model) pluginJob(then func(m *Model, ev any) tea.Cmd) string {
 	return job
 }
 
-// onPluginJob hands core's answer to the job of F5's it is for.
+// onPluginJob hands core's answer to the job of the plugins pane's it is for.
 func (m *Model) onPluginJob(job string, ev any) tea.Cmd {
 	then := m.pluginJobs[job]
 	delete(m.pluginJobs, job)
@@ -621,9 +621,9 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	var state string
 	switch {
 	case inUI:
-		state = "has the keyboard · " + m.screenKey(5) + " list"
+		state = "has the keyboard · " + m.pk("t p") + " list"
 	case u.Running():
-		state = "runs · enter or " + m.screenKey(5) + " uses it · x stops it"
+		state = "runs · enter or " + m.pk("t p") + " uses it · x stops it"
 	case u != nil:
 		state = "ended · enter starts it again"
 	case !v.allowed[p.Dir]:
@@ -664,7 +664,7 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	return fitLines(append(out, m.drawPane(pr, 0, inUI)...), w, h)
 }
 
-// pluginKeys is the F5 screen's row of keys, each one a button.
+// pluginKeys is the plugins screen's row of keys, each one a button.
 func (m *Model) pluginKeys(pairs ...string) string {
 	var out string
 	for i := 0; i+1 < len(pairs); i += 2 {
@@ -681,7 +681,7 @@ func (m *Model) pluginKeys(pairs ...string) string {
 	return " " + out
 }
 
-// pluginsTitle is the F5 frame's title.
+// pluginsTitle is the plugins frame's title.
 func (m *Model) pluginsTitle(t *core.Tab) string {
 	name := "plugins"
 	if p := m.viewIn; p != nil && p.N > 1 {

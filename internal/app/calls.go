@@ -266,7 +266,7 @@ func (m *Model) toastDenied() {
 		m.deniedSaid[nil] = n // the TUI's own, by no machine
 	}
 	if latest != nil {
-		m.say(catApprovals, "Turned down: "+latest.What+" · "+m.pk("g"), core.InAppFor)
+		m.say(catApprovals, "Turned down: "+latest.What+" · "+m.pk("g l"), core.InAppFor)
 	}
 }
 

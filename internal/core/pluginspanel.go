@@ -71,7 +71,7 @@ func HomeDir() string {
 }
 
 // PluginGone stops the screens and runs of a plugin whose folder is no
-// longer there: the user cannot pick them, nor stop them, in F5.
+// longer there: the user cannot pick them, nor stop them, in the plugins pane.
 func (m *Core) PluginGone(dir string) {
 	delete(m.PluginsMissing, dir)
 	for k, u := range m.PluginUIs {
@@ -100,7 +100,7 @@ func (m *Core) PluginGone(dir string) {
 
 // CheckPluginsGone stops screens and runs whose plugin folder is gone, or
 // has had no plugin.toml for a while. It looks every few seconds, so a
-// watch does not outlive its plugin just because F5 is not open. The look
+// watch does not outlive its plugin just because the plugins pane is not open. The look
 // is on the disk, so it is the Cmd returned, away from Mu, one at a time;
 // pluginsChecked, which it ends in, does the stopping.
 func (m *Core) CheckPluginsGone(now time.Time) Cmd {

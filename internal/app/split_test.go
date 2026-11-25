@@ -39,7 +39,7 @@ func wantSides(t *testing.T, m *Model, left, right, active string) {
 func TestSplit(t *testing.T) {
 	m := testModel(t)
 	m.selectTab(1) // logout
-	m.runCommand("z v")
+	m.runCommand("l v")
 	// logout on the right, its neighbour in the group on the left with
 	// the keyboard.
 	wantSides(t, m, "login", "logout", "login")
@@ -68,11 +68,11 @@ func TestSplit(t *testing.T) {
 	if m.split != nil {
 		t.Fatal("split kept across repositories")
 	}
-	m.runCommand("z v") // alone in lib: nothing to put beside it
+	m.runCommand("l v") // alone in lib: nothing to put beside it
 	wantSides(t, m, "parse", "", "parse")
 
 	m.selectTab(1) // logout
-	m.runCommand("z v")
+	m.runCommand("l v")
 	m.command(keyMsg("tab"))
 	wantSides(t, m, "login", "logout", "logout")
 
@@ -81,10 +81,10 @@ func TestSplit(t *testing.T) {
 	m.Update(tea.MouseMsg{X: 2, Y: m.barRows() + 3, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
 	wantSides(t, m, "login", "logout", "login")
 
-	m.runCommand("z s")
+	m.runCommand("l s")
 	wantSides(t, m, "logout", "login", "login")
 
-	m.runCommand("z v")
+	m.runCommand("l v")
 	wantSides(t, m, "login", "", "login")
 	if w, _ := m.agentSize(); w != m.mainW()-2 {
 		t.Fatalf("one tab is %d wide, want %d", w, m.mainW()-2)
@@ -94,7 +94,7 @@ func TestSplit(t *testing.T) {
 func TestSplitNeedsTwoTabs(t *testing.T) {
 	m := testModel(t)
 	m.home().Core.Tabs = m.home().Core.Tabs[:1]
-	m.runCommand("z v")
+	m.runCommand("l v")
 	if m.splitShown() {
 		t.Fatal("split with one tab")
 	}
@@ -102,7 +102,7 @@ func TestSplitNeedsTwoTabs(t *testing.T) {
 
 func TestSplitCloseAndRestore(t *testing.T) {
 	m := testModel(t)
-	m.runCommand("z v") // login on the right, logout on the left
+	m.runCommand("l v") // login on the right, logout on the left
 	wantSides(t, m, "logout", "login", "logout")
 
 	s, err := state.Load(m.home().Core.Root)
@@ -138,11 +138,11 @@ func TestClosingAnotherTabKeepsYouWhereYouAre(t *testing.T) {
 func TestSplitOffAloneInRepository(t *testing.T) {
 	m := testModel(t) // login, logout in app; parse in lib
 	m.selectTab(2)
-	if m.commandOff("z v") == "" {
+	if m.commandOff("l v") == "" {
 		t.Fatal("z v not off for the only tab in lib")
 	}
 	m.selectTab(0)
-	if why := m.commandOff("z v"); why != "" {
+	if why := m.commandOff("l v"); why != "" {
 		t.Fatalf("z v off with two tabs in app: %s", why)
 	}
 }
@@ -155,7 +155,7 @@ func TestSplitEndedByAnotherRepositoryResizesTheAgent(t *testing.T) {
 	m.selectTab(2)
 	parse := runningTab(t, m)
 	m.selectTab(1) // logout
-	m.runCommand("z v")
+	m.runCommand("l v")
 	if !m.splitShown() {
 		t.Fatal("no split")
 	}

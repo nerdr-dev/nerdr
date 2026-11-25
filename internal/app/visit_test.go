@@ -8,6 +8,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/core"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -27,16 +28,18 @@ func TestMenusRemainReachableInSmallTerminal(t *testing.T) {
 	m.startPrefix()
 	seen := ""
 	for range 30 {
-		lines := m.prefixHint(60)
-		if len(lines) > m.height-m.barRows() {
-			t.Fatal("prefix help overflows screen")
+		box := m.prefixHint(60, 14)
+		if lipgloss.Height(box) > 14 || lipgloss.Width(box) > 60 {
+			t.Fatalf("prefix help overflows screen:\n%s", box)
 		}
-		seen += ansi.Strip(strings.Join(lines, "\n"))
+		seen += ansi.Strip(box)
 		m.handleKey(tea.KeyMsg{Type: tea.KeyPgDown})
 	}
 	for _, g := range core.CommandGroups() {
-		if !strings.Contains(seen, g.Title) {
-			t.Fatalf("group inaccessible: %s", g.Title)
+		for _, e := range g.Entries {
+			if !strings.Contains(seen, e.Label) {
+				t.Fatalf("key inaccessible: %s", e.Label)
+			}
 		}
 	}
 	m.handleKey(keyMsg("?"))

@@ -49,7 +49,7 @@ func TestReposAddAndRemove(t *testing.T) {
 
 	// Add repoB.
 	h.keys(prefix)
-	h.keys("i")
+	h.keys("g")
 	h.keys("r")
 	h.waitFor("Repositories of feat-r", 2*time.Second)
 	t.Logf("the dialog:\n%s", h.screen())
@@ -75,7 +75,7 @@ func TestReposAddAndRemove(t *testing.T) {
 
 	// Take repoB away again.
 	h.keys(prefix)
-	h.keys("i")
+	h.keys("g")
 	h.keys("r")
 	h.waitFor("Repositories of feat-r", 2*time.Second)
 	h.keys("\x1b[B")

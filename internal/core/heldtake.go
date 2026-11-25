@@ -171,7 +171,7 @@ func (m *Core) takeUpRun(t *Tab, p holder.Prog, l Label) {
 		from = t
 	}
 	started := time.Unix(0, p.Started)
-	// What it printed before is read again, for F5 and reads, but was told
+	// What it printed before is read again, for the plugins pane and reads, but was told
 	// of by the core before: only what comes after it goes to the agent
 	// watching and to the plugin's screen. What came in the moment
 	// between the last the core told of and its crash is not told again.

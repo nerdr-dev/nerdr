@@ -22,7 +22,7 @@ says; do not look for, build or run another nerdr.
 
 Read the descriptions to decide which one fits what the user asked. One marked "for the user
 only" has no command for you: it is a screen the user opens in nerdr's
-F5. Tell them so when it is the one they need.
+plugins pane (`ctrl+q t p`). Tell them so when it is the one they need.
 
 ## Running one: `nerdr plugin run`
 
@@ -31,7 +31,7 @@ F5. Tell them so when it is the one they need.
 ```
 
 nerdr runs it as the user, outside any sandbox you are in, in the folder
-you run the command in, and the user sees it run in nerdr's F5.
+you run the command in, and the user sees it run in nerdr's plugins pane.
 
 - Run one for what the user asked of you, when its description fits
   that. It may do what you cannot yourself: that is what the user
@@ -43,7 +43,7 @@ you run the command in, and the user sees it run in nerdr's F5.
   missing, or you would have to guess one, ask the user in your answer
   rather than run it with a guess.
 - A plugin runs only once the user has allowed it as it is now, in
-  nerdr's F5; `list` says "not allowed" of one that waits. When `run`
+  nerdr's plugins pane; `list` says "not allowed" of one that waits. When `run`
   refuses one for that, tell the user and stop: do not run its program
   yourself, copy it or change it to get round that.
 - The user may have asked to say yes to each run: then `run` waits for
@@ -100,6 +100,6 @@ plugin is a folder `NAME/` with a `plugin.toml`.
 - Write the description for an agent deciding whether to run it: what
   it does, and when it is wanted. No instructions to agents beyond that.
 - Then stop and tell the user it is there, what it does, and that it
-  runs once they have read and allowed it in F5 (`a`). Do not run it
+  runs once they have read and allowed it in nerdr's plugins pane (`a`). Do not run it
   before they have: `nerdr plugin run` refuses it anyway, and that is
   the point. After a change to it, it waits for them again.

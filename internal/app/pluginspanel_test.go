@@ -36,9 +36,7 @@ func TestPluginScreen(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(toml), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	f5 := tea.KeyMsg{Type: tea.KeyF5}
-
-	m.Update(f5)
+	pressPlugins(m)
 	view := ansi.Strip(m.View())
 	if !strings.Contains(view, "hello") || !strings.Contains(view, "Says hello.") {
 		t.Fatalf("F5 does not show the plugin:\n%s", view)
@@ -57,11 +55,11 @@ func TestPluginScreen(t *testing.T) {
 			t.Fatalf("the screen does not show what the plugin printed:\n%s", ansi.Strip(m.View()))
 		}
 	}
-	m.Update(f5)
+	pressPlugins(m)
 	if m.pluginUIPane() != nil {
 		t.Fatal("F5 on the plugin's screen should go back to the list")
 	}
-	m.Update(f5)
+	pressPlugins(m)
 	if m.pluginUIPane() == nil {
 		t.Fatal("F5 on the list should go back to the running screen")
 	}
@@ -102,7 +100,7 @@ func TestPluginChangedWhileAsked(t *testing.T) {
 	writePlugin(t, plugins, "seed", "echo shown; cat\n")
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("enter"))
 	if _, ok := m.dialog.(*confirm); !ok {
 		t.Fatalf("dialog %T, want the question", m.dialog)
@@ -137,12 +135,12 @@ func TestPluginPickSurvivesTheListChanging(t *testing.T) {
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("j"))
 	m.Update(keyMsg("j"))
 	m.Update(keyMsg("enter")) // c, asked about first
 	m.Update(keyMsg("y"))
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("k"))
 	m.Update(keyMsg("enter")) // b
 	m.Update(keyMsg("y"))
@@ -197,7 +195,7 @@ func TestPluginsWaitForTheUser(t *testing.T) {
 	if a.Text != "not allowed" {
 		t.Fatalf("an agent was told %q of a plugin the user has not allowed", a)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	if !strings.Contains(ansi.Strip(m.View()), "not allowed") {
 		t.Fatal("F5 does not say the plugin is not allowed")
 	}
@@ -236,7 +234,7 @@ func TestPluginAskScrolls(t *testing.T) {
 	writePlugin(t, filepath.Join(cfg, "nerdr", "plugins"), "long", script.String())
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("a"))
 	if _, ok := m.dialog.(*confirm); !ok {
 		t.Fatalf("dialog %T, want the question", m.dialog)
@@ -284,7 +282,7 @@ func TestPluginMetadataCannotEscapeTheTerminal(t *testing.T) {
 	m := testModel(t)
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	if view := m.View(); strings.Contains(view, "\x1b]52;") {
 		t.Fatalf("the terminal got the plugin's escape sequence:\n%q", view)
 	}
@@ -345,7 +343,7 @@ func TestPluginDisallow(t *testing.T) {
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("a"))
 	m.Update(keyMsg("y"))
 	p := m.pluginList(tb)[0]
@@ -377,7 +375,7 @@ func TestPluginUISecondScreenKeepsTheKeyboard(t *testing.T) {
 	allowedPlugin(t, cfg, "a", toml)
 	allowedPlugin(t, cfg, "b", toml)
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.pluginList(tb)
 	for i, q := range m.plugins.list {
 		if q.Name == "a" {
@@ -408,14 +406,14 @@ func TestPluginUIChangedContentRestarts(t *testing.T) {
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("enter"))
 	m.Update(keyMsg("y"))
 	old := m.pluginUIPane()
 	if old == nil {
 		t.Fatal("the screen does not have the keyboard")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	writePlugin(t, plugins, "mine", "cat\n# changed\n")
 	m.plugins.at = time.Time{}
 	m.View()
@@ -441,7 +439,7 @@ func TestPluginGoneStopsItsScreenAndRuns(t *testing.T) {
 	defer m.Shutdown()
 	p := allowedPlugin(t, cfg, "gone", "description = \"x\"\nrun = [\"sleep\", \"30\"]\nui = [\"sh\", \"-c\", \"cat\"]\nshow = [\"ui\"]\n")
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.pluginList(tb)
 	for i, q := range m.plugins.list {
 		if q.Name == "gone" {
@@ -484,7 +482,7 @@ func TestPluginGoneWaitsForAnEditor(t *testing.T) {
 	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("enter"))
 	m.Update(keyMsg("y"))
 	p := m.pluginList(tb)[0]
@@ -528,7 +526,7 @@ func TestPluginListScrollsToThePick(t *testing.T) {
 	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.pluginList(tb)
 	m.plugins.pick(19)
 	lines := m.pluginsBody(tb, 80, 12)
@@ -549,7 +547,7 @@ func TestPluginUIFocusClearedByOtherPanel(t *testing.T) {
 	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("enter"))
 	m.Update(keyMsg("y"))
 	if m.pluginUIPane() == nil {
@@ -559,7 +557,7 @@ func TestPluginUIFocusClearedByOtherPanel(t *testing.T) {
 	if m.plugins.uiFocus != "" || m.pluginUIPane() != nil {
 		t.Fatal("F1 left the plugin screen with the keyboard")
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	if m.pluginUIPane() != nil {
 		t.Fatal("F5 took the keyboard back into the screen by itself")
 	}
@@ -578,7 +576,7 @@ func TestPluginDisallowOldVersions(t *testing.T) {
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
 
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("a"))
 	m.Update(keyMsg("y"))
 	old := m.pluginList(tb)[0]
@@ -629,7 +627,7 @@ func TestPluginUIFocusClearedByAnotherTab(t *testing.T) {
 	tb := m.Cur()
 	tb.Dir = t.TempDir()
 	defer m.Shutdown()
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("enter"))
 	m.Update(keyMsg("y"))
 	if m.pluginUIPane() == nil {
@@ -654,7 +652,7 @@ func TestDialogInPlaceOfAPanesQuestion(t *testing.T) {
 	m.router = input.New(nil, 0x11)
 	m.Cur().Dir = t.TempDir()
 	defer m.Shutdown()
-	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	pressPlugins(m)
 	m.Update(keyMsg("enter"))
 	if _, ok := m.dialog.(*confirm); !ok || m.dialogView == nil {
 		t.Fatalf("the question should be the pane's: %T", m.dialog)
@@ -664,4 +662,12 @@ func TestDialogInPlaceOfAPanesQuestion(t *testing.T) {
 	if m.dialogView != nil {
 		t.Fatal("the palette in its place should be the window's")
 	}
+}
+
+// pressPlugins is the prefix and t p, as typed: the plugins in a pane, or
+// in it, between the list and the plugin's screen.
+func pressPlugins(m *Model) {
+	m.Update(input.PrefixMsg{})
+	m.Update(keyMsg("t"))
+	m.Update(keyMsg("p"))
 }

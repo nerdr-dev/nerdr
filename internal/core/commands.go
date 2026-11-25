@@ -2,7 +2,7 @@ package core
 
 // Both the mouse menu and prefix help use this order and these group names.
 // run is the keys after the prefix: one, or a group's key and the
-// command's in it ("i p"). An entry whose run is a group's key opens the
+// command's in it ("g p"). An entry whose run is a group's key opens the
 // group. rare entries work and are in the menu and the palette but not in
 // the hint line, which keeps to the keys most used. desc says what the
 // command does, in the palette, which is all the help there is.
@@ -30,7 +30,6 @@ func CommandGroups() []CommandGroup {
 			{Key: "n", Label: "Next agent waiting", Run: "n", Desc: "go to the tab that has waited longest for you"},
 			{Key: "f", Label: "Find tab", Run: "f", Desc: "find a tab by typing part of its name, across repositories (space too)"},
 			{Key: "1–9,0", Label: "Tab in group", Run: "1", Desc: "go to tab 1–9 of the repository; 0 is the last"},
-			{Key: "h", Label: "Since you were here", Run: "h", Rare: true, Desc: "what happened in the tab while you were away: commits, PR, CI, the agent"},
 		}},
 		{"Tasks and tabs", []CommandEntry{
 			{Key: "c", Label: "New tab", Run: "c", Desc: "pick repositories, branch and agent for a new tab"},
@@ -41,22 +40,23 @@ func CommandGroups() []CommandGroup {
 			{Key: "⇧→", Label: "Move tab right", Run: "shift+right", Rare: true, Desc: "move the tab one place right in the tab row"},
 		}},
 		{"Agent and tasks", []CommandEntry{
-			{Key: "a", Label: "Answer, note, switch, restart…", Run: "a"},
+			{Key: "a", Label: "Agent", Run: "a"},
+			{Key: "e", Label: "Tasks (F3)", Run: "e", Desc: "the tasks waiting for the agent: yours, and the review's findings"},
+			{Key: "k", Label: "Skills (F4)", Run: "k", Desc: "the agents' skills, nerdr's and others: which the agent has, how much they are used, and switch nerdr's on or off"},
 			{Key: "m", Label: "Task for agent", Run: "m", Desc: "what the agent should do next: sent by itself when the agent is idle, or kept in F3 until then"},
 			{Key: "M", Label: "Task to several tabs", Run: "M", Desc: "one task for the agents of the tabs you tick"},
-			{Key: "l", Label: "Saved prompts", Run: "l", Desc: "pick a prompt you keep for typing into agents again and again, such as \"commit, push and open a pull request\"; sent with enter, or put in"},
+			{Key: "p", Label: "Saved prompts", Run: "p", Desc: "pick a prompt you keep for typing into agents again and again, such as \"commit, push and open a pull request\"; sent with enter, or put in"},
 		}},
-		{"Git and GitHub", []CommandEntry{
-			{Key: "i", Label: "Branches, PRs, issues, review…", Run: "i"},
+		{"Git/GitHub", []CommandEntry{
+			{Key: "g", Label: "Git/GitHub", Run: "g"},
 		}},
 		{"View", []CommandEntry{
-			{Key: "e", Label: "F1–F6 screens…", Run: "e"},
-			{Key: "z", Label: "Split, pane, tab bar…", Run: "z"},
+			{Key: "l", Label: "Layout", Run: "l"},
 			{Key: "<", Label: "Wider split", Run: "<", Rare: true, Desc: "make the right of the split wider (, too)"},
 			{Key: ">", Label: "Narrower split", Run: ">", Rare: true, Desc: "make the right of the split narrower (. too)"},
 		}},
 		{"Panes", []CommandEntry{
-			{Key: "t", Label: "Terminal, agent, review, panes…", Run: "t"},
+			{Key: "t", Label: "Panes", Run: "t"},
 		}},
 		{"Work tools", []CommandEntry{
 			{Key: "o", Label: "Open in editor", Run: "o", Desc: "the worktree in your editor: VS Code, unless worktree_editor says otherwise"},
@@ -66,11 +66,11 @@ func CommandGroups() []CommandGroup {
 		}},
 		{"Settings and help", []CommandEntry{
 			{Key: "?", Label: "All commands", Run: "?", Desc: "this list: type part of a name or what it does to find it (: too)"},
-			{Key: "k", Label: "Machines", Run: "k", Rare: true, Desc: "this machine and the servers whose agents nerdr shows, reached over ssh: add one, connect again, disconnect, remove"},
+			{Key: "h", Label: "History (F5)", Run: "h", Desc: "everything nerdr has said in its bar since it started, the latest first, each in full when picked"},
+			{Key: "d", Label: "Machines", Run: "d", Rare: true, Desc: "this machine and the servers whose agents nerdr shows, reached over ssh: add one, connect again, disconnect, remove"},
 			{Key: "j", Label: "Programs in no tab", Run: "j", Rare: true, Desc: "programs from before nerdr started again that no tab took up, such as a reviewer of a review not kept: what each is, and stop it"},
-			{Key: "g", Label: "git and gh calls", Run: "g", Rare: true, Desc: "how many times nerdr has run git and gh for each tab, and which commands, since it started; and what of nerdr's was turned down, as in a sandbox"},
 			{Key: "s", Label: "Settings", Run: "s", Desc: "every setting of the config file, and how each agent starts: model, arguments, variables"},
-			{Key: "p", Label: "Send prefix to agent", Run: "p", Rare: true, Desc: "the agent gets the prefix key itself, for a program that uses it"},
+			{Key: "i", Label: "Send prefix to agent", Run: "i", Rare: true, Desc: "the agent gets the prefix key itself, for a program that uses it"},
 			{Key: "q", Label: "Quit", Run: "q", Rare: true, Desc: "stop nerdr and its agents; the tabs are back next time"},
 		}},
 	}
@@ -79,19 +79,22 @@ func CommandGroups() []CommandGroup {
 // KeyGroups are the commands two keys after the prefix: the group's key,
 // then the command's. Each group's own key again runs its most used one,
 // so the old single key is the same key twice; a group without an entry
-// of its own key runs its first entry then (e e is F1).
+// of its own key runs its first entry then (l l is l v).
 func KeyGroups() map[string]CommandGroup {
 	return map[string]CommandGroup{
-		"i": {"Git and GitHub", []CommandEntry{
-			{Key: "i", Label: "Branches, PR, push and conflicts", Run: "i i", Desc: "the tab's branches: changes, ahead/behind, PR and CI; push, open a PR"},
-			{Key: "p", Label: "All my pull requests (F2)", Run: "i p", Desc: "yours across the repositories, or m: everyone's, those asking your review marked; enter goes to, or opens, the branch's tab"},
-			{Key: "b", Label: "Open the PR in the browser", Run: "i b", Desc: "the tab's pull request on GitHub, in your browser"},
-			{Key: "r", Label: "Repositories of the tab", Run: "i r", Desc: "add repositories to the tab, each a worktree on its branch, or take them away; its last one stays"},
-			{Key: "o", Label: "Open issues (F2)", Run: "i o", Desc: "the issues assigned to you, or all open (a); enter starts a tab for one"},
+		"g": {"Git/GitHub", []CommandEntry{
+			{Key: "g", Label: "This branch: PR, push (F2)", Run: "g g", Desc: "the tab's branches: changes, ahead/behind, PR and CI; push, open a PR"},
+			{Key: "c", Label: "Code changes (F1)", Run: "g c", Desc: "the tab's changes against main, file by file"},
+			{Key: "p", Label: "All my pull requests", Run: "g p", Desc: "yours across the repositories, or m: everyone's, those asking your review marked; enter goes to, or opens, the branch's tab"},
+			{Key: "b", Label: "Open the PR in the browser", Run: "g b", Desc: "the tab's pull request on GitHub, in your browser"},
+			{Key: "r", Label: "Repositories of the tab", Run: "g r", Desc: "add repositories to the tab, each a worktree on its branch, or take them away; its last one stays"},
+			{Key: "o", Label: "Open issues", Run: "g o", Desc: "the issues assigned to you, or all open (a); enter starts a tab for one"},
+			{Key: "l", Label: "git and gh calls", Run: "g l", Rare: true, Desc: "how many times nerdr has run git and gh for each tab, and which commands, since it started; and what of nerdr's was turned down, as in a sandbox"},
 		}},
 		"a": {"Agent", []CommandEntry{
 			{Key: "a", Label: "Focus agent", Run: "a a", Desc: "give the keyboard back to the agent"},
 			{Key: "n", Label: "Note for yourself", Run: "a n", Desc: "a note for the tab, shown in the panel above the agent"},
+			{Key: "w", Label: "Since you were here", Run: "a w", Desc: "what happened in the tab while you were away: commits, PR, CI, the agent"},
 			{Key: "h", Label: "What you sent the agent", Run: "a h", Desc: "what you sent the agent, the latest first, each in full when picked; a click on last: above the agent too"},
 			{Key: "s", Label: "Switch agent", Run: "a s", Desc: "carry on the work of the agent with the keyboard with another kind (claude, opencode, …)"},
 			{Key: "m", Label: "Move tab to another machine", Run: "a m", Desc: "the branch, its changes not committed and the conversation go to a server (or back), and the tab carries on there"},
@@ -99,17 +102,11 @@ func KeyGroups() map[string]CommandGroup {
 			{Key: "c", Label: "Code review", Run: "a c", Desc: "another agent reviews this agent's work, in a pane beside it (as t r)"},
 			{Key: "x", Label: "Stop code review", Run: "a x", Rare: true, Desc: "stop the code review of this agent's work"},
 		}},
-		"e": {"Review panel", []CommandEntry{
-			{Key: "1", Label: "Code changes (F1)", Run: "e 1", Desc: "the tab's changes against main, file by file"},
-			{Key: "2", Label: "GitHub (F2)", Run: "e 2", Desc: "the branch's pull request; again for all yours, then your issues"},
-			{Key: "3", Label: "Tasks (F3)", Run: "e 3", Desc: "the tasks waiting for the agent: yours, and the review's findings"},
-			{Key: "4", Label: "Skills (F4)", Run: "e 4", Desc: "the agents' skills, nerdr's and others: which the agent has, how much they are used, and switch nerdr's on or off"},
-			{Key: "5", Label: "Plugins (F5)", Run: "e 5", Desc: "the plugins there are for the tab: what each does, and the screen of one that has its own"},
-			{Key: "6", Label: "History (F6)", Run: "e 6", Desc: "everything nerdr has said in its bar since it started, the latest first, each in full when picked"},
-		}},
 		"t": {"Panes", []CommandEntry{
 			{Key: "t", Label: "New terminal", Run: "t t", Desc: "a terminal in the worktree, in a new pane, last"},
 			{Key: "a", Label: "New agent…", Run: "t a", Desc: "another agent in the same worktree, in a new conversation, in a new pane, last"},
+			{Key: "c", Label: "Code changes in a pane", Run: "t c", Desc: "the code changes in a new pane, with a file and diff of its own; with the F1 dialog open, it goes in the pane, to keep"},
+			{Key: "p", Label: "Plugins in a pane", Run: "t p", Desc: "the plugins there are for the tab, in a pane: what each does, and the screen of one that has its own; in the pane, between the list and the plugin's screen"},
 			{Key: "r", Label: "New code review", Run: "t r", Desc: "a second agent reviews the work of the agent whose pane has the keyboard; its findings go back to that agent"},
 			{Key: "x", Label: "Close pane", Run: "t x", Desc: "stop what runs in the pane with the keyboard and close it; the tab's first agent stays as long as the tab; the panel's dialog closes"},
 			{Key: "m", Label: "Minimise / show pane", Run: "t m", Desc: "fold the pane into a row over the others, or show it again"},
@@ -118,20 +115,19 @@ func KeyGroups() map[string]CommandGroup {
 			{Key: "⇧←", Label: "Move pane left", Run: "t ⇧←", Desc: "move the pane with the keyboard one place left; more arrows move it on"},
 			{Key: "⇧→", Label: "Move pane right", Run: "t ⇧→", Desc: "move the pane with the keyboard one place right; more arrows move it on"},
 		}},
-		"z": {"View", []CommandEntry{
-			{Key: "e", Label: "Changes / plugins in a pane", Run: "z e", Desc: "the code changes (F1) or plugins (F5) dialog in a pane of the tab's, to keep; else the code changes in a new pane"},
-			{Key: "v", Label: "Two tabs / one tab", Run: "z v", Desc: "this tab on the right, another tab of its repository on the left; again for one"},
-			{Key: "s", Label: "Swap sides", Run: "z s", Desc: "swap the two sides of the split"},
-			{Key: "d", Label: "Tab bar details", Run: "z d", Desc: "show / hide the details in the tab bar: changes, PR, CI…"},
-			{Key: "b", Label: "Show / hide repository row", Run: "z b", Desc: "the row of repositories above the tabs"},
-			{Key: "t", Label: "Tabs on top / on the left", Run: "z t", Desc: "the repositories and their tabs as two rows on top, or two lists left of the agent; tab_bar in the settings for every start"},
-			{Key: "m", Label: "Small / wide sidebar", Run: "z m", Desc: "the tabs on the left as their lights alone, or with their names; tab_bar = \"left-small\" in the settings for every start"},
+		"l": {"Layout", []CommandEntry{
+			{Key: "v", Label: "Two tabs / one tab", Run: "l v", Desc: "this tab on the right, another tab of its repository on the left; again for one"},
+			{Key: "s", Label: "Swap sides", Run: "l s", Desc: "swap the two sides of the split"},
+			{Key: "d", Label: "Tab bar details", Run: "l d", Desc: "show / hide the details in the tab bar: changes, PR, CI…"},
+			{Key: "b", Label: "Show / hide repository row", Run: "l b", Desc: "the row of repositories above the tabs"},
+			{Key: "t", Label: "Tabs on top / on the left", Run: "l t", Desc: "the repositories and their tabs as two rows on top, or two lists left of the agent; tab_bar in the settings for every start"},
+			{Key: "m", Label: "Small / wide sidebar", Run: "l m", Desc: "the tabs on the left as their lights alone, or with their names; tab_bar = \"left-small\" in the settings for every start"},
 		}},
 	}
 }
 
 // AllCommands is every command, a group's entries in its place, with the
-// keys in full ("i p"): for the menu and the command palette.
+// keys in full ("g p"): for the menu and the command palette.
 func AllCommands() []CommandGroup {
 	groups := KeyGroups()
 	var out []CommandGroup

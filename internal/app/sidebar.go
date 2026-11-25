@@ -199,9 +199,9 @@ func (m *Model) toggleSideSmall() tea.Cmd {
 
 // sideToggle is the « or » that makes the sidebar small or wide.
 func (m *Model) sideToggle(small bool) string {
-	glyph, tip := "«", "Smaller: the lights alone · "+m.pk("z m")
+	glyph, tip := "«", "Smaller: the lights alone · "+m.pk("l m")
 	if small {
-		glyph, tip = "»", "Wider: with the names · "+m.pk("z m")
+		glyph, tip = "»", "Wider: with the names · "+m.pk("l m")
 	}
 	return m.tip(m.onClick(lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Bold(true).Render(glyph),
 		(*Model).toggleSideSmall), tip)

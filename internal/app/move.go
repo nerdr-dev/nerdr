@@ -97,7 +97,7 @@ func (m *Model) openMove() tea.Cmd {
 	}
 	switch len(to) {
 	case 0:
-		m.toast("no other machine to move " + t.Name + " to; " + m.pk("k") + " adds one")
+		m.toast("no other machine to move " + t.Name + " to; " + m.pk("d") + " adds one")
 		return nil
 	case 1:
 		return m.startMove(t, to[0])

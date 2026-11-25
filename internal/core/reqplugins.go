@@ -2,7 +2,7 @@ package core
 
 import "github.com/nerdr-dev/nerdr/internal/plugin"
 
-// The requests about the plugins' screens and runs in F5. A plugin is
+// The requests about the plugins' screens and runs in the plugins pane. A plugin is
 // named by its folder, and read from there again.
 
 func init() { registerRequests(StartPluginUI{}, StopPluginUI{}, StopPickedRun{}, PluginUISize{}) }

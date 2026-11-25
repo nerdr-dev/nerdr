@@ -3,6 +3,7 @@ package app
 import (
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
@@ -68,8 +69,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return cmd
 	}
 	if m.isPrefix(msg) {
-		m.startPrefix()
-		return nil
+		return m.startPrefix()
 	}
 	if m.dialog != nil {
 		if msg.String() == "ctrl+o" {
@@ -78,9 +78,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 			}
 		}
 		return m.inDialogView(func() tea.Cmd { return m.dialog.key(m, msg) })
-	}
-	if msg.String() == "f5" && m.togglePluginUI() {
-		return nil
 	}
 	if panelKey(msg.String()) {
 		// The review panel's menu, whichever side has the keyboard — and
@@ -169,50 +166,62 @@ func (m *Model) reviewKey(msg tea.KeyMsg) tea.Cmd {
 }
 
 // panelKey reports whether k is one of the review panel's screens, F1 to
-// F6, which work whichever side has the keyboard.
+// F5, which work whichever side has the keyboard.
 func panelKey(k string) bool {
-	switch k {
-	case "f1", "f2", "f3", "f4", "f5", "f6":
-		return true
-	}
-	return false
+	_, ok := review.ScreenOfFKey(k)
+	return ok
 }
 
-// functionKeys is whether hints name the panel's screens F1 to F6.
+// functionKeys is whether hints name the panel's screens F1 to F5.
 func (m *Model) functionKeys() bool {
 	return m.cfg().FunctionKeys == nil || *m.cfg().FunctionKeys
 }
 
-// screenKey is how a hint names the review panel's screen n (1 to 6):
-// F1 to F6, or the prefix keys for it with function_keys off.
+// screenKey is how a hint names the review panel's screen of F-key n (1
+// to 5): F1 to F5, or the prefix keys for it with function_keys off.
 func (m *Model) screenKey(n int) string {
 	if m.functionKeys() {
 		return "F" + strconv.Itoa(n)
 	}
-	return m.pk("e " + strconv.Itoa(n))
+	return m.pk(fkeyCommand(n))
+}
+
+// screenFKey is the F-key each of these commands presses: the way to the
+// review panel's screens without the function keys. F2's is g g, the
+// branch's pull request, which has a command of its own.
+var screenFKey = map[string]string{"g c": "f1", "e": "f3", "k": "f4", "h": "f5"}
+
+// fkeyCommand is the command that opens the screen of F-key n (1 to 5).
+func fkeyCommand(n int) string {
+	return [...]string{"", "g c", "g g", "e", "k", "h"}[max(0, min(n, 5))]
 }
 
 // screenMenuKey is screenKey for a menu, whose keys come after the
-// prefix: "F4", or "e 4".
+// prefix: "F4", or "k".
 func (m *Model) screenMenuKey(n int) string {
 	if m.functionKeys() {
 		return "F" + strconv.Itoa(n)
 	}
-	return "e " + strconv.Itoa(n)
+	return m.shownKeys(fkeyCommand(n))
 }
 
 // screenMenuKeys are the keys the review panel's menu shows before each
 // screen's name, and the hint for all of them: none with function_keys
-// on, for the panel's own F1 to F6.
+// on, for the panel's own F1 to F5. The plugins, which have no F-key,
+// have none either.
 func (m *Model) screenMenuKeys() ([]string, string) {
 	if m.functionKeys() {
 		return nil, ""
 	}
 	var keys []string
-	for n := 1; n <= len(review.ScreenNames()); n++ {
-		keys = append(keys, strings.ReplaceAll(m.shownKeys("e "+strconv.Itoa(n)), " ", ""))
+	for i := range review.ScreenNames() {
+		k := ""
+		if f := review.ScreenFKey(i); f != "" {
+			k = strings.ReplaceAll(m.shownKeys(fkeyCommand(int(f[1]-'0'))), " ", "")
+		}
+		keys = append(keys, k)
 	}
-	return keys, m.pk("e") + " 1-" + strconv.Itoa(len(review.ScreenNames()))
+	return keys, m.cfg().Prefix + " and the key by its name"
 }
 
 // keyPane is the program that has the keyboard: the one in the active
@@ -227,14 +236,15 @@ func (m *Model) keyPane() core.Program {
 
 // startPrefix turns the prefix on for a new command. The arrows start on
 // the group row when there are groups to choose between, else on the tabs.
-func (m *Model) startPrefix() {
-	m.prefixPage = 0
+func (m *Model) startPrefix() tea.Cmd {
+	m.prefixPage, m.prefixAt = 0, time.Now()
 	m.keyGroup, m.groupWalk = "", false
 	m.prefix, m.nav = true, false
 	// The arrows start on the tab row, among the repository's own tabs —
 	// unless it has only the one, when ← → can only mean the next
 	// repository.
 	m.onGroups = len(m.fleet.Groups()) > 1 && len(m.fleet.GroupTabs(m.curGroup())) < 2
+	return m.hintDue()
 }
 
 // navKey is whether k, after the prefix, goes to another tab or moves this
@@ -256,13 +266,13 @@ func prefixCommand(k string) bool {
 	switch k {
 	case "c", "C", "x", "tab", "o", "<", ",", ">", ".",
 		"b", "pgup", "s", "q", "?", ":", "t",
-		"m", "M", "l", "w", "n", "f", " ", "r", "h", "p", "g", "u", "/", "j", "k":
+		"m", "M", "w", "n", "f", " ", "r", "h", "p", "u", "/", "j", "k", "e", "d", "i":
 		return true
 	}
 	return core.IsGroup(k)
 }
 
-// groupKey runs the key pressed in group g. esc goes back to the prefix's
+// groupKey runs the key pressed in group g. esc or backspace goes back to the prefix's
 // own keys; a key the group does not have ends it, rather than going to
 // the agent: it was meant as a command.
 func (m *Model) groupKey(g string, msg tea.KeyMsg) tea.Cmd {
@@ -270,13 +280,12 @@ func (m *Model) groupKey(g string, msg tea.KeyMsg) tea.Cmd {
 	walking := m.groupWalk
 	m.groupWalk = false
 	switch {
-	case k == "esc":
+	case k == "esc" || k == "backspace":
 		m.prefix, m.prefixPage = true, 0
 		return nil
 	case m.isPrefix(msg) && walking:
 		// A new command after the steps.
-		m.startPrefix()
-		return nil
+		return m.startPrefix()
 	case m.isPrefix(msg):
 		return nil
 	}
@@ -396,7 +405,7 @@ func (m *Model) command(msg tea.KeyMsg) tea.Cmd {
 	return m.run(k, msg)
 }
 
-// run runs the command whose keys after the prefix are id ("x", "i p"),
+// run runs the command whose keys after the prefix are id ("x", "g p"),
 // pressed as msg, the last of them.
 func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	k := msg.String()
@@ -455,14 +464,16 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "a a", "esc":
 		m.setFocus(core.FocusAgent)
 		return m.resize()
-	case "z e":
+	case "t c":
 		return m.togglePane()
-	case "e 1", "e 2", "e 3", "e 4", "e 5", "e 6":
-		// F1-F6 without the function keys: a Mac laptop's are the
+	case "t p":
+		return m.screenPane(core.ViewPlugins)
+	case "g c", "e", "k", "h":
+		// F1-F5 without the function keys: a Mac laptop's are the
 		// brightness and volume unless fn is held, and a shell or an
 		// editor keeps them for itself. The screen is the id's, not the key
-		// pressed: e e runs e 1.
-		return m.handleKey(keyMsg("f" + id[len("e "):]))
+		// pressed.
+		return m.handleKey(keyMsg(screenFKey[id]))
 	case "o":
 		return m.openWorktreeEditor()
 	case "<", ",", ">", ".":
@@ -476,9 +487,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 			*width = max(*width-5, 20)
 		}
 		return m.resize()
-	case "z v":
+	case "l v":
 		return m.toggleSplit()
-	case "z s":
+	case "l s":
 		return m.swapSides()
 	case "b", "pgup":
 		if t := m.Cur(); t != nil && m.screen(t) != nil {
@@ -512,7 +523,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return nil
 	case "j":
 		return m.openUnseen()
-	case "p":
+	case "i":
 		// Send the prefix key itself to the agent (or the shell).
 		if p := m.keyPane(); p != nil {
 			if b, err := m.cfg().PrefixByte(); err == nil {
@@ -571,18 +582,18 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.openMessage(false)
 	case "M":
 		return m.openMessage(true)
-	case "l":
+	case "p":
 		return m.openPromptPicker()
-	case "i i":
+	case "g g":
 		return m.showBranchPR()
-	case "i p":
+	case "g p":
 		return m.showAllPRs()
-	case "i b":
+	case "g b":
 		m.openTabPRs()
 		return nil
-	case "i r":
+	case "g r":
 		return m.openRepos()
-	case "i o":
+	case "g o":
 		return m.showIssues()
 	case "f", " ":
 		return m.openSwitcher()
@@ -592,30 +603,30 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.moveTab(-1)
 	case "shift+right":
 		return m.moveTab(1)
-	case "g":
+	case "g l":
 		d, cmd := m.newCallsDialog()
 		m.dialog = d
 		return cmd
 	case "u":
 		return m.openUsage()
-	case "k":
+	case "d":
 		return m.openMachines()
 	case "/":
 		return m.openSearch()
-	case "z d":
+	case "l d":
 		m.showDetails = !m.showDetails
 		return nil
-	case "z t":
+	case "l t":
 		m.sideBar = !m.sideBar
 		if m.sideBar && m.sideW() == 0 {
 			m.toast("The window is too narrow for the tabs on the left")
 		}
 		return m.resize()
-	case "z m":
+	case "l m":
 		return m.toggleSideSmall()
-	case "z b":
+	case "l b":
 		if m.sideW() > 0 {
-			m.toast("The repositories stay in the sidebar; " + m.pk("z m") + " makes it small")
+			m.toast("The repositories stay in the sidebar; " + m.pk("l m") + " makes it small")
 			return nil
 		}
 		m.hideGroups = !m.hideGroups
@@ -631,7 +642,7 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.openNote(m.Cur())
 	case "a h":
 		return m.openSent()
-	case "h":
+	case "a w":
 		return m.openSummary()
 	case "?", ":":
 		return m.openPalette()

@@ -10,8 +10,10 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/state"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -101,7 +103,7 @@ func TestKeysDoNotCollide(t *testing.T) {
 			t.Errorf("group key %q is also a command", g)
 		}
 	}
-	paired := map[string]bool{"m": true, "g": true, "h": true, "c": true}
+	paired := map[string]bool{"m": true, "h": true, "c": true}
 	for k := range ids {
 		if len(k) != 1 || strings.ToLower(k) == k {
 			continue
@@ -147,13 +149,13 @@ func TestCommandReplacesDialog(t *testing.T) {
 	}
 	// A group's command too, once its second key is pressed.
 	m.handleKey(prefix)
-	m.handleKey(keyMsg("i"))
+	m.handleKey(keyMsg("g"))
 	if _, ok := m.dialog.(*switcher); !ok {
 		t.Fatalf("the group's first key leaves the dialog open, got %T", m.dialog)
 	}
-	m.handleKey(keyMsg("i"))
+	m.handleKey(keyMsg("g"))
 	if m.dialog != nil || !m.panelBranchPR() {
-		t.Fatalf("i i over the switcher goes to F2's branch: dialog %T, F2 %v", m.dialog, m.panelBranchPR())
+		t.Fatalf("g g over the switcher goes to F2's branch: dialog %T, F2 %v", m.dialog, m.panelBranchPR())
 	}
 	m.handleKey(prefix)
 	m.handleKey(tea.KeyMsg{Type: tea.KeyEsc})
@@ -221,28 +223,27 @@ func TestPrefixLetterSwapsWithQ(t *testing.T) {
 	}
 }
 
-// TestScreensBehindThePrefix: e 1 to e 4 go to the panel's screens, as
-// F1 to F4 do, e twice to F1, and z e puts the F1 dialog in a pane.
+// TestScreensBehindThePrefix: g c, g g, e, k and h go to the panel's
+// screens, as F1 to F5 do, and t c puts the F1 dialog in a pane.
 func TestScreensBehindThePrefix(t *testing.T) {
 	m := testModel(t)
 	prefix := tea.KeyMsg{Type: tea.KeyCtrlQ}
 	m.handleKey(prefix)
 	m.handleKey(keyMsg("e"))
-	m.handleKey(keyMsg("3"))
 	if !m.panelMessages() || m.focus != core.FocusReview {
-		t.Fatalf("e 3 should show F3 with the keyboard: tasks %v, focus %v", m.panelMessages(), m.focus)
+		t.Fatalf("e should show F3 with the keyboard: tasks %v, focus %v", m.panelMessages(), m.focus)
 	}
 	m.handleKey(prefix)
-	m.handleKey(keyMsg("e"))
-	m.handleKey(keyMsg("e"))
+	m.handleKey(keyMsg("g"))
+	m.handleKey(keyMsg("c"))
 	if m.panelMessages() || !m.panelDlg || m.focus != core.FocusReview {
-		t.Fatalf("e e should show F1 with the keyboard: tasks %v, dialog %v, focus %v", m.panelMessages(), m.panelDlg, m.focus)
+		t.Fatalf("g c should show F1 with the keyboard: tasks %v, dialog %v, focus %v", m.panelMessages(), m.panelDlg, m.focus)
 	}
 	m.handleKey(prefix)
-	m.handleKey(keyMsg("z"))
-	m.handleKey(keyMsg("e"))
+	m.handleKey(keyMsg("t"))
+	m.handleKey(keyMsg("c"))
 	if f := m.focused(m.Cur()); f.Kind != core.PaneView || f.Screen != core.ViewChanges || m.panelDlg {
-		t.Fatal("z e should put the F1 dialog in a pane of the tab's")
+		t.Fatal("t c should put the F1 dialog in a pane of the tab's")
 	}
 }
 
@@ -255,15 +256,15 @@ func TestFunctionKeysOff(t *testing.T) {
 	off := false
 	m.home().Core.Cfg.FunctionKeys = &off
 	m.review = m.review.SetScreenKeys(m.screenMenuKeys())
-	if got := m.screenKey(3); got != "ctrl+q e 3" {
+	if got := m.screenKey(3); got != "ctrl+q e" {
 		t.Fatalf("screenKey(3) = %q", got)
 	}
 	on := true
 	m.home().Core.Cfg.KeyPanel = &on
 	m.resize()
 	v := ansi.Strip(m.View())
-	if !strings.Contains(v, "e1  code changes") || strings.Contains(v, "F1  code changes") {
-		t.Fatalf("the key panel should name e1, not F1:\n%s", v)
+	if !strings.Contains(v, "gc  code changes") || strings.Contains(v, "F1  code changes") {
+		t.Fatalf("the key panel should name gc, not F1:\n%s", v)
 	}
 }
 
@@ -309,7 +310,7 @@ func TestCloseDialogNoIsNo(t *testing.T) {
 // a word meant for the agent — answers no.
 func TestPushAsksFirst(t *testing.T) {
 	m := testModel(t)
-	m.runCommand("i i")
+	m.runCommand("g g")
 	if m.curBranchPanel() == nil {
 		t.Skip("no branch panel here")
 	}
@@ -371,7 +372,8 @@ func TestKeyPanel(t *testing.T) {
 		t.Fatal("no column on the right without key_panel")
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	if v := ansi.Strip(m.View()); !strings.Contains(v, "Answer, note, switch") {
+	m.prefixAt = m.prefixAt.Add(-hintDelay)
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Agent ›") {
 		t.Fatalf("the hint line should show after the prefix:\n%s", v)
 	}
 	m.handleKey(keyMsg("esc"))
@@ -383,7 +385,7 @@ func TestKeyPanel(t *testing.T) {
 		t.Fatal("key_panel should show the column")
 	}
 	rail := func() string { return ansi.Strip(strings.Join(m.railLines(60), "\n")) }
-	if v := rail(); !strings.Contains(v, "F1  code changes") || !strings.Contains(v, "a   Answer, note") || strings.Contains(v, "Note for yourself") {
+	if v := rail(); !strings.Contains(v, "F1  code changes") || !strings.Contains(v, "a   Agent") || strings.Contains(v, "Note for yourself") {
 		t.Fatalf("the panel should list the keys, its groups closed:\n%s", v)
 	}
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
@@ -392,11 +394,104 @@ func TestKeyPanel(t *testing.T) {
 		t.Fatal("a should open the agent's group")
 	}
 	v := rail()
-	at, note := strings.Index(v, "Answer, note"), strings.Index(v, "n   Note for yourself")
+	at, note := strings.Index(v, "a   Agent"), strings.Index(v, "n   Note for yourself")
 	if note < 0 || note < at || !strings.Contains(v, "▾") {
 		t.Fatalf("the group's keys should open below it:\n%s", v)
 	}
 	if view := ansi.Strip(m.View()); strings.Count(view, "Note for yourself") != 1 {
 		t.Fatalf("the keys should be in the panel alone, not the hint line too:\n%s", view)
+	}
+}
+
+// TestPrefixHint: the hint shows in the middle once the prefix has waited,
+// every key in one level with the most used first and the groups marked;
+// a group's key shows its keys, backspace goes back, and prefix_hint off
+// keeps it away.
+func TestPrefixHint(t *testing.T) {
+	m := testModel(t)
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	if v := ansi.Strip(m.View()); strings.Contains(v, "Keys after") {
+		t.Fatalf("the hint should wait a moment before it shows:\n%s", v)
+	}
+	m.prefixAt = m.prefixAt.Add(-hintDelay)
+	v := ansi.Strip(m.View())
+	if !strings.Contains(v, "Keys after") || !strings.Contains(v, "Git/GitHub ›") {
+		t.Fatalf("the hint should show every key after a moment:\n%s", v)
+	}
+	lines := strings.Split(v, "\n")
+	at := -1
+	for i, l := range lines {
+		if strings.Contains(l, "Keys after") {
+			at = i
+		}
+	}
+	if at < 3 || strings.Index(lines[at], "Keys after") < 5 {
+		t.Fatalf("the hint should be in the middle, not at the edge:\n%s", v)
+	}
+	if n, x := strings.Index(v, "New tab"), strings.Index(v, "Quit"); n < 0 || x < 0 || n > x {
+		t.Fatalf("the most used keys should come first, the rare last:\n%s", v)
+	}
+	if !strings.Contains(v, "Agent ›") {
+		t.Fatalf("a group should be marked:\n%s", v)
+	}
+	m.handleKey(keyMsg("a"))
+	v = ansi.Strip(m.View())
+	if !strings.Contains(v, "Note for yourself") || !strings.Contains(v, "esc back") || strings.Contains(v, "New tab") {
+		t.Fatalf("the group's keys should show alone, with the way back:\n%s", v)
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyBackspace})
+	if !m.prefix || m.keyGroup != "" {
+		t.Fatal("backspace should go back to the prefix's keys")
+	}
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Keys after") {
+		t.Fatalf("back, the prefix's keys should show again:\n%s", v)
+	}
+	m.handleKey(keyMsg("esc"))
+
+	off := false
+	m.home().Core.Cfg.PrefixHint = &off
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	m.prefixAt = m.prefixAt.Add(-hintDelay)
+	if v := ansi.Strip(m.View()); strings.Contains(v, "Keys after") {
+		t.Fatalf("prefix_hint off should keep the hint away:\n%s", v)
+	}
+}
+
+// TestPrefixHintNarrow: on a narrow screen, a group of more pages than
+// fit keeps the hint's box inside the screen, its keys below it wrapped.
+func TestPrefixHintNarrow(t *testing.T) {
+	m := testModel(t)
+	m.startPrefix()
+	m.keyGroup = "a"
+	for _, size := range [][2]int{{40, 12}, {30, 10}, {24, 8}} {
+		box := m.prefixHint(size[0], size[1])
+		if w, h := lipgloss.Width(box), lipgloss.Height(box); w > size[0] || h > size[1] {
+			t.Fatalf("%dx%d: the box is %dx%d:\n%s", size[0], size[1], w, h, ansi.Strip(box))
+		}
+		if v := ansi.Strip(box); !strings.Contains(v, "esc back") || !strings.Contains(v, "more (") {
+			t.Fatalf("%dx%d: the way back and the pages should show:\n%s", size[0], size[1], v)
+		}
+	}
+}
+
+// TestMovedKeysInMenusAndNews: the tab's menu and the news of an issue
+// name the keys as they are now.
+func TestMovedKeysInMenusAndNews(t *testing.T) {
+	m := testModel(t)
+	found := false
+	for _, it := range m.tabItems() {
+		if it.label == "Since you were here" {
+			found = true
+			if it.key != "a w" {
+				t.Fatalf("Since you were here is a w, got %q", it.key)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the tab's menu has Since you were here")
+	}
+	m.tellIssueNews([]state.IssueNews{{Repo: "o/r", Number: 7, Title: "a bug"}})
+	if !strings.Contains(m.toastText, m.pk("g o")) {
+		t.Fatalf("the news should name g o: %q", m.toastText)
 	}
 }

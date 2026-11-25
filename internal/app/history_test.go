@@ -48,10 +48,10 @@ func TestALongMessageLinksToTheHistory(t *testing.T) {
 		strings.Repeat("it can tell what is there, ", 6) + "THE END."
 	m.Notice(long)
 	screen := ansi.Strip(m.View())
-	if !strings.Contains(screen, "F6 full") || strings.Contains(screen, "THE END.") {
+	if !strings.Contains(screen, "F5 full") || strings.Contains(screen, "THE END.") {
 		t.Fatalf("not cut with a link:\n%s", screen)
 	}
-	clickOn(t, m, "F6 full", tea.MouseButtonLeft)
+	clickOn(t, m, "F5 full", tea.MouseButtonLeft)
 	if testing.Verbose() {
 		t.Log("\n" + ansi.Strip(m.View()))
 	}
@@ -68,15 +68,15 @@ func TestALongMessageLinksToTheHistory(t *testing.T) {
 	}
 }
 
-// A message that fits has no link, and F6 opens the history with the
+// A message that fits has no link, and F5 opens the history with the
 // keyboard.
-func TestF6OpensTheHistory(t *testing.T) {
+func TestF5OpensTheHistory(t *testing.T) {
 	m := testModel(t)
 	m.toast("fits")
-	if screen := ansi.Strip(m.View()); !strings.Contains(screen, "fits") || strings.Contains(screen, "F6 full") {
+	if screen := ansi.Strip(m.View()); !strings.Contains(screen, "fits") || strings.Contains(screen, "F5 full") {
 		t.Fatalf("\n%s", screen)
 	}
-	m.Update(tea.KeyMsg{Type: tea.KeyF6})
+	m.Update(tea.KeyMsg{Type: tea.KeyF5})
 	if !m.panelHistory() {
 		t.Fatal("F6 did not open the history")
 	}
@@ -95,7 +95,7 @@ func TestSelectTextInTheHistory(t *testing.T) {
 	defer func() { toClipboard = was }()
 	msg := "push failed:\nremote: Permission to nerdr-dev/nerdr.git denied"
 	m.Notice(msg)
-	m.Update(tea.KeyMsg{Type: tea.KeyF6})
+	m.Update(tea.KeyMsg{Type: tea.KeyF5})
 
 	x, y := screenAt(t, m, "remote: Permission")
 	m.Update(tea.MouseMsg{X: x + 8, Y: y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})

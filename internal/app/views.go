@@ -11,7 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// View panes are the review panel's code changes (F1) and plugins (F5)
+// View panes are the review panel's code changes (F1) and plugins
 // in panes of a tab's own, beside its agents and terminals: as many of
 // each as you like, each a panel of its own, with its own file, diff,
 // repository and scroll, or its own plugin.

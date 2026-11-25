@@ -113,8 +113,8 @@ func TestFeatures(t *testing.T) {
 	h.waitTabBar("+3−0", 30*time.Second)
 
 	// The tab panel pushes the branch.
-	h.keys(prefix + "i")
-	h.keys("i")
+	h.keys(prefix + "g")
+	h.keys("g")
 	h.waitFor("this branch", 2*time.Second)
 	h.waitFor("3 files changed", 10*time.Second)
 	h.keys("p")

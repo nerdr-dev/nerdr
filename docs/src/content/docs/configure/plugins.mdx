@@ -1,12 +1,13 @@
 ---
 title: Writing plugins
-description: Make a plugin — a custom script that agents can run with parameters, or that you can run directly in F5.
+description: Make a plugin — a custom script that agents can run with parameters, or that you can run directly in its pane.
 ---
 
 A plugin adds a custom script or tool to nerdr: one that rebuilds and
 starts the Docker setup, seeds a database or deploys a preview. Agents
 find it with `nerdr plugin list` and run it with `nerdr plugin run`. You
-find it in `F5`, where you can also run it directly (`ui`).
+find it in the tab's plugins pane (`ctrl+q t p`), where you can also run
+it directly (`ui`).
 
 ## A plugin is a folder
 
@@ -27,9 +28,9 @@ Rebuilds the services chosen and restarts the local docker stack.
 Run it when the user asks to start, restart or rebuild the dev setup.
 """
 run  = ["./run.sh"]   # what an agent runs
-ui   = ["./ui.sh"]    # the screen you use in F5
-show = ["values", "output"]   # what F5 shows of an agent's run
-open = true          # F5 opens on it when an agent runs it
+ui   = ["./ui.sh"]    # the screen you use in its pane
+show = ["values", "output"]   # what the pane shows of an agent's run
+open = true          # the pane opens on it when an agent runs it
 confirm = false      # you say yes to each agent's run
 watch = false        # run goes on, and what it prints goes to the agent
 
@@ -47,9 +48,9 @@ description = "Build without the cache."
 ```
 
 - `description` is required. Agents decide from it when to run the
-  plugin, so say what it does and when it is wanted. `F5` shows it too.
+  plugin, so say what it does and when it is wanted. The plugins pane shows it too.
 - `run` is the command agents run, and `ui` is the program you use in
-  `F5`. A plugin must define at least one of them. Relative paths such as
+  the plugins pane. A plugin must define at least one of them. Relative paths such as
   `./run.sh` or `bin/run.sh` resolve inside the plugin's folder; bare
   command names without a path are looked up on `PATH`. Put the plugin's
   scripts inside its folder and reference them as `./name` (see
@@ -57,10 +58,10 @@ description = "Build without the cache."
 - `plugin.toml` must be a regular file of at most 1 MB (`description` at
   most 8 KB, and each command argument at most 4 KB).
 - `title` is optional, a name for people.
-- `show` is optional: what `F5` shows of an agent's run, beyond that it
+- `show` is optional: what the plugins pane shows of an agent's run, beyond that it
   runs (see [When an agent runs it](#when-an-agent-runs-it)).
-- `open` is optional, and `true` unless set to `false`: whether `F5`
-  opens on the plugin when an agent runs it. When it is off, only the
+- `open` is optional, and `true` unless set to `false`: whether the plugins
+  pane opens on the plugin when an agent runs it. When it is off, only the
   plugin's light in the list shows that it runs.
 - `confirm` is optional: `true` asks you before each agent's run (see
   [Saying yes to each run](#saying-yes-to-each-run)).
@@ -113,7 +114,7 @@ It gets:
 - all of them as one JSON object on standard input;
 - `NERDR_PLUGIN`, its name, and `NERDR_PLUGIN_DIR`, its folder;
 - the tab's variables, as its screen does (see
-  [A screen in F5](#a-screen-in-f5)), but not the agent's own
+  [A screen of its own](#a-screen-of-its-own)), but not the agent's own
   environment.
 
 The parameters come from the agent. nerdr passes on only those the
@@ -122,7 +123,7 @@ them. A `string`, or a
 `multi` without `options`, is any text the agent likes. Use it with
 care: quote it (`"$NERDR_PARAM_NOTE"`), never run it as code (`eval`,
 `sh -c "$…"`), and never let it name a file or command to run unless
-you check it. When you press `a` in `F5` to review a plugin, nerdr
+you check it. When you press `a` in the plugins pane to review a plugin, nerdr
 highlights which parameters accept free-form text.
 
 You can also run a plugin yourself with the same command, in a tab's
@@ -139,9 +140,9 @@ If you are using another of the panel's screens, nerdr leaves it alone
 and tells you about the run instead, as it does for a run in another
 tab.
 
-`show` sets what else `F5` shows:
+`show` sets what else the pane shows:
 
-| `show` | What `F5` shows of the run |
+| `show` | What the pane shows of the run |
 |---|---|
 | `values` | The parameters the agent gave it |
 | `output` | What it prints, as it prints it: what the agent gets back |
@@ -208,7 +209,7 @@ agents cut a command off after a minute or two. With `watch = true`:
   a watch that prints the same error every minute sends the agent that
   error every minute.
 - It keeps running until the agent runs `nerdr plugin stop NAME`, you
-  press `s` on it in `F5`, the agent's pane closes, or nerdr quits.
+  press `s` on it in the plugins pane, the agent's pane closes, or nerdr quits.
   Stopping a watch sends `SIGTERM` to its process group, and `SIGKILL`
   five seconds later. nerdr tells the agent when a watch stops, unless
   the agent stopped it.
@@ -239,9 +240,9 @@ a pull request; don't ask me about each tab." The agent hands each
 error to a new tab, whose agent fixes it and opens the pull request,
 and goes on listening.
 
-## A screen in F5
+## A screen of its own
 
-`F5` lists the plugins, each with its description and parameters. `a`
+The plugins pane (`ctrl+q t p`) lists the plugins, each with its description and parameters. `a`
 shows what is in the selected plugin's folder and `y` allows it. `d`
 takes the allowance back for every version of it in the folder, so later
 runs and screens wait for a new yes; a screen or watch already running
@@ -251,7 +252,7 @@ when you switch screens. Use any terminal UI: a shell script with `read`, `gum`,
 bubbletea, textual.
 
 While the screen has the keyboard, every key goes to it except
-`F1`-`F5` and nerdr's prefix. `F5` goes back to the list, `esc` in the
+`F1`-`F5` and nerdr's prefix. `ctrl+q t p` goes back to the list, `esc` in the
 list to the agent, and `x` in the list stops the program. When it ends,
 its last screen stays until `enter` starts it again.
 
@@ -270,7 +271,7 @@ But an agent outside a sandbox, or one inside with write access to
 `~/.config/nerdr`, could create or change plugins. So no plugin starts
 or runs until you allow it:
 
-- `F5` marks a plugin "not allowed" until you do. `a` shows what is in
+- The plugins pane marks a plugin "not allowed" until you do. `a` shows what is in
   its folder, each file and its text, and `y` allows it. `enter` on a
   screen not allowed yet asks the same, then starts it. `d` stops
   allowing every version of it in the folder again; a screen or watch

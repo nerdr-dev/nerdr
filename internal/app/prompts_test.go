@@ -25,10 +25,10 @@ func TestSavedPromptPicked(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	m.runCommand("l")
+	m.runCommand("p")
 	d, ok := m.dialog.(*promptPicker)
 	if !ok {
-		t.Fatal("the prefix + l opens the saved prompts")
+		t.Fatal("the prefix + p opens the saved prompts")
 	}
 	view := ansi.Strip(d.view(m, 100, 30))
 	if !strings.Contains(view, "commit, push and open a pull request") || !strings.Contains(view, "rebase on main") {
@@ -40,7 +40,7 @@ func TestSavedPromptPicked(t *testing.T) {
 		t.Fatalf("typed in as a paste, without enter: %q", tb.Said)
 	}
 
-	m.runCommand("l")
+	m.runCommand("p")
 	d = m.dialog.(*promptPicker)
 	for _, r := range "push" {
 		d.key(m, tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
@@ -66,7 +66,7 @@ func TestSavedPromptWritten(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	m := testModel(t)
 
-	m.runCommand("l")
+	m.runCommand("p")
 	m.dialog.key(m, keyMsg("ctrl+n"))
 	e, ok := m.dialog.(*promptDialog)
 	if !ok || !e.enter {

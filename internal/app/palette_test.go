@@ -26,9 +26,10 @@ func TestPaletteAndGroupHint(t *testing.T) {
 	m.Update(keyMsg("esc"))
 
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	m.handleKey(keyMsg("z"))
+	m.handleKey(keyMsg("l"))
+	m.prefixAt = m.prefixAt.Add(-hintDelay)
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "Swap sides") || strings.Contains(view, "New tab") {
-		t.Fatalf("the hint in z lists the view group's keys only:\n%s", view)
+		t.Fatalf("the hint in l lists the layout group's keys only:\n%s", view)
 	}
 }
 

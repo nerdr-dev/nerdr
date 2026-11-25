@@ -12,7 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The review panel's F6 screen: everything nerdr has said in its bar
+// The review panel's F5 screen: everything nerdr has said in its bar
 // since this nerdr started, the latest first, one row each with when, of
 // what kind and how it starts, and below the rows the whole of the one
 // picked, its text to be selected with the mouse, or copied whole with c. The bar shows only what fits; a message cut there ends with a
@@ -40,7 +40,7 @@ type histEntry struct {
 	n    int
 }
 
-// historyView is the F6 screen's state: the messages, the latest first,
+// historyView is the F5 screen's state: the messages, the latest first,
 // the one picked (by seq, so new ones do not move it) and how far its
 // text is scrolled.
 type historyView struct {
@@ -128,7 +128,7 @@ func (m *Model) openHistory(seq int) tea.Cmd {
 	if seq != 0 {
 		m.history.picked, m.history.scroll = seq, 0
 	}
-	cmd := m.reviewKey(tea.KeyMsg{Type: tea.KeyF6})
+	cmd := m.reviewKey(tea.KeyMsg{Type: tea.KeyF5})
 	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.resize())
 }
@@ -261,7 +261,7 @@ func (m *Model) fitMsg(msg string, room int) string {
 	if lipgloss.Width(msg) <= room || !m.toastShown() {
 		return ansi.Truncate(msg, room, "…")
 	}
-	more := " … " + m.screenKey(6) + " full "
+	more := " … " + m.screenKey(5) + " full "
 	style := lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("214"))
 	text := ansi.Truncate(" "+m.toastText, max(room-lipgloss.Width(more), 0), "")
 	seq := m.toastSeq

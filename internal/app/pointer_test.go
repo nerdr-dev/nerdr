@@ -68,7 +68,7 @@ func TestPointerFollowsTheScreen(t *testing.T) {
 func TestPointerAfterADrag(t *testing.T) {
 	sent := pointerLog(t)
 	m := testModel(t)
-	m.runCommand("z v") // two tabs, the rule between them
+	m.runCommand("l v") // two tabs, the rule between them
 	x, y := at(t, m, "logout")
 	m.Update(tea.MouseMsg{X: x, Y: y, Action: tea.MouseActionMotion})
 	m.View()

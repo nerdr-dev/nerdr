@@ -17,7 +17,7 @@ func TestReposDialog(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
 	m.Update(keyMsg("ctrl+q"))
-	m.Update(keyMsg("i"))
+	m.Update(keyMsg("g"))
 	m.Update(keyMsg("r"))
 	d, ok := m.dialog.(*repoDialog)
 	if !ok {
@@ -85,7 +85,7 @@ func TestReposOneChangeAtATime(t *testing.T) {
 		t.Fatal("a second change started while the first ran")
 	}
 	m.Update(keyMsg("ctrl+q"))
-	m.Update(keyMsg("i"))
+	m.Update(keyMsg("g"))
 	m.Update(keyMsg("r"))
 	if m.dialog != nil {
 		t.Fatalf("the dialog opened while the change ran: %T", m.dialog)
@@ -99,7 +99,7 @@ func TestReposOneChangeAtATime(t *testing.T) {
 		t.Fatal("still held once the change was done")
 	}
 	m.Update(keyMsg("ctrl+q"))
-	m.Update(keyMsg("i"))
+	m.Update(keyMsg("g"))
 	m.Update(keyMsg("r"))
 	if _, ok := m.dialog.(*repoDialog); !ok {
 		t.Fatalf("dialog = %T after the change", m.dialog)

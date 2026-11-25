@@ -12,9 +12,9 @@ description: The words nerdr uses, and how its screen is laid out.
 │   api       ├────────────────────┬─────────────────────┤  F1 code changes    │ F3 │
 │             │ 1:claude ●         │ $ terminal          │  F2 GitHub          │ F4 │
 │ tabs        │                    │                     │  F3 tasks           │ F5 │
-│ ● fix-login │  the agent         │  your shell, in     │  F4 skills          │ F6 │
-│ ● 123-issue │                    │  the same worktree  │  F5 plugins         │    │
-│ ○ refactor  │                    │                     │  F6 history         │    │
+│ ● fix-login │  the agent         │  your shell, in     │  F4 skills          │    │
+│ ● 123-issue │                    │  the same worktree  │  F5 history         │    │
+│ ○ refactor  │                    │                     │                     │    │
 ├─────────────┴────────────────────┴─────────────────────┴─────────────────────┴────┤
 │ ctrl+q  c new tab  x close  w waiting  t panes  ? find a command                  │
 └───────────────────────────────────────────────────────────────────────────────────┘
@@ -27,11 +27,12 @@ description: The words nerdr uses, and how its screen is laid out.
   last request, the agent's recap, where its work stands, your note.
 - **The workbench** is the tab's panes: its agent, and any terminals,
   other agents, code reviews, code changes and plugins you open beside it.
-- **The review panel** holds six screens, F1–F6, each a dialog over the
-  agent. The code changes (F1) and plugins (F5) can be panes of the tab
-  too, as many as you like. Closed, it takes no room; an F-key opens it.
-- **The bottom line** shows the keys you can press, and nerdr's messages;
-  F6 keeps them all, in full.
+- **The review panel** holds five screens, F1–F5, each a dialog over the
+  agent, and the plugins. The code changes (F1) can be panes of the tab
+  too, and the plugins always are (`ctrl+q t p`), as many as you like. Closed, it takes no room; an F-key opens it.
+- **The bottom line** shows nerdr's messages; F5 keeps them all, in full.
+  The keys you can press show in a box in the middle a moment after the
+  prefix.
 
 ## The screen and the core
 
@@ -64,4 +65,4 @@ servers'. See [Other machines](../../use/remote/).
 - **Prefix.** `ctrl+q`. Everything you type goes to the agent, except after the prefix, when the next key is a nerdr command. The prefix can be changed.
 - **Skill.** Instructions nerdr installs for the agents, so they know how to use nerdr: explain a change, ask for a review, message another agent. See [Skills (F4)](../../panel/skills/).
 - **Server.** Another machine whose agents nerdr shows, reached over SSH. See [Other machines](../../use/remote/).
-- **Plugin.** A custom script or tool — such as one that rebuilds your Docker setup or seeds a database — that agents can run with parameters, or that you can run directly in F5. See [Plugins](../../configure/plugins/).
+- **Plugin.** A custom script or tool — such as one that rebuilds your Docker setup or seeds a database — that agents can run with parameters, or that you can run directly in its pane (`ctrl+q t p`). See [Plugins](../../configure/plugins/).

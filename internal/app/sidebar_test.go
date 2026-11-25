@@ -99,7 +99,7 @@ func TestSidebarToggle(t *testing.T) {
 	m := testModel(t)
 	w, _ := m.agentArea()
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	m.handleKey(keyMsg("z"))
+	m.handleKey(keyMsg("l"))
 	m.handleKey(keyMsg("t"))
 	if !m.sideBar || m.sideW() == 0 {
 		t.Fatal("z t puts the tabs on the left")
@@ -113,7 +113,7 @@ func TestSmallSidebar(t *testing.T) {
 	m := sideModel(t)
 	wide := m.sideW()
 	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
-	m.handleKey(keyMsg("z"))
+	m.handleKey(keyMsg("l"))
 	m.handleKey(keyMsg("m"))
 	if !m.sideSmall || m.sideW() != railW+1 || m.sideW() >= wide {
 		t.Fatalf("z m makes the sidebar small: %d columns, %d wide", m.sideW(), wide)

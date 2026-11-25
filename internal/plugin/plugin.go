@@ -3,16 +3,16 @@
 // what it takes and how to run it.
 //
 // A plugin has a run command, which agents run (`nerdr plugin run`), and a
-// ui command, a program the user uses in F5; either or both. Its
+// ui command, a program the user uses in the plugins pane; either or both. Its
 // description and parameters tell an agent what it does and what to give
-// it, and the user what it is, in F5:
+// it, and the user what it is, in the plugins pane:
 //
 //	title       = "Docker dev"
 //	description = "Rebuilds the services chosen and restarts the stack."
 //	run         = ["./run.sh"]
 //	ui          = ["./ui.sh"]
-//	show        = ["values", "output"] # what F5 shows of an agent's run
-//	open        = true             # F5 opens on it when an agent runs it
+//	show        = ["values", "output"] # what the plugins pane shows of an agent's run
+//	open        = true             # the plugins pane opens on it when an agent runs it
 //	confirm     = false            # the user says yes to each agent's run
 //	watch       = false            # run goes on, what it prints sent to the agent
 //
@@ -89,7 +89,7 @@ type Param struct {
 	Default     any      `toml:"default" json:"default,omitempty"`
 }
 
-// What F5 can show of an agent running a plugin, beyond that it runs,
+// What the plugins pane can show of an agent running a plugin, beyond that it runs,
 // who runs it and how it ended: the plugin says which in show.
 const (
 	ShowValues = "values" // the parameters the agent gave
@@ -106,7 +106,7 @@ type Plugin struct {
 	UI          []string `toml:"ui" json:"ui,omitempty"`
 	Params      []Param  `toml:"params" json:"params,omitempty"`
 	Show        []string `toml:"show" json:"show,omitempty"`
-	// Open is whether F5 opens on the plugin when an agent runs it; unset,
+	// Open is whether the plugins pane opens on the plugin when an agent runs it; unset,
 	// it does.
 	Open *bool `toml:"open" json:"open,omitempty"`
 	// Confirm has the user say yes to each run of an agent's, as
@@ -480,10 +480,10 @@ func (p *Plugin) within(path string) bool {
 	return err == nil && filepath.IsLocal(rel)
 }
 
-// Shows reports whether F5 shows what of an agent's run of p.
+// Shows reports whether the plugins pane shows what of an agent's run of p.
 func (p Plugin) Shows(what string) bool { return slices.Contains(p.Show, what) }
 
-// Opens reports whether F5 opens on p when an agent runs it.
+// Opens reports whether the plugins pane opens on p when an agent runs it.
 func (p Plugin) Opens() bool { return p.Open == nil || *p.Open }
 
 // Command is argv, a plugin's run or ui, to run: a program named with a
@@ -1189,7 +1189,7 @@ func (q Param) About() string {
 // is started by nerdr, outside every sandbox, and its run is run by any
 // agent whose task its description seems to fit, one outside a sandbox
 // among them. So no plugin is started or run until the user has allowed
-// it as it is now, in F5, and a change to anything in its folder asks
+// it as it is now, in the plugins pane, and a change to anything in its folder asks
 // again, as .nerdr.toml's setup does: an agent that makes a plugin cannot
 // have it run before the user has seen it.
 //

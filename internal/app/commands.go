@@ -10,13 +10,13 @@ func (m *Model) commandOff(run string) string {
 		if tabRepo(m.Cur()) == "" {
 			return "a branch is stacked on a tab with one repository"
 		}
-	case "i r":
+	case "g r":
 		return m.machineOf(m.Cur()).Core.ReposOff(m.Cur())
 	case "a m":
 		if len(m.fleet.Machines()) < 2 {
-			return "connect to another machine first (k)"
+			return "connect to another machine first (d)"
 		}
-	case "z v":
+	case "l v":
 		if m.splitTab() == nil && m.neighbour(m.Cur()) == nil {
 			return "two tabs need a second tab in this repository"
 		}

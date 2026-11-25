@@ -87,6 +87,9 @@ type Model struct {
 	// told again only when that changes, not after every message.
 	keysTo     keysTarget
 	prefixPage int
+	// prefixAt is when the prefix was pressed: the hint shows once it has
+	// waited hintDelay for the next key.
+	prefixAt time.Time
 	// keyTop is the first of the key panel's rows in sight.
 	keyTop int
 	// keyGroup is the group of commands the prefix went into ("i", say),
@@ -193,11 +196,11 @@ type Model struct {
 	saved savedView
 	// skills is the F4 screen's; see skillspanel.go.
 	skills skillsView
-	// plugins is the F5 screen's state, and the plugins' screens started.
+	// plugins is the plugins screen's state, and the plugins' screens started.
 	plugins pluginsView
 	// lastAsk numbers the view panes' readers; see viewOf.
 	lastAsk int
-	// pluginJobs are what waits for core's answers to F5's questions, by
+	// pluginJobs are what waits for core's answers to the plugins pane's questions, by
 	// job (see pluginJob); pluginAsking the question whether an agent may
 	// run a plugin, while it is asked. The client's, not one panel's.
 	pluginJobs    map[string]func(m *Model, ev any) tea.Cmd
@@ -208,7 +211,7 @@ type Model struct {
 	pluginsStale bool
 	// uiKeyFocused is focusedPluginKey as the frame being drawn began.
 	uiKeyFocused string
-	// history is the F6 screen's: what the bar has said; see history.go.
+	// history is the plugins screen's: what the bar has said; see history.go.
 	history historyView
 
 	// prefix is set after the prefix key, until the command key arrives;
@@ -760,11 +763,14 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		return tea.Batch(m.configCheck(), m.syncPRPanel())
 
 	case input.PrefixMsg:
-		m.startPrefix()
+		cmd := m.startPrefix()
 		if m.router != nil {
 			m.router.PrefixSeen()
 		}
-		return nil
+		return cmd
+
+	case hintDueMsg:
+		return nil // only to draw the hint, if the prefix still waits
 
 	case tea.FocusMsg:
 		core.Debugf("focus")
@@ -878,7 +884,7 @@ func (m *Model) syncInput() {
 	if m.router == nil {
 		return
 	}
-	// An editor, and a full-screen program in a terminal, have F1-F6 for
+	// An editor, and a full-screen program in a terminal, have F1-F5 for
 	// themselves: htop, mc and vim use them. A shell at its prompt does
 	// not, and leaves them to the panel's screens. The prefix leads to the
 	// screens either way (e 1-6).
@@ -901,7 +907,7 @@ func (m *Model) syncInput() {
 		return
 	}
 	if p := m.pluginUIPane(); p != nil {
-		// A plugin's screen in F5; F1-F6 and the prefix stay nerdr's.
+		// A plugin's screen in the plugins pane; F1-F5 and the prefix stay nerdr's.
 		m.router.PassthroughTo(p.Input, p)
 		return
 	}

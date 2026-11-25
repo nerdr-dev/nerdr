@@ -11,13 +11,14 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// The review panel's six screens are a dialog over the window, opened
-// with F1 to F6, used, and closed again with esc or q, the agent keeping
-// its size underneath. The code changes (F1) and the plugins (F5) can be
-// panes of the tab too, beside its agents and terminals, as many of each
-// as you like, each with all of its own state: see views.go. F5 opens
-// the plugins in a pane; F1 is a dialog for a look at the diff now and
-// then, unless the tab has the changes in a pane, where it goes.
+// The review panel's screens are a dialog over the window, opened with F1
+// to F5, used, and closed again with esc or q, the agent keeping its size
+// underneath. The code changes (F1) and the plugins can be panes of the
+// tab too, beside its agents and terminals, as many of each as you like,
+// each with all of its own state: see views.go. The plugins have no
+// F-key, and are always a pane: the prefix and t p. F1 is a dialog for a
+// look at the diff now and then, unless the tab has the changes in a
+// pane, where it goes; the prefix and t c puts them in one.
 
 // paneScreen reports whether screen i (0 for F1) can be a pane.
 func paneScreen(i int) bool { return i == core.ViewChanges || i == core.ViewPlugins }
@@ -40,39 +41,21 @@ func (m *Model) closePanelDialog() tea.Cmd {
 	return nil
 }
 
-// screenPressed is F1 to F6 pressed, n from 1. F1 and F5 go to the tab's
-// pane of their screen when it has one (F5 opens one when not), and
-// pressed there, back to the agent. The others, and F1 without a pane,
-// come up as the dialog with the keyboard; pressed again where it already
-// has it, it goes away (F2 excepted, which goes on to its next view).
+// screenPressed is F1 to F5 pressed. F1 goes to the tab's pane of the
+// code changes when it has one, as screenPane says. The others, and F1
+// without a pane, come up as the dialog with the keyboard; pressed again
+// where it already has it, it goes away (F2 excepted, which goes on to its
+// next view).
 func (m *Model) screenPressed(msg tea.KeyMsg) tea.Cmd {
-	n := int(msg.String()[1] - '0')
-	if t := m.Cur(); t != nil && paneScreen(n-1) {
-		if p := m.viewOfScreen(t, n-1); p != nil || n-1 == core.ViewPlugins {
-			// In the pane before a dialog over it took the keyboard or not.
-			in := p != nil && m.viewFocused(t, p)
-			m.closePanelDialog()
-			if m.focus == core.FocusReview {
-				m.setFocus(core.FocusAgent)
-			}
-			switch {
-			case p == nil:
-				return tea.Batch(m.newView(n-1), m.resize())
-			case in:
-				if n-1 == core.ViewPlugins {
-					var ok bool
-					cmd := m.inView(t, p, func() tea.Cmd { ok = m.togglePluginUI(); return nil })
-					if ok {
-						return cmd
-					}
-				}
-				return tea.Batch(m.focusPane(t, t.OwnPane()), m.resize())
-			}
-			return tea.Batch(m.focusPane(t, p), m.resize())
-		}
+	i, ok := review.ScreenOfFKey(msg.String())
+	if !ok {
+		return nil
 	}
-	on := m.focus == core.FocusReview && m.review.ScreenIndex() == n-1
-	if on && m.panelDlg && n != 2 {
+	if t := m.Cur(); t != nil && i == core.ViewChanges && m.viewOfScreen(t, i) != nil {
+		return m.screenPane(i)
+	}
+	on := m.focus == core.FocusReview && m.review.ScreenIndex() == i
+	if on && m.panelDlg && msg.String() != "f2" {
 		cmd := m.closePanelDialog()
 		m.setFocus(core.FocusAgent)
 		return tea.Batch(cmd, m.resize())
@@ -82,9 +65,40 @@ func (m *Model) screenPressed(msg tea.KeyMsg) tea.Cmd {
 	return tea.Batch(cmd, m.resize())
 }
 
-// togglePane is ctrl+q z e: the F1 or F5 dialog goes in a pane of the
-// tab's, to be kept there; with no such dialog, the code changes open in
-// a new pane.
+// screenPane goes to the tab's pane of screen i (ViewChanges or
+// ViewPlugins), opening one when it has none, and pressed there, back to
+// the agent. In the plugins' pane, with a plugin's own screen running, it
+// goes between the list and that screen instead.
+func (m *Model) screenPane(i int) tea.Cmd {
+	t := m.Cur()
+	if t == nil {
+		return nil
+	}
+	p := m.viewOfScreen(t, i)
+	// In the pane before a dialog over it took the keyboard or not.
+	in := p != nil && m.viewFocused(t, p)
+	m.closePanelDialog()
+	if m.focus == core.FocusReview {
+		m.setFocus(core.FocusAgent)
+	}
+	switch {
+	case p == nil:
+		return tea.Batch(m.newView(i), m.resize())
+	case in:
+		if i == core.ViewPlugins {
+			var ok bool
+			cmd := m.inView(t, p, func() tea.Cmd { ok = m.togglePluginUI(); return nil })
+			if ok {
+				return cmd
+			}
+		}
+		return tea.Batch(m.focusPane(t, t.OwnPane()), m.resize())
+	}
+	return tea.Batch(m.focusPane(t, p), m.resize())
+}
+
+// togglePane is ctrl+q t c: the F1 dialog goes in a pane of the tab's, to
+// be kept there; without it, the code changes open in a new pane.
 func (m *Model) togglePane() tea.Cmd {
 	i := core.ViewChanges
 	if m.panelDlg && paneScreen(m.review.ScreenIndex()) {
