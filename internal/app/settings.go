@@ -44,8 +44,10 @@ const (
 type settingRow struct {
 	table, key string
 	label      string
-	kind       settingKind
-	choices    []string
+	// tab is the name of the dialog's tab the row is in.
+	tab     string
+	kind    settingKind
+	choices []string
 	// notes say what each choice means, shown after it in its line.
 	notes  map[string]string
 	lo, hi int
@@ -108,11 +110,20 @@ func (d *settings) machine() *fleet.Machine { return d.mc }
 
 // reopen opens the dialog anew on the machine chosen, at the same setting.
 func (d *settings) reopen(m *Model) tea.Cmd {
-	key := ""
-	if d.cursor < len(d.rows) && d.rows[d.cursor].table == "" {
-		key = d.rows[d.cursor].key
+	if d.cursor >= len(d.rows) {
+		return m.openSettings()
 	}
-	return m.openSettingsAt(key)
+	at := d.rows[d.cursor]
+	cmd := m.openSettings()
+	if nd, ok := m.dialog.(*settings); ok {
+		nd.showTab(at.tab)
+		for i, r := range nd.rows {
+			if r.table == at.table && r.key == at.key && !r.heading() {
+				nd.cursor = i
+			}
+		}
+	}
+	return cmd
 }
 
 // settingRows are the dialog's lines: nerdr's settings in groups, the
@@ -138,6 +149,62 @@ func (m *Model) settingRows() []settingRow {
 			"Whether the review panel's screens are called F1 to F5 in its menu and hints, and opened with those keys.\n"+
 				"Turn it off if your F-keys are hard to reach, as on a Mac laptop, where they change brightness and volume unless you hold fn. The menu and hints then show the prefix keys that do the same: the prefix and g c for F1, g g for F2, e for F3, k for F4 and h for F5.",
 			`function_keys = false`),
+
+		{label: "Folders"},
+		{key: "repo_dirs", kind: sList,
+			desc: "More folders where nerdr looks for repositories, besides the folder you start it in. Each repository found there can get tabs, just like those in the start folder.\n" +
+				"Type the folders with a space between them; put a folder with spaces in its name in \"quotes\". ~/ is your home folder.",
+			example: `repo_dirs = ["~/code", "~/work"]`},
+		{key: "worktrees_dir", kind: sText, def: `"` + config.DefaultWorktreesDir + `"`, restart: true,
+			desc: "The folder where nerdr makes a new worktree for each new tab: a checkout of the tab's branch, where its agent works.\n" +
+				"~/ is your home folder. A relative path is taken from the folder you start nerdr in.",
+			example: `worktrees_dir = "~/code/worktrees"`},
+		{key: "data_dir", kind: sText, restart: true,
+			desc: "Where nerdr keeps what agents write down about a change: explanations of the code (nerdr-explain's notes and the role of each file), code reviews and handoffs to another agent.\n" +
+				"Empty: in the repository's .git/nerdr. Shared by all its worktrees, never committed, and kept when a worktree is deleted.\n" +
+				"A relative path, such as .nerdr: a folder inside each worktree, kept out of git. Use this when the agent runs in a sandbox that can only reach its worktree. It is deleted with the worktree.\n" +
+				"An absolute path, such as ~/nerdr-data: one folder for every repository, with a folder inside it for each.",
+			example: `data_dir = ".nerdr"`},
+		{key: "install", kind: sChoice, choices: []string{"home", "worktree", "off"}, restart: true,
+			desc: "Where nerdr may install what it gives the agents: its skills, instructions that teach agents to explain their code, ask you questions, hand work over and more, and the plugins and hooks that tell nerdr when an agent is working or done. Which skills are on is chosen in F4. Older config files call this setting skills.\n" +
+				"home: in the agents' own folders in your home folder, such as ~/.claude/skills. Agents you run outside nerdr see them too.\n" +
+				"worktree: in each worktree, kept out of git. Use this when the agent runs in a sandbox that cannot reach your home folder.\n" +
+				"off: nerdr installs nothing anywhere. Copy the skills yourself if you want them.",
+			example: `install = "worktree"`},
+
+		{label: "Programs"},
+		t("shell",
+			"The shell a terminal pane runs in the tab's worktree: the prefix and t t, or + terminal, open one. Empty: the one in $SHELL.",
+			`shell = "/bin/zsh"`),
+		t("browser",
+			"The program that opens a pull request or a comment on GitHub. nerdr adds the web address at the end. Empty: the one in $BROWSER, or else the system's own.",
+			`browser = "open -a Safari"`),
+		t("editor",
+			"The program that o in the review panel opens a file in. Empty: the one in $VISUAL, else $EDITOR, else vim.",
+			`editor = "nvim"`),
+		t("worktree_editor",
+			"The program that the prefix and o open the tab's whole worktree in. Empty: code (Visual Studio Code).",
+			`worktree_editor = "cursor"`),
+
+		{label: "Keep awake"},
+		{key: "keep_awake", kind: sChoice, choices: []string{"busy", "always", "off"}, def: `"busy"`,
+			desc: "Keeps the machine from going to sleep, since agents stop when it sleeps. A locked screen does not stop them.\n" +
+				"busy: while an agent or reviewer works, and a minute after, so messages waiting for it get through.\n" +
+				"always: as long as nerdr runs.\n" +
+				"off: never; the machine sleeps as it is set to.",
+			example: `keep_awake = "always"`},
+		b("keep_screen_on", "false",
+			"Also keeps the screen on and unlocked while the machine is kept awake, so you can follow the agents from across the room. It stops keep_screen_max minutes after your last key or click in nerdr.",
+			`keep_screen_on = true`),
+		{key: "keep_screen_max", kind: sInt, lo: 1, hi: 1440, def: "60",
+			desc:    "With keep_screen_on: how many minutes after your last key or click in nerdr the screen is kept on. After that, the screen turns off and locks as your desktop is set to, while the machine stays awake. Your next key or click starts the count again.",
+			example: `keep_screen_max = 120`},
+
+		{label: "Plugins"},
+		b("confirm_plugin_runs", "false",
+			"Asks you before every run of a plugin an agent wants, showing the values it gives it: y runs it, n does not. Unanswered in about a minute and a half, it does not run.\n"+
+				"Off, plugins you have allowed run when an agent asks, but for a plugin whose plugin.toml says confirm = true.",
+			`confirm_plugin_runs = true`),
 
 		{label: "Screen"},
 		b("key_panel", "false",
@@ -177,28 +244,6 @@ func (m *Model) settingRows() []settingRow {
 			desc: "The most times a second nerdr redraws the screen, from 1 to 120.\n" +
 				"A lower number uses less CPU: at 30, an idle nerdr uses about a third less. What you type and what the agent writes can then show up to one frame later, about 33 ms at 30. Above 60 changes little, since agents' output is drawn at most about 60 times a second.",
 			example: `fps = 30`},
-
-		{label: "Folders"},
-		{key: "repo_dirs", kind: sList,
-			desc: "More folders where nerdr looks for repositories, besides the folder you start it in. Each repository found there can get tabs, just like those in the start folder.\n" +
-				"Type the folders with a space between them; put a folder with spaces in its name in \"quotes\". ~/ is your home folder.",
-			example: `repo_dirs = ["~/code", "~/work"]`},
-		{key: "worktrees_dir", kind: sText, def: `"` + config.DefaultWorktreesDir + `"`, restart: true,
-			desc: "The folder where nerdr makes a new worktree for each new tab: a checkout of the tab's branch, where its agent works.\n" +
-				"~/ is your home folder. A relative path is taken from the folder you start nerdr in.",
-			example: `worktrees_dir = "~/code/worktrees"`},
-		{key: "data_dir", kind: sText, restart: true,
-			desc: "Where nerdr keeps what agents write down about a change: explanations of the code (nerdr-explain's notes and the role of each file), code reviews and handoffs to another agent.\n" +
-				"Empty: in the repository's .git/nerdr. Shared by all its worktrees, never committed, and kept when a worktree is deleted.\n" +
-				"A relative path, such as .nerdr: a folder inside each worktree, kept out of git. Use this when the agent runs in a sandbox that can only reach its worktree. It is deleted with the worktree.\n" +
-				"An absolute path, such as ~/nerdr-data: one folder for every repository, with a folder inside it for each.",
-			example: `data_dir = ".nerdr"`},
-		{key: "install", kind: sChoice, choices: []string{"home", "worktree", "off"}, restart: true,
-			desc: "Where nerdr may install what it gives the agents: its skills, instructions that teach agents to explain their code, ask you questions, hand work over and more, and the plugins and hooks that tell nerdr when an agent is working or done. Which skills are on is chosen in F4. Older config files call this setting skills.\n" +
-				"home: in the agents' own folders in your home folder, such as ~/.claude/skills. Agents you run outside nerdr see them too.\n" +
-				"worktree: in each worktree, kept out of git. Use this when the agent runs in a sandbox that cannot reach your home folder.\n" +
-				"off: nerdr installs nothing anywhere. Copy the skills yourself if you want them.",
-			example: `install = "worktree"`},
 
 		{label: "Tabs"},
 		{key: "max_tabs", kind: sInt, lo: 0, hi: 999, def: "20",
@@ -243,49 +288,11 @@ func (m *Model) settingRows() []settingRow {
 			"Tells you when an issue on GitHub is newly assigned to you. nerdr asks GitHub through gh.\n"+
 				"Turn it off and GitHub is not asked.",
 			`issue_notify = false`),
-		b("claude_status_line", "true",
-			"Starts claude with nerdr's status line, which tells nerdr how much of your Claude plan's rate limits is used, for the usage dialog. It then shows your own status line, if you have set one in claude's settings, or a short one of nerdr's.\n"+
-				"Turn it off to leave claude's status line alone; the usage dialog then has codex's limits only.",
-			`claude_status_line = false`),
 		{key: "github_refresh", kind: sInt, lo: 15, hi: 3600, def: "90",
 			desc: "How many seconds apart nerdr asks GitHub about the pull request of the tab on screen, and of a tab whose agent is working: its CI checks, reviews and whether it is merged.\n" +
 				"nerdr's other questions to GitHub follow along, in the same proportion: at 90, tabs out of sight are asked about every 10 minutes, the lists of pull requests and issues in F2 and the watch on your pull requests for notifications every 2 minutes, and new issues assigned to you every 5 minutes. At 180, all of them are twice as far apart.\n" +
 				"A lower number shows a finished CI run sooner; a higher one uses less of GitHub's limit on requests, which matters with many tabs.",
 			example: `github_refresh = 180`},
-
-		{label: "Programs"},
-		t("shell",
-			"The shell a terminal pane runs in the tab's worktree: the prefix and t t, or + terminal, open one. Empty: the one in $SHELL.",
-			`shell = "/bin/zsh"`),
-		t("browser",
-			"The program that opens a pull request or a comment on GitHub. nerdr adds the web address at the end. Empty: the one in $BROWSER, or else the system's own.",
-			`browser = "open -a Safari"`),
-		t("editor",
-			"The program that o in the review panel opens a file in. Empty: the one in $VISUAL, else $EDITOR, else vim.",
-			`editor = "nvim"`),
-		t("worktree_editor",
-			"The program that the prefix and o open the tab's whole worktree in. Empty: code (Visual Studio Code).",
-			`worktree_editor = "cursor"`),
-
-		{label: "Keep awake"},
-		{key: "keep_awake", kind: sChoice, choices: []string{"busy", "always", "off"}, def: `"busy"`,
-			desc: "Keeps the machine from going to sleep, since agents stop when it sleeps. A locked screen does not stop them.\n" +
-				"busy: while an agent or reviewer works, and a minute after, so messages waiting for it get through.\n" +
-				"always: as long as nerdr runs.\n" +
-				"off: never; the machine sleeps as it is set to.",
-			example: `keep_awake = "always"`},
-		b("keep_screen_on", "false",
-			"Also keeps the screen on and unlocked while the machine is kept awake, so you can follow the agents from across the room. It stops keep_screen_max minutes after your last key or click in nerdr.",
-			`keep_screen_on = true`),
-		{key: "keep_screen_max", kind: sInt, lo: 1, hi: 1440, def: "60",
-			desc:    "With keep_screen_on: how many minutes after your last key or click in nerdr the screen is kept on. After that, the screen turns off and locks as your desktop is set to, while the machine stays awake. Your next key or click starts the count again.",
-			example: `keep_screen_max = 120`},
-
-		{label: "Plugins"},
-		b("confirm_plugin_runs", "false",
-			"Asks you before every run of a plugin an agent wants, showing the values it gives it: y runs it, n does not. Unanswered in about a minute and a half, it does not run.\n"+
-				"Off, plugins you have allowed run when an agent asks, but for a plugin whose plugin.toml says confirm = true.",
-			`confirm_plugin_runs = true`),
 
 		{label: "Code review"},
 		{table: "review", key: "auto", kind: sBool, def: "false",
@@ -314,6 +321,13 @@ func (m *Model) settingRows() []settingRow {
 	for _, k := range m.settingAgents() {
 		table := "agents." + string(k)
 		rows = append(rows, settingRow{label: "Agent: " + string(k)})
+		if k == agents.Claude {
+			rows = append(rows,
+				b("claude_status_line", "true",
+					"Starts claude with nerdr's status line, which tells nerdr how much of your Claude plan's rate limits is used, for the usage dialog. It then shows your own status line, if you have set one in claude's settings, or a short one of nerdr's.\n"+
+						"Turn it off to leave claude's status line alone; the usage dialog then has codex's limits only.",
+					`claude_status_line = false`))
+		}
 		if k == agents.OpenCode {
 			rows = append(rows, settingRow{table: table, key: "config_model", kind: sText,
 				desc:    "The model opencode uses, written as provider/model. nerdr puts it in opencode's OPENCODE_CONFIG_CONTENT and runs it with --standalone, since opencode 2 has no --model. Empty: opencode's own default.",
@@ -359,7 +373,35 @@ func (m *Model) settingRows() []settingRow {
 				example: string(k) + ` = "` + reviewModelExample(k) + `"`})
 		}
 	}
+	// Each heading starts a group of its tab, the first in settingTabs
+	// whose groups name it.
+	tab := ""
+	for i, r := range rows {
+		if r.heading() {
+			for _, t := range settingTabs {
+				for _, g := range t.groups {
+					if r.label == g || strings.HasPrefix(r.label, g) && strings.HasSuffix(g, ": ") {
+						tab = t.name
+					}
+				}
+			}
+		}
+		rows[i].tab = tab
+	}
 	return rows
+}
+
+// settingTabs are the dialog's tabs, in order, each with the headings of
+// its groups; "Agent: " is the start of every agent's.
+var settingTabs = []struct {
+	name   string
+	groups []string
+}{
+	{"General", []string{"Keys and mouse", "Folders", "Programs", "Keep awake", "Plugins"}},
+	{"Screen", []string{"Screen"}},
+	{"Tabs", []string{"Tabs"}},
+	{"Notifications", []string{"Notifications"}},
+	{"Agents", []string{"Code review", "Agent: "}},
 }
 
 // reviewArgsExample is review args' example for agent k: its own
@@ -482,8 +524,53 @@ func (d *settings) current(r settingRow) string {
 	return r.def
 }
 
+// span is where the cursor's tab's rows are: from lo to before hi.
+func (d *settings) span() (lo, hi int) {
+	if d.cursor >= len(d.rows) {
+		return 0, len(d.rows)
+	}
+	tab := d.rows[d.cursor].tab
+	lo, hi = d.cursor, d.cursor+1
+	for lo > 0 && d.rows[lo-1].tab == tab {
+		lo--
+	}
+	for hi < len(d.rows) && d.rows[hi].tab == tab {
+		hi++
+	}
+	return lo, hi
+}
+
+// switchTab puts the cursor on the first setting of the next tab (step 1)
+// or the one before (-1).
+func (d *settings) switchTab(step int) {
+	if len(d.rows) == 0 {
+		return
+	}
+	i := 0
+	for j, t := range settingTabs {
+		if t.name == d.rows[d.cursor].tab {
+			i = j
+		}
+	}
+	d.showTab(settingTabs[(i+step+len(settingTabs))%len(settingTabs)].name)
+}
+
+// showTab puts the cursor on the first setting of the tab name.
+func (d *settings) showTab(name string) {
+	for i, r := range d.rows {
+		if r.tab == name {
+			d.cursor, d.top, d.about = i, i, false
+			d.cursor = d.next(i-1, 1)
+			return
+		}
+	}
+}
+
+// next is the setting step rows from from, in the cursor's tab: from
+// itself when there is none.
 func (d *settings) next(from, step int) int {
-	for i := from + step; i >= 0 && i < len(d.rows); i += step {
+	lo, hi := d.span()
+	for i := from + step; i >= lo && i < hi; i += step {
 		if !d.rows[i].heading() {
 			return i
 		}
@@ -533,9 +620,15 @@ func (d *settings) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 			d.cursor = d.next(d.cursor, 1)
 		}
 	case "home", "g":
-		d.cursor = d.next(-1, 1)
+		lo, _ := d.span()
+		d.cursor = d.next(lo-1, 1)
 	case "end", "G":
-		d.cursor = d.next(len(d.rows), -1)
+		_, hi := d.span()
+		d.cursor = d.next(hi, -1)
+	case "tab":
+		d.switchTab(1)
+	case "shift+tab":
+		d.switchTab(-1)
 	case "d", "delete", "backspace":
 		return m.saveSetting(d, r, "")
 	case "left", "-":
@@ -788,23 +881,29 @@ func (d *settings) view(m *Model, w, h int) string {
 	if d.about {
 		about = d.aboutLines(inner)
 	}
-	listH := max(h-len(foot)-6, 3)
+	tabs := d.tabsLine(m)
+	listH := max(h-len(foot)-8, 3)
 	rowsH := max(listH-len(about), 1)
 	// Two lines of what is around the cursor stay in view, where there are.
 	margin := min(2, (rowsH-1)/2)
+	lo, hi := d.span()
+	d.top = min(max(d.top, lo), hi)
 	if d.cursor-margin < d.top {
-		d.top = max(d.cursor-margin, 0)
+		d.top = max(d.cursor-margin, lo)
 	}
 	if d.cursor+margin >= d.top+rowsH {
-		d.top = min(d.cursor+margin-rowsH+1, max(len(d.rows)-rowsH, 0))
+		d.top = min(d.cursor+margin-rowsH+1, max(hi-rowsH, lo))
 	}
-	var lines []string
-	for i := d.top; i < len(d.rows) && i < d.top+rowsH; i++ {
+	lines := []string{tabs, ""}
+	for i := d.top; i < hi && i < d.top+rowsH; i++ {
 		r := d.rows[i]
 		if i == d.cursor {
 			lines = append(lines, about...)
 		}
 		if r.heading() {
+			if r.label == r.tab {
+				continue // the tab's name says it
+			}
 			lines = append(lines, lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("110")).Render(r.label))
 			continue
 		}
@@ -840,6 +939,30 @@ func (d *settings) view(m *Model, w, h int) string {
 	// border and padding.
 	lines = append(lines, strings.Repeat(" ", inner))
 	return box(m.onTitle("Settings"), append(lines, foot...), inner+6)
+}
+
+// tabsLine names the dialog's tabs, the cursor's bold, each a button
+// that shows it.
+func (d *settings) tabsLine(m *Model) string {
+	on := ""
+	if d.cursor < len(d.rows) {
+		on = d.rows[d.cursor].tab
+	}
+	var out []string
+	for _, t := range settingTabs {
+		if t.name == on {
+			out = append(out, lipgloss.NewStyle().Bold(true).Underline(true).Foreground(lipgloss.Color("110")).Render(t.name))
+			continue
+		}
+		name := t.name
+		out = append(out, m.onClick(dim(name), func(m *Model) tea.Cmd {
+			if !d.editing {
+				d.showTab(name)
+			}
+			return nil
+		}))
+	}
+	return strings.Join(out, "   ") + "    " + keyHint("tab") + dim(" next")
 }
 
 // aboutLines are what the picked setting does, shown over its line.
