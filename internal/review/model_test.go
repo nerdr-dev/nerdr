@@ -309,3 +309,21 @@ func TestEmptyChangeOffersTheBranch(t *testing.T) {
 		t.Fatalf("the button should show the branch, deletion included: base %v files %v", m.showBase, m.files)
 	}
 }
+
+// The machine watches one worktree at a time: a watch put on another ends
+// the panel's, which reads its worktree as it comes again.
+func TestWatchOnAnotherWorktreeEndsThePanels(t *testing.T) {
+	m := Model{curWT: "/w/a"}
+	m = m.Watching("/w/a", true)
+	if !m.watching {
+		t.Fatal("the watch on its worktree is the panel's")
+	}
+	m = m.Watching("/w/b", false)
+	if !m.watching {
+		t.Fatal("another worktree's watch failing leaves the panel's")
+	}
+	m = m.Watching("/w/b", true)
+	if m.watching {
+		t.Fatal("a watch put on another worktree ends the panel's")
+	}
+}

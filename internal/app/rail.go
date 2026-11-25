@@ -9,64 +9,34 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
-// The review panel's menu is a column at the right of the body: its
-// screens, each by its F-key and a short name (the F-key alone with
-// panel_labels off). While the panel is kept open the column gives way to
-// the panel's own menu row over it (see panelMenu). An F-key, pressed or clicked there, opens the panel
-// on its screen, left of the column, as wide as panel_width; a click on
-// the screen open closes it again. Small (the prefix and z k, or layout =
-// "small"), the panel folds again when the keyboard goes back to the
-// agent. Kept open, it is made small by itself while the active tab's
-// panes would not all fit beside it, and opens again once they do.
+// The key panel is a narrow column at the right of the body, there all
+// the time with key_panel on: the prefix's keys, each with what it does,
+// in the groups of the hint line. A group's keys open below its own while
+// the prefix waits for one of them (prefix a, say), the rest dimmed; with
+// the prefix pressed the column lights up. Off, or where the window has
+// no room for it, the hint line over the bottom rows says the same after
+// the prefix (prefixHint). The F-keys open the review panel's screens at
+// the top of it.
 
-// panelRailW is the columns of the menu's column, its frame included.
-func (m *Model) panelRailW() int {
-	key := 2 // F1
-	if keys, _ := m.screenMenuKeys(); len(keys) > 0 {
-		key = len(keys[0])
-	}
-	if !m.panelLabels() {
-		return key + 4 // a space either side, inside the frame
-	}
-	w := 0
-	for _, s := range review.ScreenShort() {
-		w = max(w, len(s))
-	}
-	return key + w + 5 // " F1 name ", inside the frame
-}
+// keyPanelW is the columns of the key panel, its frame included.
+const keyPanelW = 30
 
-// panelLabels reports whether the menu's column names its screens beside
-// their F-keys.
-func (m *Model) panelLabels() bool {
-	return m.cfg().PanelLabels == nil || *m.cfg().PanelLabels
-}
+// panelRailW is the columns of the key panel, its frame included.
+func (m *Model) panelRailW() int { return keyPanelW }
 
-// railShown reports whether the menu's column is on screen: whenever the
-// window has room for it beside the agent, and the panel has no menu row
-// of its own.
+// keyPanel reports whether the key panel is asked for (key_panel).
+func (m *Model) keyPanel() bool { return core.IsOn(m.cfg().KeyPanel) }
+
+// railShown reports whether the key panel is on screen: when asked for,
+// and the window has room for it beside the agent.
 func (m *Model) railShown() bool {
-	return !m.panelMenu() && m.bodyW() >= 3*m.panelRailW()
+	return m.keyPanel() && m.bodyW() >= 3*m.panelRailW()
 }
 
-// panelMenu reports whether the panel has its menu as a row over its
-// screen, in place of the column: while it is kept open, not small, so
-// it is on screen all the time.
-func (m *Model) panelMenu() bool {
-	return m.reviewOpen && !m.panelSmall && (m.reviewZoom || !m.splitShown())
-}
-
-// panelTop is the rows the panel's menu row and the frame over it take
-// above the review's own drawing.
-func (m *Model) panelTop() int {
-	if m.panelMenu() {
-		return 1
-	}
-	return 0
-}
-
-// railCols is the columns the menu's column takes from the body, the one
+// railCols is the columns the key panel takes from the body, the one
 // between it and the rest included.
 func (m *Model) railCols() int {
 	if !m.railShown() {
@@ -75,126 +45,224 @@ func (m *Model) railCols() int {
 	return m.panelRailW() + 1
 }
 
-// railLines draws the menu's column, h rows of railW columns.
-func (m *Model) railLines(h int) []string {
-	rw := m.panelRailW()
-	bs := lipgloss.NewStyle().Foreground(frameColor)
-	if m.focus == core.FocusReview {
-		bs = lipgloss.NewStyle().Foreground(accent)
+// keyRow is a row of the key panel, the hint line's entry it is for (nil
+// for a heading), and whether it belongs to the group open.
+type keyRow struct {
+	text  string
+	open  bool // the group open, or one of its keys
+	entry *core.CommandEntry
+}
+
+// keyRows are the key panel's rows, inner columns wide.
+func (m *Model) keyRows(inner int) []keyRow {
+	keySt := lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Bold(true)
+	txtSt := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	offSt := lipgloss.NewStyle().Foreground(lipgloss.Color("241"))
+	heading := lipgloss.NewStyle().Foreground(accent).Bold(true)
+	inGroup := m.prefix && m.keyGroup != ""
+	item := func(indent, key, label string, off, dim bool, more string) string {
+		ks, ts := keySt, txtSt
+		if off || dim {
+			ks, ts = offSt, offSt
+		}
+		key = padTo(key, 3) // the labels in line, past a short key
+		room := inner - len(indent) - ansi.StringWidth(key) - 1 - ansi.StringWidth(more)
+		return ks.Render(indent+key) + ts.Render(" "+ansi.Truncate(label, max(room, 1), "…")) + keySt.Render(more)
 	}
-	inner := rw - 2
-	row := func(s string) string {
-		return bs.Render("│") + padTo(s, inner) + bs.Render("│")
+	var rows []keyRow
+	head := func(title string, open bool) {
+		st := heading
+		if inGroup && !open {
+			st = offSt.Bold(true)
+		}
+		rows = append(rows, keyRow{text: st.Render(ansi.Truncate(" "+title, inner, "…")), open: open})
 	}
-	top := bs.Render("╭" + strings.Repeat("─", inner) + "╮")
-	if inner >= 2 {
-		top = bs.Render("╭─") + m.panelToggle(m.panelSmall) + bs.Render(strings.Repeat("─", inner-2)+"╮")
-	}
-	out := []string{top}
-	short := review.ScreenShort()
-	names := review.ScreenNames()
+
+	// The F-keys first: the screens of the review panel.
+	head("Panel", false)
 	shown := -1
-	if m.reviewOpen || m.reviewZoom {
+	if m.panelShown() {
 		shown = m.review.ScreenIndex()
 	}
 	keys, _ := m.screenMenuKeys()
-	for i := range names {
-		label := " F" + strconv.Itoa(i+1)
+	for i, name := range review.ScreenNames() {
+		key := "F" + strconv.Itoa(i+1)
 		if i < len(keys) {
-			label = " " + keys[i]
+			key = keys[i]
 		}
-		if m.panelLabels() {
-			label += " " + short[i]
-		}
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color("246"))
-		if i == shown {
-			label = padTo(label+" ", inner)
-			style = lipgloss.NewStyle().Background(tabActiveBg).Foreground(lipgloss.Color("231")).Bold(true)
-		}
-		item := style.Render(label)
+		more := ""
 		if i == 1 && m.review.News() {
-			item += warn("◆")
+			more = "◆"
 		}
-		n := i + 1
-		tip := names[i] + " · " + m.screenKey(n)
+		text := item(" ", key, name, false, inGroup, "")
+		if more != "" {
+			text = ansi.Truncate(text, inner-1, "") + warn(more)
+		}
 		if i == shown {
-			tip += " · click: close the panel"
+			text = lipgloss.NewStyle().Background(tabActiveBg).Foreground(lipgloss.Color("231")).Bold(true).
+				Render(padTo(ansi.Strip(text), inner))
 		}
-		out = append(out, row(""), row(m.tip(m.onClick(item, func(m *Model) tea.Cmd { return m.railClick(n) }), tip)))
+		rows = append(rows, keyRow{text: text, entry: &core.CommandEntry{Key: key, Label: name, Run: "f" + strconv.Itoa(i+1)}})
+	}
+
+	groups := core.CommandGroups()
+	if m.sideW() > 0 {
+		groups = sideArrows(groups)
+	}
+	sub := core.KeyGroups()
+	for _, g := range groups {
+		head(g.Title, false)
+		for _, e := range rareLast(g.Entries) {
+			e := e
+			_, isGroup := sub[e.Run]
+			open := isGroup && inGroup && m.keyGroup == e.Run
+			more := ""
+			if isGroup {
+				more = core.OnOff(open, " ▾", " ▸")
+			}
+			key := m.shownKeys(e.Key)
+			rows = append(rows, keyRow{
+				text:  item(" ", key, e.Label, m.commandOff(e.Run) != "", e.Rare || (inGroup && !open), more),
+				open:  open,
+				entry: &e,
+			})
+			if !open {
+				continue
+			}
+			for _, se := range rareLast(sub[e.Run].Entries) {
+				se := se
+				rows = append(rows, keyRow{
+					text:  item("   ", se.Key, se.Label, m.commandOff(se.Run) != "", se.Rare, ""),
+					open:  true,
+					entry: &se,
+				})
+			}
+		}
+	}
+	return rows
+}
+
+// rareLast is entries with the rare ones after the rest, each kept in its
+// order.
+func rareLast(entries []core.CommandEntry) []core.CommandEntry {
+	out := make([]core.CommandEntry, 0, len(entries))
+	for _, rare := range []bool{false, true} {
+		for _, e := range entries {
+			if e.Rare == rare {
+				out = append(out, e)
+			}
+		}
+	}
+	return out
+}
+
+// railLines draws the key panel, h rows of panelRailW columns.
+func (m *Model) railLines(h int) []string {
+	rw := m.panelRailW()
+	inner := rw - 2
+	bs := lipgloss.NewStyle().Foreground(frameColor)
+	if m.prefix {
+		bs = lipgloss.NewStyle().Foreground(accent)
+	}
+	row := func(s string) string {
+		return bs.Render("│") + padTo(s, inner) + bs.Render("│")
+	}
+	title := " " + m.cfg().Prefix + " "
+	titleSt := bs
+	if m.prefix {
+		titleSt = lipgloss.NewStyle().Background(accent).Foreground(lipgloss.Color("232")).Bold(true)
+	}
+	title = ansi.Truncate(title, max(inner-1, 0), "")
+	top := bs.Render("╭─") + titleSt.Render(title) + bs.Render(strings.Repeat("─", max(inner-1-ansi.StringWidth(title), 0))+"╮")
+
+	rows := m.keyRows(inner)
+	room := max(h-2, 0)
+	m.keyTop = min(max(m.keyTop, 0), max(len(rows)-room, 0))
+	if m.prefix && m.keyGroup != "" {
+		// The group open in sight, from its own key down as far as it fits.
+		first, last := -1, -1
+		for i, r := range rows {
+			if r.open {
+				if first < 0 {
+					first = i
+				}
+				last = i
+			}
+		}
+		if first >= 0 {
+			if last >= m.keyTop+room {
+				m.keyTop = last - room + 1
+			}
+			m.keyTop = min(m.keyTop, first)
+		}
+	}
+	out := []string{top}
+	for _, r := range rows[m.keyTop:min(len(rows), m.keyTop+room)] {
+		text := r.text
+		if e := r.entry; e != nil {
+			tip := e.Label
+			if e.Desc != "" {
+				tip += " · " + e.Desc
+			}
+			if off := m.commandOff(e.Run); off != "" {
+				tip += " · " + off
+			}
+			text = m.tip(m.zone(text, func(m *Model, ev tea.MouseMsg) tea.Cmd {
+				if m.keyWheel(ev) {
+					return nil
+				}
+				if ev.Action == tea.MouseActionPress && ev.Button == tea.MouseButtonLeft {
+					return m.keyClick(*e)
+				}
+				return nil
+			}), tip)
+		}
+		out = append(out, row(text))
 	}
 	for len(out) < h-1 {
 		out = append(out, row(""))
 	}
-	out = append(out[:min(len(out), h-1)], bs.Render("╰"+strings.Repeat("─", inner)+"╯"))
+	bottom := strings.Repeat("─", inner)
+	switch above, below := m.keyTop > 0, m.keyTop+room < len(rows); {
+	case above && below:
+		bottom = "─ ↑↓ " + strings.Repeat("─", max(inner-5, 0))
+	case below:
+		bottom = "─ ↓ " + strings.Repeat("─", max(inner-4, 0))
+	case above:
+		bottom = "─ ↑ " + strings.Repeat("─", max(inner-4, 0))
+	}
+	out = append(out[:min(len(out), h-1)], bs.Render("╰"+ansi.Truncate(bottom, inner, "")+"╯"))
 	return out
 }
 
-// railClick is a click on screen n in the menu's column: it opens the
-// panel on it, or closes the panel when it is open on it already.
-func (m *Model) railClick(n int) tea.Cmd {
-	if (m.reviewOpen || m.reviewZoom) && m.review.ScreenIndex() == n-1 {
-		m.reviewOpen, m.reviewZoom = false, false
-		m.setFocus(core.FocusAgent)
-		return m.resize()
+// scrollKeys moves the key panel's rows by n, down for n > 0.
+func (m *Model) scrollKeys(n int) { m.keyTop = max(m.keyTop+n, 0) }
+
+// keyWheel scrolls the key panel for a turn of the wheel over it, and
+// reports whether ev was one.
+func (m *Model) keyWheel(ev tea.MouseMsg) bool {
+	switch ev.Button {
+	case tea.MouseButtonWheelUp:
+		m.scrollKeys(-3)
+	case tea.MouseButtonWheelDown:
+		m.scrollKeys(3)
+	default:
+		return false
 	}
-	return m.handleKey(keyMsg("f" + strconv.Itoa(n)))
+	return true
 }
 
-// panelToggle is the » or « that makes the panel small or keeps it open:
-// « while it is small, » while it stays open.
-func (m *Model) panelToggle(small bool) string {
-	glyph, tip := "»", "Small: the panel folds when the keyboard goes back to the agent · "+m.pk("z k")
-	switch {
-	case small && m.panelAuto:
-		glyph, tip = "«", "Small to make room for the panes; open again when they fit beside it · click to keep it open all the same · "+m.pk("z k")
-	case small:
-		glyph, tip = "«", "Keep the panel open when the keyboard goes back to the agent · "+m.pk("z k")
+// keyClick is a click on entry e of the key panel or the hint line: it
+// runs the command as its keys would, or opens its group.
+func (m *Model) keyClick(e core.CommandEntry) tea.Cmd {
+	if strings.HasPrefix(e.Run, "f") && panelKey(e.Run) {
+		m.prefix, m.keyGroup = false, ""
+		return m.screenPressed(keyMsg(e.Run))
 	}
-	return m.tip(m.onClick(lipgloss.NewStyle().Foreground(lipgloss.Color("81")).Bold(true).Render(glyph),
-		(*Model).togglePanelSmall), tip)
-}
-
-// togglePanelSmall makes the panel small, or keeps it open: from the
-// small panel, or the panel opened from it, it opens for good.
-func (m *Model) togglePanelSmall() tea.Cmd {
-	if m.panelSmall {
-		m.panelKept, m.panelAuto = m.panelAuto, false
-		m.panelSmall = false
-		m.reviewOpen, m.reviewZoom = true, false
-		return m.resize()
+	if strings.Contains(e.Run, " ") || panelKey(e.Run) {
+		m.prefix, m.keyGroup = false, ""
+		return m.runCommand(e.Run)
 	}
-	m.panelSmall, m.panelAuto, m.panelKept = true, false, false
-	m.reviewOpen, m.reviewZoom = false, false
-	m.setFocus(core.FocusAgent)
-	return m.resize()
-}
-
-// fitPanel makes room for the active tab's panes: the panel kept open is
-// made small while the panes not minimised by hand would not all fit
-// beside it at pane_min_width, and opens again once they would. One
-// opened by hand all the same stays, until they fit.
-func (m *Model) fitPanel() {
-	t := m.Cur()
-	if t == nil || m.splitShown() || m.reviewZoom {
-		return
-	}
-	n := 0
-	for _, p := range t.Panes() {
-		if !m.pl(p).small {
-			n++
-		}
-	}
-	rw, _ := m.reviewArea()
-	w := max(m.mainW()-rw-1, 12)
-	fits := n <= max((w+1)/(m.tabOn().Core.PaneMinW()+1), 1)
-	switch {
-	case fits:
-		m.panelKept = false
-		if m.panelAuto {
-			m.panelAuto, m.panelSmall, m.reviewOpen = false, false, true
-		}
-	case m.reviewOpen && !m.panelSmall && !m.panelKept:
-		m.panelAuto, m.panelSmall = true, true
-		m.reviewOpen = m.focus == core.FocusReview
-	}
+	m.prefix, m.keyGroup, m.nav = true, "", false
+	return m.handleKey(keyMsg(m.swapKey(e.Run))) // as pressed
 }

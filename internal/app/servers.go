@@ -612,6 +612,5 @@ func (m *Model) RestoreClient(c state.Client) {
 	}
 	if t := find(c.Split); t != nil && t != m.Cur() && m.fleet.Group(t) == m.curGroup() {
 		m.split, m.splitLeft = t, c.SplitLeft
-		m.reviewOpen = false
 	}
 }

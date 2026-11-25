@@ -87,6 +87,8 @@ type Model struct {
 	// told again only when that changes, not after every message.
 	keysTo     keysTarget
 	prefixPage int
+	// keyTop is the first of the key panel's rows in sight.
+	keyTop int
 	// keyGroup is the group of commands the prefix went into ("i", say),
 	// waiting for the command's key; "" at the top.
 	keyGroup string
@@ -133,28 +135,34 @@ type Model struct {
 	reviewReuse bool
 	// reviewGen is core's Gen when the panel was last drawn anew: core,
 	// on its own goroutine, may have changed what it shows since.
-	reviewGen  uint64
-	reviewOpen bool
+	reviewGen uint64
+	// panelDlg is the panel as a dialog over the window. See screens.go.
+	panelDlg bool
+	// views are the view panes' panels; viewIn the one in the panel's
+	// place, in viewTab, while one is (viewDraw: being drawn); dragView
+	// the one a drag started in. See views.go.
+	views    map[*core.PaneTab]*viewPane
+	viewIn   *core.PaneTab
+	viewTab  *core.Tab
+	viewDraw bool
+	dragView *core.PaneTab
+	// dialogView is the view pane whose panel opened the dialog open now:
+	// what is chosen in it is done in that panel.
+	dialogView *core.PaneTab
+	dialogFor  dialog
+	// viewPick is, by tab, the plugin (its folder) the plugins pane asked
+	// for it and not here yet is to be on: see showPluginRun.
+	viewPick map[*core.Tab]string
+	// btnsOut is the buttons for new panes not fitting in the frame of the
+	// last pane of the tab being drawn: they go in the row over its panes.
+	btnsOut bool
+	// later are commands to run at the end of the message being handled,
+	// from code that has none to return.
+	later []tea.Cmd
 	// screenTab is the tab whose screen the review panel shows; see
 	// pinReview.
-	screenTab  *core.Tab
-	reviewZoom bool
-	// panelSmall is the review panel made small, to its F-keys: shown as
-	// a column on the right while folded, opened by an F-key, and folded
-	// again when the keyboard goes back to the agent. See rail.go.
-	panelSmall bool
-	// panelAuto is set while the panel, kept open, is small only to make
-	// room for the active tab's panes, and opens again once they fit
-	// beside it; panelKept while it was opened by hand all the same. See
-	// fitPanel.
-	panelAuto, panelKept bool
-
-	// sideZoom is set while the panel is full width because F1's files
-	// were put beside the diff in a panel too narrow for that; putting
-	// them back above makes it narrow again.
-	sideZoom    bool
-	reviewWidth int // percent
-	focus       core.FocusArea
+	screenTab *core.Tab
+	focus     core.FocusArea
 
 	// split is the tab shown beside the active one, splitLeft whether it
 	// is on the left, and splitWidth the right-hand tab's share of the
@@ -170,11 +178,8 @@ type Model struct {
 	// reviewmodels.go.
 	reviewPick *modelPick
 
-	// panelScreens is where the review panel was when you last left each tab
-	// (F1 to F6), to go back to when you come to it again; paneBars what each
-	// tab's row of panes showed when last drawn.
-	panelScreens map[*core.Tab]review.Screen
-	paneBars     map[*core.Tab]*barRow
+	// paneBars is what each tab's row of panes showed when last drawn.
+	paneBars map[*core.Tab]*barRow
 
 	// blurred is set while the terminal has taken focus away from
 	// nerdr's window: then even the active tab is not being looked at.
@@ -190,6 +195,19 @@ type Model struct {
 	skills skillsView
 	// plugins is the F5 screen's state, and the plugins' screens started.
 	plugins pluginsView
+	// lastAsk numbers the view panes' readers; see viewOf.
+	lastAsk int
+	// pluginJobs are what waits for core's answers to F5's questions, by
+	// job (see pluginJob); pluginAsking the question whether an agent may
+	// run a plugin, while it is asked. The client's, not one panel's.
+	pluginJobs    map[string]func(m *Model, ev any) tea.Cmd
+	pluginLastJob int
+	pluginAsking  *runQuestion
+	// pluginsStale is pluginsChanged asked for in a view pane's panel,
+	// to be done for every panel once out of it.
+	pluginsStale bool
+	// uiKeyFocused is focusedPluginKey as the frame being drawn began.
+	uiKeyFocused string
 	// history is the F6 screen's: what the bar has said; see history.go.
 	history historyView
 
@@ -226,6 +244,9 @@ type Model struct {
 	hand                   bool // the pointer was made a hand (see pointer.go)
 	zoneRects              []zoneRect
 	dialogZones, hintZones int
+	// underZones to panelZones are the zones of the panes drawn under the
+	// panel's dialog, while it is open: out of the mouse's reach.
+	underZones, panelZones int
 	// frame is the screen as last drawn, and sameFrame says the last
 	// message left it as it was: the pointer moving with no tip coming or
 	// going, which the terminal reports for every cell it crosses.
@@ -388,7 +409,6 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		}}),
 		router:      router,
 		review:      review.NewEmbedded(review.Local{}),
-		reviewWidth: cfg.PanelWidth,
 		splitWidth:  50,
 		lastInGroup: map[string]core.TabRef{},
 		showDetails: *cfg.TabDetails,
@@ -398,14 +418,13 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		width:       120,
 		height:      40,
 	}
-	m.review = m.review.SetFocused(false).SetWideKey(m.pk("z z")).SetScreenKeys(m.screenMenuKeys())
+	m.review = m.review.SetFocused(false).SetScreenKeys(m.screenMenuKeys())
 	m.review, _ = m.review.SetDiffColors(cfg.DiffColors)
 	m.review = m.review.SetPRRefresh(m.home().Core.GithubEvery(core.PrPanelEvery))
 	if st, err := os.Stat(config.Path()); err == nil {
 		m.cfgMod = st.ModTime()
 	}
 	lightSymbols = cfg.StatusLights == "symbols"
-	m.startLayout()
 	if !m.mouseOn() {
 		m.mouse = mouseOff
 	}
@@ -425,7 +444,6 @@ func (m *Model) restoreLayout(sess core.Layout) {
 	for i, t := range m.fleet.Tabs() {
 		if sess.Split != "" && t.ID == sess.Split && i != m.Active && m.fleet.Group(t) == m.curGroup() {
 			m.split, m.splitLeft = t, sess.SplitLeft
-			m.reviewOpen = false
 		}
 	}
 	m.sideWidth = sess.SideWidth
@@ -541,7 +559,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Nothing changed: the frame is the last one, if core has not
 		// changed it meanwhile (see View).
 		m.sameFrame = true
-		return m, cmd
+		later := m.later // what the last drawing left to do
+		m.later = nil
+		return m, tea.Batch(append(later, cmd)...)
 	}
 	if m.dialog == nil {
 		m.chosen = nil // a dialog opened next starts on the active tab's
@@ -579,14 +599,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	// Off screen, the panel's file list is left until it is back.
 	var shown tea.Cmd
-	m.review, shown = m.review.SetShown(m.reviewZoom || m.reviewOpen && !m.splitShown())
-	m.review = m.review.SetAlone(m.reviewZoom)
+	m.review, shown = m.review.SetShown(m.panelDlg)
 	m.syncInput()
 	m.sayStates()
 	if m.keepFrame {
 		m.sameFrame = true
 	}
-	return m, tea.Batch(cmd, shown, m.syncMouse())
+	if m.dialog == nil || m.dialog != m.dialogFor {
+		m.dialogView, m.dialogFor = nil, nil
+	}
+	m.ensureViews()
+	later := m.later
+	m.later = nil
+	return m, tea.Batch(append(later, cmd, shown, m.syncMouse())...)
 }
 
 // machineMsg is the machine msg is of, and msg itself: what a machine's
@@ -619,6 +644,8 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		}
 	}
 	switch msg := msg.(type) {
+	case viewMsg:
+		return m.onViewMsg(mc, msg)
 	case core.InboxMsg:
 		gen := m.fleet.Gen()
 		evs := mc.Conn.Take()
@@ -788,7 +815,7 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		return m.openEditor(msg)
 
 	case review.WatchMsg:
-		return m.doOn(m.machineOf(m.screenTab), core.WatchForReview{Wt: msg.Wt})
+		return m.doOn(m.machineOf(m.panelOwner()), core.WatchForReview{Wt: msg.Wt})
 
 	case review.AgentMsg:
 		return m.askAgent(msg)
@@ -949,7 +976,7 @@ func (m *Model) agentVisible(a *core.Tab) bool {
 func (m *Model) resize() tea.Cmd {
 	m.resizePanes()
 	rw, rh := m.reviewSize()
-	m.review = m.review.SetMenu(m.panelMenu())
+	m.review = m.review.SetMenu(false)
 	var cmd tea.Cmd
 	var rm tea.Model
 	rm, cmd = m.review.Update(tea.WindowSizeMsg{Width: rw, Height: rh})
@@ -961,7 +988,10 @@ func (m *Model) resize() tea.Cmd {
 }
 
 func (m *Model) resizePanes() {
-	m.fitPanel()
+	if m.viewIn == nil {
+		// The view panes' panels, to their panes' new sizes.
+		m.later = append(m.later, m.sizeViews())
+	}
 	for _, t := range m.fleet.Tabs() {
 		for _, p := range t.Panes() {
 			switch {
@@ -989,9 +1019,6 @@ func (m *Model) agentArea() (int, int) {
 		if m.splitLeft {
 			w = rw
 		}
-	} else if m.reviewOpen && !m.reviewZoom {
-		rw, _ := m.reviewArea()
-		w = m.mainW() - rw - 1
 	}
 	return max(w, 12), max(m.height-m.barRows(), 5)
 }
@@ -1006,20 +1033,14 @@ func (m *Model) agentSize() (int, int) {
 	return w - 2, h - 2
 }
 
-// reviewSize is the area the review panel draws in.
+// reviewSize is the area the review panel draws in: its dialog's, or
+// while a view pane's panel is in its place, the pane's.
 func (m *Model) reviewSize() (int, int) {
-	w, h := m.reviewArea()
-	return w, max(h-m.panelTop(), 1)
-}
-
-// reviewArea is the review panel's part of the body, its frame included:
-// panel_width of the body, or all of it left of the menu's column.
-func (m *Model) reviewArea() (int, int) {
-	if m.reviewZoom {
-		return m.mainW(), max(m.height-m.barRows(), 3)
+	if v := m.views[m.viewIn]; m.viewIn != nil && v != nil && v.w > 0 {
+		return v.w, v.h
 	}
-	w := m.mainW() * m.reviewWidth / 100
-	return min(max(w, 30), m.mainW()-13), max(m.height-m.barRows(), 3)
+	_, _, w, h := m.dlgRect()
+	return w, h
 }
 
 // pinReview points the review panel at the active tab's worktrees.
@@ -1029,21 +1050,27 @@ func (m *Model) pinReview() tea.Cmd {
 	if t != nil {
 		pins = tabPins(t)
 	}
-	// The panel's screen (F1 to F6) is the tab's own. It is kept on the tab
-	// it was chosen in, not on whichever is active by now: a tab opened or
-	// closed changes the active one before the panel hears of it.
-	moved := t != m.screenTab
-	if moved && m.screenTab != nil && m.fleet.TabIndex(m.screenTab) >= 0 {
-		if m.panelScreens == nil {
-			m.panelScreens = map[*core.Tab]review.Screen{}
-		}
-		m.panelScreens[m.screenTab] = m.review.Screen()
+	if m.viewIn != nil {
+		return nil // a view pane's panel is its own tab's
 	}
+	// A dialog is the tab's it was opened in, and closes.
+	moved := t != m.screenTab
 	var cmd tea.Cmd
 	m.review, cmd = m.review.Pin(pins)
-	if moved && t != nil {
-		cmd = tea.Batch(cmd, m.review.SetScreen(m.panelScreens[t]), m.syncPRPanel())
+	if moved && t != nil && m.panelDlg {
+		m.panelDlg = false
+		if m.focus == core.FocusReview {
+			m.focus = core.FocusAgent
+			m.review = m.review.SetFocused(false)
+		}
+		cmd = tea.Batch(cmd, m.syncPRPanel())
 	}
+	// Each view pane's panel follows its own tab's worktrees.
+	cmd = tea.Batch(cmd, m.eachView(func(t *core.Tab, p *core.PaneTab) tea.Cmd {
+		var c tea.Cmd
+		m.review, c = m.review.Pin(tabPins(t))
+		return c
+	}))
 	m.screenTab = t
 	if t != nil && m.reviewAsk != nil {
 		m.reviewOn.Store(m.machineOf(t))
@@ -1060,8 +1087,18 @@ func (m *Model) pinReview() tea.Cmd {
 // shareOverlaps tells the review panel which of the active tab's files
 // other tabs change too.
 func (m *Model) shareOverlaps() {
+	m.shareOverlapsOf(m.Cur())
+	m.eachView(func(t *core.Tab, _ *core.PaneTab) tea.Cmd {
+		m.shareOverlapsOf(t)
+		return nil
+	})
+}
+
+// shareOverlapsOf tells the panel in the panel's place which of t's files
+// other tabs change too, and how many each of t's worktrees changes.
+func (m *Model) shareOverlapsOf(t *core.Tab) {
 	var shared map[string][]string
-	if t := m.Cur(); t != nil {
+	if t != nil {
 		for k, names := range m.machineOf(t).Core.Shared[t.ID] {
 			if shared == nil {
 				shared = map[string][]string{}
@@ -1071,7 +1108,7 @@ func (m *Model) shareOverlaps() {
 	}
 	m.review = m.review.SetShared(shared)
 	var counts []int
-	if t := m.Cur(); t != nil {
+	if t != nil {
 		for i := range t.Worktrees {
 			n := -1
 			if i < len(t.Info.Wts) && t.Info.Known() && t.Info.Wts[i].Err == "" {
@@ -1084,18 +1121,27 @@ func (m *Model) shareOverlaps() {
 }
 
 // setFocus moves the keyboard between the agent and the review panel.
+// Within a view pane's panel, it is only that panel's to have or not.
 func (m *Model) setFocus(f core.FocusArea) {
+	if m.viewIn != nil {
+		if f != core.FocusReview {
+			m.plugins.uiFocus = ""
+		}
+		m.focus = f
+		m.review = m.review.SetFocused(f == core.FocusReview)
+		return
+	}
 	if f == core.FocusAgent || f == core.FocusReview && !m.review.Plugins() {
 		m.plugins.uiFocus = ""
 	}
-	if f == core.FocusReview && !m.reviewOpen {
-		m.reviewOpen = true
+	if f == core.FocusReview {
+		m.showPanel()
 		m.resizePanes()
 	}
-	if f == core.FocusAgent {
-		m.reviewZoom = false
-		if m.panelSmall {
-			m.reviewOpen = false // folded to its F-keys again
+	if f == core.FocusAgent && m.panelDlg {
+		// The dialog closes with the keyboard going back.
+		if cmd := m.closePanelDialog(); cmd != nil {
+			m.later = append(m.later, cmd)
 		}
 		m.resizePanes()
 	}
@@ -1216,28 +1262,9 @@ func (m *Model) stopping() (panes []*term.Pane, wait func()) {
 	}
 }
 
-// onPanelLayout follows F1's file list going beside the diff or back above
-// it: beside, in a panel narrower than both need, the panel goes full
-// width, and back above, to the width it had.
-func (m *Model) onPanelLayout(beside bool) tea.Cmd {
-	switch {
-	case beside && !m.reviewZoom:
-		if w, _ := m.reviewSize(); w >= review.BesideWidth {
-			return nil
-		}
-		m.reviewZoom, m.sideZoom = true, true
-		m.toast("files beside the diff: the panel is full width (" + m.pk("z z") + " gives the agent its room back)")
-	case !beside && m.sideZoom && m.reviewZoom:
-		m.reviewZoom = false
-	default:
-		m.sideZoom = false
-		return nil
-	}
-	if !m.reviewZoom {
-		m.sideZoom = false
-	}
-	return m.resize()
-}
+// onPanelLayout hears of F1's file list going beside the diff or back
+// above it: the pane keeps its width, which can be dragged wider.
+func (m *Model) onPanelLayout(bool) tea.Cmd { return nil }
 
 // tabPins is what the review panel shows for the tab.
 func tabPins(t *core.Tab) []review.Pin {

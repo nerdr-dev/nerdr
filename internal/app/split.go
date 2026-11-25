@@ -27,7 +27,7 @@ func (m *Model) splitTab() *core.Tab {
 
 // splitShown reports whether two agents are on screen now.
 func (m *Model) splitShown() bool {
-	return m.splitTab() != nil && !m.reviewOpen && !m.reviewZoom
+	return m.splitTab() != nil
 }
 
 // sides are the tabs on the left and the right while the split is shown;
@@ -69,11 +69,6 @@ func (m *Model) agentX() int {
 // behind the review panel is brought back rather than ended.
 func (m *Model) toggleSplit() tea.Cmd {
 	if s := m.splitTab(); s != nil {
-		if !m.splitShown() {
-			m.reviewOpen, m.reviewZoom = false, false
-			m.setFocus(core.FocusAgent)
-			return m.resize()
-		}
 		m.split = nil
 		m.saveLayout()
 		return m.resize()
@@ -90,7 +85,6 @@ func (m *Model) toggleSplit() tea.Cmd {
 // splitWith shows left and right side by side, the keyboard on the left.
 func (m *Model) splitWith(left, right *core.Tab) tea.Cmd {
 	m.split, m.splitLeft = right, false
-	m.reviewOpen, m.reviewZoom = false, false
 	m.setFocus(core.FocusAgent)
 	cmd := m.selectTab(m.fleet.TabIndex(left))
 	m.saveLayout()

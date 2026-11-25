@@ -222,7 +222,7 @@ func TestPrefixLetterSwapsWithQ(t *testing.T) {
 }
 
 // TestScreensBehindThePrefix: e 1 to e 4 go to the panel's screens, as
-// F1 to F4 do, e twice to F1, and z e shows and hides the panel.
+// F1 to F4 do, e twice to F1, and z e puts the F1 dialog in a pane.
 func TestScreensBehindThePrefix(t *testing.T) {
 	m := testModel(t)
 	prefix := tea.KeyMsg{Type: tea.KeyCtrlQ}
@@ -235,14 +235,14 @@ func TestScreensBehindThePrefix(t *testing.T) {
 	m.handleKey(prefix)
 	m.handleKey(keyMsg("e"))
 	m.handleKey(keyMsg("e"))
-	if m.panelMessages() || !m.reviewOpen || m.focus != core.FocusReview {
-		t.Fatalf("e e should show F1 with the keyboard: tasks %v, open %v, focus %v", m.panelMessages(), m.reviewOpen, m.focus)
+	if m.panelMessages() || !m.panelDlg || m.focus != core.FocusReview {
+		t.Fatalf("e e should show F1 with the keyboard: tasks %v, dialog %v, focus %v", m.panelMessages(), m.panelDlg, m.focus)
 	}
 	m.handleKey(prefix)
 	m.handleKey(keyMsg("z"))
 	m.handleKey(keyMsg("e"))
-	if m.reviewOpen {
-		t.Fatal("z e should hide the panel")
+	if f := m.focused(m.Cur()); f.Kind != core.PaneView || f.Screen != core.ViewChanges || m.panelDlg {
+		t.Fatal("z e should put the F1 dialog in a pane of the tab's")
 	}
 }
 
@@ -255,19 +255,15 @@ func TestFunctionKeysOff(t *testing.T) {
 	off := false
 	m.home().Core.Cfg.FunctionKeys = &off
 	m.review = m.review.SetScreenKeys(m.screenMenuKeys())
-	m.reviewOpen = true
-	m.resize()
 	if got := m.screenKey(3); got != "ctrl+q e 3" {
 		t.Fatalf("screenKey(3) = %q", got)
 	}
+	on := true
+	m.home().Core.Cfg.KeyPanel = &on
+	m.resize()
 	v := ansi.Strip(m.View())
-	if !strings.Contains(v, "e1 code changes") || strings.Contains(v, "F1 code changes") {
-		t.Fatalf("the menu row should name e1, not F1:\n%s", v)
-	}
-	m.togglePanelSmall()
-	v = ansi.Strip(m.View())
-	if !strings.Contains(v, "e1 changes") || strings.Contains(v, "F1 changes") {
-		t.Fatalf("the menu's column should name e1, not F1:\n%s", v)
+	if !strings.Contains(v, "e1  code changes") || strings.Contains(v, "F1  code changes") {
+		t.Fatalf("the key panel should name e1, not F1:\n%s", v)
 	}
 }
 
@@ -362,5 +358,45 @@ func TestTypingAfterSteppingPanes(t *testing.T) {
 	m.Update(keyMsg("b"))
 	if !strings.Contains(m.toastText, "no such command") {
 		t.Fatalf("toast %q", m.toastText)
+	}
+}
+
+// TestKeyPanel: with key_panel on, a column at the right shows the keys
+// all the time; the prefix and a group's key open the group's keys below
+// it, in place of the hint line at the bottom. Off, there is no column
+// and the hint line shows after the prefix.
+func TestKeyPanel(t *testing.T) {
+	m := testModel(t)
+	if m.railShown() || m.railCols() != 0 {
+		t.Fatal("no column on the right without key_panel")
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "Answer, note, switch") {
+		t.Fatalf("the hint line should show after the prefix:\n%s", v)
+	}
+	m.handleKey(keyMsg("esc"))
+
+	on := true
+	m.home().Core.Cfg.KeyPanel = &on
+	m.resize()
+	if !m.railShown() {
+		t.Fatal("key_panel should show the column")
+	}
+	rail := func() string { return ansi.Strip(strings.Join(m.railLines(60), "\n")) }
+	if v := rail(); !strings.Contains(v, "F1  code changes") || !strings.Contains(v, "a   Answer, note") || strings.Contains(v, "Note for yourself") {
+		t.Fatalf("the panel should list the keys, its groups closed:\n%s", v)
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	m.handleKey(keyMsg("a"))
+	if m.keyGroup != "a" {
+		t.Fatal("a should open the agent's group")
+	}
+	v := rail()
+	at, note := strings.Index(v, "Answer, note"), strings.Index(v, "n   Note for yourself")
+	if note < 0 || note < at || !strings.Contains(v, "▾") {
+		t.Fatalf("the group's keys should open below it:\n%s", v)
+	}
+	if view := ansi.Strip(m.View()); strings.Count(view, "Note for yourself") != 1 {
+		t.Fatalf("the keys should be in the panel alone, not the hint line too:\n%s", view)
 	}
 }

@@ -14,7 +14,7 @@ import (
 // below the menu as all your pull requests are, with its keys.
 
 // panelIssues reports whether the review panel shows the issues.
-func (m *Model) panelIssues() bool { return m.reviewOpen && m.review.Issues() }
+func (m *Model) panelIssues() bool { return m.panelShown() && m.review.Issues() }
 
 // syncIssuePanel keeps the issues in the panel up to date while they are
 // shown, as syncAllPRs does all your PRs: coming to them fills them with
@@ -69,7 +69,6 @@ func (m *Model) syncIssuePanel() tea.Cmd {
 // where the mark in the bar and ctrl+q i o take you.
 func (m *Model) showIssues() tea.Cmd {
 	m.dialog = nil
-	m.reviewOpen = true
 	cmd := m.review.ShowPRView(review.ViewIssues)
 	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())

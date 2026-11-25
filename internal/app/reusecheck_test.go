@@ -19,7 +19,7 @@ func init() { reuseCheck = true }
 // whatever the keys did before.
 func TestReviewReuseStaysCurrent(t *testing.T) {
 	m := testModel(t)
-	m.reviewOpen = true
+	m.panelDlg = true
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	ticks := []tea.Msg{core.FrameMsg{}, core.DetectMsg{}, core.InfoTickMsg{}}
 	for _, k := range []string{"f1", "f2", "f2", "f2", "f3", "f4", "f1", "tab", "down", "up", "enter", "esc"} {
@@ -36,7 +36,7 @@ func TestReviewReuseStaysCurrent(t *testing.T) {
 // caught.
 func TestReviewReuseCheckCatchesStale(t *testing.T) {
 	m := testModel(t)
-	m.reviewOpen = true
+	m.panelDlg = true
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	m.View()
 	rm, _ := m.review.Update(keyMsg("f3")) // behind Update's back
@@ -57,7 +57,7 @@ func TestReviewReuseCheckCatchesStale(t *testing.T) {
 func TestReviewReuseAfterCoreChanged(t *testing.T) {
 	for _, counted := range []bool{true, false} {
 		m := testModel(t)
-		m.reviewOpen = true
+		m.panelDlg = true
 		m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 		m.View()
 		m.home().Core.Mu.Lock()
@@ -87,7 +87,7 @@ func TestReviewReuseAfterCoreChanged(t *testing.T) {
 // reuse Update allowed is not taken.
 func TestReviewReuseCheckedWhereDrawn(t *testing.T) {
 	m := testModel(t)
-	m.reviewOpen = true
+	m.panelDlg = true
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	m.View()
 	m.Update(core.FrameMsg{}) // reuse allowed
@@ -103,7 +103,7 @@ func TestReviewReuseCheckedWhereDrawn(t *testing.T) {
 // detection, is drawn: it counts as a change.
 func TestCoreChangingTheClientCounts(t *testing.T) {
 	m := testModel(t)
-	m.reviewOpen = true
+	m.panelDlg = true
 	m.Update(tea.WindowSizeMsg{Width: 200, Height: 50})
 	m.Update(keyMsg("f1"))
 	m.setFocus(core.FocusReview)

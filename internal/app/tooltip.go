@@ -51,6 +51,9 @@ func (m *Model) tip(s, text string) string {
 func (m *Model) tipAt(x, y int) string {
 	best, bestW := -1, 0
 	for _, r := range m.zoneRects {
+		if r.id >= m.underZones && r.id < m.panelZones {
+			continue // under the panel's dialog: see zoneAt
+		}
 		if r.y != y || x < r.x0 || x >= r.x1 || r.id >= len(m.zoneTips) || m.zoneTips[r.id] == "" {
 			continue
 		}

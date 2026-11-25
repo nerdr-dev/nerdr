@@ -16,7 +16,7 @@ import (
 // editor.
 func (m *Model) openEditor(msg review.EditMsg) tea.Cmd {
 	// The file is on the machine of the tab the panel shows.
-	mc := m.machineOf(m.screenTab)
+	mc := m.machineOf(m.panelOwner())
 	if host := mc.Host; host != "" {
 		if c, ok := editor.RemoteFileCommand(host, msg.Dir, msg.File, msg.Line); ok {
 			return m.runEditor(c, "")
@@ -24,7 +24,7 @@ func (m *Model) openEditor(msg review.EditMsg) tea.Cmd {
 		// A terminal editor runs where the file is, in a pane of the tab.
 		t := mc.Core.TabOfDir(msg.Dir)
 		if t == nil {
-			t = m.screenTab
+			t = m.panelOwner()
 		}
 		if t == nil {
 			t = m.Cur()

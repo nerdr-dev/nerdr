@@ -12,7 +12,6 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -258,7 +257,7 @@ func TestPRWatchOff(t *testing.T) {
 // news, and the mark goes. The mark in the bar takes you there too.
 func TestAllPRsInPanel(t *testing.T) {
 	m := tabsModel(t, state.Tab{ID: "a", Name: "a", Dir: "/w/a"})
-	m.reviewOpen = true
+	m.panelDlg = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.home().Core.PRWatch.At = time.Now() // known already: GitHub is not asked
 	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Fix login"}}}
@@ -316,7 +315,7 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 		state.Tab{ID: "b", Name: "login", Dir: "/w/login", Worktrees: []workspace.Worktree{wt}},
 	)
 	m.Active = 0
-	m.reviewOpen = true
+	m.panelDlg = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.home().Core.PRWatch.At = time.Now()
 	m.home().Core.PRWatch.Entries = []core.PREntry{
@@ -533,75 +532,6 @@ func TestF3ListsTheReposBranches(t *testing.T) {
 	}
 }
 
-// TestFilesBesideWidensThePanel: F1's files put beside the diff in a
-// narrow panel make it full width, and put back above, narrow again; in a
-// panel wide enough they leave it be.
-func TestFilesBesideWidensThePanel(t *testing.T) {
-	m := testModel(t)
-	m.onPanelLayout(true)
-	if !m.reviewZoom {
-		t.Fatal("beside, in a narrow panel, should make it full width")
-	}
-	m.onPanelLayout(false)
-	if m.reviewZoom {
-		t.Fatal("back above should give the agent its room back")
-	}
-	m.run("z z", keyMsg("z"))
-	m.onPanelLayout(true)
-	m.onPanelLayout(false)
-	if !m.reviewZoom {
-		t.Fatal("a panel made full width by hand should stay so")
-	}
-}
-
-// TestSmallPanel: the panel's screens are a column on the right while it
-// is small or closed, and a row over it while it is kept open; made small,
-// an F-key opens it, the keyboard back with the agent folds it again, and
-// « keeps it open.
-func TestSmallPanel(t *testing.T) {
-	m := testModel(t)
-	m.reviewOpen = true
-	m.togglePanelSmall()
-	if m.reviewOpen || !m.railShown() {
-		t.Fatal("» should fold the panel to its F-keys")
-	}
-	view := ansi.Strip(m.View())
-	for _, f := range []string{"F1 changes", "F2 github", "F3 tasks", "F4 skills", "«"} {
-		if !strings.Contains(view, f) {
-			t.Fatalf("no %s on the small panel:\n%s", f, view)
-		}
-	}
-	if aw, _ := m.agentArea(); aw != m.bodyW()-m.panelRailW()-1 {
-		t.Errorf("the agent should have all but the column: %d of %d", aw, m.bodyW())
-	}
-	m.handleKey(keyMsg("f2"))
-	if !m.reviewOpen || m.focus != core.FocusReview {
-		t.Fatal("an F-key should open the panel")
-	}
-	m.run("a a", keyMsg("a"))
-	if m.reviewOpen || !m.railShown() {
-		t.Fatal("back to the agent should fold it again")
-	}
-	m.togglePanelSmall()
-	if !m.reviewOpen || m.panelSmall {
-		t.Fatal("« should keep the panel open")
-	}
-	m.setFocus(core.FocusAgent)
-	if !m.reviewOpen {
-		t.Fatal("a panel kept open stays open")
-	}
-	if m.railShown() || m.mainW() != m.bodyW() {
-		t.Fatal("a panel kept open has its menu as a row, not the column")
-	}
-	if view := ansi.Strip(m.View()); strings.Contains(view, "F3 tasks") || !strings.Contains(view, "F2") {
-		t.Fatalf("the menu row should be over the panel, the column gone:\n%s", view)
-	}
-	clickOn(t, m, "F2", tea.MouseButtonLeft)
-	if m.review.ScreenIndex() != 1 {
-		t.Fatalf("a click on F2 in the menu row should show it, got F%d", m.review.ScreenIndex()+1)
-	}
-}
-
 // TestEveryonesPRsInPanel covers m among all your PRs: everyone's open
 // PRs in the repositories, those your review is asked for marked and
 // first, with who opened each; m again goes back to yours. A fork's PR
@@ -609,7 +539,7 @@ func TestSmallPanel(t *testing.T) {
 // branch of its name.
 func TestEveryonesPRsInPanel(t *testing.T) {
 	m := tabsModel(t, state.Tab{ID: "a", Name: "a", Dir: "/w/a"})
-	m.reviewOpen = true
+	m.panelDlg = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.home().Core.PRWatch.At = time.Now()
 	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me"}}}

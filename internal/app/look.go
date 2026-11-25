@@ -155,9 +155,17 @@ func (m *Model) pruneLooks() {
 			delete(m.paneLooks, p)
 		}
 	}
-	for t := range m.panelScreens {
+	for t := range m.viewPick {
 		if !tabs[t] {
-			delete(m.panelScreens, t)
+			delete(m.viewPick, t)
+		}
+	}
+	for p, v := range m.views {
+		if !panes[p] {
+			if v.ask != nil {
+				v.ask.FailAll("the pane was closed") // nothing waits on in vain
+			}
+			delete(m.views, p)
 		}
 	}
 	for t := range m.paneBars {

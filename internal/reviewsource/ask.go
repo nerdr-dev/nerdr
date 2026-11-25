@@ -157,7 +157,8 @@ var AskWait = 2 * time.Minute
 // A call waits for its answer, at most AskWait, so it is made off the
 // screen's time, as the panel makes them.
 type Asker struct {
-	send func(job string, q Query) bool
+	send   func(job string, q Query) bool
+	prefix string // of its jobs' names, which are the Asker's own
 
 	mu   sync.Mutex
 	next int
@@ -167,7 +168,13 @@ type Asker struct {
 // NewAsker is an Asker sending its queries by send, which reports false
 // when they cannot go.
 func NewAsker(send func(job string, q Query) bool) *Asker {
-	return &Asker{send: send, jobs: map[string]chan Answer{}}
+	return NewAskerNamed("review", send)
+}
+
+// NewAskerNamed is NewAsker with its jobs named from prefix: Askers
+// whose answers come the same way each have one of their own.
+func NewAskerNamed(prefix string, send func(job string, q Query) bool) *Asker {
+	return &Asker{send: send, prefix: prefix, jobs: map[string]chan Answer{}}
 }
 
 // Answer hands the answer to job its caller, if it still waits. It never
@@ -199,7 +206,7 @@ func (k *Asker) ask(q Query) Answer {
 	ch := make(chan Answer, 1)
 	k.mu.Lock()
 	k.next++
-	job := "review-" + strconv.Itoa(k.next)
+	job := k.prefix + "-" + strconv.Itoa(k.next)
 	k.jobs[job] = ch
 	k.mu.Unlock()
 	drop := func() {

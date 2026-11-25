@@ -236,6 +236,24 @@ func (m Model) ScreenIndex() int {
 // marks ◆.
 func (m Model) News() bool { return m.prNews || m.issueNews }
 
+// Index is which of the screens s is, 0 for F1.
+func (s Screen) Index() int {
+	for i, sc := range screens {
+		if sc.mode == s.mode {
+			return i
+		}
+	}
+	return 0
+}
+
+// ScreenAt is screen i, 0 for F1; F1 past the ends.
+func ScreenAt(i int) Screen {
+	if i < 0 || i >= len(screens) {
+		i = 0
+	}
+	return Screen{mode: screens[i].mode}
+}
+
 // Screen is the screen the panel shows now.
 func (m Model) Screen() Screen { return Screen{mode: m.mode, view: m.prShown} }
 
@@ -336,6 +354,9 @@ type prFixMsg struct {
 // Inside nerdr F2 again goes on to its next view; going to it with news
 // not seen yet shows where the news is: all your PRs, or the issues.
 func (m *Model) setMode(mode uiMode) tea.Cmd {
+	if m.fixed && mode != m.mode {
+		return nil // a pane of one screen
+	}
 	if mode == modePRs {
 		if m.mode == modePRs {
 			return m.NextPRView(1)

@@ -11,7 +11,7 @@ import (
 // The requests about a tab's panes, and the code reviews in them.
 
 func init() {
-	registerRequests(SeeAgent{}, ClosePane{}, DropPane{}, NewAgent{}, NewShell{}, EditInTab{}, MovePane{},
+	registerRequests(SeeAgent{}, ClosePane{}, DropPane{}, NewAgent{}, NewShell{}, NewView{}, EditInTab{}, MovePane{},
 		OpenReviewPane{}, AskModels{}, StartReview{}, StopReview{}, SetRounds{}, DropReviewDone{},
 		SendFindings{}, CarryOnConversation{})
 }
@@ -79,6 +79,26 @@ type NewShell struct {
 func (q NewShell) Do(m *Core) Cmd {
 	if t := m.ByRef(q.T); t != nil {
 		_, cmd := m.NewShellIn(t, q.Quiet)
+		return cmd
+	}
+	return nil
+}
+
+// NewView opens one of the review panel's screens, Screen (ViewChanges
+// or ViewPlugins), in a new pane of tab T's, last, with the keyboard
+// unless Quiet.
+type NewView struct {
+	T      TabRef
+	Screen int
+	Quiet  bool `json:",omitempty"`
+}
+
+func (q NewView) Do(m *Core) Cmd {
+	if q.Screen != ViewChanges && q.Screen != ViewPlugins {
+		return nil
+	}
+	if t := m.ByRef(q.T); t != nil {
+		_, cmd := m.NewView(t, q.Screen, q.Quiet)
 		return cmd
 	}
 	return nil

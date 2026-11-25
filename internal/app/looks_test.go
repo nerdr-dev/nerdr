@@ -5,7 +5,6 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/review"
 )
 
 // lookAt makes all the TUI keeps per tab t and its panes, as drawing and
@@ -15,10 +14,12 @@ func lookAt(m *Model, t *core.Tab) {
 	for _, p := range t.Panes() {
 		m.pl(p)
 	}
-	if m.panelScreens == nil {
-		m.panelScreens = map[*core.Tab]review.Screen{}
+	for _, p := range t.Panes() {
+		if m.views == nil {
+			m.views = map[*core.PaneTab]*viewPane{}
+		}
+		m.views[p] = &viewPane{}
 	}
-	m.panelScreens[t] = review.Screen{}
 	if m.paneBars == nil {
 		m.paneBars = map[*core.Tab]*barRow{}
 	}
@@ -32,14 +33,16 @@ func lookAt(m *Model, t *core.Tab) {
 // kept says whether the TUI still keeps anything per tab t or its panes.
 func kept(m *Model, t *core.Tab, panes []*core.PaneTab) bool {
 	_, look := m.tabLooks[t]
-	_, screen := m.panelScreens[t]
 	_, bar := m.paneBars[t]
 	for _, p := range panes {
 		if _, ok := m.paneLooks[p]; ok {
 			return true
 		}
+		if _, ok := m.views[p]; ok {
+			return true
+		}
 	}
-	return look || screen || bar
+	return look || bar
 }
 
 // TestLooksGoWithTheirTabs covers a tab core lets go of by itself (closed

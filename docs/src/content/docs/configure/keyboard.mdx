@@ -31,8 +31,8 @@ sends a `ctrl+q` to the agent.
 | `shift+←` / `shift+→` | Move tab left / right; repeat without the prefix |
 | `m` / `M` | Queue a task for one / several tabs |
 | `l` | Pick a [saved prompt](../../panel/tasks/#saved-prompts) for the agent |
-| `tab` | Next pane, then the split's other tab or the open panel |
-| `<` / `>` | Widen / narrow the panel or the right side of a split; `,` / `.` also work |
+| `tab` | Next pane, the minimised ones too, then the split's other tab |
+| `<` / `>` | Widen / narrow the right side of a split; `,` / `.` also work |
 | `o` | Open the worktree in `worktree_editor`, or VS Code |
 | `b` / `PgUp` | Scroll the agent's output; `q` ends it |
 | `?` / `:` | Find a command by name or description |
@@ -104,13 +104,7 @@ and repeating the group key runs its main command.
 
 | After `ctrl+q` | Action |
 |---|---|
-| `z e` | Show / hide the review panel |
-| `z k` | Small panel that folds again / keep it open |
-| `z z` | Panel full width |
-| `z l` | Choose a layout |
-| `z =` | Agent left, panel right at `panel_width` |
-| `z +` | Agent with three quarters of the window |
-| `z a` | Agent only |
+| `z e` | The F1 or F5 dialog in a pane; else the code changes in a new pane |
 | `z v` | Two tabs side by side |
 | `z s` | Swap the sides of a split |
 | `z d` | Show / hide tab details |

@@ -250,7 +250,7 @@ func TestPluginDirectoryHeldWhileConfirming(t *testing.T) {
 	}
 	reply := make(chan hooks.Answer, 1)
 	m.Update(hooks.Report{Method: hooks.Plugin, What: hooks.PluginRun, Pane: tb.HookKey(), Name: "dircheck", Dir: inside, Reply: reply})
-	if m.plugins.asking == nil {
+	if m.pluginAsking == nil {
 		t.Fatal("run did not ask for confirmation")
 	}
 	if err := os.Rename(inside, filepath.Join(tb.Dir, "moved")); err != nil {

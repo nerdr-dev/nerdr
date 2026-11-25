@@ -17,6 +17,14 @@ import (
 // input router while focus was changing — a key meant for the agent.
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.prefix && (msg.String() == "pgdown" || msg.String() == "pgup") {
+		if m.railShown() {
+			page := max(m.height-m.barRows()-4, 1)
+			if msg.String() == "pgup" {
+				page = -page
+			}
+			m.scrollKeys(page)
+			return nil
+		}
 		if msg.String() == "pgdown" {
 			m.prefixPage++
 		} else {
@@ -69,7 +77,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 				return cmd
 			}
 		}
-		return m.dialog.key(m, msg)
+		return m.inDialogView(func() tea.Cmd { return m.dialog.key(m, msg) })
 	}
 	if msg.String() == "f5" && m.togglePluginUI() {
 		return nil
@@ -81,12 +89,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		if m.scrolling {
 			m.scrollKey(tea.KeyMsg{Type: tea.KeyEsc})
 		}
-		if !m.reviewOpen {
-			m.reviewOpen = true
-		}
-		cmd := m.reviewKey(msg)
-		m.setFocus(core.FocusReview)
-		return tea.Batch(cmd, m.resize())
+		return m.screenPressed(msg)
 	}
 	if m.scrolling {
 		m.scrollKey(msg)
@@ -136,6 +139,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		return m.greyKey(mc, msg.String())
 	}
 	f := m.focused(t)
+	if f.Kind == core.PaneView && m.viewIn == nil && m.focus == core.FocusAgent {
+		// The pane's panel, as if it had the keyboard as the dialog has.
+		return m.inView(t, f, func() tea.Cmd { return m.handleKey(msg) })
+	}
 	if f.Kind == core.PaneReview && f.A == nil {
 		return m.reviewPickKey(t, f, msg)
 	}
@@ -448,15 +455,8 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "a a", "esc":
 		m.setFocus(core.FocusAgent)
 		return m.resize()
-	case "z k":
-		return m.togglePanelSmall()
 	case "z e":
-		m.reviewOpen = !m.reviewOpen
-		if !m.reviewOpen {
-			m.reviewZoom = false
-			m.setFocus(core.FocusAgent)
-		}
-		return m.resize()
+		return m.togglePane()
 	case "e 1", "e 2", "e 3", "e 4", "e 5", "e 6":
 		// F1-F6 without the function keys: a Mac laptop's are the
 		// brightness and volume unless fn is held, and a shell or an
@@ -465,18 +465,11 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.handleKey(keyMsg("f" + id[len("e "):]))
 	case "o":
 		return m.openWorktreeEditor()
-	case "z z":
-		m.reviewZoom, m.sideZoom = !m.reviewZoom, false
-		if m.reviewZoom {
-			m.reviewOpen = true
-			m.setFocus(core.FocusReview)
-		}
-		return m.resize()
 	case "<", ",", ">", ".":
-		width := &m.reviewWidth
-		if m.splitShown() {
-			width = &m.splitWidth
+		if !m.splitShown() {
+			return nil
 		}
+		width := &m.splitWidth
 		if k == "<" || k == "," {
 			*width = min(*width+5, 80)
 		} else {
@@ -485,10 +478,6 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 		return m.resize()
 	case "z v":
 		return m.toggleSplit()
-	case "z =", "z +", "z a":
-		return m.setLayout(k)
-	case "z l":
-		return m.openLayouts()
 	case "z s":
 		return m.swapSides()
 	case "b", "pgup":
@@ -555,6 +544,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "t r", "a c":
 		return m.newReviewPane()
 	case "t x":
+		if m.focus == core.FocusReview && m.panelShown() {
+			return m.closePanel()
+		}
 		return m.askClosePane()
 	case "t m":
 		if t := m.Cur(); t != nil {

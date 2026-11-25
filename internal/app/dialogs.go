@@ -408,7 +408,6 @@ func (m *Model) closeTab(t *core.Tab, remove, force bool, branchHeads map[string
 	group := m.fleet.Group(t)
 	beside, wasActive, cur := m.splitTab(), i == m.Active, m.Cur()
 	closed := m.do(core.CloseTab{T: m.fleet.Ref(t), Remove: remove, Force: force, BranchHeads: branchHeads})
-	delete(m.panelScreens, t)
 	delete(m.paneBars, t)
 	for _, p := range t.Panes() {
 		delete(m.paneLooks, p)

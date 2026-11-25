@@ -21,7 +21,7 @@ import (
 // between them.
 
 // panelAllPRs reports whether the review panel shows all your PRs.
-func (m *Model) panelAllPRs() bool { return m.reviewOpen && m.review.AllPRs() }
+func (m *Model) panelAllPRs() bool { return m.panelShown() && m.review.AllPRs() }
 
 // The worktree's pull request has the tab panel's look at the tab's
 // branches above it, with its keys: c commits, p pushes and P opens the
@@ -29,7 +29,7 @@ func (m *Model) panelAllPRs() bool { return m.reviewOpen && m.review.AllPRs() }
 // the PR itself is below them.
 
 // panelBranchPR reports whether the review panel shows the worktree's PR.
-func (m *Model) panelBranchPR() bool { return m.reviewOpen && m.review.BranchPR() }
+func (m *Model) panelBranchPR() bool { return m.panelShown() && m.review.BranchPR() }
 
 // curBranchPanel is the tab panel's state for the active tab in F2.
 func (m *Model) curBranchPanel() *tabPanel {
@@ -225,7 +225,6 @@ func (m *Model) syncAllPRs() tea.Cmd {
 // where the mark in the bar and ctrl+q i p take you.
 func (m *Model) showAllPRs() tea.Cmd {
 	m.dialog = nil
-	m.reviewOpen = true
 	cmd := m.review.ShowPRView(review.ViewMyPRs)
 	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())

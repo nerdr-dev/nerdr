@@ -10,48 +10,13 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/review"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
 
-// panelLines draws the review panel into a w×h area: the screen chosen in
-// the column of F-keys beside it (see rail.go), or in the menu row over
-// it while the panel is kept open. The screens nerdr draws are framed
-// here; the panel's own frame its panes.
-//
-// The menu row has a frame of its own, open at the bottom, where it runs
-// into the frame of the screen below it.
-func (m *Model) panelLines(w, h int) []string {
-	if !m.panelMenu() {
-		return m.panelBody(w, h)
-	}
-	body := m.panelBody(w, max(h-1, 1))
-	if w < 3 {
-		return append([]string{strings.Repeat(" ", w)}, body...)
-	}
-	bs := lipgloss.NewStyle().Foreground(frameColor)
-	if m.focus == core.FocusReview && m.review.TopFocused() {
-		bs = lipgloss.NewStyle().Foreground(accent)
-	}
-	out := []string{bs.Render("╭" + strings.Repeat("─", w-2) + "╮")}
-	if w > 8 && !m.reviewZoom {
-		out[0] = bs.Render("╭─") + m.panelToggle(m.panelSmall) + bs.Render(strings.Repeat("─", w-4)+"╮")
-	}
-	for i, l := range body {
-		left, right := "", ""
-		switch {
-		case i == 0:
-			left, right = "│", "│"
-		case i == 1 && strings.HasPrefix(ansi.Strip(l), "╭") && strings.HasSuffix(ansi.Strip(l), "╮"):
-			left, right = "├", "┤"
-		}
-		if left != "" {
-			l = bs.Render(left) + ansi.Cut(l, 1, w-1) + "\x1b[0m" + bs.Render(right)
-		}
-		out = append(out, l)
-	}
-	return out
-}
+// panelLines draws the review panel into a w×h area, as its pane or its
+// dialog: the screen chosen by its F-key. The screens nerdr draws are
+// framed here; the panel's own frame its panes.
+func (m *Model) panelLines(w, h int) []string { return m.panelBody(w, h) }
 
 // reuseCheck, set by NERDR_CHECK_REUSE and in the tests, draws the review
 // panel anew each time its last drawing is used again, and panics if the
@@ -97,10 +62,6 @@ func (m *Model) panelBody(w, h int) []string {
 	if h < 3 || w < 3 {
 		return lines
 	}
-	var menu []string
-	if m.panelMenu() {
-		menu, h = lines[:1], h-1
-	}
 	iw, ih := w-2, h-2
 	active := m.focus == core.FocusReview
 	var title string
@@ -116,7 +77,7 @@ func (m *Model) panelBody(w, h int) []string {
 	case m.review.Skills():
 		title, body = "skills", m.skillsBody(m.Cur(), iw, ih)
 	case m.review.Plugins():
-		title, body = m.pluginsTitle(m.Cur()), m.pluginsBody(m.Cur(), iw, ih)
+		title, body = m.pluginsTitle(m.panelTab()), m.pluginsBody(m.panelTab(), iw, ih)
 	case m.review.History():
 		title, body = "history ("+strconv.Itoa(len(m.history.entries))+")", m.historyBody(iw, ih)
 	case m.review.AllPRs():
@@ -135,5 +96,5 @@ func (m *Model) panelBody(w, h int) []string {
 	default:
 		return lines
 	}
-	return append(menu, framed(fitLines(body, iw, ih), w, h, title, active)...)
+	return framed(fitLines(body, iw, ih), w, h, title, active)
 }

@@ -28,7 +28,7 @@ ones are defaults.
 Type a list as words separated by spaces, with quotes around a value
 that has spaces, and a variable as `NAME=value`. Changes are saved at once without rewriting the
 rest of the file. Settings read only at start, such as `prefix`, `mouse`,
-`fps`, `worktrees_dir`, `install`, `data_dir` and `layout`, say "from
+`fps`, `worktrees_dir`, `install` and `data_dir`, say "from
 nerdr's next start". New agent arguments apply to the next agent started;
 `ctrl+q a r` restarts the current one.
 
@@ -54,12 +54,10 @@ and quit moves to the prefix letter. Menus and hints follow.
 
 | Setting | Default | |
 |---|---|---|
-| `layout` | `"normal"` | The layout at start: `normal`, `wide`, `small`, `agent` or `panel`. See [Layouts](../../panel/overview/#layouts). |
 | `tab_bar` | `"left"` | Where the tabs go: `top`, `left`, or `left-small` (status lights only). |
 | `tab_details` | `true` | Changes, pull request and CI in the tab list. |
-| `panel_width` | `50` | The review panel's width beside the agent, in percent. |
-| `panel_labels` | `true` | Names beside the F-keys in the column on the right. Off, the column is narrower. |
-| `pane_min_width` | `60` | The narrowest a pane is shown side by side, in columns; past it, the panel and then the panes used longest ago fold away. |
+| `key_panel` | `false` | nerdr's keys and what each does, all the time, in a narrow column on the right; a group's keys open below it when its key is pressed. Off, they show over the bottom rows after the prefix. |
+| `pane_min_width` | `60` | The narrowest a pane is shown side by side, in columns; past it, the panes used longest ago fold away. |
 | `diff_colors` | `"nerdr"` | Colours of the changes in F1: `nerdr` or `github`. |
 | `status_lights` | `"dots"` | `dots`, or `symbols`: ◐ working, ◎ background process, × needs input, ✓ done. |
 | `fps` | `60` | The most screen redraws per second, 1–120. Read at start. |
@@ -253,8 +251,8 @@ With agents on other machines, each machine's config applies there. The
 keys about what you see and how nerdr reaches you are read where you run
 nerdr:
 
-`prefix`, `mouse`, `function_keys`, `layout`, `tab_bar`, `tab_details`,
-`panel_width`, `panel_labels`, `pane_min_width`, `diff_colors`,
+`prefix`, `mouse`, `function_keys`, `tab_bar`, `tab_details`,
+`key_panel`, `pane_min_width`, `diff_colors`,
 `status_lights`, `fps`, `notify`, `pr_notify`, `issue_notify`,
 `editor`, `worktree_editor`, `browser`,
 `keep_screen_on`, `keep_screen_max` and `[[servers]]`.

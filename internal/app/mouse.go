@@ -36,7 +36,8 @@ const (
 	dragRule            // the rule between agent and review panel
 	dragAgent           // a press passed to the pane with the keyboard; so is the rest
 	dragSelect          // selecting text in the output of the pane with the keyboard
-	dragReview          // a press in the review panel: a scrollbar may be dragged
+	dragReview          // a press in the review panel's dialog: a scrollbar may be dragged
+	dragView            // the same in a view pane's panel (dragView)
 	dragSide            // the sidebar's edge, setting its width
 	dragPanes           // the divider between two panes side by side
 	dragText            // selecting text in a dialog
@@ -146,7 +147,7 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 	}
 
 	if m.dialog != nil {
-		return m.dialogMouse(ev)
+		return m.inDialogView(func() tea.Cmd { return m.dialogMouse(ev) })
 	}
 	// The wheel over the bars steps through the groups and the tabs,
 	// wherever on them it is.
@@ -165,7 +166,7 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 	if isWheel(ev) && m.panelSkills() && ev.X >= m.sideW() {
 		// Anywhere on F4, the list's rows included, the wheel scrolls the
 		// skill's text, as pgup and pgdown do.
-		if area, _ := m.areaAt(ev.X); area == areaReview {
+		if m.panelDlg {
 			m.skills.scroll = max(m.skills.scroll+3*wheelDir(ev), 0)
 			return nil
 		}
@@ -192,6 +193,9 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 		return m.sideWheel(ev)
 	}
 
+	if m.panelDlg && ev.Y >= m.barRows() && ev.X >= m.sideW() && ev.X < m.sideW()+m.mainW() {
+		return m.dialogPanelMouse(ev)
+	}
 	area, x := m.areaAt(ev.X)
 	y := ev.Y - m.barRows()
 	switch area {
@@ -204,22 +208,8 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 		_, r := m.sides()
 		return m.sideMouse(r, ev, x, y)
 	case areaRail:
+		m.keyWheel(ev)
 		return nil
-	case areaReview:
-		ev.X, ev.Y = x, y-m.panelTop()
-		var cmd tea.Cmd
-		if press && ev.Button == tea.MouseButtonLeft {
-			// Its drag goes on reaching the panel off its edge, and it
-			// hears the button let go wherever that is.
-			m.drag = dragReview
-		}
-		if press && m.focus != core.FocusReview {
-			m.setFocus(core.FocusReview)
-			cmd = m.resize()
-		}
-		rm, rcmd := m.review.Update(ev)
-		m.review = rm.(review.Model)
-		return tea.Batch(cmd, rcmd, m.syncPRPanel())
 	}
 	l, _ := m.sides()
 	return m.sideMouse(l, ev, x, y)
@@ -254,6 +244,19 @@ func (m *Model) sideMouse(t *core.Tab, ev tea.MouseMsg, x, y int) tea.Cmd {
 		return nil
 	}
 	var cmd tea.Cmd
+	if p.Kind == core.PaneView {
+		// The panel's, frame and all, from the first click on.
+		if t != m.Cur() || p != m.focused(t) || m.focus != core.FocusAgent {
+			if ev.Action != tea.MouseActionPress {
+				return nil
+			}
+			if t != m.Cur() {
+				cmd = m.selectTab(m.fleet.TabIndex(t))
+			}
+			cmd = tea.Batch(cmd, m.focusPane(t, p))
+		}
+		return tea.Batch(cmd, m.viewMouse(t, p, ev, px+1, py+1))
+	}
 	if t != m.Cur() || p != m.focused(t) || m.focus != core.FocusAgent {
 		if ev.Action != tea.MouseActionPress {
 			return nil
@@ -325,10 +328,7 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 		bw := m.mainW()
 		pct := ((m.sideW()+bw-ev.X-1)*100 + bw/2) / max(bw, 1)
 		pct = min(max(pct, 20), 80)
-		width := &m.reviewWidth
-		if m.splitShown() {
-			width = &m.splitWidth
-		}
+		width := &m.splitWidth
 		if pct == *width {
 			return nil
 		}
@@ -367,14 +367,28 @@ func (m *Model) dragMouse(ev tea.MouseMsg) tea.Cmd {
 		if release {
 			m.drag = dragNone
 		}
-		_, x := m.areaAt(ev.X)
-		if a, _ := m.areaAt(ev.X); a != areaReview {
-			x = 0
-		}
-		ev.X, ev.Y = x, ev.Y-m.barRows()-m.panelTop()
+		ev.X, ev.Y = m.reviewXY(ev.X, ev.Y)
 		rm, cmd := m.review.Update(ev)
 		m.review = rm.(review.Model)
 		return cmd
+
+	case dragView:
+		if release {
+			m.drag = dragNone
+		}
+		p := m.dragView
+		t := m.viewHome(p)
+		if t == nil {
+			m.drag = dragNone
+			return nil
+		}
+		x, y := m.viewXY(t, p, ev.X, ev.Y)
+		ev.X, ev.Y = max(x, 0), y
+		return m.inView(t, p, func() tea.Cmd {
+			rm, cmd := m.review.Update(ev)
+			m.review = rm.(review.Model)
+			return cmd
+		})
 
 	case dragText:
 		m.dragText(ev)
@@ -653,9 +667,8 @@ type screenArea int
 const (
 	areaAgent screenArea = iota // the agent, or the left of the split
 	areaRule
-	areaReview
 	areaSplit // the right of the split
-	areaRail  // the review panel's column of screens, and the column before it
+	areaRail  // the key panel, and the column before it
 )
 
 // areaAt is the part of the body at column x of the screen, and x within
@@ -666,8 +679,6 @@ func (m *Model) areaAt(x int) (screenArea, int) {
 		return areaRail, x - mw
 	}
 	switch {
-	case m.reviewZoom:
-		return areaReview, x
 	case m.splitShown():
 		lw, _ := m.splitWidths()
 		switch {
@@ -677,17 +688,8 @@ func (m *Model) areaAt(x int) (screenArea, int) {
 			return areaRule, 0
 		}
 		return areaSplit, x - lw - 1
-	case !m.reviewOpen:
-		return areaAgent, x
 	}
-	aw := m.agentWidth()
-	switch {
-	case x < aw:
-		return areaAgent, x
-	case x == aw:
-		return areaRule, 0
-	}
-	return areaReview, x - aw - 1
+	return areaAgent, x
 }
 
 // agentWidth is the columns of the active tab's area, its frame included.
