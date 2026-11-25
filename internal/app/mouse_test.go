@@ -74,7 +74,9 @@ func testModel(t *testing.T) *Model {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
 	yes, no := true, false
-	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, Mouse: &yes}
+	// The bottom bar off: most tests are of the bars at the top; those of
+	// the bottom bar turn it on (see bottombar_test.go).
+	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, BottomBar: &no, Mouse: &yes}
 	mk := func(id, name, repo string) state.Tab {
 		return state.Tab{ID: id, Name: name, Agent: "claude", Dir: "/w/" + name,
 			Worktrees: []workspace.Worktree{{Repo: repo, Path: "/w/" + name, Branch: name}}}

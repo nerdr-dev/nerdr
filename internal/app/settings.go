@@ -233,6 +233,10 @@ func (m *Model) settingRows() []settingRow {
 			"Shows more about each tab next to its name: how many lines are added and removed, whether it has a pull request, and whether its CI checks pass.\n"+
 				"Turn it off for a quieter tab list with names and status lights only.",
 			`tab_details = false`),
+		b("bottom_bar", "true",
+			"Shows a row along the bottom of the screen. On its left, what wants a look in all the tabs: failing CI checks, news of your pull requests and issues, tabs waiting for you and tabs whose work is merged. In the middle, the active tab's branch, how far it is ahead of and behind its base, the files not committed, the commits not pushed, the lines changed and its pull request. On its right, the tab's tasks and the saved prompts. A click on any of them opens its screen.\n"+
+				"Off, the news and the active tab's details show in the bar at the top instead. The prefix and l g shows or hides the row while nerdr runs.",
+			`bottom_bar = false`),
 		{key: "diff_colors", kind: sChoice, choices: []string{"nerdr", "github"}, def: `"nerdr"`,
 			desc: "The colours F1 shows changed lines in.\n" +
 				"nerdr: soft tints that are easy on the eyes.\n" +
@@ -831,6 +835,10 @@ func (m *Model) reloadConfig() tea.Cmd {
 		m.showDetails = *c.TabDetails
 	}
 	resize := false
+	if on := c.BottomBar == nil || *c.BottomBar; old.BottomBar == nil || on != *old.BottomBar {
+		m.bottomBar = on
+		resize = true
+	}
 	if c.TabBar != old.TabBar {
 		m.sideBar, m.sideSmall = strings.HasPrefix(c.TabBar, "left"), c.TabBar == "left-small"
 		resize = true

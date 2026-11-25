@@ -180,7 +180,7 @@ func (m *Model) draw() string {
 	if m.showGroups() {
 		bars = groupRowBg(m.groupBar()) + "\n" + bars
 	}
-	bodyH := m.height - m.barRows()
+	bodyH := m.bodyH()
 	var body []string
 	under := len(m.zoneFns)
 	switch {
@@ -218,6 +218,13 @@ func (m *Model) draw() string {
 			}
 		}
 	}
+	// The bottom bar's zones before the dialog's: those from dialogZones
+	// on are taken for the dialog's, and its buttons must not work through
+	// it.
+	var foot string
+	if m.footRows() > 0 {
+		foot = "\n" + m.bottomBarRow()
+	}
 	if c, ok := m.dialog.(*closeTab); ok && c.hidden() {
 		// Not drawn until it knows what it is asking; see closeWait.
 	} else if d, ok := m.dialog.(*moveDialog); ok && d.hidden(m) {
@@ -241,7 +248,7 @@ func (m *Model) draw() string {
 		box := m.area(m.prefixHint(m.width, len(body)), func(*Model, tea.MouseMsg) tea.Cmd { return nil })
 		body = overlay(body, box, m.width)
 	}
-	return bars + "\n" + strings.Join(body, "\n")
+	return bars + "\n" + strings.Join(body, "\n") + foot
 }
 
 // besides joins two columns of the body with the one between them.
@@ -344,7 +351,11 @@ func (m *Model) barStatus() (msg string, reserve int) {
 		// The wide sidebar lists the machines at its foot.
 		status = m.emptyMachines() + status
 	}
-	status += m.prBadge() + m.issueBadge() + m.waitingBadge() + m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
+	if m.footRows() == 0 {
+		// Else the bottom bar has them.
+		status += m.prBadge() + m.issueBadge() + m.waitingBadge()
+	}
+	status += m.tip(m.onClick(lipgloss.NewStyle().Background(tabBarBg).Foreground(lipgloss.Color("244")).Render(hint),
 		func(m *Model) tea.Cmd {
 			return m.openPalette()
 		}), "Every command nerdr has, to search and run")
@@ -487,7 +498,8 @@ func (m *Model) tabBar() string {
 			extra += m.tip(lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("81")).Render(side), "Shown beside the active tab, on the "+where) +
 				lipgloss.NewStyle().Background(bg).Render(" ")
 		}
-		if m.showDetails {
+		// The active tab's details are the bottom bar's, when it shows.
+		if m.showDetails && !(i == m.Active && m.footRows() > 0) {
 			if d := m.details(t, bg, i == m.Active); d != "" {
 				extra += d + lipgloss.NewStyle().Background(bg).Render(" ")
 			}
@@ -519,7 +531,7 @@ func (m *Model) tabBar() string {
 			return m.openWizard()
 		}), "New worktree, in this repository, with a tab of its own")
 	}
-	warning := m.overlapWarning()
+	warning := m.topWarning()
 	var repo, msg string
 	reserve := lipgloss.Width(warning)
 	if !m.showGroups() {

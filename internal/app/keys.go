@@ -19,7 +19,7 @@ import (
 func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 	if m.prefix && (msg.String() == "pgdown" || msg.String() == "pgup") {
 		if m.railShown() {
-			page := max(m.height-m.barRows()-4, 1)
+			page := max(m.bodyH()-4, 1)
 			if msg.String() == "pgup" {
 				page = -page
 			}
@@ -627,6 +627,9 @@ func (m *Model) run(id string, msg tea.KeyMsg) tea.Cmd {
 	case "l d":
 		m.showDetails = !m.showDetails
 		return nil
+	case "l g":
+		m.bottomBar = !m.bottomBar
+		return m.resize()
 	case "l t":
 		m.sideBar = !m.sideBar
 		if m.sideBar && m.sideW() == 0 {

@@ -121,6 +121,7 @@ func KeyGroups() map[string]CommandGroup {
 			{Key: "s", Label: "Swap sides", Run: "l s", Desc: "swap the two sides of the split"},
 			{Key: "d", Label: "Tab bar details", Run: "l d", Desc: "show / hide the details in the tab bar: changes, PR, CI…"},
 			{Key: "b", Label: "Show / hide repository row", Run: "l b", Desc: "the row of repositories above the tabs"},
+			{Key: "g", Label: "Show / hide bottom bar", Run: "l g", Desc: "the row along the bottom: all tabs' news, this tab's branch, changes and PR, its tasks and the saved prompts; bottom_bar in the settings for every start"},
 			{Key: "t", Label: "Tabs on top / on the left", Run: "l t", Desc: "the repositories and their tabs as two rows on top, or two lists left of the agent; tab_bar in the settings for every start"},
 			{Key: "m", Label: "Small / wide sidebar", Run: "l m", Desc: "the tabs on the left as their lights alone, or with their names; tab_bar = \"left-small\" in the settings for every start"},
 		}},
