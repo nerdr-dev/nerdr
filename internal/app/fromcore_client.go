@@ -3,6 +3,7 @@ package app
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 )
 
 // What core tells and asks the TUI; see core.Client. What changes the TUI's
@@ -210,25 +211,26 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(m.openSwitchAgent())
 	case core.PluginUIStartedMsg:
 		m.fleet.Bump()
-		if t := m.fleet.ByRef(ev.T); t != nil {
-			started := func() {
-				if m.plugins.uiFocus == ev.Key {
-					m.pluginUIFocus(t) // started again in place of the one it had
-				}
+		// The key is the same for a global plugin in one folder on each
+		// machine: only the panels of the machine that told it are its.
+		from := m.tellingOn()
+		started := func(on *fleet.Machine) {
+			if on == from && m.plugins.uiFocus == ev.Key {
+				m.pluginUIFocus(m.panelTab()) // started again in place of the one it had
 			}
-			started()
-			m.eachView(func(*core.Tab, *core.PaneTab) tea.Cmd { started(); return nil })
 		}
+		started(m.pluginsOn())
+		m.eachView(func(t *core.Tab, _ *core.PaneTab) tea.Cmd { started(m.machineOf(t)); return nil })
 	case core.PluginUIGoneMsg:
 		m.fleet.Bump()
-		gone := func() tea.Cmd {
-			if m.plugins.uiFocus == ev.Key {
+		from := m.tellingOn()
+		gone := func(on *fleet.Machine) {
+			if on == from && m.plugins.uiFocus == ev.Key {
 				m.plugins.uiFocus = ""
 			}
-			return nil
 		}
-		gone()
-		m.eachView(func(*core.Tab, *core.PaneTab) tea.Cmd { return gone() })
+		gone(m.pluginsOn())
+		m.eachView(func(t *core.Tab, _ *core.PaneTab) tea.Cmd { gone(m.machineOf(t)); return nil })
 	case core.PluginRunMsg:
 		m.fleet.Bump()
 		if t, run := m.fleet.ByRef(ev.T), m.tellingOn().Core.PluginRuns.ByID[ev.Run]; t != nil && run != nil {

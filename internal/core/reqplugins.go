@@ -2,8 +2,9 @@ package core
 
 import "github.com/nerdr-dev/nerdr/internal/plugin"
 
-// The requests about the plugins' screens and runs in the plugins pane. A plugin is
-// named by its folder, and read from there again.
+// The requests about the plugins' screens and runs in the plugins pane. A
+// plugin is named by its folder, and read from there again. A global
+// plugin's are of no tab: T is empty, from the global tab.
 
 func init() { registerRequests(StartPluginUI{}, StopPluginUI{}, StopPickedRun{}, PluginUISize{}) }
 
@@ -15,8 +16,8 @@ type StartPluginUI struct {
 }
 
 func (q StartPluginUI) Do(m *Core) Cmd {
-	if t := m.ByRef(q.T); t != nil {
-		m.StartPluginUI(t, plugin.Load(q.Dir), q.Key)
+	if t, p, ok := m.pluginOf(q.T, q.Dir); ok {
+		m.StartPluginUI(t, p, q.Key)
 	}
 	return nil
 }
@@ -28,8 +29,8 @@ type StopPluginUI struct {
 }
 
 func (q StopPluginUI) Do(m *Core) Cmd {
-	if t := m.ByRef(q.T); t != nil {
-		m.StopPluginUI(t, plugin.Load(q.Dir))
+	if t, p, ok := m.pluginOf(q.T, q.Dir); ok {
+		m.StopPluginUI(t, p)
 	}
 	return nil
 }
@@ -42,8 +43,8 @@ type StopPickedRun struct {
 }
 
 func (q StopPickedRun) Do(m *Core) Cmd {
-	if t := m.ByRef(q.T); t != nil {
-		m.StopPickedRun(t, plugin.Load(q.Dir))
+	if t, p, ok := m.pluginOf(q.T, q.Dir); ok {
+		m.StopPickedRun(t, p)
 	}
 	return nil
 }
@@ -55,4 +56,12 @@ type PluginUISize struct{ W, H int }
 func (q PluginUISize) Do(m *Core) Cmd {
 	m.PluginUIW, m.PluginUIH = q.W, q.H
 	return nil
+}
+
+// pluginOf is the tab r names and the plugin in folder dir, read again:
+// ok when the tab is there, or for a global plugin, which needs none.
+func (m *Core) pluginOf(r TabRef, dir string) (*Tab, plugin.Plugin, bool) {
+	t := m.ByRef(r)
+	p := plugin.Load(dir)
+	return t, p, t != nil || p.IsGlobal()
 }

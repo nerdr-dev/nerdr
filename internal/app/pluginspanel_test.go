@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"os"
 	"path/filepath"
 	"strings"
@@ -670,4 +671,231 @@ func pressPlugins(m *Model) {
 	m.Update(input.PrefixMsg{})
 	m.Update(keyMsg("t"))
 	m.Update(keyMsg("p"))
+}
+
+// A tab's plugins pane lists the private plugins only; the global ones are in the
+// global tab, which esc and going to a tab leave.
+func TestGlobalPluginsAreInTheGlobalTab(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	plugins := filepath.Join(cfg, "nerdr", "plugins")
+	for _, name := range []string{"a-docker", "b-seed"} {
+		writePlugin(t, plugins, name, "cat\n")
+	}
+	toml := filepath.Join(plugins, "a-docker", "plugin.toml")
+	if err := os.WriteFile(toml, []byte("description = \"a-docker\"\nui = [\"./ui.sh\"]\nscope = \"global\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := testModel(t)
+	tb := m.Cur()
+	tb.Dir = t.TempDir()
+	defer m.Shutdown()
+	m.pluginList(tb)
+	text := ansi.Strip(strings.Join(m.pluginsBody(tb, 80, 30), "\n"))
+	if !strings.Contains(text, "b-seed") || strings.Contains(text, "a-docker") {
+		t.Fatalf("a tab's plugins:\n%s", text)
+	}
+
+	m.showGlobal()
+	if !m.global.shown || m.focus != core.FocusReview || !m.panelPlugins() || m.panelTab() != nil {
+		t.Fatalf("not in the global tab: shown %v focus %v", m.global.shown, m.focus)
+	}
+	m.pluginList(nil)
+	text = ansi.Strip(strings.Join(m.pluginsBody(nil, 80, 30), "\n"))
+	if !strings.Contains(text, "a-docker") || strings.Contains(text, "b-seed") {
+		t.Fatalf("the global tab:\n%s", text)
+	}
+	if frame := ansi.Strip(m.View()); !strings.Contains(frame, "global plugins") || !strings.Contains(frame, "◆ global") {
+		t.Fatalf("the global tab is not drawn:\n%s", frame)
+	}
+
+	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	if m.global.shown || m.focus != core.FocusAgent {
+		t.Fatal("esc did not leave the global tab")
+	}
+	// Its list is its own: the tab's plugins are as they were.
+	m.pluginList(tb)
+	if text := ansi.Strip(strings.Join(m.pluginsBody(tb, 80, 30), "\n")); strings.Contains(text, "a-docker") {
+		t.Fatalf("the tab's plugins after the global tab:\n%s", text)
+	}
+	m.showGlobal()
+	m.selectTab(m.Active)
+	if m.global.shown {
+		t.Fatal("going to a tab did not leave the global tab")
+	}
+}
+
+// A global plugin's screen starts from the global tab, of no tab, in the
+// user's home, with the keyboard; it is the same screen whichever tab is
+// active, and goes on when the global tab is left.
+func TestGlobalPluginScreen(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	m := testModel(t)
+	m.router = input.New(nil, 0x11)
+	tb := m.Cur()
+	wt := t.TempDir()
+	tb.Dir, tb.Worktrees[0].Path = wt, wt
+	dir := filepath.Join(cfg, "nerdr", "plugins", "docker")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	toml := "description = \"Starts docker.\"\nscope = \"global\"\nui = [\"sh\", \"-c\", \"echo in-$PWD tab-${NERDR_TAB:-none}; cat\"]\n"
+	if err := os.WriteFile(filepath.Join(dir, "plugin.toml"), []byte(toml), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m.run("v", keyMsg("v"))
+	if !m.global.shown {
+		t.Fatal("the prefix and v did not go to the global tab")
+	}
+	m.pluginList(nil)
+	m.Update(keyMsg("enter"))
+	if _, ok := m.dialog.(*confirm); !ok {
+		t.Fatalf("a screen started without asking: dialog %T", m.dialog)
+	}
+	m.Update(keyMsg("y"))
+	defer m.Shutdown()
+	if m.pluginUIPane() == nil {
+		t.Fatal("the global plugin's screen does not have the keyboard")
+	}
+	p := plugin.Load(dir)
+	if u := m.home().Core.PluginUIOf(nil, p); u == nil || u.T != nil {
+		t.Fatalf("not a screen of no tab: %+v", u)
+	}
+	want := "in-" + home + " tab-none"
+	for deadline := time.Now().Add(3 * time.Second); !strings.Contains(ansi.Strip(m.View()), want); time.Sleep(20 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("the screen does not run in home, of no tab:\n%s", ansi.Strip(m.View()))
+		}
+	}
+	m.leaveGlobal()
+	if m.home().Core.PluginUIOf(tb, p) == nil {
+		t.Fatal("the screen did not go on, the same for the tab")
+	}
+}
+
+// A plugin whose scope changes between private and global, its screen and
+// a run of it going, has them stopped: kept by their old key, neither the
+// tab's plugins pane nor the global tab could show or stop them.
+func TestScopeChangeStopsWhatRuns(t *testing.T) {
+	for _, from := range []string{"private", "global"} {
+		t.Run(from, func(t *testing.T) {
+			cfg := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", cfg)
+			m := testModel(t)
+			tb := m.Cur()
+			tb.Dir = t.TempDir()
+			defer m.Shutdown()
+			to := map[string]string{"private": "global", "global": "private"}[from]
+			toml := func(scope string) string {
+				return "description = \"x\"\nrun = [\"sleep\", \"30\"]\nui = [\"sh\", \"-c\", \"cat\"]\nscope = \"" + scope + "\"\n"
+			}
+			p := allowedPlugin(t, cfg, "flip", toml(from))
+			_, key, err := plugin.Fresh(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := &m.home().Core
+			if !c.StartPluginUI(tb, p, key) {
+				t.Fatal("the screen did not start")
+			}
+			run := started(t, m, askRun(m, tb, "flip", nil))
+			if run.Global != p.IsGlobal() {
+				t.Fatalf("a %s plugin's run: global %v", from, run.Global)
+			}
+			if err := os.WriteFile(filepath.Join(p.Dir, "plugin.toml"), []byte(toml(to)), 0o644); err != nil {
+				t.Fatal(err)
+			}
+			c.PluginsGoneAt = time.Time{}
+			lookForPluginsGone(t, c, time.Now().Add(10*time.Second))
+			if c.PluginUIOf(tb, p) != nil {
+				t.Fatalf("the %s screen is still there", from)
+			}
+			if !strings.Contains(run.StopBy, "scope") {
+				t.Fatalf("the %s run was not stopped: %q", from, run.StopBy)
+			}
+			if c.PluginRunOf(tb, p) != nil {
+				t.Fatalf("the %s run is still shown", from)
+			}
+		})
+	}
+}
+
+// What the global tab asked core, and a question it asked the user, are
+// done for it only while it still shows the same machine: an answer that
+// comes once it was left, or once ctrl+o went on to another machine, would
+// start or allow a plugin on a machine the user did not pick.
+func TestGlobalAnswersKeepToTheirMachine(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := testModel(t)
+	defer m.Shutdown()
+	other := &fleet.Machine{Name: "other"}
+	m.fleet.Add(other)
+
+	done := 0
+	then := func(*Model, any) tea.Cmd { done++; return nil }
+	yes := func(*Model) tea.Cmd { done++; return nil }
+
+	m.showGlobal()
+	job := m.pluginJob(then)
+	m.onPluginJob(job, nil)
+	if done != 1 {
+		t.Fatal("an answer for the global tab as it is was not taken")
+	}
+
+	job, ask := m.pluginJob(then), m.whileGlobalStill(yes)
+	m.leaveGlobal()
+	m.onPluginJob(job, nil)
+	ask(m)
+	if done != 1 {
+		t.Fatal("an answer, or a yes, of the global tab done once it was left")
+	}
+
+	m.showGlobal()
+	job, ask = m.pluginJob(then), m.whileGlobalStill(yes)
+	m.global.on = other // ctrl+o
+	m.onPluginJob(job, nil)
+	ask(m)
+	if done != 1 {
+		t.Fatal("an answer, or a yes, of the global tab done on another machine")
+	}
+	m.global.on = nil
+	m.leaveGlobal()
+
+	// A tab's are its tab's, whatever comes.
+	job = m.pluginJob(then)
+	m.showGlobal()
+	m.onPluginJob(job, nil)
+	if done != 2 {
+		t.Fatal("a tab's answer was dropped")
+	}
+}
+
+// A global plugin in the same folder on two machines has the same key:
+// its screen gone on one machine leaves the other's with the keyboard.
+func TestGlobalScreenGoneOnAnotherMachine(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := testModel(t)
+	defer m.Shutdown()
+	other := &fleet.Machine{Name: "other"}
+	m.fleet.Add(other)
+	p := plugin.Plugin{Name: "docker", Dir: "/same/docker", Scope: plugin.Global}
+	key := core.PluginUIKey(nil, p)
+
+	m.showGlobal()
+	m.global.on = other // ctrl+o
+	m.plugins.uiFocus = key
+	m.telling = m.fleet.Home()
+	m.Tell(core.PluginUIGoneMsg{Key: key})
+	if m.plugins.uiFocus != key {
+		t.Fatal("the home machine's screen gone took the keyboard from the other's")
+	}
+	m.telling = other
+	m.Tell(core.PluginUIGoneMsg{Key: key})
+	m.telling = nil
+	if m.plugins.uiFocus != "" {
+		t.Fatal("its own machine's screen gone left it the keyboard")
+	}
 }

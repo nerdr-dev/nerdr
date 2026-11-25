@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/nerdr-dev/nerdr/internal/plugin"
 	"os"
 	"path/filepath"
 	"strings"
@@ -257,7 +258,7 @@ func TestANewCoreTakesUpPluginsFromTheHolder(t *testing.T) {
 		t.Fatalf("plugin screen: %+v", u)
 	}
 	waitFor(t, "the plugin's screen", func() bool { return strings.Contains(u.Pane.Text(10), "screen") })
-	b.PluginEvent(tb, "/p", map[string]any{"run": "r1"})
+	b.PluginEvent(PluginKey(tb, "/p", false), map[string]any{"run": "r1"})
 	if got, _ := os.ReadFile(events); !strings.Contains(string(got), "r1") {
 		t.Fatalf("events file: %q", got)
 	}
@@ -563,4 +564,49 @@ func TestProgramsInNoTabAreShownAndStoppedOnlyWhenAsked(t *testing.T) {
 	if err := syscall.Kill(pid, 0); err != syscall.ESRCH {
 		t.Errorf("still there: %v", err)
 	}
+}
+
+// A global plugin's run goes on when its agent and tab are gone and no
+// command waits on it: after a crash it is taken up though its tab was
+// closed, and nerdr does not stop it.
+func TestAGlobalRunOutlivesItsAgentAndTab(t *testing.T) {
+	h := holder.New()
+	clA, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := spawn.Spec{Argv: []string{"sh", "-c", "echo up; exec sleep 60"}}
+	(&Core{Held: &Held{Client: clA}}).Hold(&s, Label{Kind: HeldRun, Tab: "closed", Plugin: "/g", Key: "k",
+		Run: "g1", From: "closed", Global: true}, false, "")
+	if _, err := clA.Spawn(s); err != nil {
+		t.Fatal(err)
+	}
+	clA.Close()
+
+	clB, err := h.Connect()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = clB.Shutdown() })
+	b, tb := heldCore(t, clB, agentScript(t, "exec cat\n"))
+	b.Mu.Lock()
+	defer b.Mu.Unlock()
+	b.TakeUpHeld()
+	run := b.PluginRuns.ByID["g1"]
+	if run == nil || !run.Global || run.T != nil || run.From != nil {
+		t.Fatalf("run: %+v", run)
+	}
+	g := plugin.Plugin{Name: "g", Dir: "/g", Scope: plugin.Global}
+	if b.PluginRunOf(tb, g) != run {
+		t.Error("another tab does not see it")
+	}
+	b.PumpRuns(time.Now().Add(2 * Orphaned))
+	b.CheckPluginUIs()
+	if run.StopBy != "" || b.PluginRunOf(tb, g) != run {
+		t.Fatalf("stopped by %q", run.StopBy)
+	}
+	if why := b.GlobalBusy(tb, g); !strings.Contains(why, "g1") {
+		t.Errorf("busy: %q", why)
+	}
+	run.Proc.Stop()
 }

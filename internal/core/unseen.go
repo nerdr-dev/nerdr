@@ -78,6 +78,9 @@ func (m *Core) unseenWhat(p holder.Prog) string {
 	case HeldShell:
 		return fmt.Sprintf("terminal %d of %s", l.N, tab)
 	case HeldPluginUI:
+		if l.Global {
+			return "the screen of the global plugin " + l.Plugin
+		}
 		return "the screen of plugin " + l.Plugin + " in " + tab
 	case HeldRun:
 		return "a run of plugin " + l.Plugin + " in " + tab

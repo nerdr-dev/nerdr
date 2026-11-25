@@ -15,6 +15,7 @@
 //	open        = true             # the plugins pane opens on it when an agent runs it
 //	confirm     = false            # the user says yes to each agent's run
 //	watch       = false            # run goes on, what it prints sent to the agent
+//	scope       = "private"        # or "global": one for all tabs
 //
 //	[[params]]
 //	name        = "repos"
@@ -26,6 +27,12 @@
 // They are the user's own, in their config folder
 // (~/.config/nerdr/plugins/NAME), and the same in every tab. The folder's
 // name is the plugin's.
+//
+// A private plugin (the default) is each tab's own: every tab has a screen
+// of it, and runs of it, of its own, side by side with the other tabs'. A
+// global one is there once, for all the tabs: one screen, and one run at a
+// time, whichever tab's agent asks — for a job such as starting docker,
+// which there is no sense in doing twice at once.
 package plugin
 
 import (
@@ -69,6 +76,12 @@ const (
 	maxList        = 256
 	maxListItem    = 4 << 10
 	maxErr         = 4 << 10
+)
+
+// The scopes a plugin can have.
+const (
+	Private = "private" // each tab its own screen and runs
+	Global  = "global"  // one screen, and one run at a time, for all tabs
 )
 
 // The types a parameter can have.
@@ -117,6 +130,9 @@ type Plugin struct {
 	// what it prints is sent to the agent that started it, a message at a
 	// time, when the agent is idle.
 	Watch bool `toml:"watch" json:"watch,omitempty"`
+	// Scope is Private, each tab having its own, or Global, one for all;
+	// unset, it is private.
+	Scope string `toml:"scope" json:"scope,omitempty"`
 	// Dir is the plugin's folder.
 	Dir string `json:"dir"`
 	// Err is why the plugin cannot be used: its plugin.toml is wrong.
@@ -230,6 +246,8 @@ func (p *Plugin) check() error {
 		return fmt.Errorf("run and ui take at most %d words", maxCommandArgs)
 	case p.Watch && len(p.Run) == 0:
 		return errors.New("watch is set, but there is no run to watch with")
+	case p.Scope != "" && p.Scope != Private && p.Scope != Global:
+		return fmt.Errorf("scope: %q is not private or global", p.Scope)
 	}
 	for _, argv := range [][]string{p.Run, p.UI} {
 		for _, a := range argv {
@@ -482,6 +500,9 @@ func (p *Plugin) within(path string) bool {
 
 // Shows reports whether the plugins pane shows what of an agent's run of p.
 func (p Plugin) Shows(what string) bool { return slices.Contains(p.Show, what) }
+
+// IsGlobal reports whether p is one for all tabs, not each tab's own.
+func (p Plugin) IsGlobal() bool { return p.Scope == Global }
 
 // Opens reports whether the plugins pane opens on p when an agent runs it.
 func (p Plugin) Opens() bool { return p.Open == nil || *p.Open }

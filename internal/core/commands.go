@@ -52,6 +52,7 @@ func CommandGroups() []CommandGroup {
 		}},
 		{"View", []CommandEntry{
 			{Key: "l", Label: "Layout", Run: "l"},
+			{Key: "v", Label: "Global plugins", Run: "v", Desc: "the global tab, at the far right of the bar: the plugins there is one of for all tabs, such as one that starts docker"},
 			{Key: "<", Label: "Wider split", Run: "<", Rare: true, Desc: "make the right of the split wider (, too)"},
 			{Key: ">", Label: "Narrower split", Run: ">", Rare: true, Desc: "make the right of the split narrower (. too)"},
 		}},

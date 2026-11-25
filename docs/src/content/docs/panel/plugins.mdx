@@ -40,6 +40,18 @@ The pane lists your plugins, from `~/.config/nerdr/plugins`, the same in every
 tab. Each shows its description, where it is, and how agents run it with
 its parameters.
 
+A tab's plugins pane lists the **private** plugins: each tab has its own
+screen and runs of them, so tabs run them side by side. The **global**
+ones (`scope = "global"`), one screen and one run at a time for all tabs,
+such as a plugin that starts docker, are not any tab's. They are in the
+**global tab**, `◆ global` at the far right of the tab bar, or at the foot
+of the repositories in the sidebar. You can also open it with the prefix
+and `v`. It fills the window with the same list and keys as the plugins
+pane, `ctrl+q t p` going between the list and a plugin's screen. `esc`,
+or going to a tab, leaves it. With several machines, ctrl+o shows the
+next machine's. See
+[Private and global plugins](../../configure/plugins/#private-and-global-plugins).
+
 - `▣` marks a plugin with a screen of its own, green while it runs.
 - `!` marks one whose `plugin.toml` is wrong, with what is wrong.
 - A light shows a run going on, who started it and for how long; once it

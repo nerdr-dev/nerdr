@@ -260,7 +260,8 @@ func TestSettingsTabs(t *testing.T) {
 		t.Fatalf("tab goes to %q %q", r.tab, r.key)
 	}
 	view := ansi.Strip(d.view(m, 120, 60))
-	if !strings.Contains(view, "tab_bar") || strings.Contains(view, "prefix") {
+	// The prefix is General's; Screen has prefix_hint, which is not it.
+	if !strings.Contains(view, "tab_bar") || strings.Contains(view, " prefix ") {
 		t.Errorf("Screen shows:\n%s", view)
 	}
 	m.dialog.key(m, keyMsg("shift+tab"))

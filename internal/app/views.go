@@ -97,6 +97,9 @@ func (m *Model) panelTab() *core.Tab {
 	if m.viewTab != nil {
 		return m.viewTab
 	}
+	if m.global.shown {
+		return nil // the global tab is no tab's
+	}
 	return m.Cur()
 }
 

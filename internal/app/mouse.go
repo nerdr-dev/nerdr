@@ -193,6 +193,9 @@ func (m *Model) routeMouse(ev tea.MouseMsg) tea.Cmd {
 		return m.sideWheel(ev)
 	}
 
+	if m.global.shown && ev.Y >= m.barRows() && ev.X >= m.sideW() && ev.X < m.sideW()+m.mainW() {
+		return m.globalMouse(ev)
+	}
 	if m.panelDlg && ev.Y >= m.barRows() && ev.X >= m.sideW() && ev.X < m.sideW()+m.mainW() {
 		return m.dialogPanelMouse(ev)
 	}

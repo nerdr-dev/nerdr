@@ -67,6 +67,7 @@ func TestLoadSaysWhatIsWrong(t *testing.T) {
 		{"description = \"d\"\nrun = [\"x\"]\n[[params]]\nname = \"a\"\ntype = \"number\"", "type is string"},
 		{"description = \"d\"\nrun = [\"x\"]\n[[params]]\nname = \"a\"\ntype = \"choice\"", "needs options"},
 		{"description = \"d\"\nrun = [\"x\"]\n[[params]]\nname = \"Big\"", "lower case"},
+		{"description = \"d\"\nrun = [\"x\"]\nscope = \"shared\"", "not private or global"},
 	} {
 		dir := filepath.Join(t.TempDir(), "p")
 		write(t, dir, File, c.toml)

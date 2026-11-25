@@ -166,6 +166,10 @@ func pluginList(args []string) int {
 			fmt.Println("  not allowed as it is: it runs once the user allows it in nerdr's F5")
 		}
 		fmt.Println("  " + clean.Line(p.Usage()))
+		if p.IsGlobal() {
+			fmt.Println("  global: one run at a time for all tabs, in the user's home folder; " +
+				"while another tab's agent runs it, yours is refused")
+		}
 		if p.Watch {
 			fmt.Println("  watches: run starts it in the background, what it prints comes to you as messages, " +
 				"and nerdr plugin stop " + clean.Line(p.Name) + " stops it")

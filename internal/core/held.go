@@ -126,6 +126,9 @@ type Label struct {
 	Values   map[string]any `json:"values,omitempty"`
 	Watch    bool           `json:"watch,omitempty"`
 	Confined bool           `json:"confined,omitempty"`
+	// Global is set for a global plugin's screen, of no tab (Tab is ""),
+	// and run, which Tab's agent started for all tabs.
+	Global bool `json:"global,omitempty"`
 }
 
 // AgentHeldLabel is the label of agent t's program: a reviewer's names the

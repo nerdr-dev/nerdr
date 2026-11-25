@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 	"unicode/utf8"
 
@@ -100,8 +101,11 @@ const MaxTold = 8 << 10
 
 // pluginRun is an agent's run of a plugin, in tab t.
 type PluginRun struct {
-	Id      string
-	T       *Tab
+	Id string
+	T  *Tab
+	// Global is set for a run of a global plugin: the one run of it for
+	// all tabs, T being only the tab of the agent that started it.
+	Global  bool
 	Agent   string // who runs it, "2:codex"
 	Dir     string // the plugin's folder
 	Values  map[string]any
@@ -142,6 +146,9 @@ type PluginRuns struct {
 	// time to read them, even when a newer run occupies runs.
 	Finished map[string]*PluginRun
 }
+
+// UIKey is the key of r's plugin's screen, which is told of r.
+func (r *PluginRun) UIKey() string { return PluginKey(r.T, r.Dir, r.Global) }
 
 // running reports whether r has not ended yet.
 func (r *PluginRun) Running() bool { return r != nil && r.Ended.IsZero() }
@@ -192,7 +199,7 @@ func RunLine(l string) string {
 
 // pluginRunOf is the last run of plugin p in t, if an agent ran it.
 func (m *Core) PluginRunOf(t *Tab, p plugin.Plugin) *PluginRun {
-	if t == nil {
+	if t == nil && !p.IsGlobal() {
 		return nil
 	}
 	return m.PluginRuns.Runs[PluginUIKey(t, p)]
@@ -263,7 +270,11 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 		reply(hooks.Answer{Err: p.Name + " needs --" + missing[0].Name + ": ask the user for it"})
 		return nil
 	}
-	dir, err := RunDir(o, r.Dir)
+	if why := m.GlobalBusy(from, p); why != "" {
+		reply(hooks.Answer{Err: why})
+		return nil
+	}
+	dir, err := PluginRunDir(o, p, r.Dir)
 	if err != nil {
 		reply(hooks.Answer{Err: err.Error()})
 		return nil
@@ -287,6 +298,11 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 			reply(hooks.Answer{Err: why})
 			return nil
 		}
+		// Another tab's agent may have started it while the user was asked.
+		if why := m.GlobalBusy(from, p); why != "" {
+			reply(hooks.Answer{Err: why})
+			return nil
+		}
 		run, err := m.LaunchRun(from, p, vals, dir, confined, key)
 		if err != nil {
 			reply(hooks.Answer{Err: p.Name + ": " + err.Error()})
@@ -299,6 +315,9 @@ func (m *Core) OnRunPlugin(r hooks.Report, from *Tab) Cmd {
 		where := r.Dir
 		if where == "" {
 			where = o.Dir
+		}
+		if p.IsGlobal() {
+			where = HomeDir()
 		}
 		decide := func(answer string) Cmd {
 			if answer == AnswerAllowed {
@@ -344,24 +363,75 @@ func (m *Core) RunLimit(a *Tab) string {
 	return ""
 }
 
+// GlobalBusy is why agent a may not run plugin p now, or "": a global
+// plugin has one run at a time, for all tabs, a's own watch of it being
+// taken over by its new run, as a tab's is (see LaunchRun); and no plugin
+// runs beside a run of it from before its scope changed, still ending.
+func (m *Core) GlobalBusy(a *Tab, p plugin.Plugin) string {
+	for _, old := range m.PluginRuns.ByID {
+		switch {
+		case old.Dir != p.Dir || !old.Running():
+		case old.Global != p.IsGlobal():
+			return fmt.Sprintf("%s changed between private and global, and a run of it from before (run %s) is still ending: try again in a moment",
+				clean.Line(p.Name), old.Id)
+		case p.IsGlobal() && !(old.Watch && old.From == a && old.StopBy == ""):
+			return fmt.Sprintf("%s is global, one run of it for all tabs, and it runs now, started by %s (run %s): "+
+				"wait for it to end, or have the user stop it in nerdr's global tab", clean.Line(p.Name), clean.Line(old.Agent), old.Id)
+		}
+	}
+	return ""
+}
+
+// PluginRunDir opens the folder plugin p runs in for agent tab t, asked
+// to run in want: in t's folders for a private plugin, the user's home
+// for a global one, which is no tab's.
+func PluginRunDir(t *Tab, p plugin.Plugin, want string) (*os.File, error) {
+	if p.IsGlobal() {
+		return os.OpenFile(HomeDir(), os.O_RDONLY|syscall.O_DIRECTORY, 0)
+	}
+	return RunDir(t, want)
+}
+
+// PluginEnv is the environment plugin p's programs run with for tab t:
+// the tab's, or for a global plugin, no tab's.
+func (m *Core) PluginEnv(t *Tab, p plugin.Plugin) []string {
+	if p.IsGlobal() || t == nil {
+		return GlobalEnvFrom(m.BaseEnv())
+	}
+	return m.TabEnv(t)
+}
+
+// RunAgentLabel is who runs a plugin, agent a of tab o, as the plugins pane and the
+// plugin's screen are told: "2:codex", or with its tab, "api 2:codex", for
+// a global plugin, whose run every tab is shown.
+func (m *Core) RunAgentLabel(o, a *Tab, global bool) string {
+	if o == nil {
+		return "an agent of a tab since closed"
+	}
+	if global {
+		return o.Name + " " + m.AgentLabel(o, a)
+	}
+	return m.AgentLabel(o, a)
+}
+
 func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.File, confined bool, key string) (*PluginRun, error) {
 	o := a.Owner()
 	idb := make([]byte, 8)
 	_, _ = rand.Read(idb)
 	cmd := p.RunCmd(vals, "")
-	cmd.Env = append(append(m.TabEnv(o), "NERDR_SHELL=1", EnvByAgent+"=1"), p.Env(vals)...)
+	cmd.Env = append(append(m.PluginEnv(o, p), "NERDR_SHELL=1", EnvByAgent+"=1"), p.Env(vals)...)
 	spec, err := PluginSpec(cmd, dir, p.Dir, key)
 	if err != nil {
 		return nil, err
 	}
 	m.Hold(&spec, Label{Kind: HeldRun, Tab: o.ID, Plugin: p.Dir, Key: key, Run: hex.EncodeToString(idb),
-		From: a.ID, Values: map[string]any(vals), Watch: p.Watch, Confined: confined}, confined, "")
+		From: a.ID, Values: map[string]any(vals), Watch: p.Watch, Confined: confined, Global: p.IsGlobal()}, confined, "")
 	proc, err := StartProc(m.Programs(), spec, m.Notify)
 	if err != nil {
 		return nil, err
 	}
 	now := time.Now()
-	run := &PluginRun{Id: hex.EncodeToString(idb), T: o, Agent: m.AgentLabel(o, a), Dir: p.Dir,
+	run := &PluginRun{Id: hex.EncodeToString(idb), T: o, Global: p.IsGlobal(), Agent: m.RunAgentLabel(o, a, p.IsGlobal()), Dir: p.Dir,
 		Values: map[string]any(vals), Started: now, Proc: proc, From: a, ReadAt: now,
 		Watch: p.Watch, Confined: confined}
 	v := &m.PluginRuns
@@ -370,7 +440,8 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 	}
 	uiKey := PluginUIKey(o, p)
 	if old := v.Runs[uiKey]; old.Running() && old.Watch && old.StopBy == "" {
-		// One watch of a plugin in a tab: the new one takes over.
+		// One watch of a plugin in a tab, or of a global one: the new one
+		// takes over.
 		old.StopBy = "a new run of it"
 		old.Proc.Stop()
 	}
@@ -378,7 +449,7 @@ func (m *Core) LaunchRun(a *Tab, p plugin.Plugin, vals plugin.Values, dir *os.Fi
 		m.EnsurePluginUI(o, p, key)
 	}
 	v.Runs[uiKey], v.ByID[run.Id] = run, run
-	m.PluginEvent(o, p.Dir, run.StartEvent())
+	m.PluginEvent(uiKey, run.StartEvent())
 	return run, nil
 }
 
@@ -412,7 +483,7 @@ func (m *Core) PumpRuns(now time.Time) {
 		run.Pumped = max(run.Pumped, next)
 		if text != "" {
 			run.Add(text)
-			m.PluginEvent(run.T, run.Dir, map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)})
+			m.PluginEvent(run.UIKey(), map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)})
 			if run.Watch {
 				m.TellWatcher(run, text, run.Confined)
 			}
@@ -421,6 +492,10 @@ func (m *Core) PumpRuns(now time.Time) {
 		case done:
 			m.EndRun(run, exit, run.Confined)
 		case run.StopBy != "":
+		case run.Global:
+			// A global plugin's run is no agent's: it goes on when its
+			// agent, its tab or the command waiting on it is gone, until
+			// it ends, the user stops it or nerdr quits.
 		case !slices.Contains(agents, run.From):
 			run.StopBy = "nerdr, its agent being gone"
 			run.Proc.Stop()
@@ -523,7 +598,7 @@ func (m *Core) EndRun(run *PluginRun, exit int, sandboxed bool) {
 		}
 		m.PluginRuns.Finished[run.Id] = run
 	}
-	m.PluginEvent(run.T, run.Dir, map[string]any{"event": "end", "run": run.Id, "exit": exit})
+	m.PluginEvent(run.UIKey(), map[string]any{"event": "end", "run": run.Id, "exit": exit})
 	if !run.Watch || run.StopBy == "you" || run.From == nil || !slices.Contains(m.AllAgents(), run.From) {
 		return
 	}
@@ -570,7 +645,7 @@ func (m *Core) StopAgentRuns(r hooks.Report, a *Tab) {
 func (m *Core) StopPickedRun(t *Tab, p plugin.Plugin) {
 	run := m.PluginRunOf(t, p)
 	if !run.Running() || run.StopBy != "" {
-		m.Toast(clean.Line(p.Name) + " does not run in this tab")
+		m.Toast(clean.Line(p.Name) + OnOff(p.IsGlobal(), " does not run", " does not run in this tab"))
 		return
 	}
 	run.StopBy = "the user"
@@ -583,8 +658,18 @@ func (m *Core) StopPickedRun(t *Tab, p plugin.Plugin) {
 	m.Toast("stopping " + clean.Line(p.Name) + "; " + clean.Line(run.Agent) + " is told")
 }
 
-// pluginUIKey is the key of plugin p's screen in tab t.
-func PluginUIKey(t *Tab, p plugin.Plugin) string { return t.ID + "\x00" + p.Dir }
+// pluginUIKey is the key of plugin p's screen in tab t, and of its last
+// run there: a global plugin's is the same in every tab.
+func PluginUIKey(t *Tab, p plugin.Plugin) string { return PluginKey(t, p.Dir, p.IsGlobal()) }
+
+// PluginKey is the key of the plugin in folder dir in tab t: of no tab
+// when it is global.
+func PluginKey(t *Tab, dir string, global bool) string {
+	if global || t == nil {
+		return "\x00" + dir
+	}
+	return t.ID + "\x00" + dir
+}
 
 // pluginsAllowedFile is where the plugins the user allowed are kept.
 func PluginsAllowedFile() string { return plugin.AllowedFile(state.Dir()) }

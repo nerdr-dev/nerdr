@@ -37,6 +37,15 @@ func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun)
 	if !p.Opens() {
 		return nil // its light says it runs
 	}
+	if p.IsGlobal() {
+		// No tab's plugins pane has it: the global tab, not taken from the user.
+		if m.global.shown && m.plugins.uiFocus == "" {
+			m.pickPlugin(nil, p.Dir)
+			return nil
+		}
+		m.toast(t.Name + ": " + clean.Line(run.Agent) + " runs the global plugin " + clean.Line(name) + " · " + m.pk("v") + " shows it")
+		return nil
+	}
 	if t != m.Cur() {
 		m.toast(t.Name + ": " + clean.Line(run.Agent) + " runs the plugin " + clean.Line(name))
 		return nil
