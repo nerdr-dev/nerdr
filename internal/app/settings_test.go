@@ -218,3 +218,54 @@ func TestConfigFileEditedByHand(t *testing.T) {
 		t.Fatalf("fps %d, toast %q", m.home().Core.Cfg.FPS, m.toastText)
 	}
 }
+
+// TestSettingsTabs: the dialog's settings are in tabs, tab going to the
+// next; the cursor stays in its tab, and only its rows are shown.
+func TestSettingsTabs(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	m := testModel(t)
+	m.run("s", keyMsg("s"))
+	d := m.dialog.(*settings)
+	for _, r := range d.rows {
+		if r.tab == "" {
+			t.Errorf("%q %s.%s is in no tab", r.label, r.table, r.key)
+		}
+	}
+	tabOf := func(table, key string) string {
+		for _, r := range d.rows {
+			if r.table == table && r.key == key {
+				return r.tab
+			}
+		}
+		return ""
+	}
+	for _, c := range []struct{ table, key, tab string }{
+		{"", "prefix", "General"}, {"", "keep_awake", "General"}, {"", "confirm_plugin_runs", "General"},
+		{"", "tab_bar", "Screen"}, {"", "max_tabs", "Tabs"}, {"", "notify", "Notifications"},
+		{"review", "auto", "Agents"}, {"agents.claude", "args", "Agents"}, {"", "claude_status_line", "Agents"},
+	} {
+		if got := tabOf(c.table, c.key); got != c.tab {
+			t.Errorf("%s.%s in %q, want %q", c.table, c.key, got, c.tab)
+		}
+	}
+	if d.rows[d.cursor].tab != "General" {
+		t.Fatalf("opens on %q", d.rows[d.cursor].tab)
+	}
+	m.dialog.key(m, keyMsg("G"))
+	if d.rows[d.cursor].tab != "General" {
+		t.Fatalf("end leaves the tab for %q", d.rows[d.cursor].tab)
+	}
+	m.dialog.key(m, keyMsg("tab"))
+	if r := d.rows[d.cursor]; r.tab != "Screen" || r.heading() {
+		t.Fatalf("tab goes to %q %q", r.tab, r.key)
+	}
+	view := ansi.Strip(d.view(m, 120, 60))
+	if !strings.Contains(view, "tab_bar") || strings.Contains(view, "prefix") {
+		t.Errorf("Screen shows:\n%s", view)
+	}
+	m.dialog.key(m, keyMsg("shift+tab"))
+	m.dialog.key(m, keyMsg("shift+tab"))
+	if d.rows[d.cursor].tab != "Agents" {
+		t.Fatalf("shift+tab twice goes to %q", d.rows[d.cursor].tab)
+	}
+}
