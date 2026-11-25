@@ -205,6 +205,10 @@ func (m *Model) settingRows() []settingRow {
 			"Asks you before every run of a plugin an agent wants, showing the values it gives it: y runs it, n does not. Unanswered in about a minute and a half, it does not run.\n"+
 				"Off, plugins you have allowed run when an agent asks, but for a plugin whose plugin.toml says confirm = true.",
 			`confirm_plugin_runs = true`),
+		b("open_global_plugins", "true",
+			"Opens the global plugins' dialog by itself when an agent runs a global plugin, on that plugin, with its screen if it shows one. It does not when another dialog, or a panel you are in, has the keyboard, nor for a plugin whose plugin.toml says open = false.\n"+
+				"Off, a note says the plugin runs, and the prefix and v opens the dialog.",
+			`open_global_plugins = false`),
 
 		{label: "Screen"},
 		b("key_panel", "false",

@@ -61,7 +61,7 @@ you run the command in, and the user sees it run in nerdr's plugins pane.
   as one that starts docker: one run at a time, whichever tab asks, in
   the user's home folder. When `run` says another tab's agent runs it,
   do not start it again some other way: wait for that run to end, or
-  tell the user, who can stop it in nerdr's global tab (◆ global). A global run goes on when your
+  tell the user, who can stop it in nerdr's global plugins (the prefix and v). A global run goes on when your
   command stops waiting on it: it is not stopped with it. A plugin not
   marked global is this tab's own.
 

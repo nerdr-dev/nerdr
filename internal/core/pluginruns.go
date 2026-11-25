@@ -112,6 +112,9 @@ type PluginRun struct {
 	Started time.Time
 	Ended   time.Time // zero while it runs
 	Exit    int
+	// OutAt is when it last printed, which goes back to its agent: the
+	// plugins pane lights the way back for a while after.
+	OutAt time.Time
 	// out is what it printed, a line each, and partial the line it has
 	// not ended yet; pumped is how much of what it printed they have.
 	Out     []string
@@ -376,7 +379,7 @@ func (m *Core) GlobalBusy(a *Tab, p plugin.Plugin) string {
 				clean.Line(p.Name), old.Id)
 		case p.IsGlobal() && !(old.Watch && old.From == a && old.StopBy == ""):
 			return fmt.Sprintf("%s is global, one run of it for all tabs, and it runs now, started by %s (run %s): "+
-				"wait for it to end, or have the user stop it in nerdr's global tab", clean.Line(p.Name), clean.Line(old.Agent), old.Id)
+				"wait for it to end, or have the user stop it in nerdr's global plugins (the prefix and v)", clean.Line(p.Name), clean.Line(old.Agent), old.Id)
 		}
 	}
 	return ""
@@ -483,6 +486,7 @@ func (m *Core) PumpRuns(now time.Time) {
 		run.Pumped = max(run.Pumped, next)
 		if text != "" {
 			run.Add(text)
+			run.OutAt = now
 			m.PluginEvent(run.UIKey(), map[string]any{"event": "output", "run": run.Id, "text": clean.Text(text)})
 			if run.Watch {
 				m.TellWatcher(run, text, run.Confined)

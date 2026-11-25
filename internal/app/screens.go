@@ -135,6 +135,10 @@ func (m *Model) panelDialogOver(body []string) []string {
 	st := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	if m.mouseOn() {
 		end := m.tip(m.onClick(st.Render("×"), (*Model).closePanel), "Close · "+m.pk("t x"))
+		if m.global.shown {
+			end = m.tip(m.onClick(st.Render("×"), func(m *Model) tea.Cmd { m.leaveGlobal(); return m.resize() }),
+				"Close · esc or "+m.pk("v"))
+		}
 		lines = endOver(lines, w, end, m.focus == core.FocusReview)
 	}
 	return overlayAt(body, strings.Join(lines, "\n"), m.mainW(), x-m.sideW(), y-m.barRows())

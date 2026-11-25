@@ -14,6 +14,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/plugin"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -601,5 +602,95 @@ func TestPluginRunQuestionShowsWholeValues(t *testing.T) {
 		}
 		m.Update(keyMsg("n"))
 		answered(c)
+	}
+}
+
+// An agent's run of a global plugin opens the global plugins' dialog on
+// it, over the tab, with open_global_plugins; off, a note says it runs.
+func TestGlobalPluginRunOpensTheDialog(t *testing.T) {
+	for _, open := range []bool{true, false} {
+		t.Run(fmt.Sprint(open), func(t *testing.T) {
+			cfg := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", cfg)
+			m := testModel(t)
+			tb := m.Cur()
+			dir, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			tb.Dir = dir
+			defer m.Shutdown()
+			m.cfg().OpenGlobalPlugins = &open
+			allowedPlugin(t, cfg, "aaa", "description = \"Another.\"\nrun = [\"true\"]\nscope = \"global\"\n")
+			allowedPlugin(t, cfg, "docker", "description = \"Starts docker.\"\nrun = [\"true\"]\nscope = \"global\"\n")
+
+			started(t, m, askRun(m, tb, "docker", nil))
+			if m.global.shown != open {
+				t.Fatalf("open_global_plugins %v: the dialog shown %v", open, m.global.shown)
+			}
+			if !open {
+				return
+			}
+			if p, ok := m.pickedPlugin(nil); !ok || p.Name != "docker" {
+				t.Fatalf("the dialog is not on the plugin run: %+v", p)
+			}
+			// A dialog over the tab, which is drawn underneath.
+			if m.panelDlg || m.Cur() != tb {
+				t.Fatal("the global plugins should be their own dialog, the tab active underneath")
+			}
+			m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+			if m.global.shown {
+				t.Fatal("esc did not close the dialog")
+			}
+		})
+	}
+}
+
+// The global plugins' dialog does not open by itself over a pane of the
+// panel's the user is in, the code changes or a private plugin's screen:
+// it would take the keys they type there.
+func TestGlobalPluginRunLeavesAViewPane(t *testing.T) {
+	for _, screen := range []string{"changes", "plugin screen"} {
+		t.Run(screen, func(t *testing.T) {
+			cfg := t.TempDir()
+			t.Setenv("XDG_CONFIG_HOME", cfg)
+			m := testModel(t)
+			m.router = input.New(nil, 0x11)
+			tb := m.Cur()
+			dir, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			tb.Dir, tb.Worktrees[0].Path = dir, dir
+			defer m.Shutdown()
+			allowedPlugin(t, cfg, "docker", "description = \"Starts docker.\"\nrun = [\"true\"]\nscope = \"global\"\n")
+			allowedPlugin(t, cfg, "seed", "description = \"Seeds.\"\nui = [\"sh\", \"-c\", \"cat\"]\n")
+
+			var uiKey string
+			if screen == "changes" {
+				m.newView(core.ViewChanges)
+			} else {
+				pressPlugins(m)
+				m.Update(keyMsg("enter"))
+				if uiKey = m.focusedPluginKey(); uiKey == "" {
+					t.Fatal("the private plugin's screen does not have the keyboard")
+				}
+			}
+			pane := m.focused(tb)
+			if pane.Kind != core.PaneView || m.focus != core.FocusAgent {
+				t.Fatalf("not in a view pane: %v, focus %v", pane.Kind, m.focus)
+			}
+
+			started(t, m, askRun(m, tb, "docker", nil))
+			if m.global.shown {
+				t.Fatal("the global plugins' dialog opened over a view pane the user is in")
+			}
+			if m.focused(tb) != pane || m.focus != core.FocusAgent {
+				t.Fatal("the view pane lost the keyboard")
+			}
+			if uiKey != "" && m.focusedPluginKey() != uiKey {
+				t.Fatalf("the private plugin's screen lost the keyboard: %q", m.focusedPluginKey())
+			}
+		})
 	}
 }

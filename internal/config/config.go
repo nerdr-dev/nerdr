@@ -168,6 +168,10 @@ type Config struct {
 	// agent asks for, seeing what it gives it; off, only to those of a
 	// plugin whose plugin.toml says confirm.
 	ConfirmPluginRuns bool `toml:"confirm_plugin_runs" scope:"core"`
+	// OpenGlobalPlugins has the global plugins' dialog open by itself when
+	// an agent runs one, on the plugin, unless its plugin.toml says open =
+	// false; off, a note says so instead.
+	OpenGlobalPlugins *bool `toml:"open_global_plugins" scope:"client"`
 
 	// Review is the code review a second agent does of a tab's work; see
 	// internal/codereview.
@@ -353,7 +357,7 @@ func defaults(c Config) Config {
 	if c.PaneMinWidth <= 0 {
 		c.PaneMinWidth = DefaultPaneMinWidth
 	}
-	for _, b := range []**bool{&c.CloseMerged, &c.PRNotify, &c.IssueNotify, &c.FunctionKeys, &c.PrefixHint, &c.ClaudeStatusLine} {
+	for _, b := range []**bool{&c.CloseMerged, &c.PRNotify, &c.IssueNotify, &c.FunctionKeys, &c.PrefixHint, &c.ClaudeStatusLine, &c.OpenGlobalPlugins} {
 		if *b == nil {
 			t := true
 			*b = &t

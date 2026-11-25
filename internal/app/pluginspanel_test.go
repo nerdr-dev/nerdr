@@ -705,7 +705,7 @@ func TestGlobalPluginsAreInTheGlobalTab(t *testing.T) {
 	if !strings.Contains(text, "a-docker") || strings.Contains(text, "b-seed") {
 		t.Fatalf("the global tab:\n%s", text)
 	}
-	if frame := ansi.Strip(m.View()); !strings.Contains(frame, "global plugins") || !strings.Contains(frame, "◆ global") {
+	if frame := ansi.Strip(m.View()); !strings.Contains(frame, "global plugins") || strings.Contains(frame, "◆ global") {
 		t.Fatalf("the global tab is not drawn:\n%s", frame)
 	}
 
