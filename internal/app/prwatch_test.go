@@ -9,9 +9,11 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -603,5 +605,23 @@ func TestPRListSaysWhatItIs(t *testing.T) {
 	m.showAllPRs()
 	if view := ansi.Strip(strings.Join(m.allPRsBody(130, 30), "\n")); !strings.Contains(view, "Your open pull requests") {
 		t.Fatalf("the list says what it is:\n%s", view)
+	}
+}
+
+// esc leaves F2's branch view for the agent, as q does.
+func TestEscLeavesBranchPR(t *testing.T) {
+	m := testModel(t)
+	m.home().Core.PRWatch.At = time.Now()
+	m.handleKey(keyMsg("f2"))
+	if !m.panelBranchPR() || m.focus != core.FocusReview {
+		t.Fatal("F2 should show the branch's PR, with the keyboard")
+	}
+	rm, cmd := m.review.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m.review = rm.(review.Model)
+	if cmd == nil {
+		t.Fatal("esc on F2's branch view did nothing")
+	}
+	if _, ok := cmd().(review.LeaveMsg); !ok {
+		t.Fatal("esc on F2's branch view should leave it")
 	}
 }
