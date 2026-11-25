@@ -46,6 +46,12 @@ type toastMsg struct{ text string }
 type Model struct {
 	// src is what the panel reads the repositories through.
 	src Source
+	// name is the panel's own, before its file list's title: nerdr's
+	// name for its pane, when a tab has more than one.
+	name string
+	// fixed keeps the panel on its screen: m and the menu do not move
+	// it, as in a pane of nerdr's for one screen.
+	fixed bool
 
 	cwd string
 

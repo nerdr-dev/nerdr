@@ -84,15 +84,6 @@ func TestSplit(t *testing.T) {
 	m.runCommand("z s")
 	wantSides(t, m, "logout", "login", "login")
 
-	// The review panel takes the right while it is open.
-	m.Update(tea.KeyMsg{Type: tea.KeyF1})
-	if m.splitShown() || !m.reviewOpen {
-		t.Fatal("F1 did not put the review panel in the split's place")
-	}
-	wantSides(t, m, "login", "", "login")
-	m.runCommand("z e")
-	wantSides(t, m, "logout", "login", "login")
-
 	m.runCommand("z v")
 	wantSides(t, m, "login", "", "login")
 	if w, _ := m.agentSize(); w != m.mainW()-2 {

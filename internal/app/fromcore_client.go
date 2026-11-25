@@ -68,14 +68,29 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.ContextFileMsg:
 		m.onContextFile(ev)
 	case core.WatchingMsg:
-		m.review = m.review.Watching(ev.Wt, ev.OK)
+		// The machine's one watch: the panels on it showing another
+		// worktree have lost theirs to it, and read theirs as they come.
+		m.eachPanelOn(m.tellingOn(), func() tea.Cmd {
+			m.review = m.review.Watching(ev.Wt, ev.OK)
+			return nil
+		})
 	case core.WorktreeChangedMsg:
-		var cmd tea.Cmd
-		m.review, cmd = m.review.Changed(ev.Wt)
-		return toCore(cmd)
+		return toCore(m.eachPanelOn(m.tellingOn(), func() tea.Cmd {
+			var c tea.Cmd
+			m.review, c = m.review.Changed(ev.Wt)
+			return c
+		}))
 	case core.UnseenMsg:
 		if t := m.fleet.ByRef(ev.T); t != nil && t == m.Cur() {
 			m.review = m.review.SetUnseen(t.Unseen)
+		}
+		if t := m.fleet.ByRef(ev.T); t != nil {
+			m.eachView(func(vt *core.Tab, _ *core.PaneTab) tea.Cmd {
+				if vt == t {
+					m.review = m.review.SetUnseen(t.Unseen)
+				}
+				return nil
+			})
 		}
 	case core.MoveChunkMsg, core.MovePutMsg:
 		// A move's, or a part's commits carried to another machine.
@@ -95,8 +110,8 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.RepoCheckedMsg:
 		m.onRepoChecked(ev)
 	case core.ReviewReadMsg:
-		if m.reviewAsk != nil {
-			m.reviewAsk.Answer(ev.Job, ev.A)
+		for _, k := range m.askers() {
+			k.Answer(ev.Job, ev.A) // the one whose job it is
 		}
 	case core.PlanMsg, core.IssueMsg, core.SetupProgressMsg, core.WorktreesMadeMsg:
 		return toCore(m.wizardAnswer(ev))
@@ -182,7 +197,7 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		}
 	case core.AnsweredMsg:
 		m.fleet.Bump()
-		if q := m.plugins.asking; q != nil && q.q.ID == ev.ID && q.mc == m.tellingOn() {
+		if q := m.pluginAsking; q != nil && q.q.ID == ev.ID && q.mc == m.tellingOn() {
 			q.answered(m)
 		}
 	case core.SpinoffAskMsg:
@@ -195,14 +210,25 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(m.openSwitchAgent())
 	case core.PluginUIStartedMsg:
 		m.fleet.Bump()
-		if t := m.fleet.ByRef(ev.T); t != nil && m.plugins.uiFocus == ev.Key {
-			m.pluginUIFocus(t) // started again in place of the one it had
+		if t := m.fleet.ByRef(ev.T); t != nil {
+			started := func() {
+				if m.plugins.uiFocus == ev.Key {
+					m.pluginUIFocus(t) // started again in place of the one it had
+				}
+			}
+			started()
+			m.eachView(func(*core.Tab, *core.PaneTab) tea.Cmd { started(); return nil })
 		}
 	case core.PluginUIGoneMsg:
 		m.fleet.Bump()
-		if m.plugins.uiFocus == ev.Key {
-			m.plugins.uiFocus = ""
+		gone := func() tea.Cmd {
+			if m.plugins.uiFocus == ev.Key {
+				m.plugins.uiFocus = ""
+			}
+			return nil
 		}
+		gone()
+		m.eachView(func(*core.Tab, *core.PaneTab) tea.Cmd { return gone() })
 	case core.PluginRunMsg:
 		m.fleet.Bump()
 		if t, run := m.fleet.ByRef(ev.T), m.tellingOn().Core.PluginRuns.ByID[ev.Run]; t != nil && run != nil {

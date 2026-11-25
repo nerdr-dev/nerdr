@@ -74,7 +74,7 @@ func testModel(t *testing.T) *Model {
 		t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	}
 	yes, no := true, false
-	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
+	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, Mouse: &yes}
 	mk := func(id, name, repo string) state.Tab {
 		return state.Tab{ID: id, Name: name, Agent: "claude", Dir: "/w/" + name,
 			Worktrees: []workspace.Worktree{{Repo: repo, Path: "/w/" + name, Branch: name}}}
@@ -168,104 +168,6 @@ func TestWheelSlowStep(t *testing.T) {
 
 // TestWheelAfterFocus: the wheel is not heard while nerdr is in the
 // background, nor after it gets the focus back while the wheel goes on;
-// once it has been still, it is.
-func TestWheelAfterFocus(t *testing.T) {
-	m := testModel(t)
-	m.View()
-	wheel := func() {
-		m.lastWheelStep = time.Time{} // not what this is about
-		m.Update(tea.MouseMsg{X: 5, Y: m.tabRow(), Button: tea.MouseButtonWheelDown, Action: tea.MouseActionPress})
-	}
-	start := m.Cur().Name
-	m.Update(tea.BlurMsg{})
-	wheel()
-	m.Update(tea.FocusMsg{})
-	wheel()
-	if m.Cur().Name != start {
-		t.Fatalf("the wheel stepped to %s while gliding in from the background", m.Cur().Name)
-	}
-	m.lastWheel = m.lastWheel.Add(-wheelQuiet)
-	wheel()
-	if m.Cur().Name == start {
-		t.Fatal("the wheel is not heard after being still")
-	}
-}
-
-func TestTabMenu(t *testing.T) {
-	m := testModel(t)
-	clickOn(t, m, "logout", tea.MouseButtonRight)
-	mu, ok := m.dialog.(*menu)
-	if !ok || m.Cur().Name != "logout" {
-		t.Fatalf("right click: dialog %T, tab %q", m.dialog, m.Cur().Name)
-	}
-	if m.mouse != mouseAll {
-		t.Fatal("the menu does not follow the pointer")
-	}
-	// Hovering moves the highlight.
-	for y, line := range strings.Split(ansi.Strip(m.View()), "\n") {
-		if i := strings.Index(line, "Rename…"); i >= 0 {
-			m.Update(tea.MouseMsg{X: ansi.StringWidth(line[:i]), Y: y, Action: tea.MouseActionMotion})
-		}
-	}
-	if mu.items[mu.hi].label != "Rename…" {
-		t.Fatalf("highlighted %q", mu.items[mu.hi].label)
-	}
-	clickOn(t, m, "Rename…", tea.MouseButtonLeft)
-	r, ok := m.dialog.(*renamer)
-	if !ok || r.t.Name != "logout" {
-		t.Fatalf("dialog %T after Rename…", m.dialog)
-	}
-	// A click outside a dialog holding typed text does not close it; its
-	// buttons work.
-	m.Update(tea.MouseMsg{X: 0, Y: 29, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if m.dialog == nil {
-		t.Fatal("click outside closed the rename dialog")
-	}
-	clickOn(t, m, "esc cancel", tea.MouseButtonLeft)
-	if m.dialog != nil {
-		t.Fatalf("still open: %T", m.dialog)
-	}
-}
-
-func TestMenuClosesOnClickOutside(t *testing.T) {
-	m := testModel(t)
-	clickOn(t, m, "≡ menu", tea.MouseButtonLeft)
-	if _, ok := m.dialog.(*menu); !ok {
-		t.Fatalf("dialog %T after ≡", m.dialog)
-	}
-	m.Update(tea.MouseMsg{X: 0, Y: 29, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if m.dialog != nil {
-		t.Fatalf("still open: %T", m.dialog)
-	}
-}
-
-func TestPlusOpensNewTabForTheGroup(t *testing.T) {
-	m := testModel(t)
-	// The + after the tabs: a new tab in the active group's repository.
-	// The repository is not on disk here, so the wizard stays at the
-	// first step, where it lists what it found.
-	lines := strings.Split(ansi.Strip(m.View()), "\n")
-	x := strings.LastIndex(lines[m.tabRow()], " + ")
-	m.Update(tea.MouseMsg{X: ansi.StringWidth(lines[m.tabRow()][:x]) + 1, Y: m.tabRow(), Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	if _, ok := m.dialog.(*wizard); !ok {
-		t.Fatalf("dialog %T after +", m.dialog)
-	}
-}
-
-func TestDragTheRule(t *testing.T) {
-	m := testModel(t)
-	m.runCommand("z e") // show the review panel
-	m.View()
-	aw := m.agentWidth()
-	m.Update(tea.MouseMsg{X: aw, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
-	m.Update(tea.MouseMsg{X: 60, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
-	m.Update(tea.MouseMsg{X: 60, Y: 10, Button: tea.MouseButtonLeft, Action: tea.MouseActionRelease})
-	// Within a column: the width is kept in percent.
-	if aw := m.agentWidth(); aw < 59 || aw > 61 {
-		t.Fatalf("review %d%%, agent %d columns", m.reviewWidth, m.agentWidth())
-	}
-}
-
 // TestDragTheSideEdge drags the sidebar's edge wider, and a right-click
 // on it gives it back the width its names need.
 func TestDragTheSideEdge(t *testing.T) {

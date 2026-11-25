@@ -136,9 +136,14 @@ type WatchMsg struct{ Wt string }
 // Watching tells the panel whether the watch on worktree wt is in place:
 // with it, the files are refreshed when it reports a change, and polled
 // only now and then.
+// A watch put on another worktree of the machine, which watches one at a
+// time, ends the panel's own: it reads its worktree as it comes again.
 func (m Model) Watching(wt string, ok bool) Model {
-	if wt == m.curWT {
+	switch {
+	case wt == m.curWT:
 		m.watching = ok
+	case ok:
+		m.watching = false
 	}
 	return m
 }

@@ -36,7 +36,7 @@ func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
 		r    rect
 		want string
 	}{
-		{"files", lay.files, "files"},
+		{"files", lay.files, "changed files"},
 		{"diff", lay.diff, "diff"},
 	} {
 		if got := headingAt(c.r); !strings.HasPrefix(got, c.want) {

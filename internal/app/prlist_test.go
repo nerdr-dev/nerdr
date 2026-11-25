@@ -19,7 +19,7 @@ func tabsModel(t *testing.T, tabs ...state.Tab) *Model {
 	t.Helper()
 	t.Setenv("XDG_STATE_HOME", t.TempDir()) // the session saved is not the user's
 	no, yes := false, true
-	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
+	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, Mouse: &yes}
 	m := New(cfg, t.TempDir(), nil, state.Session{Tabs: tabs})
 	m.width, m.height = 140, 40
 	return m
@@ -124,30 +124,31 @@ func TestAgentRequestOpensAMessageForTheTab(t *testing.T) {
 	}
 }
 
-// TestPanelScreenIsKeptPerTab: the F key chosen in one tab is not carried
-// to the next; each tab comes back to the screen it was left on.
+// TestPanelScreenIsKeptPerTab: the plugins pane opened in one tab is
+// that tab's, not the next one's, and a dialog open closes when you go
+// to another tab.
 func TestPanelScreenIsKeptPerTab(t *testing.T) {
 	m := tabsModel(t,
 		state.Tab{ID: "a", Name: "a", Dir: "/w/a"},
 		state.Tab{ID: "b", Name: "b", Dir: "/w/b"},
 	)
 	m.selectTab(0)
-	m.handleKey(keyMsg("f2"))
+	m.handleKey(keyMsg("f5"))
+	a, b := m.home().Core.Tabs[0], m.home().Core.Tabs[1]
+	if m.viewOfScreen(a, core.ViewPlugins) == nil {
+		t.Fatal("F5 should open the plugins in a pane of tab a's")
+	}
 	m.selectTab(1)
-	if m.review.Screen() != (review.Screen{}) {
-		t.Fatalf("a tab not yet given a screen should start on F1, got %+v", m.review.Screen())
+	if m.viewOfScreen(b, core.ViewPlugins) != nil {
+		t.Fatal("tab b has no plugins pane of its own")
 	}
 	m.handleKey(keyMsg("f3"))
-	if !m.review.Messages() {
-		t.Fatal("F3 should show the messages")
+	if !m.panelDlg || !m.review.Messages() {
+		t.Fatal("F3 should show the messages, in a dialog")
 	}
 	m.selectTab(0)
-	if m.review.Messages() || m.review.Screen() == (review.Screen{}) {
-		t.Fatalf("tab a should be back on F2, got %+v", m.review.Screen())
-	}
-	m.selectTab(1)
-	if !m.review.Messages() {
-		t.Fatalf("tab b should be back on F3, got %+v", m.review.Screen())
+	if m.panelDlg || m.viewOfScreen(a, core.ViewPlugins) == nil {
+		t.Fatal("tab a should still have its plugins pane, the dialog closed")
 	}
 }
 
@@ -160,8 +161,8 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 		state.Tab{ID: "b", Name: "b", Dir: "/w/b"},
 	)
 	m.selectTab(0)
-	m.handleKey(keyMsg("f2"))
-	f2 := m.review.Screen()
+	m.handleKey(keyMsg("f5"))
+	f5 := m.review.Screen()
 
 	// Opened as addTab does: active first, then selected.
 	c := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "c", Name: "c", Dir: "/w/c"}}}
@@ -171,7 +172,7 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 	if m.review.Screen() != (review.Screen{}) {
 		t.Fatalf("a new tab should start on F1, got %+v", m.review.Screen())
 	}
-	m.handleKey(keyMsg("f3"))
+	m.handleKey(keyMsg("f5"))
 
 	// Closing c lands on b, which was never given a screen.
 	m.closeTab(c, false, false, nil)
@@ -179,8 +180,8 @@ func TestPanelScreenSurvivesOpeningAndClosingTabs(t *testing.T) {
 		t.Fatalf("b should be on F1 after c closed, got %s on %+v", m.Cur().Name, m.review.Screen())
 	}
 	m.selectTab(0)
-	if m.review.Screen() != f2 {
-		t.Fatalf("a should still be on F2, got %+v", m.review.Screen())
+	if m.review.Screen() != f5 {
+		t.Fatalf("a should still be on F5, got %+v", m.review.Screen())
 	}
 }
 
@@ -233,17 +234,9 @@ func TestClosedTabLeavesNothingBehind(t *testing.T) {
 	}
 	active, other := m.home().Core.Tabs[len(m.home().Core.Tabs)-1], m.home().Core.Tabs[0]
 	m.paneBars = map[*core.Tab]*barRow{active: {}, other: {}}
-	_, hasActive := m.panelScreens[active]
-	_, hasOther := m.panelScreens[other]
-	if !hasActive || !hasOther {
-		t.Fatal("no screens kept to begin with")
-	}
 	for _, closed := range []*core.Tab{active, other} {
 		m.closeTab(closed, false, false, nil)
 		m.pinReview()
-		if _, ok := m.panelScreens[closed]; ok {
-			t.Errorf("%s: its screen is kept", closed.Name)
-		}
 		if _, ok := m.paneBars[closed]; ok {
 			t.Errorf("%s: its row is kept", closed.Name)
 		}

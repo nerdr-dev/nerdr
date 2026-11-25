@@ -32,6 +32,13 @@ type zoneRect struct {
 // zone wraps s so a mouse event on it calls fn. Each line of s is marked
 // on its own, so a zone over several lines is hit anywhere on them.
 func (m *Model) zone(s string, fn zoneFn) string {
+	if p, t := m.viewIn, m.viewTab; p != nil {
+		// Drawn in a view pane's panel: it is that panel's.
+		inner := fn
+		fn = func(m *Model, ev tea.MouseMsg) tea.Cmd {
+			return m.inView(t, p, func() tea.Cmd { return inner(m, ev) })
+		}
+	}
 	id := len(m.zoneFns)
 	m.zoneFns = append(m.zoneFns, fn)
 	m.zoneTips = append(m.zoneTips, "")
@@ -140,6 +147,9 @@ func (m *Model) zoneAt(x, y int) int {
 	for _, r := range m.zoneRects {
 		if r.y != y || x < r.x0 || x >= r.x1 || r.id >= len(m.zoneFns) || m.zoneFns[r.id] == nil {
 			continue
+		}
+		if r.id >= m.underZones && r.id < m.panelZones {
+			continue // of the panes under the panel's dialog: out of reach
 		}
 		if w := r.x1 - r.x0; best < 0 || w < bestW || w == bestW && r.id > best {
 			best, bestW = r.id, w

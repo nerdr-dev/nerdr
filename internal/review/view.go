@@ -47,14 +47,17 @@ func (m Model) View() string {
 	// hit-tests against (see layout).
 	lay := m.layout(W, H)
 
-	filesTitle := fmt.Sprintf("files (%d)", len(m.files))
+	filesTitle := fmt.Sprintf("changed files (%d)", len(m.files))
 	if m.showBase {
-		filesTitle = fmt.Sprintf("files (%d) vs %s", len(m.files), m.baseRef)
+		filesTitle = fmt.Sprintf("changed files (%d) vs %s", len(m.files), m.baseRef)
 	}
 	// The pane is showing the change in the order it was made, so its title
 	// says what the change is rather than only how many files it touches.
 	if (m.showOrder || m.folderTree) && m.orderIndex.Summary() != "" {
 		filesTitle += " · " + m.orderIndex.Summary()
+	}
+	if m.name != "" {
+		filesTitle = m.name + " · " + filesTitle
 	}
 	if m.refreshing {
 		filesTitle = m.spinner.View() + " " + filesTitle

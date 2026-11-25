@@ -939,9 +939,9 @@ func TestFleetRemovedWhileConnecting(t *testing.T) {
 	}
 }
 
-// TestFleetPanelsFollowTheMachine: with the list of pull requests, or of
-// issues, chosen in a tab of each machine, going from one to the other
-// fills the list afresh from the machine of the tab in front.
+// TestFleetPanelsFollowTheMachine: the list of pull requests, or of
+// issues, opened in a tab of each machine is filled afresh from the
+// machine of the tab in front.
 func TestFleetPanelsFollowTheMachine(t *testing.T) {
 	m, _, _, _, _ := twoMachines(t)
 	show := func(i int, f func() tea.Cmd) {
@@ -963,8 +963,7 @@ func TestFleetPanelsFollowTheMachine(t *testing.T) {
 		t.Fatalf("PRs of %q", got)
 	}
 	boxList := m.prPanel
-	goTo(m, 0)
-	locked(m, func() { m.syncPRPanel() })
+	show(0, m.showAllPRs)
 	if got := on(&m.prPanelOn); got != "this machine" || m.prPanel == boxList {
 		t.Fatalf("PRs of %q, box's list kept %v", got, m.prPanel == boxList)
 	}
@@ -974,8 +973,7 @@ func TestFleetPanelsFollowTheMachine(t *testing.T) {
 	if got := on(&m.issuePanelOn); got != "box" {
 		t.Fatalf("issues of %q", got)
 	}
-	goTo(m, 0)
-	locked(m, func() { m.syncPRPanel() })
+	show(0, m.showIssues)
 	if got := on(&m.issuePanelOn); got != "this machine" {
 		t.Fatalf("issues of %q", got)
 	}

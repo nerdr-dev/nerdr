@@ -150,12 +150,7 @@ func TestSettingsDialog(t *testing.T) {
 		t.Errorf("? does not show each choice on its line and an example:\n%s", v)
 	}
 	d.about = false
-	pickSetting(t, d, "", "layout")
-	m.dialog.key(m, keyMsg("enter"))
-	if v := ansi.Strip(d.view(m, 120, 40)); !strings.Contains(v, "wide  agent 75% | F-menu") {
-		t.Errorf("layout's choice is not explained:\n%s", v)
-	}
-	if lipgloss.Width(v) != width {
+	if v := ansi.Strip(d.view(m, 120, 40)); lipgloss.Width(v) != width {
 		t.Errorf("the dialog is %d wide, then %d", width, lipgloss.Width(v))
 	}
 	m.dialog.key(m, keyMsg("esc"))
@@ -197,11 +192,11 @@ func TestConfigFileEditedByHand(t *testing.T) {
 		}
 	}
 	now := time.Now()
-	write("prefix = \"ctrl+q\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\n", now)
+	write("prefix = \"ctrl+q\"\ntab_details = false\n", now)
 	m.configCheck()
 	m.toastText = ""
 
-	write("prefix = \"ctrl+b\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\nnotify = \"done\"\n", now.Add(time.Second))
+	write("prefix = \"ctrl+b\"\ntab_details = false\nnotify = \"done\"\n", now.Add(time.Second))
 	m.configCheck()
 	if m.home().Core.Cfg.Notify != "done" || m.home().Core.Cfg.Prefix != "ctrl+q" {
 		t.Fatalf("notify %q, prefix %q", m.home().Core.Cfg.Notify, m.home().Core.Cfg.Prefix)
@@ -210,14 +205,14 @@ func TestConfigFileEditedByHand(t *testing.T) {
 		t.Fatalf("toast = %q", m.toastText)
 	}
 	m.toastText = ""
-	write("prefix = \"ctrl+b\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\nnotify = \"off\"\n", now.Add(2*time.Second))
+	write("prefix = \"ctrl+b\"\ntab_details = false\nnotify = \"off\"\n", now.Add(2*time.Second))
 	m.configCheck()
 	if m.home().Core.Cfg.Notify != "off" || m.toastText != "" {
 		t.Fatalf("notify %q, toast %q", m.home().Core.Cfg.Notify, m.toastText)
 	}
 	// fps is only read at start: it keeps its value, and says so.
 	before := m.home().Core.Cfg.FPS
-	write("prefix = \"ctrl+b\"\nlayout = \"agent\"\ntab_details = false\npanel_width = 40\nnotify = \"off\"\nfps = 30\n", now.Add(3*time.Second))
+	write("prefix = \"ctrl+b\"\ntab_details = false\nnotify = \"off\"\nfps = 30\n", now.Add(3*time.Second))
 	m.configCheck()
 	if m.home().Core.Cfg.FPS != before || m.toastText != "fps changed: restart nerdr to use it" {
 		t.Fatalf("fps %d, toast %q", m.home().Core.Cfg.FPS, m.toastText)

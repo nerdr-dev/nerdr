@@ -46,20 +46,13 @@ type pluginsView struct {
 	// by folder.
 	allowed map[string]bool
 
-	// asking is the question whether an agent may run a plugin, while it
-	// is asked.
-	asking *runQuestion
-
-	// askedAt is when core was last asked to look for the plugins; jobs are what waits for core's answers, by job
-	// (see pluginJob).
+	// askedAt is when core was last asked to look for the plugins.
 	askedAt time.Time
 	stale   bool // an allowance changed: core is asked at once
-	jobs    map[string]func(m *Model, ev any) tea.Cmd
-	lastJob int
 }
 
 // panelPlugins reports whether the review panel shows the plugins.
-func (m *Model) panelPlugins() bool { return m.reviewOpen && m.review.Plugins() }
+func (m *Model) panelPlugins() bool { return m.panelShown() && m.review.Plugins() }
 
 // pluginList is the plugins of t's machine, as its core looked for them
 // last: the same for every tab of the machine.
@@ -88,7 +81,7 @@ func (m *Model) pluginsOn() *fleet.Machine {
 	if m.plugins.on != nil {
 		return m.plugins.on
 	}
-	return m.machineOf(m.Cur())
+	return m.machineOf(m.panelTab())
 }
 
 // repick puts the cursor on the plugin picked, in the list read anew. One
@@ -126,10 +119,20 @@ func (m *Model) pickedPlugin(t *core.Tab) (plugin.Plugin, bool) {
 // pluginUIPane is the plugin screen with the keyboard, if one has it: the
 // input router passes keys straight to it.
 func (m *Model) pluginUIPane() core.Program {
+	if t := m.Cur(); m.viewIn == nil && t != nil && m.focus == core.FocusAgent {
+		// A plugins pane with the keyboard: its panel's screen.
+		if f := m.focused(t); f.Kind == core.PaneView && m.views[f] != nil {
+			var pr core.Program
+			m.viewDraw = true // only looking
+			m.inView(t, f, func() tea.Cmd { pr = m.pluginUIPane(); return nil })
+			m.viewDraw = false
+			return pr
+		}
+	}
 	if m.focus != core.FocusReview || !m.panelPlugins() || m.plugins.uiFocus == "" {
 		return nil
 	}
-	t := m.Cur()
+	t := m.panelTab()
 	p, ok := m.pickedPlugin(t)
 	if !ok || core.PluginUIKey(t, p) != m.plugins.uiFocus {
 		return nil
@@ -150,7 +153,7 @@ func (m *Model) pluginsKey(msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil
 	}
-	t := m.Cur()
+	t := m.panelTab()
 	list := m.pluginList(t)
 	v := &m.plugins
 	switch msg.String() {
@@ -194,7 +197,7 @@ func (m *Model) togglePluginUI() bool {
 	if m.focus != core.FocusReview || !m.panelPlugins() {
 		return false
 	}
-	t := m.Cur()
+	t := m.panelTab()
 	p, ok := m.pickedPlugin(t)
 	if !ok || !m.machineOf(t).Core.PluginUIOf(t, p).Running() {
 		return false
@@ -391,20 +394,27 @@ func (m *Model) withPluginFacts(p plugin.Plugin, then func(m *Model, f core.Plug
 
 // pluginJob keeps then for the answer of a job of F5's asked of core,
 // and names the job.
+// Asked from a plugins pane's panel, the answer is handled in it.
 func (m *Model) pluginJob(then func(m *Model, ev any) tea.Cmd) string {
-	if m.plugins.jobs == nil {
-		m.plugins.jobs = map[string]func(m *Model, ev any) tea.Cmd{}
+	if m.pluginJobs == nil {
+		m.pluginJobs = map[string]func(m *Model, ev any) tea.Cmd{}
 	}
-	m.plugins.lastJob++
-	job := "plugin-" + strconv.Itoa(m.plugins.lastJob)
-	m.plugins.jobs[job] = then
+	if p, t := m.viewIn, m.viewTab; p != nil {
+		inner := then
+		then = func(m *Model, ev any) tea.Cmd {
+			return m.inView(t, p, func() tea.Cmd { return inner(m, ev) })
+		}
+	}
+	m.pluginLastJob++
+	job := "plugin-" + strconv.Itoa(m.pluginLastJob)
+	m.pluginJobs[job] = then
 	return job
 }
 
 // onPluginJob hands core's answer to the job of F5's it is for.
 func (m *Model) onPluginJob(job string, ev any) tea.Cmd {
-	then := m.plugins.jobs[job]
-	delete(m.plugins.jobs, job)
+	then := m.pluginJobs[job]
+	delete(m.pluginJobs, job)
 	if then == nil {
 		return nil
 	}
@@ -412,8 +422,18 @@ func (m *Model) onPluginJob(job string, ev any) tea.Cmd {
 }
 
 // pluginsChanged has the list looked for again, as an allowance changed.
+// Every panel's list: the dialog's and each plugins pane's.
 func (m *Model) pluginsChanged() {
+	if m.viewIn != nil {
+		m.pluginsStale = true // done once out of this pane's panel
+		return
+	}
+	m.pluginsStale = false
 	m.plugins.at, m.plugins.stale = time.Time{}, true
+	m.eachView(func(*core.Tab, *core.PaneTab) tea.Cmd {
+		m.plugins.at, m.plugins.stale = time.Time{}, true
+		return nil
+	})
 }
 
 // renderPreview draws files, of the plugin folder dir: each file's name
@@ -623,7 +643,11 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 		})
 	out := append(top, rule)
 	mc := m.machineOf(t)
-	if uh := max(room, 3); w != mc.Core.PluginUIW || uh != mc.Core.PluginUIH {
+	uh := max(room, 3)
+	// The panel with the keyboard sizes the screens, of which each
+	// machine runs one per plugin and tab: two plugins panes of different
+	// sizes would size them in turn at every frame.
+	if (focused || mc.Core.PluginUIW == 0) && (w != mc.Core.PluginUIW || uh != mc.Core.PluginUIH) {
 		m.doOn(mc, core.PluginUISize{W: w, H: uh})
 	}
 	if u == nil {
@@ -633,8 +657,9 @@ func (m *Model) pluginsBody(t *core.Tab, w, h int) []string {
 	if pr == nil {
 		return fitLines(out, w, h)
 	}
-	if pw, ph := pr.Size(); pw != mc.Core.PluginUIW || ph != mc.Core.PluginUIH {
-		pr.Resize(mc.Core.PluginUIW, mc.Core.PluginUIH)
+	// Sized to this panel, unless one with the keyboard shows it too.
+	if pw, ph := pr.Size(); (focused || m.uiKeyFocused != core.PluginUIKey(t, p)) && (pw != w || ph != uh) {
+		pr.Resize(w, uh)
 	}
 	return fitLines(append(out, m.drawPane(pr, 0, inUI)...), w, h)
 }
@@ -658,11 +683,15 @@ func (m *Model) pluginKeys(pairs ...string) string {
 
 // pluginsTitle is the F5 frame's title.
 func (m *Model) pluginsTitle(t *core.Tab) string {
+	name := "plugins"
+	if p := m.viewIn; p != nil && p.N > 1 {
+		name = m.machineOf(m.viewTab).Core.PaneName(m.viewTab, p) // "plugins 2"
+	}
 	n := len(m.pluginList(t))
 	if n == 0 {
-		return "plugins"
+		return name
 	}
-	return fmt.Sprintf("plugins (%d)", n)
+	return fmt.Sprintf("%s (%d)", name, n)
 }
 
 // startPluginUI starts plugin p's screen in t, as allowed with key, and gives
@@ -679,7 +708,36 @@ func (m *Model) startPluginUI(t *core.Tab, p plugin.Plugin, focus bool, key stri
 // pluginUIFocus gives the keyboard to the plugin screen just started in t,
 // when it is the one to have it and the plugins have the keyboard.
 func (m *Model) pluginUIFocus(t *core.Tab) {
-	if t == m.Cur() && m.focus == core.FocusReview && m.panelPlugins() {
+	if t == m.panelTab() && m.focus == core.FocusReview && m.panelPlugins() {
 		m.setFocus(core.FocusReview)
 	}
+}
+
+// focusedPluginKey is the key of the plugin screen the panel with the
+// keyboard shows, "" when none does: of the panels showing one screen,
+// that one sizes it.
+func (m *Model) focusedPluginKey() string {
+	key := func() string {
+		t := m.panelTab()
+		if !m.panelPlugins() || t == nil {
+			return ""
+		}
+		if p, ok := m.pickedPlugin(t); ok {
+			return core.PluginUIKey(t, p)
+		}
+		return ""
+	}
+	if m.focus == core.FocusReview {
+		return key()
+	}
+	if t := m.Cur(); t != nil && m.focus == core.FocusAgent {
+		if f := m.focused(t); f.Kind == core.PaneView && m.views[f] != nil {
+			var k string
+			m.viewDraw = true // only looking
+			m.inView(t, f, func() tea.Cmd { k = key(); return nil })
+			m.viewDraw = false
+			return k
+		}
+	}
+	return ""
 }

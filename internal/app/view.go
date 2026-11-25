@@ -140,6 +140,8 @@ func (m *Model) View() string {
 	term.NextFrame()
 	m.zoneFns, m.zoneTips, m.zoneAreas = m.zoneFns[:0], m.zoneTips[:0], m.zoneAreas[:0]
 	m.dialogZones, m.hintZones = noZones, noZones
+	m.underZones, m.panelZones = 0, 0
+	m.uiKeyFocused = m.focusedPluginKey()
 	frame, rects := scanZones(m.draw())
 	for _, mc := range m.fleet.Machines() {
 		if mc.Screens != nil {
@@ -180,19 +182,18 @@ func (m *Model) draw() string {
 	}
 	bodyH := m.height - m.barRows()
 	var body []string
+	under := len(m.zoneFns)
 	switch {
-	case m.reviewZoom:
-		body = m.panelLines(m.mainW(), bodyH)
 	case m.splitShown():
 		l, r := m.sides()
 		lw, rw := m.splitWidths()
 		body = besides(m.tabLines(l, lw, bodyH), m.gap(), m.tabLines(r, rw, bodyH))
-	case m.reviewOpen:
-		aw, _ := m.agentArea()
-		rw := m.mainW() - aw - 1
-		body = besides(m.agentLines(aw, bodyH), m.gap(), m.panelLines(rw, bodyH))
 	default:
 		body = m.agentLines(m.mainW(), bodyH)
+	}
+	if m.panelDlg {
+		m.underZones, m.panelZones = under, len(m.zoneFns)
+		body = m.panelDialogOver(body)
 	}
 	if m.railShown() {
 		body = besides(body, " ", m.railLines(bodyH))
@@ -231,7 +232,7 @@ func (m *Model) draw() string {
 			body = overlay(body, box, m.width)
 		}
 	}
-	if m.prefix && !(m.nav && m.sideW() > 0) {
+	if m.prefix && !(m.nav && m.sideW() > 0) && !m.railShown() {
 		// What the prefix can be followed by, over the bottom rows, until
 		// the next key. Not while the arrows walk the sidebar: it would
 		// hide the tabs walked, and the bar says what the arrows do.
@@ -739,14 +740,7 @@ func (m *Model) prefixHint(w int) []string {
 				cur = txtSt.Render("   ")
 			}
 			part = ansi.Truncate(part, max(1, w-1), "…")
-			part = m.onClick(part, func(m *Model) tea.Cmd {
-				if strings.Contains(entry.Run, " ") || panelKey(entry.Run) {
-					m.prefix, m.keyGroup = false, ""
-					return m.runCommand(entry.Run)
-				}
-				m.prefix = true
-				return m.handleKey(keyMsg(m.swapKey(entry.Run))) // as pressed
-			})
+			part = m.onClick(part, func(m *Model) tea.Cmd { return m.keyClick(entry) })
 			cur += part
 		}
 		lines = append(lines, padBg(cur, w, txtSt))

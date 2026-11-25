@@ -69,6 +69,20 @@ func NewEmbedded(src Source) Model {
 	return m
 }
 
+// SetName gives the panel a name of its own, shown before its file list's
+// title; "" for none.
+func (m Model) SetName(name string) Model {
+	m.name = name
+	return m
+}
+
+// SetFixed keeps the panel on the screen it is on, or lets m and the
+// menu move it again.
+func (m Model) SetFixed(fixed bool) Model {
+	m.fixed = fixed
+	return m
+}
+
 // SetSource has the panel read the repositories through src from now on.
 func (m Model) SetSource(src Source) Model {
 	m.src = src

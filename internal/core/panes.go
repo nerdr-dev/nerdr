@@ -188,6 +188,20 @@ func (m *Core) AddPane(t *Tab, p *PaneTab, quiet bool) Cmd {
 	return m.Tell(PaneOpenedMsg{T: m.Ref(t), P: m.PaneRef(p)})
 }
 
+// NewView opens screen, ViewChanges or ViewPlugins, in a pane of its own
+// in t, last; quiet leaves the keyboard where it is. Each of a screen's
+// panes is numbered, as terminals are.
+func (m *Core) NewView(t *Tab, screen int, quiet bool) (*PaneTab, Cmd) {
+	n := 1
+	for _, p := range t.Panes() {
+		if p.Kind == PaneView && p.Screen == screen {
+			n = max(n, p.N+1)
+		}
+	}
+	p := &PaneTab{Kind: PaneView, Screen: screen, N: n, Opened: time.Now()}
+	return p, m.AddPane(t, p, quiet)
+}
+
 // newShellIn opens a terminal in t's worktree, in a pane of its own,
 // last; quiet leaves the keyboard where it is, and env is added to its
 // environment. It returns the pane, nil when the terminal did not start.
@@ -442,6 +456,16 @@ const (
 	PaneShell
 	// PaneReview is a code review of one of the tab's agents.
 	PaneReview
+	// PaneView is one of the review panel's screens in a pane of its own:
+	// the code changes or the plugins (Screen), drawn by the client, as
+	// many of each as you like.
+	PaneView
+)
+
+// The review panel's screens a view pane can show.
+const (
+	ViewChanges = 0 // F1
+	ViewPlugins = 4 // F5
 )
 
 // PaneTab is one of a tab's panes.
@@ -462,6 +486,9 @@ type PaneTab struct {
 	Shell   *term.Pane `json:"-"`
 	N       int
 	Command string
+	// Screen is, in a view pane, the review panel's screen it shows:
+	// ViewChanges or ViewPlugins.
+	Screen int `json:",omitempty"`
 	// Opened is when the pane came with its tab, made or taken up from the
 	// session: where a client starts its last use from. Zero for one opened
 	// later, which a client hears of as it opens.
@@ -776,6 +803,15 @@ func (m *Core) PaneName(t *Tab, p *PaneTab) string {
 			return "review of " + m.AgentLabel(t, p.Of) + "…"
 		}
 		return string(p.A.Agent) + " reviews " + m.AgentLabel(t, p.Of)
+	case PaneView:
+		name := "changes"
+		if p.Screen == ViewPlugins {
+			name = "plugins"
+		}
+		if p.N > 1 {
+			name += " " + strconv.Itoa(p.N)
+		}
+		return name
 	}
 	return m.AgentLabel(t, p.A)
 }

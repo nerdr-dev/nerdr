@@ -314,8 +314,10 @@ func (m *Model) openNewAgent() tea.Cmd {
 }
 
 // paneRow is the row over t's panes, w wide: the minimised ones, each
-// with its light, to be brought back; and the buttons for new panes on
-// the right. The panes shown are named in their frames.
+// with its light, to be brought back, set off from the row as chips with
+// □ on them; and the buttons for new panes on the right, if the last
+// pane's frame has no room for them. The panes shown are named in their
+// frames.
 func (m *Model) paneRow(t *core.Tab, w int) string {
 	bar := lipgloss.NewStyle().Background(tabBarBg)
 	_, aw, _ := m.tabArea(t)
@@ -328,8 +330,8 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 	}
 	var items []barItem
 	for _, p := range small {
-		bg := tabBarBg
-		st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("245"))
+		bg := minChipBg
+		st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("252"))
 		tip := m.machineOf(t).Core.PaneName(t, p) + " · minimised"
 		part := st.Render(" ")
 		s, ok := p.Status()
@@ -339,13 +341,9 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 		case p.Kind == core.PaneShell:
 			part += lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("114")).Render("$") + st.Render(" ")
 		}
-		part += st.Render("▸" + m.machineOf(t).Core.PaneName(t, p) + " ")
+		part += st.Render(m.machineOf(t).Core.PaneName(t, p)+" ") + minChipIcon(bg)
 		part = m.tip(part, tip+" · click: go there · right-click: more · middle-click: close")
 		items = append(items, barItem{st: s, s: m.zone(part, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.paneMouse(t, p, ev) })})
-	}
-	right := ""
-	if m.mouseOn() {
-		right = m.newPaneButtons(t, tabBarBg)
 	}
 	if m.paneBars == nil {
 		m.paneBars = map[*core.Tab]*barRow{}
@@ -354,6 +352,10 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 	if row == nil {
 		row = &barRow{}
 		m.paneBars[t] = row
+	}
+	right := ""
+	if m.mouseOn() && m.btnsOut {
+		right = m.newPaneButtons(t, tabBarBg)
 	}
 	left := m.scrollBar(items, 0, row, w-lipgloss.Width(right), "pane", func(m *Model, i int) tea.Cmd {
 		if i < len(small) {
@@ -365,7 +367,8 @@ func (m *Model) paneRow(t *core.Tab, w int) string {
 }
 
 // newPaneButtons are the buttons that open a terminal, an agent or a code
-// review in a new pane, last, on background bg.
+// review in a new pane, and the code changes or the plugins in the
+// panel's pane, last, on background bg.
 func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 	st := lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("81")).Bold(true)
 	sp := lipgloss.NewStyle().Background(bg).Render(" ")
@@ -379,7 +382,9 @@ func (m *Model) newPaneButtons(t *core.Tab, bg lipgloss.Color) string {
 	}
 	return btn("terminal", "t t", "A terminal in the worktree, in a new pane", func(m *Model) tea.Cmd { return m.newShell() }) + sp +
 		btn("agent", "t a", "Another agent in the same worktree, in a new conversation", (*Model).openNewAgent) + sp +
-		btn("review", "t r", "A second agent reviews the work of the agent whose pane has the keyboard", (*Model).newReviewPane) + sp
+		btn("review", "t r", "A second agent reviews the work of the agent whose pane has the keyboard", (*Model).newReviewPane) + sp +
+		btn("changes", "z e", "The code changes in a new pane, with a file and diff of its own; F1 alone is a dialog", func(m *Model) tea.Cmd { return m.newView(core.ViewChanges) }) + sp +
+		btn("plugins", "e 5", "The plugins in a new pane, with a plugin of its own", func(m *Model) tea.Cmd { return m.newView(core.ViewPlugins) }) + sp
 }
 
 // goToPane goes to tab t and gives its pane p the keyboard.
@@ -442,22 +447,32 @@ func (m *Model) openPaneMenu(t *core.Tab, p *core.PaneTab, x, y int) {
 	m.dialog = &menu{title: "Pane", items: items, x: x, y: y, hi: 1}
 }
 
-// paneEnd is the buttons at the right of pane p's frame: minimise and
-// close, but on a tab's only pane; and, while there is no row over the
-// panes to have them, those for new panes on the last pane shown.
-func (m *Model) paneEnd(t *core.Tab, p *core.PaneTab) string {
+// paneEnd is the buttons at the right of pane p's frame, room wide at
+// most: minimise and close, but on a tab's only pane; and those for new
+// panes on the last pane shown, where they fit.
+func (m *Model) paneEnd(t *core.Tab, p *core.PaneTab, room int) string {
 	if !m.mouseOn() {
 		return ""
 	}
 	if len(t.Panes()) == 1 {
 		return m.newPaneButtons(t, "")
 	}
-	out := ""
-	if _, w, _ := m.tabArea(t); !m.rowShown(t) {
-		if cols := m.paneCols(t, w); cols[len(cols)-1].P == p {
-			out = m.newPaneButtons(t, "") + " "
+	ctl := m.paneControls(t, p)
+	if _, w, _ := m.tabArea(t); m.paneCols(t, w)[len(m.paneCols(t, w))-1].P == p {
+		// the buttons for new panes, where they fit beside − and ×; else
+		// in the row over the panes, while there is one
+		if b := m.newPaneButtons(t, "") + " " + ctl; lipgloss.Width(b) <= room {
+			return b
 		}
+		m.btnsOut = true
 	}
+	return ctl
+}
+
+// paneControls are pane p's − and ×, for minimise and close; no × on the
+// tab's own pane.
+func (m *Model) paneControls(t *core.Tab, p *core.PaneTab) string {
+	out := ""
 	st := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	out += m.tip(m.onClick(st.Render("−"), func(m *Model) tea.Cmd { return m.minimisePane(t, p) }), "Minimise · "+m.pk("t m"))
 	if p != t.OwnPane() {
@@ -478,11 +493,18 @@ func (m *Model) tabLines(t *core.Tab, w, h int) []string {
 	if mc := m.machineOf(t); mc != nil && grey(mc) {
 		return m.greyLines(mc, w, h)
 	}
-	var out []string
-	if m.rowShown(t) {
-		out = append(out, m.paneRow(t, w))
+	if !m.rowShown(t) {
+		m.btnsOut = false
+		return m.tabBody(t, w, h)
 	}
-	ch := h - len(out)
+	// The panes first: the row has the buttons that do not fit in them.
+	m.btnsOut = false
+	body := m.tabBody(t, w, h-1)
+	return append([]string{m.paneRow(t, w)}, body...)
+}
+
+// tabBody is tab t's panes side by side, w×ch, under the row over them.
+func (m *Model) tabBody(t *core.Tab, w, ch int) []string {
 	cols := m.paneCols(t, w)
 	var body []string
 	for i, c := range cols {
@@ -493,21 +515,15 @@ func (m *Model) tabLines(t *core.Tab, w, h int) []string {
 		}
 		body = besides(body, " ", lines)
 	}
-	return append(out, body...)
+	return body
 }
 
 // paneColumn draws t's pane p in its frame, w×h.
 func (m *Model) paneColumn(t *core.Tab, p *core.PaneTab, w, h int) []string {
-	title := ""
-	if one := len(t.Panes()) == 1; !one || m.splitShown() {
-		title = m.machineOf(t).Core.PaneName(t, p)
-		if s, ok := p.Status(); ok {
-			title = m.tip(light(s), statusTip(s)) + " " + title
-		}
-		if m.splitShown() && one {
-			title += dim(" · " + t.Name)
-		}
+	if p.Kind == core.PaneView {
+		return m.viewLines(t, p, w, h) // framed by the panel itself
 	}
+	title := m.paneTitle(t, p)
 	active := m.focus == core.FocusAgent && t == m.Cur() && p == m.focused(t)
 	iw, ih := w-2, h-2
 	var body []string
@@ -520,7 +536,31 @@ func (m *Model) paneColumn(t *core.Tab, p *core.PaneTab, w, h int) []string {
 	default:
 		body = m.paneLines(t, p, iw, ih)
 	}
-	return framedEnd(body, w, h, title, m.paneEnd(t, p), active)
+	return framedEnd(body, w, h, title, m.paneEnd(t, p, endRoom(title, w)), active)
+}
+
+// endRoom is what the top edge of a frame w wide, titled title, has for
+// the buttons at its right.
+func endRoom(title string, w int) int {
+	if title == "" {
+		return w - 6
+	}
+	return w - lipgloss.Width(title) - 8
+}
+
+// paneTitle is the name in pane p's frame: none on a tab's only pane.
+func (m *Model) paneTitle(t *core.Tab, p *core.PaneTab) string {
+	title := ""
+	if one := len(t.Panes()) == 1; !one || m.splitShown() {
+		title = m.machineOf(t).Core.PaneName(t, p)
+		if s, ok := p.Status(); ok {
+			title = m.tip(light(s), statusTip(s)) + " " + title
+		}
+		if m.splitShown() && one {
+			title += dim(" · " + t.Name)
+		}
+	}
+	return title
 }
 
 // paneLines draws the program in t's pane p into a w×h area: its agent or
@@ -621,22 +661,19 @@ func (m *Model) cycleFocus() tea.Cmd {
 	if t == nil {
 		return nil
 	}
-	_, w, _ := m.tabArea(t)
-	cols := m.paneCols(t, w)
+	ps := t.Panes()
 	if m.focus == core.FocusReview {
-		return m.focusPane(t, cols[0].P)
+		return m.focusPane(t, ps[0])
 	}
-	i := slices.IndexFunc(cols, func(c paneCol) bool { return c.P == m.focused(t) })
+	// Every pane, the minimised ones too, which are shown as they get it.
+	i := slices.Index(ps, m.focused(t))
 	switch {
-	case i+1 < len(cols):
-		return m.focusPane(t, cols[i+1].P)
+	case i+1 < len(ps):
+		return m.focusPane(t, ps[i+1])
 	case m.splitTab() != nil && m.splitShown():
 		return m.selectTab(m.fleet.TabIndex(m.splitTab()))
-	case !m.reviewOpen && len(cols) > 1:
-		return m.focusPane(t, cols[0].P)
 	}
-	m.setFocus(core.FocusReview)
-	return m.resize()
+	return m.focusPane(t, ps[0])
 }
 
 // closeLine is what closing the pane of a, at work, costs.
@@ -758,4 +795,13 @@ func (m *Model) CurAgent() *core.Tab {
 		return a
 	}
 	return t
+}
+
+// minChipBg is the background of a minimised pane in the row over the
+// panes: lighter than the row, so it stands out as a thing put away.
+const minChipBg = lipgloss.Color("238")
+
+// minChipIcon is the □ on a minimised pane's chip, that brings it back.
+func minChipIcon(bg lipgloss.Color) string {
+	return lipgloss.NewStyle().Background(bg).Foreground(lipgloss.Color("81")).Bold(true).Render("□ ")
 }

@@ -149,8 +149,8 @@ func TestF4AgainTakesTheKeyboard(t *testing.T) {
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyDown})
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.focus != core.FocusAgent || !m.panelMessages() {
-		t.Fatalf("esc gives the agent the keyboard, the messages stay: focus %v", m.focus)
+	if m.focus != core.FocusAgent || m.panelMessages() {
+		t.Fatalf("esc gives the agent the keyboard, the dialog closing: focus %v", m.focus)
 	}
 	m.Update(f3)
 	if m.focus != core.FocusReview || m.msgCursor != core.NoMessage {
@@ -226,7 +226,7 @@ func TestSkillsScreen(t *testing.T) {
 		t.Fatalf("F4 opens the skills with the keyboard: shown %v, focus %v", m.panelSkills(), m.focus)
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"F4 skills", "nerdr-explain", "nerdr-handoff", "nerdr-spinoff", "nerdr-tools", "✗"} {
+	for _, want := range []string{"skills", "nerdr-explain", "nerdr-handoff", "nerdr-spinoff", "nerdr-tools", "✗"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("the screen lacks %q:\n%s", want, view)
 		}
@@ -251,8 +251,8 @@ func TestSkillsScreen(t *testing.T) {
 		t.Fatalf("once installed:\n%s", body)
 	}
 	m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	if m.focus != core.FocusAgent || !m.panelSkills() {
-		t.Fatalf("esc gives the agent the keyboard: focus %v", m.focus)
+	if m.focus != core.FocusAgent || m.panelSkills() {
+		t.Fatalf("esc gives the agent the keyboard, the dialog closing: focus %v", m.focus)
 	}
 }
 

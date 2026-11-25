@@ -26,7 +26,7 @@ func paneModel(t *testing.T) *Model {
 	m.home().Core.Cfg.Shell = "cat"
 	m.home().Core.Cfg.PaneMinWidth = 50
 	m.Cur().Dir = t.TempDir()
-	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
+	m.Update(tea.WindowSizeMsg{Width: 145, Height: 24})
 	t.Cleanup(m.Shutdown)
 	return m
 }
@@ -40,7 +40,7 @@ func TestOneAgentHasNoRow(t *testing.T) {
 		t.Fatal("no row over a lone agent")
 	}
 	view := ansi.Strip(m.View())
-	for _, want := range []string{"+terminal", "+agent", "+review", "F1 changes"} {
+	for _, want := range []string{"+terminal", "+agent", "+review"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("no %q on the screen:\n%s", want, view)
 		}
@@ -66,7 +66,7 @@ func TestPanesFoldTheOldestWhenNarrow(t *testing.T) {
 	if m.paneShown(tb, agent) || !m.paneShown(tb, first) || !m.paneShown(tb, second) {
 		t.Fatal("the agent, used longest ago, should be minimised; the two terminals shown")
 	}
-	if v := ansi.Strip(m.View()); !strings.Contains(v, "▸claude") {
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "claude □") {
 		t.Fatalf("the row should show the agent minimised:\n%s", v)
 	}
 	m.goToPane(tb, agent)
@@ -74,7 +74,7 @@ func TestPanesFoldTheOldestWhenNarrow(t *testing.T) {
 		t.Fatal("going to the agent shows it, the terminal used longest ago folding in its place")
 	}
 	// The review panel takes room: only the pane with the keyboard is left.
-	m.handleKey(keyMsg("f1"))
+	m.runCommand("z e")
 	if !m.paneShown(tb, agent) || m.paneShown(tb, second) {
 		t.Fatal("beside the panel, the pane with the keyboard stays")
 	}
@@ -97,7 +97,7 @@ func TestMinimiseAndClose(t *testing.T) {
 	if m.pl(tb.Panes()[0]).small {
 		t.Fatal("the last pane shown stays")
 	}
-	clickOn(t, m, "▸terminal", tea.MouseButtonLeft)
+	clickOn(t, m, "terminal □", tea.MouseButtonLeft)
 	if m.pl(sh).small || m.focused(tb) != sh {
 		t.Fatal("a click on it in the row should bring it back, with the keyboard")
 	}
@@ -111,8 +111,8 @@ func TestMinimiseAndClose(t *testing.T) {
 	}
 }
 
-// TestTabCyclesThePanes: the prefix and tab go through the panes shown,
-// then to the review panel while it is open, and back.
+// TestTabCyclesThePanes: the prefix and tab go through the panes, the
+// minimised ones too, and round.
 func TestTabCyclesThePanes(t *testing.T) {
 	m := paneModel(t)
 	tb := m.Cur()
@@ -126,19 +126,16 @@ func TestTabCyclesThePanes(t *testing.T) {
 	if m.focused(tb) != tb.Panes()[0] || m.focus != core.FocusAgent {
 		t.Fatal("with the panel closed, tab from the last pane goes round to the first")
 	}
-	m.runCommand("tab")
-	m.reviewOpen = true
-	m.home().Core.Cfg.PaneMinWidth = 20
-	m.resize()
-	m.runCommand("tab")
-	if m.focus != core.FocusReview {
-		t.Fatal("tab from the last pane should go to the review panel")
+	// A minimised pane is gone to as well, and shown.
+	term := tb.Panes()[1]
+	m.minimisePane(tb, term)
+	if m.paneShown(tb, term) {
+		t.Fatal("t m should minimise the terminal")
 	}
 	m.runCommand("tab")
-	if m.focus != core.FocusAgent || m.focused(tb) != tb.Panes()[0] {
-		t.Fatal("tab from the panel should go back to the first pane")
+	if m.focused(tb) != term || !m.paneShown(tb, term) {
+		t.Fatal("tab should go to the minimised terminal too, and show it")
 	}
-	m.runCommand("t →")
 	m.runCommand("t →")
 	if m.focused(tb) != tb.Panes()[0] {
 		t.Fatal("t → goes round the row")
@@ -532,12 +529,12 @@ func TestFramesNameThePanes(t *testing.T) {
 	tb := m.Cur()
 	m.runCommand("t t")
 	v := ansi.Strip(m.View())
-	if m.rowShown(tb) || !strings.Contains(v, "╭─ ") || !strings.Contains(v, "terminal") || strings.Contains(v, "▸") {
+	if m.rowShown(tb) || !strings.Contains(v, "╭─ ") || !strings.Contains(v, "terminal") || strings.Contains(v, "□") {
 		t.Fatalf("two panes shown: named in their frames, no row:\n%s", v)
 	}
 	m.runCommand("t m")
 	v = ansi.Strip(m.View())
-	if !m.rowShown(tb) || !strings.Contains(v, "▸terminal") || strings.Contains(v, "▸claude") {
+	if !m.rowShown(tb) || !strings.Contains(v, "terminal □") || strings.Contains(v, "claude □") {
 		t.Fatalf("the row should have the minimised terminal alone:\n%s", v)
 	}
 }
@@ -559,57 +556,6 @@ func TestShellTitle(t *testing.T) {
 		if got := core.ShellTitle(c.title, wt); got != c.want {
 			t.Errorf("shellTitle(%q) = %q, want %q", c.title, got, c.want)
 		}
-	}
-}
-
-// TestPanelMakesRoomForPanes: the review panel kept open is made small
-// while the tab's panes would not fit beside it, comes back when they
-// would, and stays when opened by hand all the same.
-func TestPanelMakesRoomForPanes(t *testing.T) {
-	m := paneModel(t)
-	tb := m.Cur()
-	m.setLayout("=")
-	if !m.reviewOpen || m.panelSmall {
-		t.Fatal("the panel should start open")
-	}
-	for i := 0; i < 4 && !m.panelAuto; i++ {
-		m.runCommand("t t")
-	}
-	if !m.panelAuto || !m.panelSmall || m.reviewOpen || len(m.paneCols(tb, 1000)) < 2 {
-		t.Fatal("with more panes than fit beside it, the panel should be made small")
-	}
-	m.handleKey(keyMsg("f1"))
-	if !m.reviewOpen || m.focus != core.FocusReview {
-		t.Fatal("an F-key still opens it, for a look")
-	}
-	m.goToPane(tb, m.focused(tb))
-	if m.reviewOpen {
-		t.Fatal("back at the panes, it folds again")
-	}
-	m.togglePanelSmall()
-	if !m.reviewOpen || m.panelSmall || m.panelAuto || !m.panelKept {
-		t.Fatal("« keeps it open all the same")
-	}
-	m.togglePanelSmall()
-	m.togglePanelSmall()
-	m.goToPane(tb, tb.Panes()[len(tb.Panes())-1])
-	m.runCommand("t x")
-	for len(tb.Panes()) > 2 {
-		m.goToPane(tb, tb.Panes()[len(tb.Panes())-1])
-		m.runCommand("t x")
-	}
-	if !m.reviewOpen || m.panelSmall || m.panelAuto || m.panelKept {
-		t.Fatal("once the panes fit, the panel kept open is as it was")
-	}
-	m.runCommand("t m")
-	m.runCommand("t t")
-	m.runCommand("t t")
-	if !m.panelAuto {
-		t.Fatal("too many panes again: small again")
-	}
-	m.setLayout("=")
-	if !m.reviewOpen || m.panelAuto {
-		t.Fatal("a layout picked shows the panel as it says")
 	}
 }
 

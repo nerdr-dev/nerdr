@@ -61,7 +61,7 @@ func remoteTUI(t *testing.T, argv ...string) (*Model, *core.Core, *core.Tab, cha
 	})
 
 	yes, no := true, false
-	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
+	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, Mouse: &yes}
 	told := make(chan any, 64)
 	// A router, as in a terminal: what has the keyboard is told core.
 	router := input.New(strings.NewReader(""), 0x11)

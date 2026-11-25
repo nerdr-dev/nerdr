@@ -617,3 +617,51 @@ func lookForPluginsGone(t *testing.T, c *core.Core, now time.Time) {
 		t.Fatal("the look did not end")
 	}
 }
+
+// Going to another tab and back leaves a plugins pane's screen without the
+// keyboard: coming back does not type into it.
+func TestPluginUIFocusClearedByAnotherTab(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	writePlugin(t, filepath.Join(cfg, "nerdr", "plugins"), "mine", "cat\n")
+	m := testModel(t)
+	m.router = input.New(nil, 0x11)
+	tb := m.Cur()
+	tb.Dir = t.TempDir()
+	defer m.Shutdown()
+	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	m.Update(keyMsg("enter"))
+	m.Update(keyMsg("y"))
+	if m.pluginUIPane() == nil {
+		t.Fatal("the screen does not have the keyboard")
+	}
+	p := m.focused(tb)
+	m.selectTab(1)
+	m.selectTab(0)
+	m.focusPane(tb, p)
+	if m.pluginUIPane() != nil {
+		t.Fatal("back from another tab, the keyboard went into the screen by itself")
+	}
+}
+
+// A dialog put in the place of a plugins pane's question is the window's:
+// its keys are not the pane's.
+func TestDialogInPlaceOfAPanesQuestion(t *testing.T) {
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	writePlugin(t, filepath.Join(cfg, "nerdr", "plugins"), "mine", "cat\n")
+	m := testModel(t)
+	m.router = input.New(nil, 0x11)
+	m.Cur().Dir = t.TempDir()
+	defer m.Shutdown()
+	m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	m.Update(keyMsg("enter"))
+	if _, ok := m.dialog.(*confirm); !ok || m.dialogView == nil {
+		t.Fatalf("the question should be the pane's: %T", m.dialog)
+	}
+	m.openPalette()
+	m.Update(keyMsg("x"))
+	if m.dialogView != nil {
+		t.Fatal("the palette in its place should be the window's")
+	}
+}

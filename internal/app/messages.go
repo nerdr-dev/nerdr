@@ -23,11 +23,10 @@ import (
 // until they are given to another agent (e) or deleted.
 
 // panelMessages reports whether the review panel shows the messages.
-func (m *Model) panelMessages() bool { return m.reviewOpen && m.review.Messages() }
+func (m *Model) panelMessages() bool { return m.panelShown() && m.review.Messages() }
 
 // openMessages shows the messages in the review panel, with the keyboard.
 func (m *Model) openMessages() tea.Cmd {
-	m.reviewOpen = true
 	m.saved.on = false
 	cmd := m.reviewKey(tea.KeyMsg{Type: tea.KeyF3})
 	m.setFocus(core.FocusReview)

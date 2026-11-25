@@ -27,11 +27,11 @@ import (
 // likes: see pluginEvent. A plugin that watches goes on, and what it
 // prints is sent to the agent as messages.
 
-// showPluginRun opens F5 on plugin p, which run has just started, when
-// it is the tab looked at and p's open does not say otherwise, without
-// taking the keyboard: the user sees it
-// run beside the agent. A screen of the panel's they have the keyboard
-// in, or a plugin they are at in F5, is not taken from them.
+// showPluginRun opens the tab's plugins pane on plugin p, which run has
+// just started, when it is the tab looked at and p's open does not say
+// otherwise, without taking the keyboard: the user sees it run beside
+// the agent. A screen of the panel's they have the keyboard in, or a
+// plugins pane they are in, is not taken from them.
 func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun) tea.Cmd {
 	name := p.Name
 	if !p.Opens() {
@@ -47,19 +47,40 @@ func (m *Model) showPluginRun(t *core.Tab, p plugin.Plugin, run *core.PluginRun)
 		}
 		return nil
 	}
+	pv := m.viewOfScreen(t, core.ViewPlugins)
 	var cmd tea.Cmd
-	if !m.panelPlugins() {
-		m.reviewOpen = true
-		cmd = m.reviewKey(tea.KeyMsg{Type: tea.KeyF5})
+	if pv == nil {
+		cmd = m.do(core.NewView{T: m.fleet.Ref(t), Screen: core.ViewPlugins, Quiet: true})
+		if pv = m.viewOfScreen(t, core.ViewPlugins); pv == nil {
+			// Opened on another machine's core: picked once it is here.
+			if m.viewPick == nil {
+				m.viewPick = map[*core.Tab]string{}
+			}
+			m.viewPick[t] = p.Dir
+			return cmd
+		}
+	} else if m.viewFocused(t, pv) {
+		return nil
 	}
+	m.pl(pv).small = false
+	m.viewOf(t, pv)
+	pick := m.inView(t, pv, func() tea.Cmd {
+		m.pickPlugin(t, p.Dir)
+		return nil
+	})
+	return tea.Batch(cmd, pick, m.resize())
+}
+
+// pickPlugin picks the plugin in dir in the panel's list, its screen
+// without the keyboard.
+func (m *Model) pickPlugin(t *core.Tab, dir string) {
 	m.pluginList(t)
 	for i, q := range m.plugins.list {
-		if q.Dir == p.Dir {
+		if q.Dir == dir {
 			m.plugins.pick(i)
 			m.plugins.uiFocus = ""
 		}
 	}
-	return tea.Batch(cmd, m.resize())
 }
 
 // runState is the light and the words of run, in a list's row: whether it
@@ -166,8 +187,8 @@ func (q *runQuestion) answered(m *Model) {
 	if m.dialog == q.dialog {
 		m.dialog = nil
 	}
-	if m.plugins.asking == q {
-		m.plugins.asking = nil
+	if m.pluginAsking == q {
+		m.pluginAsking = nil
 	}
 }
 
@@ -227,6 +248,6 @@ func (m *Model) askPluginRun(q core.Question) {
 		yes:    func(m *Model) tea.Cmd { return rq.answer(m, core.AnswerAllowed) },
 		no:     func(m *Model) tea.Cmd { return rq.answer(m, core.RunDeclined) },
 	}
-	m.plugins.asking = rq
+	m.pluginAsking = rq
 	m.dialog = rq.dialog
 }

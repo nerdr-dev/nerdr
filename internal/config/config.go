@@ -36,15 +36,6 @@ type Config struct {
 	// taken from the folder nerdr was started in, beside it when that is
 	// a repository.
 	WorktreesDir string `toml:"worktrees_dir" scope:"core"`
-	// PanelWidth is the F-menu's share of the window, in percent, beside
-	// the agent.
-	PanelWidth int `toml:"panel_width" scope:"client"`
-	// Layout is the layout at start: "normal" (the agent and the F-menu
-	// beside it, PanelWidth wide), "wide" (the agent with 75%), "small"
-	// (the F-menu as a column of its F-keys, opened by one and folded
-	// again when the keyboard goes back to the agent), "agent" (the agent
-	// alone) or "panel" (the F-menu alone).
-	Layout string `toml:"layout" scope:"client"`
 	// Agents overrides how each agent kind is started.
 	Agents map[agents.Kind]agents.Spec `toml:"agents" scope:"core"`
 	// Notify is when an agent's tab tells you it needs you: a desktop
@@ -78,10 +69,11 @@ type Config struct {
 	// hard to reach: a Mac laptop's are brightness and volume unless fn
 	// is held. F1-F4 work either way.
 	FunctionKeys *bool `toml:"function_keys" scope:"client"`
-	// PanelLabels is whether the review panel's column of screens names
-	// each beside its F-key; off, the column has the F-keys alone and is
-	// narrower.
-	PanelLabels *bool `toml:"panel_labels" scope:"client"`
+	// KeyPanel is whether a narrow column on the right shows the prefix's
+	// keys all the time, each with what it does, a group opening below
+	// itself when its key is pressed. Off, they show over the bottom rows
+	// while nerdr waits for the key after the prefix.
+	KeyPanel *bool `toml:"key_panel" scope:"client"`
 	// PaneMinWidth is the narrowest, in columns, a tab's panes are shown
 	// side by side: past it, the ones used longest ago are minimised to
 	// the row over them.
@@ -322,14 +314,6 @@ func defaults(c Config) Config {
 		c.WorktreesDir = DefaultWorktreesDir
 	}
 	c.WorktreesDir = ExpandHome(c.WorktreesDir)
-	if c.PanelWidth <= 0 || c.PanelWidth >= 90 {
-		c.PanelWidth = 50
-	}
-	switch c.Layout {
-	case "normal", "wide", "small", "agent", "panel":
-	default:
-		c.Layout = "normal"
-	}
 	switch c.Notify {
 	case "":
 		c.Notify = "all"
@@ -366,7 +350,7 @@ func defaults(c Config) Config {
 	if c.PaneMinWidth <= 0 {
 		c.PaneMinWidth = DefaultPaneMinWidth
 	}
-	for _, b := range []**bool{&c.CloseMerged, &c.PRNotify, &c.IssueNotify, &c.FunctionKeys, &c.PanelLabels, &c.ClaudeStatusLine} {
+	for _, b := range []**bool{&c.CloseMerged, &c.PRNotify, &c.IssueNotify, &c.FunctionKeys, &c.ClaudeStatusLine} {
 		if *b == nil {
 			t := true
 			*b = &t

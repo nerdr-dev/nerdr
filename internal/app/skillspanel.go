@@ -54,7 +54,7 @@ type skillsView struct {
 }
 
 // panelSkills reports whether the review panel shows the skills.
-func (m *Model) panelSkills() bool { return m.reviewOpen && m.review.Skills() }
+func (m *Model) panelSkills() bool { return m.panelShown() && m.review.Skills() }
 
 // skillsKey handles a key while the skills have the keyboard.
 func (m *Model) skillsKey(msg tea.KeyMsg) tea.Cmd {

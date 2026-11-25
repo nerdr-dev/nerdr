@@ -33,7 +33,6 @@ func (m *Model) showBranchPR() tea.Cmd {
 		return nil
 	}
 	m.dialog = nil
-	m.reviewOpen = true
 	cmd := m.review.ShowBranchPR()
 	m.setFocus(core.FocusReview)
 	return tea.Batch(cmd, m.syncPRPanel(), m.resize())

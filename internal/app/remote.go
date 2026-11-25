@@ -355,7 +355,9 @@ func (m *Model) coreGone(mc *fleet.Machine, why string) tea.Cmd {
 		return m.goneFor(mc, "the connection to nerdr's core has closed", "the connection to nerdr's core has closed")
 	}
 	// What the review panel asked will not be answered.
-	m.reviewAsk.FailAll("the connection to nerdr's core has closed")
+	for _, k := range m.askersOn(mc) {
+		k.FailAll("the connection to nerdr's core has closed")
+	}
 	mc.Away, mc.Err = true, ""
 	m.fleet.Bump()
 	m.syncInput()

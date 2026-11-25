@@ -119,12 +119,11 @@ func (h *historyView) pick(i int) {
 }
 
 // panelHistory reports whether the review panel shows the history.
-func (m *Model) panelHistory() bool { return m.reviewOpen && m.review.History() }
+func (m *Model) panelHistory() bool { return m.panelShown() && m.review.History() }
 
 // openHistory shows the history in the review panel, with the keyboard,
 // with the message seq picked: the one the bar was cut short in.
 func (m *Model) openHistory(seq int) tea.Cmd {
-	m.reviewOpen = true
 	m.saved.on = false
 	if seq != 0 {
 		m.history.picked, m.history.scroll = seq, 0

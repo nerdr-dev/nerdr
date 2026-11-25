@@ -107,8 +107,8 @@ func allowedPlugin(t *testing.T, cfg, name, toml string) plugin.Plugin {
 	return p
 }
 
-// An agent's run is nerdr's, as the user, in the agent's folder: F5
-// opens on it without the keyboard, its light on, who runs it, and what
+// An agent's run is nerdr's, as the user, in the agent's folder: a
+// plugins pane opens on it without the keyboard, its light on, who runs it, and what
 // the plugin shows of it — the parameters, and what the agent gets back,
 // which the command waiting on it reads.
 func TestPluginRunShown(t *testing.T) {
@@ -134,8 +134,8 @@ func TestPluginRunShown(t *testing.T) {
 		"[[params]]\nname = \"repos\"\ntype = \"multi\"\n")
 
 	run := started(t, m, askRun(m, tb, "deploy", map[string]any{"repos": []any{"api", "web"}}))
-	if !m.panelPlugins() || m.focus == core.FocusReview {
-		t.Fatalf("a run should open F5 and leave the keyboard where it was: plugins %v, focus %v", m.panelPlugins(), m.focus)
+	if m.viewOfScreen(tb, core.ViewPlugins) == nil || m.focused(tb) != tb.OwnPane() || m.focus != core.FocusAgent {
+		t.Fatalf("a run should open the plugins in a pane and leave the keyboard where it was: focus %v", m.focus)
 	}
 	if view := ansi.Strip(m.View()); !strings.Contains(view, "runs · ") {
 		t.Fatalf("F5 does not say it runs:\n%s", view)

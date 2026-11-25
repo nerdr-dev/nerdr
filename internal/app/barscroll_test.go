@@ -43,7 +43,7 @@ func TestBarWindow(t *testing.T) {
 func manyTabs(t *testing.T, w int) *Model {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	yes, no := true, false
-	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
+	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, Mouse: &yes}
 	var tabs []state.Tab
 	for i := range 10 {
 		n := "branch-number-" + strconv.Itoa(i+1)
@@ -161,7 +161,7 @@ func TestRoomyBarDoesNotAsk(t *testing.T) {
 func TestRepositoriesLeaveRoomForMessages(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	yes, no := true, false
-	cfg := config.Config{Prefix: "ctrl+q", PanelWidth: 40, Layout: "agent", TabDetails: &no, Mouse: &yes}
+	cfg := config.Config{Prefix: "ctrl+q", TabDetails: &no, Mouse: &yes}
 	var tabs []state.Tab
 	for i := range 12 {
 		n := "repository-" + strconv.Itoa(i+10)

@@ -115,15 +115,6 @@ func (d *settings) reopen(m *Model) tea.Cmd {
 	return m.openSettingsAt(key)
 }
 
-// layoutNotes say what layout's choices look like.
-var layoutNotes = map[string]string{
-	"normal": "agent | F-menu",
-	"wide":   "agent 75% | F-menu",
-	"small":  "agent | F-keys, opened for a look",
-	"agent":  "agent | F-keys",
-	"panel":  "F-menu alone",
-}
-
 // settingRows are the dialog's lines: nerdr's settings in groups, the
 // review's, then each agent that can be started.
 func (m *Model) settingRows() []settingRow {
@@ -149,25 +140,13 @@ func (m *Model) settingRows() []settingRow {
 			`function_keys = false`),
 
 		{label: "Screen"},
-		{key: "layout", kind: sChoice, choices: []string{"normal", "wide", "small", "agent", "panel"}, def: `"normal"`, notes: layoutNotes, restart: true,
-			desc: "How the window is split between the agent and the F-menu (the review panel's screens F1-F6) when nerdr starts. The column of F-keys on the right is always there; the prefix and z l, or z k, change the rest while nerdr runs.\n" +
-				"normal: the agent on the left, the F-menu open beside the column, as wide as panel_width.\n" +
-				"wide: the same, but the agent gets 75% of the width.\n" +
-				"small: the F-menu closed. An F-key opens it, and it folds again when you go back to the agent.\n" +
-				"agent: the F-menu closed until an F-key opens it, and open until you close it.\n" +
-				"panel: the F-menu alone, over the whole window.",
-			example: `layout = "wide"`},
-		{key: "panel_width", kind: sInt, lo: 10, hi: 89, def: "50",
-			desc: "How much of the window the F-menu takes when it is beside the agent, in percent. The agent gets the rest.\n" +
-				"50 splits the window in two halves; 35 gives the agent about two thirds.",
-			example: `panel_width = 35`},
-		b("panel_labels", "true",
-			"Shows a short name beside each F-key in the column on the right: F1 changes, F2 github, F3 tasks, F4 skills.\n"+
-				"Turn it off for a narrower column with the F-keys alone; resting the pointer on one still says what it is.",
-			`panel_labels = false`),
+		b("key_panel", "false",
+			"Shows nerdr's keys all the time in a narrow column on the right, each with what it does. The keys of a group, such as a for the agent, open below it when you press the prefix and its key.\n"+
+				"Off, the keys show over the bottom rows only while nerdr waits for the key after the prefix.",
+			`key_panel = true`),
 		{key: "pane_min_width", kind: sInt, lo: 20, hi: 400, def: "60",
 			desc: "The narrowest, in columns, the panes of a tab are shown side by side: its agent, and the terminals, agents and reviews opened beside it.\n" +
-				"When there are more panes than fit at this width, the F-menu kept open is made small first, and opens again once they fit beside it. Past that, the ones you used longest ago are minimised into the row above them. Click one there to bring it back; the one you are in is always shown.",
+				"When there are more panes than fit at this width, the ones you used longest ago are minimised into the row above them. Click one there to bring it back; the one you are in is always shown.",
 			example: `pane_min_width = 80`},
 		{key: "tab_bar", kind: sChoice, choices: []string{"top", "left", "left-small"}, def: `"left"`,
 			desc: "Where the repositories and their tabs are shown. The prefix and z t switch between top and left while nerdr runs, z m between left and left-small.\n" +
@@ -685,7 +664,6 @@ var restartSettings = []struct {
 }{
 	{"prefix", func(c config.Config) string { return c.Prefix }},
 	{"worktrees_dir", func(c config.Config) string { return c.WorktreesDir }},
-	{"layout", func(c config.Config) string { return c.Layout }},
 	{"mouse", func(c config.Config) string { return fmt.Sprint(c.Mouse != nil && *c.Mouse) }},
 	{"install", func(c config.Config) string { return c.Install }},
 	{"data_dir", func(c config.Config) string { return c.DataDir }},
@@ -722,7 +700,7 @@ func (m *Model) reloadConfig() tea.Cmd {
 			pending = append(pending, rs.key)
 		}
 	}
-	c.Prefix, c.WorktreesDir, c.Layout, c.Mouse = old.Prefix, old.WorktreesDir, old.Layout, old.Mouse
+	c.Prefix, c.WorktreesDir, c.Mouse = old.Prefix, old.WorktreesDir, old.Mouse
 	c.Install, c.DataDir, c.EnabledSkills, c.FPS = old.Install, old.DataDir, old.EnabledSkills, old.FPS
 	// The TUI's own settings are each machine's copy's too, and go to
 	// each machine's core.
@@ -756,21 +734,22 @@ func (m *Model) reloadConfig() tea.Cmd {
 		m.sideBar, m.sideSmall = strings.HasPrefix(c.TabBar, "left"), c.TabBar == "left-small"
 		resize = true
 	}
-	if old.FunctionKeys == nil || *c.FunctionKeys != *old.FunctionKeys {
-		m.review = m.review.SetScreenKeys(m.screenMenuKeys())
+	// The dialog's panel, and each view pane's.
+	set := func() tea.Cmd {
+		if old.FunctionKeys == nil || *c.FunctionKeys != *old.FunctionKeys {
+			m.review = m.review.SetScreenKeys(m.screenMenuKeys())
+		}
+		if c.GitHubRefresh != old.GitHubRefresh {
+			m.review = m.review.SetPRRefresh(home.Core.GithubEvery(core.PrPanelEvery))
+		}
+		var colors tea.Cmd
+		if c.DiffColors != old.DiffColors {
+			m.review, colors = m.review.SetDiffColors(c.DiffColors)
+		}
+		return colors
 	}
-	if c.GitHubRefresh != old.GitHubRefresh {
-		m.review = m.review.SetPRRefresh(home.Core.GithubEvery(core.PrPanelEvery))
-	}
-	var colors tea.Cmd
-	if c.DiffColors != old.DiffColors {
-		m.review, colors = m.review.SetDiffColors(c.DiffColors)
-	}
-	if c.PanelWidth != old.PanelWidth {
-		m.reviewWidth = c.PanelWidth
-		resize = true
-	}
-	if c.PaneMinWidth != old.PaneMinWidth || core.IsOn(c.PanelLabels) != core.IsOn(old.PanelLabels) {
+	colors := tea.Batch(set(), m.eachView(func(*core.Tab, *core.PaneTab) tea.Cmd { return set() }))
+	if c.PaneMinWidth != old.PaneMinWidth || core.IsOn(c.KeyPanel) != core.IsOn(old.KeyPanel) {
 		resize = true
 	}
 	if resize {
