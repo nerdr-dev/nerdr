@@ -347,9 +347,11 @@ func (m *Model) tabList(w, h int, small bool) []string {
 			return m.openWizard()
 		}), "New worktree, in this repository, with a tab of its own"))
 	}
+	// "tabs in" before the repository, so the list says what it is; a
+	// long name is cut at its end and the "tabs in" stays.
 	title := "tabs"
 	if g != "" {
-		title = g
+		title = "tabs in " + g
 	}
 	if small {
 		title = ""
