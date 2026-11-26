@@ -37,6 +37,16 @@ func TestCodexLimits(t *testing.T) {
 	if !ok || r.Session.Used != 20 || r.Weekly.Minutes != 10080 || r.Plan != "plus" || *r.Context != 25 {
 		t.Fatalf("%+v %v", r, ok)
 	}
+	// A plan with only a weekly window gives it as the primary one.
+	only := `{"type":"event_msg","payload":{"type":"token_count","info":null,"rate_limits":{"limit_id":"codex","primary":{"used_percent":19.0,"window_minutes":10080,"resets_at":1795970576},"secondary":null,"plan_type":"prolite"}}}
+`
+	if err := os.WriteFile(filepath.Join(dir, "rollout-x.jsonl"), []byte(only), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	r, _, ok = Codex(home)
+	if !ok || r.Session != nil || r.Weekly == nil || r.Weekly.Used != 19 || r.Plan != "prolite" {
+		t.Fatalf("weekly only: %+v %v", r, ok)
+	}
 	if _, _, ok := Codex(t.TempDir()); ok {
 		t.Fatal("no logs, no limits")
 	}
