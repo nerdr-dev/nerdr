@@ -202,13 +202,40 @@ type AddMessages struct {
 	To   []TabRef
 	Text string
 	Auto bool
+	// Token, when set, has core tell the client what it queued, by a
+	// MessagesQueuedMsg with it: for what is to follow only once the
+	// message is queued for every agent To, such as review comments taken
+	// away once it has them. With one, the message is queued for all of
+	// them or none: sent again, it would reach those it did twice.
+	Token string `json:",omitempty"`
 }
 
 func (q AddMessages) Do(m *Core) Cmd {
+	var to []*Tab
+	missing := 0
 	for _, r := range q.To {
-		if a := m.ByRef(r); a != nil {
-			m.AddMessage(a, q.Text, q.Auto)
+		if a := m.ByRef(r); a != nil && strings.TrimSpace(q.Text) != "" {
+			to = append(to, a)
+		} else {
+			missing++
 		}
 	}
-	return nil
+	if q.Token != "" && missing > 0 {
+		to = nil
+	}
+	for _, a := range to {
+		m.AddMessage(a, q.Text, q.Auto)
+	}
+	if q.Token == "" {
+		return nil
+	}
+	return m.Tell(MessagesQueuedMsg{Token: q.Token, Missing: missing})
+}
+
+// MessagesQueuedMsg is what AddMessages with Token queued: Missing is how
+// many of the agents it was for were gone, and then it was queued for
+// none.
+type MessagesQueuedMsg struct {
+	Token   string
+	Missing int
 }

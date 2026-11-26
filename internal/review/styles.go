@@ -102,6 +102,7 @@ var (
 	cursorMarkStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 	selStyle        = lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231"))
 	whyStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("179")).Italic(true)
+	commentStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 	toastStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
 
 	numStyle, addNumStyle, delNumStyle, hunkNumStyle lipgloss.Style

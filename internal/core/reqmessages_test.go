@@ -60,3 +60,29 @@ func TestMessageRequestsDuplicates(t *testing.T) {
 		}
 	})
 }
+
+// TestAddMessagesSaysWhatItQueued covers a message with a token: core
+// tells the client whether it queued it for every agent it was for, as
+// what follows (review comments taken away) depends on it.
+func TestAddMessagesSaysWhatItQueued(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	kept := &keptClient{}
+	tab := &Tab{Tab: state.Tab{ID: "a", Name: "a", Dir: t.TempDir()}}
+	m := &Core{Client: kept, Root: t.TempDir(), Tabs: []*Tab{tab}}
+
+	AddMessages{To: []TabRef{{Tab: "a"}}, Text: "one"}.Do(m)
+	if len(kept.evs) != 0 || len(tab.Messages) != 1 {
+		t.Fatalf("without a token: told %v, queued %v", kept.evs, tab.Messages)
+	}
+	AddMessages{To: []TabRef{{Tab: "a"}, {Tab: "gone"}}, Text: "two", Token: "t1"}.Do(m)
+	AddMessages{To: []TabRef{{Tab: "a"}}, Text: "three", Token: "t2"}.Do(m)
+	want := []Event{MessagesQueuedMsg{Token: "t1", Missing: 1}, MessagesQueuedMsg{Token: "t2"}}
+	if len(kept.evs) != 2 || kept.evs[0] != want[0] || kept.evs[1] != want[1] {
+		t.Fatalf("told %v, want %v", kept.evs, want)
+	}
+	// With a token, for all or none: one of its agents gone, "two" was
+	// queued for neither, so sending it again reaches a only once.
+	if len(tab.Messages) != 2 || tab.Messages[0].Text != "one" || tab.Messages[1].Text != "three" {
+		t.Fatalf("queued %v", tab.Messages)
+	}
+}

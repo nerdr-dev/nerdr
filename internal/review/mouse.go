@@ -339,6 +339,8 @@ func (m *Model) clickFilesHint(x, w int) tea.Cmd {
 				return m.askWalk()
 			case 'L':
 				return m.toggleSide()
+			case 'R':
+				return m.sendComments()
 			}
 			return nil
 		}

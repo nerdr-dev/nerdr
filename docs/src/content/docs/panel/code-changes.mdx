@@ -31,6 +31,8 @@ Marks in the list:
   file that was already changed. `●` marks a live edit, briefly.
 - `✎` a file with notes from the agent.
 - `⚑` a file with findings from a [code review](../../use/code-review/).
+- `»2` a file with your own [comments](#commenting-on-lines), and how
+  many.
 
 In a tab on several repositories, the top row of the list shows the
 repositories, each with the number of files its branch changes. Click
@@ -49,6 +51,8 @@ goes beside the diff.
 | `v` | Cycle: the diff, the whole file with changes marked, the old code |
 | `a` | Ask the agent what this line does and why, on any line, unchanged code too |
 | `s` | Write your own question about it |
+| `r` | Comment on the line, or on the lines chosen; on a comment, change it |
+| `R` | Send all the comments to the agent, in one message |
 | `c` | Switch between GitHub's dark diff and nerdr's own colours |
 
 The diff is drawn as GitHub draws one in its dark mode, in its colours:
@@ -65,6 +69,40 @@ the `+` and `-`, line numbers or hunk headers.
 `$EDITOR` or `vim`. Graphical editors open their own window, and VS Code
 uses the worktree's window. Terminal editors take over the screen until
 they exit.
+
+## Commenting on lines
+
+Read through the change as you would a pull request before merging it,
+leave comments as you go, and send them to the agent together when you
+are done, rather than one question at a time.
+
+| Key | Action |
+|---|---|
+| `r` | Write a comment on the line under the cursor |
+| `shift+↑` / `shift+↓` | Choose several lines in one hunk to comment on; dragging over them works too |
+| `enter` or `r` on a comment | Change it; empty it to delete it |
+| `x` on a comment | Delete it |
+| `R` | Send all the comments on the change shown to the agent |
+
+A comment is shown above its line, marked `»`, as the agent's notes and
+a reviewer's findings are, and the file list marks the files that have
+comments. Comments can go on added, unchanged or removed lines, in the
+diff or the whole file (`v`), and on a file you jumped to outside the
+change. A comment on removed lines is shown in the diff only, as the
+whole file does not have them.
+
+`R` sends the comments of every file in one message: each with its file
+and line, the code it is on, and what you wrote. The message opens for
+you to read and change first, as tasks do (see [Tasks](../tasks/)), and
+waits in F3 until the agent is idle. The comments are kept until the
+message is sent; cancel it and they are still there.
+
+When the agent changes a file, its comments move with the code they are
+on. A comment whose code has been rewritten, any line of it, is marked
+**outdated** at the top of the file's diff, and sent with a note saying
+so. Comments are kept in `review-comments.json` in nerdr's state folder
+(`~/.local/state/nerdr`), so they survive a restart, and are shared by
+the nerdrs that use that folder.
 
 ## Explaining a change
 

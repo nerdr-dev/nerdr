@@ -4,6 +4,7 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"sync"
@@ -14,9 +15,11 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/fleet"
 	"github.com/nerdr-dev/nerdr/internal/input"
+	"github.com/nerdr-dev/nerdr/internal/linecomments"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/reviewsource"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/statedir"
 	"github.com/nerdr-dev/nerdr/internal/term"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -405,6 +408,18 @@ type Model struct {
 	// .nerdr.toml may be done, by the token askSetup gave it.
 	afterSetup map[int]func(m *Model) tea.Cmd
 	lastSetup  int
+
+	// lineComments are the user's comments on lines in F1, shared by all
+	// the review panels; see review.SetComments.
+	lineComments *linecomments.Store
+	// queuedSent is what to hand the review panel once core says the
+	// message of a token is queued, by the token; lastQueued is the last
+	// token given. See onQueued.
+	queuedSent map[string]tea.Msg
+	lastQueued int
+	// queuedMissing is how many agents the message of a token was not
+	// queued for, as core said, for the dialog to tell the user.
+	queuedMissing map[string]int
 }
 
 // New builds the model for a session rooted at root.
@@ -427,7 +442,9 @@ func New(cfg config.Config, root string, router *input.Router, sess state.Sessio
 		width:       120,
 		height:      40,
 	}
-	m.review = m.review.SetFocused(false).SetScreenKeys(m.screenMenuKeys())
+	m.queuedSent = map[string]tea.Msg{}
+	m.lineComments = linecomments.Open(filepath.Join(statedir.Dir(), linecomments.FileName))
+	m.review = m.review.SetFocused(false).SetScreenKeys(m.screenMenuKeys()).SetComments(m.lineComments)
 	m.review, _ = m.review.SetDiffColors(cfg.DiffColors)
 	m.review = m.review.SetPRRefresh(m.home().Core.GithubEvery(core.PrPanelEvery))
 	if st, err := os.Stat(config.Path()); err == nil {
@@ -1060,7 +1077,7 @@ func (m *Model) pinReview() tea.Cmd {
 	t := m.Cur()
 	var pins []review.Pin
 	if t != nil {
-		pins = tabPins(t)
+		pins = m.tabPins(t)
 	}
 	if m.viewIn != nil {
 		return nil // a view pane's panel is its own tab's
@@ -1080,7 +1097,7 @@ func (m *Model) pinReview() tea.Cmd {
 	// Each view pane's panel follows its own tab's worktrees.
 	cmd = tea.Batch(cmd, m.eachView(func(t *core.Tab, p *core.PaneTab) tea.Cmd {
 		var c tea.Cmd
-		m.review, c = m.review.Pin(tabPins(t))
+		m.review, c = m.review.Pin(m.tabPins(t))
 		return c
 	}))
 	m.screenTab = t
@@ -1285,10 +1302,11 @@ func (m *Model) stopping() (panes []*term.Pane, wait func()) {
 func (m *Model) onPanelLayout(bool) tea.Cmd { return nil }
 
 // tabPins is what the review panel shows for the tab.
-func tabPins(t *core.Tab) []review.Pin {
+func (m *Model) tabPins(t *core.Tab) []review.Pin {
 	var out []review.Pin
+	machine := m.machineOf(t).Name
 	for _, w := range t.Worktrees {
-		out = append(out, review.Pin{Repo: w.Repo, Path: w.Path})
+		out = append(out, review.Pin{Repo: w.Repo, Path: w.Path, Machine: machine})
 	}
 	return out
 }

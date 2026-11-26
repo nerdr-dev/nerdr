@@ -3,6 +3,7 @@ package reviewsource
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"sync"
 	"time"
@@ -73,6 +74,9 @@ type Answer struct {
 	PR        github.PR                `json:",omitzero"`
 	Msg       string                   `json:",omitempty"`
 	Err       string                   `json:",omitempty"`
+	// NotExist is set when Err is of a file that is not there, which
+	// the panel tells from one it could not read: see Model.sendComments.
+	NotExist bool `json:",omitempty"`
 
 	Notes      why.Index               `json:",omitzero"`
 	Order      order.Index             `json:",omitzero"`
@@ -137,13 +141,17 @@ func (q Query) Run(s Source) Answer {
 	}
 	if err != nil {
 		a.Err = err.Error()
+		a.NotExist = errors.Is(err, fs.ErrNotExist)
 	}
 	return a
 }
 
 func (a Answer) err() error {
-	if a.Err == "" {
+	switch {
+	case a.Err == "":
 		return nil
+	case a.NotExist:
+		return fmt.Errorf("%s: %w", a.Err, fs.ErrNotExist)
 	}
 	return errors.New(a.Err)
 }

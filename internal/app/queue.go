@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/state"
@@ -60,6 +61,9 @@ type messageDialog struct {
 	agent *core.Tab
 	all   bool
 	tab   *core.Tab
+	// sent is handed to the review panel once the message is sent or
+	// queued; see review.AgentMsg.Sent.
+	sent tea.Msg
 }
 
 func init() {
@@ -249,7 +253,30 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 				return tea.Batch(cmd, m.openMessages())
 			}
 		} else {
-			cmd = m.do(core.AddMessages{To: to, Text: d.input.Value(), Auto: d.auto})
+			// The panel hears it was sent only once the core that keeps the
+			// queue says it has it for each agent; see MessagesQueuedMsg.
+			req := core.AddMessages{To: to, Text: d.input.Value(), Auto: d.auto}
+			if d.sent != nil {
+				// Unique among the clients of a core, which may all be told.
+				m.lastQueued++
+				req.Token = strconv.FormatInt(queuedEpoch, 36) + "-" + strconv.Itoa(m.lastQueued)
+				if m.queuedSent == nil {
+					m.queuedSent = map[string]tea.Msg{}
+				}
+				m.queuedSent[req.Token] = d.sent
+			}
+			var queued bool
+			cmd, queued = m.doChecked(req)
+			delete(m.queuedSent, req.Token) // answered by now, if at all
+			if !queued {
+				return cmd // its toast says why
+			}
+			// Core has said what it queued by the time the request is done.
+			if missing := m.queuedMissing[req.Token]; missing > 0 {
+				delete(m.queuedMissing, req.Token)
+				m.toast("not queued: " + core.Plural(missing, "agent") + " gone meanwhile, so for none; the comments are kept, R again")
+				return cmd
+			}
 		}
 		who := m.machineOf(ts[0]).Core.AgentName(ts[0])
 		if d.all && len(ts) > 1 {
@@ -286,6 +313,27 @@ func (d *messageDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 	d.input, cmd = d.input.Update(msg)
 	d.fit(m)
 	return cmd
+}
+
+// queuedEpoch tells this client's tokens from another's.
+var queuedEpoch = time.Now().UnixNano()
+
+// onQueued is core saying what a message with a token was queued for:
+// what was to follow once it was, if it was for every agent, is done.
+func (m *Model) onQueued(ev core.MessagesQueuedMsg) tea.Cmd {
+	sent, ok := m.queuedSent[ev.Token]
+	if !ok {
+		return nil // another client's, or a token already answered
+	}
+	delete(m.queuedSent, ev.Token)
+	if ev.Missing > 0 {
+		if m.queuedMissing == nil {
+			m.queuedMissing = map[string]int{}
+		}
+		m.queuedMissing[ev.Token] = ev.Missing // for the dialog to say
+		return nil
+	}
+	return func() tea.Msg { return sent }
 }
 
 // fit makes the text as tall as what is written in it, from five rows up

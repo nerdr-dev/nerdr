@@ -12,6 +12,8 @@ import (
 // Tell takes an event of core's, there and then, with Mu held.
 func (m *Model) Tell(ev core.Event) core.Cmd {
 	switch ev := ev.(type) {
+	case core.MessagesQueuedMsg:
+		return toCore(m.onQueued(ev))
 	case core.ToastMsg:
 		m.toast(m.expandKeys(string(ev)))
 	case core.NoticeMsg:
