@@ -35,7 +35,22 @@ type sentDialog struct {
 	off  int
 	// sel is the text of the prompt picked, as drawn.
 	sel textSel
+	// shown is set once sentWait has passed with Claude's log still
+	// being read: until then the dialog is not drawn, or it would be drawn
+	// from nerdr's list, and drawn again at another size a moment later
+	// from the log's.
+	shown bool
 }
+
+// sentWait is how long the dialog waits for Claude's log before it is
+// drawn from nerdr's own list.
+const sentWait = 300 * time.Millisecond
+
+// sentShowMsg comes sentWait after the dialog d opened.
+type sentShowMsg struct{ d *sentDialog }
+
+// hidden reports whether the dialog is not drawn yet; see shown.
+func (d *sentDialog) hidden() bool { return d.reading && !d.shown }
 
 // sentShownFull is the most rows the prompt picked takes.
 const sentShownFull = 10
@@ -59,7 +74,8 @@ func (m *Model) openSentOf(t *core.Tab) tea.Cmd {
 	d.reading = true
 	m.sentJobs++
 	d.job = "sent-" + strconv.Itoa(m.sentJobs)
-	return m.doOn(m.machineOf(t), core.ReadPrompts{Job: d.job, Kind: t.Agent, Session: t.SessionID})
+	return tea.Batch(m.doOn(m.machineOf(t), core.ReadPrompts{Job: d.job, Kind: t.Agent, Session: t.SessionID}),
+		tea.Tick(sentWait, func(time.Time) tea.Msg { return sentShowMsg{d} }))
 }
 
 // onSent takes the list core read from the agent's log into the dialog,
@@ -85,6 +101,14 @@ func (m *Model) onSent(ev core.PromptsMsg) {
 }
 
 func (d *sentDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
+	if d.hidden() {
+		// Nothing on the screen to act on yet: esc still closes it.
+		switch msg.String() {
+		case "esc", "q", "ctrl+c":
+			m.dialog = nil
+		}
+		return nil
+	}
 	if d.full {
 		switch msg.String() {
 		case "up", "k":

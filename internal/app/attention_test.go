@@ -494,3 +494,48 @@ func TestSentDialogListsTheLatestFirst(t *testing.T) {
 		t.Fatal("esc closes it")
 	}
 }
+
+// TestSentDialogWaitsForClaudesLog covers a click on last: for claude:
+// the dialog is not drawn from nerdr's list while Claude's log is read,
+// which would draw it at one size and a moment later at another, but once
+// the log is read, or sentWait has passed.
+func TestSentDialogWaitsForClaudesLog(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	m := &Model{}
+	m.home().Core.Client = m
+	tb := &core.Tab{AgentState: core.Agent{Tab: state.Tab{Name: "login", Agent: agents.Claude,
+		SessionID: "0b5a3c2e-1f4d-4e6a-9b7c-2d8e9f0a1b2c"}}}
+	m.home().Core.Tabs = []*core.Tab{tb}
+	for i := range 12 {
+		m.home().Core.SetLast(tb, fmt.Sprintf("prompt %d", i))
+	}
+	m.width, m.height = 100, 40
+	m.openSentOf(tb)
+	d, ok := m.dialog.(*sentDialog)
+	if !ok || !d.hidden() {
+		t.Fatalf("the dialog should wait for the log: %T", m.dialog)
+	}
+	if strings.Contains(ansi.Strip(m.View()), "Sent to") {
+		t.Fatal("not drawn while the log is read")
+	}
+	d.key(m, tea.KeyMsg{Type: tea.KeyDown})
+	if m.dialog == nil || d.pick != 0 {
+		t.Fatal("a key before it is drawn does nothing")
+	}
+	m.onSent(core.PromptsMsg{Job: d.job, List: []agents.Prompt{{Text: "typed in claude itself"}}})
+	if d.hidden() || !strings.Contains(ansi.Strip(m.View()), "typed in claude itself") {
+		t.Fatal("drawn once the log is read, from it")
+	}
+
+	// A log slow to read: drawn from nerdr's list after sentWait.
+	m.openSentOf(tb)
+	d = m.dialog.(*sentDialog)
+	m.Update(sentShowMsg{d})
+	if d.hidden() || !strings.Contains(ansi.Strip(m.View()), "prompt 11") {
+		t.Fatal("drawn from nerdr's list once sentWait has passed")
+	}
+	d.key(m, tea.KeyMsg{Type: tea.KeyEsc})
+	if m.dialog != nil {
+		t.Fatal("esc closes it")
+	}
+}

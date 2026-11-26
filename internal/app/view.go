@@ -229,6 +229,8 @@ func (m *Model) draw() string {
 		// Not drawn until it knows what it is asking; see closeWait.
 	} else if d, ok := m.dialog.(*moveDialog); ok && d.hidden(m) {
 		// Nor until the move has something to ask; see moveWait.
+	} else if d, ok := m.dialog.(*sentDialog); ok && d.hidden() {
+		// Nor until Claude's log is read for its list; see sentWait.
 	} else if m.dialog != nil {
 		m.dialogZones = len(m.zoneFns)
 		// The whole box is a zone of its own, so a click on it that
