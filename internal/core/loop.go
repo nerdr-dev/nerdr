@@ -489,6 +489,8 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 		return m.LookUpGoal(ev.T), true
 	case ModelsMsg:
 		return m.OnModels(ev), true
+	case readyListed:
+		return m.onReadyListed(ev), true
 	case LaunchMsg:
 		if !m.Live(ev.T) || ev.Kind != ev.T.Agent {
 			return nil, true // closed or switched while its conversation was being looked up

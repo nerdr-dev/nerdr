@@ -24,7 +24,7 @@ func init() {
 	registerEvents(
 		ToastMsg(""), NoticeMsg(""), HistoryMsg{}, LightMsg{}, ReviewNewsMsg{}, ReviewMsg{},
 		PaneOpenedMsg{}, PaneClosedMsg{}, PanesMsg{}, LayoutMsg{}, StartedMsg{},
-		TermsMsg{}, SwitchedMsg{}, SpinoffAskMsg{}, SwitchAskMsg{}, IssuesMsg{},
+		TermsMsg{}, SwitchedMsg{}, SpinoffAskMsg{}, SwitchAskMsg{}, SpinoffPromptMsg{}, IssuesMsg{},
 		IssueNewsMsg{}, IssuesDueMsg{}, PRsMsg{}, PRNewsMsg{}, PRMarkMsg{},
 		OverlapsMsg{}, DetectStartMsg{}, DetectDoneMsg{}, PluginUIStartedMsg{},
 		PluginUIGoneMsg{}, PluginRunMsg{}, AskMsg{}, AnsweredMsg{}, TypedInMsg{},

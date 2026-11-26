@@ -92,6 +92,15 @@ func TestSpinoff(t *testing.T) {
 	}
 	h.waitTabBar("renamed-a", 2*time.Second)
 	h.waitTabBar("part-b", 2*time.Second)
+	// Part B was made once its prompt came, after the plan, and its agent
+	// was given it.
+	log := filepath.Join(scratch, "agent.log")
+	for i := 0; i < 100 && !strings.Contains(readFile(log), "given: Prompt for part B"); i++ {
+		time.Sleep(100 * time.Millisecond)
+	}
+	if !strings.Contains(readFile(log), "given: Prompt for part B") {
+		t.Fatal("part B's agent was not given its prompt")
+	}
 
 	// The agent that split its work is told, once it is idle.
 	h.waitFor("nerdr: the user has gone through the parts", 15*time.Second)

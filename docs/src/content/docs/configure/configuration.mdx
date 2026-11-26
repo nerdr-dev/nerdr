@@ -188,6 +188,7 @@ when = "ready"            # with auto: "ready" when the agent says so, "turn" af
 agent = "other"           # a different kind of agent, or a name such as "codex"
 rounds = 2                # review rounds before leaving findings to you
 send_findings = "ask"     # ask: keep in F3 and ask; auto: send to the agent directly
+model_names = "nerdr"     # nerdr: nerdr finds the agent's own name for a model you named; agent: the agent does
 
 [review.args]             # arguments for reviewers, after the agent's own
 codex = ["--sandbox", "read-only"]
@@ -205,6 +206,15 @@ its work is ready with `nerdr request-review`. The
 `nerdr-request-review` skill tells it to do so when review is on. This
 way, work that is only half done is not reviewed. Agents without that skill are
 reviewed after every turn.
+
+When you ask the agent for a review with a model, in your own words
+("review it with codex on astra 6.2"), the agent passes the model on as
+you said it, and `model_names = "nerdr"` has nerdr find the reviewer's own
+name for it among the models that agent lists: `gpt-6.2-astra`. A name
+that could be several models goes back to the agent, which asks you
+which. With `model_names = "agent"`, nerdr takes only the reviewer's own
+names, and the agent looks the name up itself, which takes it a few
+steps longer.
 
 ## Agents
 

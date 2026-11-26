@@ -399,21 +399,88 @@ func TestSpinoffPicksInTheTabsRepositoriesAlone(t *testing.T) {
 func TestSpinoffPartsWaitingAreBounded(t *testing.T) {
 	m := testModel(t)
 	tb := m.Cur()
-	parts := func() []spinoff.Part {
+	parts := func(prefix string) []spinoff.Part {
 		var out []spinoff.Part
 		for i := range 15 {
-			out = append(out, spinoff.Part{Branch: "p" + strings.Repeat("x", i+1), Summary: "S.", Prompt: "Do."})
+			out = append(out, spinoff.Part{Branch: prefix + strings.Repeat("x", i+1), Summary: "S.", Prompt: "Do."})
 		}
 		return out
 	}
 	m.dialog = &closeTab{t: tb} // the dialog waits; the parts are kept
-	for range 2 {
-		m.home().Core.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.HookKey(), Spinoff: parts()})
+	for _, prefix := range []string{"p", "q"} {
+		m.home().Core.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.HookKey(), Spinoff: parts(prefix)})
 	}
 	if n := len(tb.Spinoff.Next); n != spinoff.MaxParts {
 		t.Fatalf("%d parts wait, want %d", n, spinoff.MaxParts)
 	}
 	if n := len(tb.Messages); n != 1 || !strings.Contains(tb.Messages[0].Text, "10 of the parts") {
 		t.Errorf("the agent is told: %+v", tb.Messages)
+	}
+}
+
+// TestSpinoffPromptComesAfter: a plan sent without its prompts is asked
+// about at once; enter waits for the part's prompt, and the tab is made
+// as soon as it comes, from the agent that sent the part alone.
+func TestSpinoffPromptComesAfter(t *testing.T) {
+	dir := testRepo(t)
+	m := testModel(t)
+	fakeAgent(m, agents.Claude)
+	tb := m.Cur()
+	tb.Worktrees = []workspace.Worktree{{Repo: dir, Path: dir, Branch: "main"}}
+	m.dialog = &closeTab{t: tb}
+	m.home().Core.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.HookKey(), Spinoff: []spinoff.Part{{Branch: "fix-a", Summary: "A."}}})
+	m.dialog = nil
+	m.openSpinoff(tb)
+	d := m.dialog.(*spinoffDialog)
+	if v := ansi.Strip(d.view(m, 120, 50)); !strings.Contains(v, "is still writing") {
+		t.Fatalf("the dialog says the prompt is to come:\n%s", v)
+	}
+	d.key(m, keyMsg("enter"))
+	if !d.waiting || tb.SpinoffBusy != "" {
+		t.Fatal("enter waits for the prompt")
+	}
+	if v := ansi.Strip(d.view(m, 120, 50)); !strings.Contains(v, "Waiting for the prompt") {
+		t.Fatalf("the dialog says it waits:\n%s", v)
+	}
+	d.key(m, keyMsg("2"))
+	if d.waiting || d.branch.Value() != "fix-a2" {
+		t.Fatalf("another key stops waiting, and is taken: %q", d.branch.Value())
+	}
+	d.key(m, keyMsg("enter"))
+
+	prompt := func(part, text string) hooks.Answer {
+		reply := make(chan hooks.Answer, 1)
+		m.home().Core.OnSpinoffPrompt(hooks.Report{Method: hooks.SpinoffPrompt, Pane: tb.HookKey(), Part: part, Text: text, Reply: reply})
+		return <-reply
+	}
+	if a := prompt("0badc0de", "Do B."); a.Err == "" {
+		t.Fatal("a prompt for a part not sent was taken")
+	}
+	if a := prompt(tb.Spinoff.Next[0].ID, "Do A."); a.Err != "" || tb.Spinoff.Next[0].Prompt != "Do A." {
+		t.Fatalf("the prompt was not taken: %+v", a)
+	}
+	m.spinoffPrompted(tb)
+	if d.waiting || d.err != "" || tb.SpinoffBusy != "making fix-a2…" {
+		t.Fatalf("the tab is made once the prompt comes: waiting %v, %q, %q", d.waiting, d.err, tb.SpinoffBusy)
+	}
+}
+
+// TestPreparingSpinoffShows: the agent taking up nerdr-spinoff is shown
+// above it until its plan comes, so the wait for the dialog is seen.
+func TestPreparingSpinoffShows(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir()) // the session saved is not the user's
+	m := testModel(t)
+	tb := runningTab(t, m)
+	m.home().Core.OnHook(hooks.Report{Method: hooks.ReportAgent, Pane: tb.HookKey(), Source: hooks.ClaudeSource,
+		Agent: string(tb.Agent), State: "working", Preparing: hooks.PrepSpinoff, Seq: 1})
+	shows := func() bool {
+		return slices.ContainsFunc(m.taskRows(tb, 100, 40), func(r core.PanelRow) bool { return r.Label == "spin:" })
+	}
+	if !shows() {
+		t.Fatalf("not shown: %q", tb.Preparing)
+	}
+	m.home().Core.OnSpinoff(hooks.Report{Method: hooks.Spinoff, Pane: tb.HookKey(), Spinoff: []spinoff.Part{{Branch: "fix-a", Summary: "A."}}})
+	if shows() {
+		t.Fatal("still shown once the plan came")
 	}
 }

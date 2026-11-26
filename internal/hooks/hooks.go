@@ -87,6 +87,10 @@ type Report struct {
 	// Processes is how many commands and monitors Background waits on,
 	// when nothing else is going: see backgroundProcesses.
 	Processes int
+	// Preparing is, on a report that the agent is working, the nerdr skill
+	// it has just taken up (PrepSpinoff, PrepReview): what it is about to
+	// send nerdr, for the user to see it coming.
+	Preparing string
 	// Spinoff is the parts an agent hands to new tabs; see Spinoff.
 	Spinoff []spinoff.Part
 	// Handoff is what an agent wrote for the one taking over its tab; see
@@ -123,6 +127,9 @@ type Report struct {
 	Restart bool
 	// Clear is set when `nerdr status --clear` clears the tab's status.
 	Clear bool
+	// Part is the id nerdr gave the part a SpinoffPrompt's Text is the
+	// prompt of.
+	Part string
 	// Branch and Repo are a NewTab's branch and repository ("" for the
 	// asking tab's).
 	Branch string
@@ -139,6 +146,10 @@ type Report struct {
 	// under it (see app's vouch).
 	Peer      Peer
 	Unvouched bool
+	// Deadline is when the agent that sent the report stops waiting for
+	// nerdr's answer, for one it waits for: what it asked is not to be
+	// done after, as it was told nerdr did not answer.
+	Deadline time.Time
 }
 
 // Answer is nerdr's answer to a report that waits for one: Err when it
@@ -157,6 +168,10 @@ const (
 	// Spinoff is nerdr's own: `nerdr spinoff` sends the parts of its
 	// agent's work the user asked to have split off into new tabs.
 	Spinoff = "nerdr.spinoff"
+	// SpinoffPrompt is nerdr's own as well: `nerdr spinoff --prompt`
+	// sends the prompt of a part sent before without one, for the agent
+	// of the tab made for it.
+	SpinoffPrompt = "nerdr.spinoff_prompt"
 	// Handoff is nerdr's own too: `nerdr handoff` sends what an agent
 	// wrote for the agent its tab is switched to.
 	Handoff = "nerdr.handoff"
@@ -284,6 +299,7 @@ type params struct {
 	ResumeArgv       []string           `json:"resume_argv"`
 	Seq              *int64             `json:"seq"`
 	Background       bool               `json:"background"`
+	Preparing        string             `json:"preparing"`
 	Processes        int                `json:"background_processes"`
 	Parts            []spinoff.Part     `json:"parts"`
 	Summary          string             `json:"summary"`
@@ -300,6 +316,7 @@ type params struct {
 	Restart          bool               `json:"restart"`
 	Clear            bool               `json:"clear"`
 	Branch           string             `json:"branch"`
+	Part             string             `json:"part"`
 	Repo             string             `json:"repo"`
 	Limits           *usage.Report      `json:"limits"`
 	Run              string             `json:"run"`
@@ -749,6 +766,7 @@ func init() {
 		ReleaseAgent:       handleReport(ReleaseAgent),
 		ReportMetadata:     handleReport(ReportMetadata),
 		Spinoff:            handleSpinoff,
+		SpinoffPrompt:      handleSpinoffPrompt,
 		Handoff:            handleHandoff,
 		Review:             handleReview,
 		RequestReview:      handleRequestReview,
@@ -779,8 +797,21 @@ func handleSpinoff(c *client, id string, p params) []byte {
 			}
 		}
 	}
-	c.send(Report{Method: Spinoff, Pane: p.PaneID, Spinoff: p.Parts})
-	return okResponse(id)
+	return c.answered(id, Report{Method: Spinoff, Pane: p.PaneID, Spinoff: p.Parts})
+}
+
+func handleSpinoffPrompt(c *client, id string, p params) []byte {
+	prompt := strings.TrimSpace(clean.Text(p.Text))
+	part := strings.TrimSpace(p.Part)
+	switch err := spinoff.CheckPrompt(prompt); {
+	case part == "" || len(part) > 64 || part != clean.Line(part):
+		return invalid(id, "part is the id nerdr gave the part when it took the plan")
+	case prompt == "":
+		return invalid(id, "the prompt is empty")
+	case err != nil:
+		return invalid(id, err.Error())
+	}
+	return c.answered(id, Report{Method: SpinoffPrompt, Pane: p.PaneID, Part: part, Text: prompt})
 }
 
 func handleHandoff(c *client, id string, p params) []byte {
@@ -812,6 +843,13 @@ type Reviewer struct {
 	Model string `json:"model"`
 }
 
+// The nerdr skills an agent can be seen taking up, for Report.Preparing:
+// it is about to send the parts to split off, or ask for a review.
+const (
+	PrepSpinoff = "nerdr-spinoff"
+	PrepReview  = "nerdr-request-review"
+)
+
 // MaxReviewers is how many agents one request for a review may name.
 const MaxReviewers = 4
 
@@ -835,13 +873,27 @@ func handleRequestReview(c *client, id string, p params) []byte {
 			return invalid(id, "kind is not an agent")
 		case model != "" && kind == "":
 			return invalid(id, "a model is the model of an agent: give the agent too")
-		case badModel(model) != "":
-			return invalid(id, badModel(model))
+		case badNamedModel(model) != "":
+			return invalid(id, badNamedModel(model))
 		}
 		by = append(by, Reviewer{Kind: kind, Model: model})
 	}
-	c.send(Report{Method: RequestReview, Pane: p.PaneID, Focus: focus, Reviewers: by})
-	return okResponse(id)
+	return c.answeredWithin(id, Report{Method: RequestReview, Pane: p.PaneID, Focus: focus, Reviewers: by}, ReviewAnswerWait)
+}
+
+// ReviewAnswerWait is how long a request for a review waits for nerdr's
+// answer: nerdr may have to ask an agent for its models first, to find the
+// one the user named.
+const ReviewAnswerWait = 25 * time.Second
+
+// badNamedModel is why model, a model as the user named it for a review
+// ("astra 6.2"), cannot be one, or "": nerdr turns it into the agent's
+// own name for it (core's ResolveModel), which goes on the command line.
+func badNamedModel(model string) string {
+	if len(model) > 100 || strings.HasPrefix(model, "-") {
+		return "model is not a model's name"
+	}
+	return ""
 }
 
 func handleMessage(c *client, id string, p params) []byte {
@@ -1030,6 +1082,9 @@ func handleReport(method string) handler {
 		if r.Background && p.Processes > 0 {
 			r.Processes = p.Processes
 		}
+		if p.State == "working" && (p.Preparing == PrepSpinoff || p.Preparing == PrepReview) {
+			r.Preparing = p.Preparing
+		}
 		if p.Seq != nil {
 			r.Seq = *p.Seq
 		}
@@ -1054,7 +1109,7 @@ func (c *client) answered(id string, r Report) []byte {
 // answeredWithin is answered, waiting as long as wait.
 func (c *client) answeredWithin(id string, r Report, wait time.Duration) []byte {
 	reply := make(chan Answer, 1)
-	r.Reply = reply
+	r.Reply, r.Deadline = reply, time.Now().Add(wait)
 	c.send(r)
 	select {
 	case a := <-reply:

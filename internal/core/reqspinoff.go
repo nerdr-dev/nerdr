@@ -77,6 +77,15 @@ func (q SpinoffCreate) Do(m *Core) Cmd {
 	if t == nil {
 		return nil
 	}
+	// The part asked about, as core has it: the client's copy may be of
+	// one gone through since, and may not have a prompt sent after the
+	// plan yet.
+	if t.Spinoff == nil || len(t.Spinoff.Next) == 0 || t.Spinoff.Next[0].ID != q.Part.ID {
+		return m.Tell(SpinoffFailedMsg{T: q.T, Branch: q.Name, Err: "this part is no longer the one asked about"})
+	}
+	if q.Part.Prompt = t.Spinoff.Next[0].Prompt; q.Part.Prompt == "" {
+		return m.Tell(SpinoffFailedMsg{T: q.T, Branch: q.Name, Err: "the agent has not sent this part's prompt yet"})
+	}
 	var paths []string
 	for _, r := range q.Repos {
 		paths = append(paths, r.Path)

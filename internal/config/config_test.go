@@ -253,3 +253,11 @@ func TestReviewWhen(t *testing.T) {
 		}
 	}
 }
+
+func TestReviewModelNames(t *testing.T) {
+	for _, c := range []struct{ in, want string }{{"", NamesByNerdr}, {"nerdr", NamesByNerdr}, {"agent", NamesByAgent}, {"me", NamesByNerdr}} {
+		if got := defaults(Config{Review: Review{ModelNames: c.in}}).Review.ModelNames; got != c.want {
+			t.Errorf("model_names = %q: got %q, want %q", c.in, got, c.want)
+		}
+	}
+}

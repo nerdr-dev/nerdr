@@ -295,6 +295,9 @@ func (m *Core) OnHook(r hooks.Report) Cmd {
 		t.Hook.At = time.Now()
 		t.Hook.Background = r.Background
 		t.Hook.Processes = r.Processes
+		if r.Preparing != "" {
+			t.Preparing, t.PreparingAt = r.Preparing, t.Hook.At
+		}
 		switch r.State {
 		case "working":
 			t.Tasked = true
@@ -306,6 +309,7 @@ func (m *Core) OnHook(r hooks.Report) Cmd {
 			t.Hook.State = detect.Blocked
 		case "idle":
 			t.Hook.State = detect.Idle
+			t.Preparing = "" // sent, or not: the turn is over
 		default:
 			t.Hook.State = detect.Unknown
 		}

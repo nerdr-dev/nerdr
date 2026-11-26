@@ -190,39 +190,142 @@ func (m *Core) WaitsForReady(t *Tab) bool {
 // starts when its turn ends, with what it asked to have looked at. With
 // auto off too: the skill has the agent say so then only when the user
 // asked for a review, or said yes to one.
-func (m *Core) OnReady(rep hooks.Report) Cmd {
+func (m *Core) OnReady(rep hooks.Report) Cmd { return m.onReady(rep, false) }
+
+// readyListed is the models of the kinds a request for a review named
+// models for, listed for it: see onReady.
+type readyListed struct {
+	rep   hooks.Report
+	lists []ModelsMsg
+}
+
+// ReadyListWait is how long a request for a review waits for the models
+// of the kinds it names to be listed, side by side: past it, it goes on
+// with those listed, in time to answer the agent before it gives up
+// waiting (hooks.ReviewAnswerWait).
+var ReadyListWait = hooks.ReviewAnswerWait - 7*time.Second
+
+// readyMargin is how long before the agent stops waiting nerdr stops
+// looking for models, to answer it in time.
+const readyMargin = 2 * time.Second
+
+// tooLate reports whether the agent that sent rep has stopped waiting
+// for nerdr's answer: what it asked for is then not done.
+func tooLate(rep hooks.Report) bool {
+	return !rep.Deadline.IsZero() && !time.Now().Before(rep.Deadline)
+}
+
+// onReady is OnReady; listed is set once the models of the kinds it
+// names models for have been asked for, so their names can be resolved
+// (ResolveModel). The agent is answered which reviewers review, with
+// which models, or why none: a model that could be several.
+func (m *Core) onReady(rep hooks.Report, listed bool) Cmd {
+	reply := Answerer(rep)
 	t := m.AgentByHook(rep.Pane)
 	if t == nil || t.ReviewOf != nil {
+		reply(hooks.Answer{Err: "this agent is not one nerdr reviews the work of"})
 		return nil
 	}
+	if t.Preparing == hooks.PrepReview {
+		t.Preparing = ""
+	}
+	if tooLate(rep) {
+		return nil // the agent was told nerdr did not answer in time
+	}
 	if t.Review != nil {
-		return nil // the review going on looks again when the agent's turn ends
+		// The review going on looks again when the agent's turn ends.
+		reply(hooks.Answer{Text: "A review of your work goes on: it looks again once your turn ends."})
+		return nil
+	}
+	if !listed {
+		var kinds []agents.Kind
+		for _, r := range rep.Reviewers {
+			k := agents.Kind(r.Kind)
+			if l := m.AgentModels[k]; r.Model != "" && agents.TakesModel(k) && Contains(m.Available(), k) &&
+				(len(l.Models) == 0 || time.Since(l.At) >= ModelsFor) && !slices.Contains(kinds, k) {
+				kinds = append(kinds, k)
+			}
+		}
+		if len(kinds) > 0 {
+			specs, wait := m.Cfg.Agents, ReadyListWait
+			if !rep.Deadline.IsZero() {
+				// It may have waited for core already.
+				wait = min(wait, time.Until(rep.Deadline)-readyMargin)
+			}
+			return func() Event {
+				got := make(chan ModelsMsg, len(kinds))
+				for _, k := range kinds {
+					go func() { got <- ListModels(specs, k, false) }()
+				}
+				ev := readyListed{rep: rep}
+				timeout := time.After(wait)
+				for range kinds {
+					select {
+					case l := <-got:
+						ev.lists = append(ev.lists, l)
+					case <-timeout:
+						return ev // those not listed in time: as if none
+					}
+				}
+				return ev
+			}
+		}
 	}
 	ask := &ReadyAsk{Focus: rep.Focus}
+	var toasts, said []string
 	for _, r := range rep.Reviewers {
 		k := agents.Kind(r.Kind)
 		switch {
 		case k == "":
 		case slices.ContainsFunc(ask.By, func(b Reviewer) bool { return b.Kind == k }):
-			m.Toast(t.Name + ": " + string(k) + " reviews once; a second " + string(k) + " is left out")
+			toasts = append(toasts, string(k)+" reviews once; a second "+string(k)+" is left out")
 		case !Contains(m.Available(), k):
-			m.Toast(t.Name + ": there is no agent " + string(k) + " here to review with")
+			toasts = append(toasts, "there is no agent "+string(k)+" here to review with")
 		case r.Model != "" && !agents.TakesModel(k):
-			m.Toast(t.Name + ": nerdr cannot start " + string(k) + " with a model of its choosing; it reviews with its own")
+			toasts = append(toasts, "nerdr cannot start "+string(k)+" with a model of its choosing; it reviews with its own")
 			ask.By = append(ask.By, Reviewer{Kind: k})
 		default:
-			ask.By = append(ask.By, Reviewer{Kind: k, Model: r.Model})
+			model := r.Model
+			if model != "" {
+				id, err := m.ResolveModel(k, model)
+				if err != nil {
+					reply(hooks.Answer{Err: err.Error()})
+					return nil
+				}
+				model = id
+				said = append(said, string(k)+" reviews with "+model)
+			}
+			ask.By = append(ask.By, Reviewer{Kind: k, Model: model})
 		}
 	}
 	if len(rep.Reviewers) > 0 && len(ask.By) == 0 {
-		m.Toast(t.Name + ": none of the reviewers asked for is here; the configured reviewer reviews")
+		toasts = append(toasts, "none of the reviewers asked for is here; the configured reviewer reviews")
 	}
+	for _, s := range toasts {
+		m.Toast(t.Name + ": " + s)
+	}
+	reply(hooks.Answer{Text: strings.Join(append(said, toasts...), "\n")})
 	t.ReviewAsk = ask
 	Debugf("review %s: ready, agent %s", m.AgentName(t), t.Light.Label())
 	if t.Light == StIdle || t.Light == StDone {
 		return m.AfterTurn(t) // said between turns: no turn end to wait for
 	}
 	return nil
+}
+
+// onReadyListed keeps the models listed for a request for a review, and
+// takes the request up again.
+func (m *Core) onReadyListed(ev readyListed) Cmd {
+	var cmds []Cmd
+	for _, l := range ev.lists {
+		if old := m.AgentModels[l.Kind]; len(l.Models) == 0 && len(old.Models) > 0 {
+			continue // listing none now, the list before is better than none
+		}
+		cmds = append(cmds, m.OnModels(l))
+	}
+	// onReady does nothing for an agent that has stopped waiting: told
+	// nerdr did not answer, it asks again if it wants the review.
+	return Batch(append(cmds, m.onReady(ev.rep, true))...)
 }
 
 // setSession is the conversation t's agent is in. A reviewer's is recorded

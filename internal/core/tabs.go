@@ -763,6 +763,12 @@ type Tab struct {
 	SpinoffBusy  string
 	SpinoffSince time.Time
 
+	// Preparing is the nerdr skill the agent took up at PreparingAt, for
+	// what it is about to send nerdr (hooks.PrepSpinoff, PrepReview): the
+	// user sees it coming until it does, or the agent's turn ends.
+	Preparing   string
+	PreparingAt time.Time
+
 	// Usage is what the agent last said of its context window and its
 	// account, and when; see usage.go.
 	Usage   *usage.Report

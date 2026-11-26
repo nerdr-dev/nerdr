@@ -163,7 +163,7 @@ func compatReports(t *testing.T, lines []compatLine) map[string][]string {
 			continue
 		}
 		for _, rep := range got {
-			rep.Reply, rep.Peer = nil, Peer{}
+			rep.Reply, rep.Peer, rep.Deadline = nil, Peer{}, time.Time{}
 			if rep.Seq != 0 {
 				rep.Seq = 1 // the time it was sent, for most
 			}

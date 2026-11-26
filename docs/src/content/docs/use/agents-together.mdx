@@ -70,7 +70,11 @@ tabs and the tab's first agent.
 Ask the agent to *"split this into branches"* or *"make a branch for the
 parser fix"*. The `nerdr-spinoff` skill has it commit each part separately
 and ask nerdr for a tab for each. The tab turns red, and a dialog shows
-each part with a summary and a branch name you can edit:
+each part with a summary and a branch name you can edit. The agent sends
+the parts first and writes the prompts for the new agents while you go
+through them: if you press `enter` before a part's prompt has come, the
+dialog says it waits, and makes the tab as soon as it does. While the
+agent writes the parts up, the panel above it says so.
 
 - If the agent supplied commits, choose whether to cherry-pick them onto
   a fresh branch from main, or let the new agent do the task from its

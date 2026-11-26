@@ -246,13 +246,21 @@ func newSessionTab(id, name, dir string, kind agents.Kind, model, group string, 
 
 // onSpinoff takes the parts an agent sent.
 func (m *Core) OnSpinoff(r hooks.Report) Cmd {
+	reply := Answerer(r)
 	t := m.AgentByHook(r.Pane)
 	if t == nil || t.ReviewOf != nil {
+		reply(hooks.Answer{Err: "this agent is not one nerdr takes parts to split off from"})
 		return nil
 	}
 	// An agent beside the tab's own splits off from the same worktree:
 	// the parts are the tab's to go through.
+	if tooLate(r) {
+		// Told nerdr did not answer, the agent has not the parts' ids to
+		// send their prompts by: it sends the plan again.
+		return nil
+	}
 	sender, from, confined := t, t.ID, m.Confined(r, t)
+	t.Preparing = ""
 	t = t.Owner()
 	if t.Spinoff == nil {
 		t.Spinoff = &spinoff.Pending{}
@@ -261,15 +269,19 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 	// together, kept with the session, and are no more than one either:
 	// the user goes through each.
 	dropped := 0
+	var ids []string
 	for _, pt := range r.Spinoff {
 		if len(t.Spinoff.Next) >= spinoff.MaxParts {
 			dropped++
 			continue
 		}
 		pt.From, pt.Sandboxed = from, confined
+		pt.ID = NewTabID() // what its prompt comes by, if after (OnSpinoffPrompt)
 		pt.InRepos = commitRepos(t.Worktrees, pt)
 		t.Spinoff.Next = append(t.Spinoff.Next, pt)
+		ids = append(ids, pt.ID+"\t"+pt.Branch)
 	}
+	reply(hooks.Answer{Text: strings.Join(ids, "\n")})
 	if dropped > 0 {
 		m.Toast(fmt.Sprintf("%s: %d part(s) to spin off left out: %d already wait", t.Name, dropped, spinoff.MaxParts))
 		m.AddMessage(sender, fmt.Sprintf("nerdr: %d of the parts you sent were left out: %d parts already wait for the user to go through. "+
@@ -281,6 +293,48 @@ func (m *Core) OnSpinoff(r hooks.Report) Cmd {
 		return Batch(cmd, m.Tell(SpinoffAskMsg{T: m.Ref(t)}))
 	}
 	return cmd
+}
+
+// OnSpinoffPrompt takes the prompt of a part the agent sent without one,
+// by the id nerdr gave the part (r.Part), while the user is yet to go
+// through it. The dialog that waits for it goes on.
+func (m *Core) OnSpinoffPrompt(r hooks.Report) Cmd {
+	reply := Answerer(r)
+	sender := m.AgentByHook(r.Pane)
+	if sender == nil {
+		reply(hooks.Answer{Err: "this agent is not in a nerdr tab nerdr knows"})
+		return nil
+	}
+	t := sender.Owner()
+	if t.Spinoff != nil {
+		for i := range t.Spinoff.Next {
+			pt := &t.Spinoff.Next[i]
+			if pt.ID != r.Part || pt.From != sender.ID {
+				continue
+			}
+			switch {
+			case m.Confined(r, sender) && !pt.Sandboxed:
+				// The agent was switched, or put in a sandbox, since it
+				// sent the part: what it writes now is not to go to an
+				// agent outside one.
+				reply(hooks.Answer{Err: "you run in a sandbox, and the part " + pt.Branch + " was sent from outside one: " +
+					"its prompt is not taken from you. Send the plan again"})
+				return nil
+			case pt.Prompt != "":
+				// Its tab may be being made with it already.
+				reply(hooks.Answer{Err: "nerdr already has the prompt for " + pt.Branch + ", and keeps it: " +
+					"a prompt is sent once, and not replaced"})
+				return nil
+			}
+			pt.Prompt = r.Text
+			m.SaveSession()
+			reply(hooks.Answer{Text: "nerdr has the prompt for " + pt.Branch + "."})
+			return m.Tell(SpinoffPromptMsg{T: m.Ref(t)})
+		}
+	}
+	reply(hooks.Answer{Err: "no part of yours with the id " + r.Part + " waits for the user: they have been through it already " +
+		"(nerdr tells you what became of it), or it is not an id nerdr gave you for a part"})
+	return nil
 }
 
 // spinoffCreate makes part pt's worktrees and tab, in the background.

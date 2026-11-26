@@ -325,6 +325,11 @@ func (m *Model) settingRows() []settingRow {
 				"ask: it waits in F3 until you have read it and choose what to send to the agent.\n" +
 				"auto: it goes straight to the agent, which starts fixing it.",
 			example: `send_findings = "auto"`},
+		{table: "review", key: "model_names", kind: sChoice, choices: []string{"nerdr", "agent"}, def: `"nerdr"`,
+			desc: "When you ask the agent for a review with a model, as in \"review it with codex on astra 6.2\", who finds the agent's own name for that model.\n" +
+				"nerdr: nerdr looks it up among the models the agent lists, so the review starts sooner. A name that could be several models is sent back, for the agent to ask you which.\n" +
+				"agent: nerdr takes only the agent's own names, and the agent asking for the review looks the name up itself.",
+			example: `model_names = "agent"`},
 	}
 	for _, k := range m.settingAgents() {
 		table := "agents." + string(k)

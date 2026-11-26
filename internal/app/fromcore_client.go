@@ -206,6 +206,11 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		if t := m.fleet.ByRef(ev.T); t != nil {
 			return toCore(m.openSpinoff(t))
 		}
+	case core.SpinoffPromptMsg:
+		m.fleet.Bump()
+		if t := m.fleet.ByRef(ev.T); t != nil {
+			return toCore(m.spinoffPrompted(t))
+		}
 	case core.SwitchAskMsg:
 		m.fleet.Bump()
 		return toCore(m.openSwitchAgent())

@@ -21,7 +21,12 @@ func listen(t *testing.T) (*Server, chan Report) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { os.RemoveAll(dir) })
-	s, err := Listen(filepath.Join(dir, "n.sock"), func(r Report) { got <- r })
+	s, err := Listen(filepath.Join(dir, "n.sock"), func(r Report) {
+		if (r.Method == RequestReview || r.Method == SpinoffPrompt || r.Method == Spinoff) && r.Reply != nil {
+			r.Reply <- Answer{} // as core does, once it has the reviewers
+		}
+		got <- r
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -295,6 +300,17 @@ func TestReadyNamesItsReviewer(t *testing.T) {
 	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "reviewers": make([]Reviewer, MaxReviewers+1)}); err == nil {
 		t.Fatal("more reviewers than allowed were taken")
 	}
+	// A model as the user named it, for nerdr to find the agent's own
+	// name for; one that would be a flag is not.
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "kind": "codex", "model": "astra 6.2"}); err != nil {
+		t.Fatal(err)
+	}
+	if r := next(t, got); r.Reviewers[0].Model != "astra 6.2" {
+		t.Fatalf("report = %+v", r)
+	}
+	if err := Send(s.Path(), RequestReview, map[string]any{"pane_id": "ab12", "kind": "codex", "model": "--yolo"}); err == nil {
+		t.Fatal("a flag was taken for a model")
+	}
 }
 
 // A second nerdr does not take the socket from the first, which keeps
@@ -387,5 +403,27 @@ func TestReportsSayWhichProcessSentThem(t *testing.T) {
 	}
 	if Started(1<<30) != 0 || r.Peer.StartOf(1<<30) != 0 {
 		t.Error("a start time for a process that is not there")
+	}
+}
+
+// TestSpinoffPromptReachesNerdr covers nerdr spinoff --prompt: the prompt
+// of a part sent before without one, by the id nerdr gave it.
+func TestSpinoffPromptReachesNerdr(t *testing.T) {
+	s, got := listen(t)
+	if err := Send(s.Path(), SpinoffPrompt, map[string]any{"pane_id": "ab12", "part": " 3f9a01bc ", "text": " Do A.\x07 "}); err != nil {
+		t.Fatal(err)
+	}
+	if r := next(t, got); r.Method != SpinoffPrompt || r.Part != "3f9a01bc" || r.Text != "Do A." {
+		t.Fatalf("report = %+v", r)
+	}
+	for _, bad := range []map[string]any{
+		{"pane_id": "ab12", "part": "3f9a01bc", "text": " "},
+		{"pane_id": "ab12", "text": "Do A."},
+		{"pane_id": "ab12", "part": "3f\x07", "text": "Do A."},
+		{"pane_id": "ab12", "part": "3f9a01bc", "text": strings.Repeat("x", 200<<10)},
+	} {
+		if err := Send(s.Path(), SpinoffPrompt, bad); err == nil {
+			t.Errorf("taken: %v", bad)
+		}
 	}
 }

@@ -24,7 +24,7 @@ func TestParseSaysWhatIsWrongWithEachPart(t *testing.T) {
 	}
 	for _, want := range []string{
 		"part 2 (a): the same branch", "part 2 (a): summary is empty",
-		"part 3 (b c): branch: bad name", "part 3 (b c): prompt is empty", `"x y" is not a commit`,
+		"part 3 (b c): branch: bad name", `"x y" is not a commit`,
 		`"../web" is not a repository's folder`,
 	} {
 		if !strings.Contains(err.Error(), want) {
@@ -37,6 +37,13 @@ func TestParseSaysWhatIsWrongWithEachPart(t *testing.T) {
 	p, err := Parse([]byte(`{"parts": [{"branch": " a ", "summary": "s", "prompt": "p"}]}`), valid)
 	if err != nil || p.Parts[0].Branch != "a" {
 		t.Fatalf("%+v, %v", p, err)
+	}
+	// A part's prompt may come after the plan.
+	if p, err := Parse([]byte(`{"parts": [{"branch": "a", "summary": "s"}]}`), valid); err != nil || p.Parts[0].Prompt != "" {
+		t.Fatalf("a plan with its prompts to come: %+v, %v", p, err)
+	}
+	if CheckPrompt(strings.Repeat("x", MaxPrompt+1)) == nil {
+		t.Fatal("a prompt over the limit was taken")
 	}
 }
 

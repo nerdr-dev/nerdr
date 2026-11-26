@@ -1,11 +1,13 @@
 package core
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
+	"github.com/nerdr-dev/nerdr/internal/config"
 )
 
 // ModelList is the models an agent listed, when, and why none; own is
@@ -128,4 +130,100 @@ func ModelMatches(am agents.AgentModel, typed string) bool {
 		}
 	}
 	return true
+}
+
+// ResolveModel resolves model, as the user named it for k to review with
+// ("astra 6.2"), into k's own name for it, from the models k lists and
+// those it has been started with (UsedModels). With model_names =
+// "nerdr" a name that matches one of them better than the rest is that
+// one, and one that matches several equally well is refused with them,
+// for the agent to ask the user; with "agent", only k's own names are
+// taken, and a loose one is refused with where to find them. A name
+// that matches none of them is taken as it is: the lists can be short of
+// what k takes (claude lists only its aliases), and one that cannot be
+// a name is refused.
+func (m *Core) ResolveModel(k agents.Kind, model string) (string, error) {
+	known := slices.Clone(m.AgentModels[k].Models)
+	for _, u := range m.UsedModels(k) {
+		if !slices.ContainsFunc(known, func(am agents.AgentModel) bool { return am.ID == u }) {
+			known = append(known, agents.AgentModel{ID: u})
+		}
+	}
+	for _, am := range known {
+		if strings.EqualFold(am.ID, model) {
+			return am.ID, nil
+		}
+	}
+	var matches []agents.AgentModel
+	for _, am := range known {
+		if ModelMatches(am, model) {
+			matches = append(matches, am)
+		}
+	}
+	loose := strings.ContainsAny(model, " \t")
+	if m.Cfg.Review.ModelNames == config.NamesByAgent {
+		if !loose && len(matches) == 0 {
+			return model, nil
+		}
+		where := agents.ModelsListing(k)
+		if where != "" {
+			where = " (" + where + ")"
+		}
+		return "", fmt.Errorf("%s has no model named %q, and nerdr is set to take only %s's own names for its models "+
+			"(model_names = \"agent\" in [review]): find its name for the model the user meant%s and run the command again with it",
+			k, model, k, where)
+	}
+	switch best := bestModels(matches, model); {
+	case len(best) == 1:
+		return best[0].ID, nil
+	case len(best) > 1:
+		return "", fmt.Errorf("%q could be any of %s's models %s: ask the user which they mean, and give its name", model, k, modelIDs(best))
+	case loose && len(known) == 0:
+		return "", fmt.Errorf("nerdr could not get %s's models to find %q among: give %s's own name for the model", k, model, k)
+	case loose:
+		return "", fmt.Errorf("none of %s's models is %q; it has %s: ask the user which they mean, and give its name", k, model, modelIDs(known))
+	}
+	return model, nil
+}
+
+// bestModels are those of ms that have the fewest words besides those of
+// typed: "astra 6.2" is gpt-6.2-astra rather than gpt-6.2-astra-mini.
+func bestModels(ms []agents.AgentModel, typed string) []agents.AgentModel {
+	words := func(s string) []string {
+		return strings.FieldsFunc(strings.ToLower(s), func(r rune) bool { return r == ' ' || r == '-' || r == '_' || r == '/' })
+	}
+	want := words(typed)
+	extra := func(am agents.AgentModel) int {
+		n := 0
+		for _, w := range words(am.ID) {
+			if !slices.ContainsFunc(want, func(t string) bool { return strings.Contains(w, t) }) {
+				n++
+			}
+		}
+		return n
+	}
+	var out []agents.AgentModel
+	least := -1
+	for _, am := range ms {
+		switch n := extra(am); {
+		case least < 0 || n < least:
+			out, least = []agents.AgentModel{am}, n
+		case n == least:
+			out = append(out, am)
+		}
+	}
+	return out
+}
+
+// modelIDs lists ms by id, the first few.
+func modelIDs(ms []agents.AgentModel) string {
+	var ids []string
+	for i, am := range ms {
+		if i == 12 {
+			ids = append(ids, "…")
+			break
+		}
+		ids = append(ids, am.ID)
+	}
+	return strings.Join(ids, ", ")
 }

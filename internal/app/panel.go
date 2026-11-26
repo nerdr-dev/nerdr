@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/hooks"
 )
 
 // The panel above the agent, inside its frame: what the tab is about, so
@@ -104,6 +106,12 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 		rows = append(rows, core.PanelRow{Label: "swap:", Text: ansi.Truncate("waiting for "+string(t.Agent)+"'s handoff to "+string(w.To)+" · "+
 			m.pk("a s")+" switches now or cancels", textW, "…"), Dim: true})
 	}
+	if prep := preparing(t); prep == hooks.PrepSpinoff {
+		rows = append(rows, core.PanelRow{Label: "spin:", Text: ansi.Truncate("the agent is writing up the parts to split off · "+
+			"the dialog opens as soon as they come", textW, "…"), Dim: true})
+	} else if prep == hooks.PrepReview && m.reviewLine(t) == "" {
+		rows = append(rows, core.PanelRow{Label: "rev:", Text: ansi.Truncate("the agent is asking for a review", textW, "…"), Dim: true})
+	}
 	if s := m.reviewLine(t); s != "" && t.ReviewOf == nil {
 		tone := core.ToneReview
 		if t.Review == nil && t.ReviewApproved {
@@ -123,6 +131,21 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 		return nil
 	}
 	return append(rows[:min(len(rows), room)], core.PanelRow{Rule: true})
+}
+
+// prepareFor is how long an agent is said to be preparing what it is to
+// send nerdr: one that never sends it is not said to for ever.
+const prepareFor = 5 * time.Minute
+
+// preparing is the nerdr skill an agent of t's has taken up to send nerdr
+// something (hooks.PrepSpinoff, PrepReview), "" when none is.
+func preparing(t *core.Tab) string {
+	for _, a := range append([]*core.Tab{t}, t.ExtraAgents()...) {
+		if a.Preparing != "" && time.Since(a.PreparingAt) < prepareFor {
+			return a.Preparing
+		}
+	}
+	return ""
 }
 
 // wrapRows wraps text, its own line breaks as spaces, into at most n rows

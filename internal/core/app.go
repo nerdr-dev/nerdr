@@ -193,6 +193,8 @@ func (m *Core) OnReport(msg hooks.Report) Cmd {
 	switch msg.Method {
 	case hooks.Spinoff:
 		return m.OnSpinoff(msg)
+	case hooks.SpinoffPrompt:
+		return m.OnSpinoffPrompt(msg)
 	case hooks.Handoff:
 		return m.OnHandoff(msg)
 	case hooks.Review:

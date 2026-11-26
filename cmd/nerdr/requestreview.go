@@ -19,11 +19,12 @@ back to you as a message. FOCUS, if given, is what you want it to look at
 most — a part you are unsure of — in a sentence or two.
 
 --agent is the kind of agent to review with (codex, claude, opencode, …),
-and --model the model it reviews with, in that agent's own names, as the
-user means it: nerdr agents shows the models the tab's agents run, and
-the agent's own listing (codex's /model, cursor-agent models, opencode
-models) the rest. Only when the user asked for them; without, the
-reviewer the user set up reviews.
+and --model the model it reviews with, as the user named it ("astra 6.2"):
+nerdr finds the agent's own name for it and says which it took. If nerdr
+answers that the name could be several models, ask the user which; if it
+answers that it takes only the agent's own names, find that name where it
+says and run the command again. Only when the user asked for them;
+without, the reviewer the user set up reviews.
 
 Give --agent once for each agent the user named, up to 4, each followed
 by its own --model if the user gave one: they review together, and their
@@ -79,9 +80,13 @@ func runRequestReview(args []string) int {
 	if !ok {
 		return 1
 	}
-	if err := send(sock, hooks.RequestReview, map[string]any{"pane_id": tab, "focus": focus, "reviewers": by}); err != nil {
+	answer, err := hooks.RequestWithin(sock, hooks.RequestReview, map[string]any{"pane_id": tab, "focus": focus, "reviewers": by}, hooks.ReviewAnswerWait)
+	if err = explain(sock, err); err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr request-review:", err)
 		return 1
+	}
+	if answer = strings.TrimSpace(answer); answer != "" {
+		fmt.Println(answer)
 	}
 	fmt.Println("nerdr has it. End your turn now: the review starts then, and its findings come to you as a message.")
 	return 0

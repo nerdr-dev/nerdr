@@ -267,3 +267,20 @@ func TestClaudeReportsOnlyProcessesAsProcesses(t *testing.T) {
 		}
 	}
 }
+
+// TestClaudeSaysWhatItPrepares: taking up nerdr-spinoff or
+// nerdr-request-review is reported with the working state, for the user to
+// see the plan or the request coming; another skill is not.
+func TestClaudeSaysWhatItPrepares(t *testing.T) {
+	for _, c := range []struct{ skill, want string }{
+		{"nerdr-spinoff", PrepSpinoff}, {"nerdr-request-review", PrepReview},
+		{"nerdr:nerdr-spinoff", PrepSpinoff}, {"simplify", ""},
+	} {
+		ev := ClaudeEvent{Event: "PreToolUse", Tool: "Skill", SessionID: "s1"}
+		ev.Input.Skill = c.skill
+		method, p := claudeReport(ev, "tab1", SubagentWait{})
+		if got, _ := p["preparing"].(string); method != ReportAgent || p["state"] != "working" || got != c.want {
+			t.Errorf("%s: %s %v", c.skill, method, p)
+		}
+	}
+}
