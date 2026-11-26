@@ -248,6 +248,15 @@ func (m *Model) draw() string {
 		box := m.area(m.prefixHint(m.width, len(body)), func(*Model, tea.MouseMsg) tea.Cmd { return nil })
 		body = overlay(body, box, m.width)
 	}
+	if m.walkHintShown() {
+		// In the bottom right corner inside the pane's frame, clear of the
+		// sidebar walked and of as much of the agent as can be.
+		box := m.walkHint()
+		bw, bh := lipgloss.Width(box), lipgloss.Height(box)
+		if bw+m.sideW()+4 <= m.width && bh+2 <= len(body) {
+			body = overlayAt(body, box, m.width, m.width-bw-2, len(body)-bh-1)
+		}
+	}
 	return bars + "\n" + strings.Join(body, "\n") + foot
 }
 

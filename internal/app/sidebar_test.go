@@ -195,3 +195,28 @@ func TestSidebarDetailsOnTheTabsLine(t *testing.T) {
 		t.Fatalf("+ new repo opened %T", m.dialog)
 	}
 }
+
+// TestWalkHintSaysThePrefixIsOn: while the arrows walk the sidebar, the
+// big hint gives way, and a box in the corner says the prefix is still on
+// until enter leaves it.
+func TestWalkHintSaysThePrefixIsOn(t *testing.T) {
+	m := sideModel(t)
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	if v := ansi.Strip(m.View()); !strings.Contains(v, "ctrl+q is still on") || !strings.Contains(v, "stay in this tab") {
+		t.Fatalf("walking, the screen should say the prefix is still on:\n%s", v)
+	}
+	// The prefix again: every key, the prefix still on; an arrow walks on.
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	if v := ansi.Strip(m.View()); !m.prefix || !strings.Contains(v, "Keys after ctrl+q") || strings.Contains(v, "is still on") {
+		t.Fatalf("the prefix again should bring back every key (prefix %v):\n%s", m.prefix, v)
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	if v := ansi.Strip(m.View()); !m.prefix || !strings.Contains(v, "is still on") {
+		t.Fatalf("an arrow should walk on with the corner box:\n%s", v)
+	}
+	m.handleKey(tea.KeyMsg{Type: tea.KeyEnter})
+	if v := ansi.Strip(m.View()); strings.Contains(v, "is still on") {
+		t.Fatalf("after enter the box should be gone:\n%s", v)
+	}
+}
