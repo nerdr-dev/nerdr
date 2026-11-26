@@ -193,6 +193,28 @@ func (w *codexWindow) window() *Window {
 	return &Window{Used: w.UsedPercent, ResetsAt: w.ResetsAt, Minutes: w.Minutes}
 }
 
+// codexWindows sorts codex's primary and secondary windows into the short
+// one and the weekly one by how long each is: on some plans codex has
+// only a weekly window, and gives it as the primary one. A window that
+// does not say how long it is goes by its place.
+func codexWindows(primary, secondary *codexWindow) (session, weekly *Window) {
+	for i, w := range []*codexWindow{primary, secondary} {
+		if w == nil {
+			continue
+		}
+		long := i == 1
+		if w.Minutes > 0 {
+			long = w.Minutes >= 24*60
+		}
+		if long && weekly == nil {
+			weekly = w.window()
+		} else if !long && session == nil {
+			session = w.window()
+		}
+	}
+	return session, weekly
+}
+
 // CodexLog is the last of what the codex log at path says of the
 // account's limits and of its conversation's context.
 func CodexLog(path string) (Report, bool) {
@@ -219,7 +241,8 @@ func CodexLog(path string) (Report, bool) {
 			r.Context, found = &c, true
 		}
 		if l := e.Payload.RateLimits; l != nil && (l.Primary != nil || l.Secondary != nil) {
-			r.Session, r.Weekly, r.Plan, found = l.Primary.window(), l.Secondary.window(), l.Plan, true
+			r.Session, r.Weekly = codexWindows(l.Primary, l.Secondary)
+			r.Plan, found = l.Plan, true
 		}
 	}
 	return *r.Checked(), found
