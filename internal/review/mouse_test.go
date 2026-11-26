@@ -45,12 +45,12 @@ func TestLayoutMatchesWhatIsDrawn(t *testing.T) {
 		}
 	}
 
-	// The panes meet without overlapping or leaving a gap.
+	// The panes share the line between them: one frame, split.
 	if m.sideBySide(m.width) {
-		if lay.files.x+lay.files.w != lay.diff.x {
+		if lay.files.x+lay.files.w-1 != lay.diff.x {
 			t.Errorf("gap or overlap between the files and diff panes: %+v %+v", lay.files, lay.diff)
 		}
-	} else if lay.files.y+lay.files.h != lay.diff.y {
+	} else if lay.files.y+lay.files.h-1 != lay.diff.y {
 		t.Errorf("gap or overlap between the files and diff panes: %+v %+v", lay.files, lay.diff)
 	}
 }
