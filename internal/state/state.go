@@ -144,6 +144,20 @@ type Message struct {
 	// Gone is the number of the agent it was for, on one of a tab's
 	// Inactive: that agent's pane was closed before it was sent.
 	Gone int `json:"gone,omitempty"`
+	// Origin says, for a message nerdr wrote by itself for an [auto]
+	// event, what it is about ("fix #12's failing CI"); F3 and the tab's
+	// panel show it, and the history tells when it is sent.
+	Origin string `json:"origin,omitempty"`
+	// AutoKey and AutoEvent are the pull request (as PRWatch.Known has it)
+	// and the [auto] event of a message nerdr wrote by itself, while it is
+	// nerdr's to send: what it replaces, and what is looked at again before
+	// it goes. Ticking or editing it in F3 makes it the user's, and clears
+	// them.
+	AutoKey   string `json:"auto_key,omitempty"`
+	AutoEvent string `json:"auto_event,omitempty"`
+	// AutoHead is the pull request's head commit it was written for: once
+	// that head no longer fails, or conflicts, it is taken back.
+	AutoHead string `json:"auto_head,omitempty"`
 }
 
 // ReviewDone is a review that has ended a round with its findings in the
@@ -218,6 +232,29 @@ type PRWatch struct {
 	// is a change news.
 	Repos []string `json:"repos,omitempty"`
 	News  []PRNews `json:"news,omitempty"`
+	// Auto is what the [auto] settings have done for each pull request,
+	// by the key Known has, and event ("ci_failed" and the others).
+	Auto map[string]map[string]AutoTry `json:"auto,omitempty"`
+}
+
+// AutoTry is how far one [auto] event has got with one pull request.
+type AutoTry struct {
+	// Want is the head commit the event waits on, for checks that have
+	// come to fail on it while others are still running.
+	Want string `json:"want,omitempty"`
+	// Done is what it was last acted on for: the head commit of the
+	// failing checks or the conflict, the time of the latest review. The
+	// same is not acted on again.
+	Done string `json:"done,omitempty"`
+	// Tries is how many times in a row it was sent by itself, without
+	// being cleared up between.
+	Tries int `json:"tries,omitempty"`
+	// Retries is how many times in a row reading the pull request for it
+	// failed; it is tried again at the next look, up to a few times.
+	Retries int `json:"retries,omitempty"`
+	// Job is the reading of the pull request under way for it, if any:
+	// the answer of an earlier one, come late, is dropped.
+	Job int64 `json:"job,omitempty"`
 }
 
 // PRSeen is how one pull request stood.
@@ -228,6 +265,13 @@ type PRSeen struct {
 	Failing map[string]bool `json:"failing,omitempty"`
 	// Reviews is each reviewer's latest review, by reviewer.
 	Reviews map[string]ReviewSeen `json:"reviews,omitempty"`
+	// Conflicting is set while GitHub says it conflicts with its base.
+	Conflicting bool `json:"conflicting,omitempty"`
+	// Mergeable is set while GitHub says it does not conflict: neither is
+	// while GitHub does not know yet (UNKNOWN).
+	Mergeable bool `json:"mergeable,omitempty"`
+	// Head is its head commit.
+	Head string `json:"head,omitempty"`
 }
 
 // ReviewSeen is a review as far as telling of it goes.

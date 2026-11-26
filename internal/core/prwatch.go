@@ -74,6 +74,9 @@ func SeenOf(repo string, pr github.PR) state.PRSeen {
 			s.Reviews[rv.Author] = state.ReviewSeen{State: rv.State, At: rv.SubmittedAt}
 		}
 	}
+	s.Conflicting = strings.EqualFold(pr.Mergeable, "CONFLICTING")
+	s.Mergeable = strings.EqualFold(pr.Mergeable, "MERGEABLE")
+	s.Head = pr.Head
 	return s
 }
 
@@ -199,8 +202,18 @@ type PRWatchState struct {
 	Errs    map[string]string // by repository path: why it did not answer
 
 	Known map[string]state.PRSeen // by prKey
-	Repos map[string]bool         // the repositories that have answered once
-	News  []state.PRNews          // not seen in the list yet, oldest first
+	// Auto is how far each [auto] event has got with each pull request;
+	// see auto.go.
+	Auto map[string]map[string]state.AutoTry
+	// AutoInRepos is whether a .nerdr.toml of a tab's repository turns an
+	// [auto] event on, as found at AutoLookedAt; see AutoOn.
+	AutoInRepos  bool
+	AutoLookedAt time.Time
+	// AutoJobAt is the ID of the latest [auto] job that reads a pull
+	// request; see StartAuto.
+	AutoJobAt int64
+	Repos     map[string]bool // the repositories that have answered once
+	News      []state.PRNews  // not seen in the list yet, oldest first
 	// Skip is the repositories with no GitHub remote, and until when they
 	// are left alone.
 	Skip map[string]time.Time
@@ -253,20 +266,21 @@ func (m *Core) LoadPRWatch(s *state.PRWatch) {
 		return
 	}
 	w := &m.PRWatch
-	w.Known, w.News, w.Repos = s.Known, s.News, map[string]bool{}
+	w.Known, w.News, w.Repos, w.Auto = s.Known, s.News, map[string]bool{}, s.Auto
 	for _, r := range s.Repos {
 		w.Repos[r] = true
 	}
+	m.RearmAutoJobs()
 	m.Tell(PRMarkMsg{})
 }
 
 // SavedPRWatch is the watching as the session keeps it.
 func (m *Core) SavedPRWatch() *state.PRWatch {
 	w := &m.PRWatch
-	if len(w.Known) == 0 && len(w.News) == 0 {
+	if len(w.Known) == 0 && len(w.News) == 0 && len(w.Auto) == 0 {
 		return nil
 	}
-	s := &state.PRWatch{Known: w.Known, News: w.News}
+	s := &state.PRWatch{Known: w.Known, News: w.News, Auto: w.Auto}
 	for r := range w.Repos {
 		s.Repos = append(s.Repos, r)
 	}
@@ -277,10 +291,10 @@ func (m *Core) SavedPRWatch() *state.PRWatch {
 // TickPRs asks GitHub again when it is time to: while the PRs are watched
 // or their list is shown.
 func (m *Core) TickPRs(now time.Time) Cmd {
-	if !IsOn(m.Cfg.PRNotify) && !(m.Client != nil && m.Client.Sight().PRsShown) {
+	if now.Sub(m.PRWatch.At) < m.GithubEvery(PrWatchEvery) {
 		return nil
 	}
-	if now.Sub(m.PRWatch.At) < m.GithubEvery(PrWatchEvery) {
+	if !IsOn(m.Cfg.PRNotify) && !(m.Client != nil && m.Client.Sight().PRsShown) && !m.AutoOn(now) {
 		return nil
 	}
 	return m.RefreshPRs()
@@ -387,9 +401,10 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) PRWatchMs
 }
 
 // OnPRWatch takes a look at the pull requests: the lists show it, and
-// what changed is told. A repository that did not answer keeps what was
-// known of it, so its answering again is not taken for news.
-func (m *Core) OnPRWatch(msg PRWatchMsg) {
+// what changed is told, and acted on as [auto] says (auto.go). A
+// repository that did not answer keeps what was known of it, so its
+// answering again is not taken for news.
+func (m *Core) OnPRWatch(msg PRWatchMsg) Cmd {
 	w := &m.PRWatch
 	w.Busy = false
 	if w.Repos == nil {
@@ -401,7 +416,9 @@ func (m *Core) OnPRWatch(msg PRWatchMsg) {
 	if w.Errs == nil {
 		w.Errs = map[string]string{}
 	}
-	kept := func(repo string) bool { return msg.Failed[repo] != "" || msg.Skipped[repo] }
+	// With no repositories found at all (msg.Failed[""]), none answered:
+	// each keeps what was known of it, its [auto] messages and tries too.
+	kept := func(repo string) bool { return msg.Failed[""] != "" || msg.Failed[repo] != "" || msg.Skipped[repo] }
 
 	entries := append([]PREntry(nil), msg.PRs...)
 	for _, e := range w.Entries {
@@ -432,6 +449,7 @@ func (m *Core) OnPRWatch(msg PRWatchMsg) {
 		}
 	}
 	var news []state.PRNews
+	var jobs []autoJob
 	for _, e := range msg.PRs {
 		k := PrKey(e.Repo.Path, e.PR.Number)
 		now := SeenOf(e.Repo.Path, e.PR)
@@ -443,6 +461,7 @@ func (m *Core) OnPRWatch(msg PRWatchMsg) {
 			for _, c := range PrChanges(w.Known[k], now) {
 				news = append(news, state.PRNews{Key: k, Repo: e.Repo.Name, Number: e.PR.Number, What: c.What, Tab: tabName, Checks: c.Checks})
 			}
+			jobs = append(jobs, m.AutoJobs(k, e, w.Known[k], now)...)
 		}
 		known[k] = now
 	}
@@ -450,12 +469,20 @@ func (m *Core) OnPRWatch(msg PRWatchMsg) {
 		w.Repos[r] = true
 	}
 	w.Known = known
+	m.WithdrawStaleAuto(known, kept)
+	for k := range w.Auto {
+		if _, open := known[k]; !open {
+			delete(w.Auto, k) // merged or closed
+		}
+	}
 	m.DropStalePRNews()
 	if len(news) > 0 && IsOn(m.Cfg.PRNotify) {
 		m.TellPRNews(news)
 	}
+	cmd := m.StartAuto(jobs)
 	m.Tell(PRsMsg{})
 	m.SaveSession()
+	return cmd
 }
 
 // DropStalePRNews forgets news not seen yet that no longer holds: of a

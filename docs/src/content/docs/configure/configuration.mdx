@@ -117,7 +117,7 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 | Setting | Default | |
 |---|---|---|
 | `notify` | `"all"` | When to notify: `all`, `blocked` (needs input), `done` or `off`. Done is told once the tab's work is over, not when an agent hands it on to a reviewer or another agent in the tab. |
-| `pr_notify` | `true` | Tell you about failed checks and new reviews on your pull requests. Off, GitHub is not asked. |
+| `pr_notify` | `true` | Tell you about failed checks and new reviews on your pull requests. Off, GitHub is not asked, unless [`[auto]`](#automatic-asks) turns something on. |
 | `issue_notify` | `true` | Tell you about issues newly assigned to you. Off, GitHub is not asked. |
 | `github_refresh` | `90` | Seconds between GitHub checks of the tab on screen, 15–3600; other checks scale with it. |
 | `claude_status_line` | `true` | Start claude with nerdr's status line, which reports the rate limits and then shows yours. See [Usage](../../use/progress/#usage-and-rate-limits). |
@@ -216,6 +216,95 @@ which. With `model_names = "agent"`, nerdr takes only the reviewer's own
 names, and the agent looks the name up itself, which takes it a few
 steps longer.
 
+## Automatic asks
+
+The `[auto]` table has nerdr ask a tab's agent by itself when something
+happens to the pull request of the tab's branch. It is off by default.
+
+```toml
+[auto]
+ci_failed = "off"         # a check failed: ask the agent to fix it, with the job's log
+review_comments = "off"   # a review that is not an approval: ask for draft replies
+conflicts = "off"         # the PR conflicts with its base: ask the agent to rebase
+max_tries = 3             # sent by itself at most this many times in a row per PR
+wake = false              # may wake a tab that is asleep or cold
+```
+
+Each event is one of these:
+
+- `off`: nothing is done. nerdr still tells you of failed checks and new
+  reviews, as `pr_notify` says.
+- `ask`: nerdr writes the message that `f` or `a` in
+  [F2](../../panel/github/) would write, and keeps it in the tab's F3.
+  You are told in the bar, in the history (F5) and on the desktop. Read
+  it, then send it.
+- `auto`: the message is sent to the tab's agent when the agent is idle,
+  without you reading it first.
+
+nerdr acts only on your own open pull requests, the ones it watches for
+`pr_notify`, and only on a branch that a tab works on. It acts only on
+what changes while it watches, not on a check that was already failing.
+
+- `ci_failed` waits until no check of the run is still going, so the
+  agent gets every failing job in one message. It acts once for each
+  head commit: running the same job again does not send it again, but a
+  push that fails again does.
+- `review_comments` acts on a review by someone else that is not an
+  approval. The message asks for draft replies to every review and
+  comment, as `A` does, and says that nothing is to be posted.
+- `conflicts` acts when GitHub says the pull request conflicts with its
+  base. The message asks the agent to rebase onto the base, resolve the
+  conflicts and run the tests. It quotes nobody.
+
+None of the messages ask the agent to commit or push. You do that once
+you have looked at the work.
+
+With `auto`, the message waits in F3, ticked to be sent by itself, until
+the agent is idle. The tab's panel shows an `auto:` row while it waits,
+and after it is sent, until you send the agent something else. When it
+is sent, you are told as with `ask`. If an unsent one of the same kind
+is still waiting, the new one takes its place.
+
+Some things make `auto` act as `ask` for that one message. nerdr tells
+you which one:
+
+- The message would quote someone who is not you or an owner, member or
+  collaborator of the repository (`review_comments`).
+- The branch is in a fork (`ci_failed`).
+- nerdr has sent one by itself `max_tries` times in a row for the same
+  pull request. The count starts again when the checks pass, the pull
+  request is approved, or the conflict goes away.
+- The tab is asleep or cold (`❄`, no activity for `cold_days` days) and `wake` is off.
+- A repository's `.nerdr.toml` set it to `auto`, and you have not
+  allowed that file (see below).
+
+nerdr checks the last two, and your settings, again just before it sends
+a waiting message. If `auto` was turned off, or the `.nerdr.toml` changed,
+the message stays in F3 for you. A message you tick or edit in F3 is
+yours, and goes as you set it. If GitHub does not answer when nerdr reads
+the pull request for a message, it tries again at the next few looks.
+
+A message nerdr wrote that has not been sent yet is taken back when a
+later look finds the trouble gone: the checks pass on that commit, the
+conflict is resolved, or the pull request is closed. The history (F5)
+records it. In a tab with several repositories, the message names the
+worktree and branch it is about.
+
+nerdr watches your pull requests while `pr_notify` is on, or while
+`[auto]`, in your config or in the `.nerdr.toml` of a repository a tab
+works in, turns anything on. It asks GitHub as often as
+[`github_refresh`](#notifications-and-github) says: every two minutes at the default.
+
+<Aside type="caution" title="auto sends what others wrote, unread">
+Review comments and CI logs contain text written by others. A CI log
+holds what your tests, your dependencies and the code under test print.
+Any of it can hold instructions meant for the agent, and the agent acts
+on them within its permissions. With `ask`, you read the message first.
+With `auto`, nobody does. Turn `auto` on only for repositories whose
+reviewers and builds you trust, and preferably for agents in a sandbox.
+See [Security](../../reference/security/#automatic-asks).
+</Aside>
+
 ## Agents
 
 `[agents.<name>]` tables set how each agent is started: its command,
@@ -286,7 +375,7 @@ nerdr:
 `keep_screen_on`, `keep_screen_max` and `[[servers]]`.
 
 The rest are read by the machine the agents run on, from
-`~/.config/nerdr/config.toml` there: `[agents]`, `[wrappers]`, `[review]`, `shell`,
+`~/.config/nerdr/config.toml` there: `[agents]`, `[wrappers]`, `[review]`, `[auto]`, `shell`,
 `repo_dirs`, `worktrees_dir`, `data_dir`, `install`, `enabled_skills`,
 `max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `headless_cols`,
 `headless_rows`, `github_refresh`,
@@ -309,6 +398,22 @@ setup = "npm ci"
 ```
 
 See [Getting a new worktree ready](../../use/tabs/#getting-a-new-worktree-ready-nerdrtoml).
+
+It can also set the [automatic asks](#automatic-asks) for the
+repository's pull requests, in place of your config's:
+
+```toml
+[auto]
+ci_failed = "auto"
+review_comments = "off"
+```
+
+An event the file leaves out follows your config. Setting one to `off`
+or `ask` takes effect right away. Setting one to `auto` takes effect only
+after you have allowed the file, because an agent can write it. nerdr
+asks you to allow it when the next worktree is made in the repository,
+and again after every change, as it does for `setup`. Until then, that
+event acts as `ask`.
 
 <Aside title="Files nerdr keeps">
 Besides the config, nerdr keeps its state in `~/.local/state/nerdr/`:

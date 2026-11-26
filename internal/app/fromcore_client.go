@@ -178,6 +178,9 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 	case core.PRNewsMsg:
 		m.fleet.Bump()
 		m.tellPRNews(ev.News)
+	case core.AutoMsg:
+		m.fleet.Bump()
+		m.tellAuto(ev)
 	case core.PRMarkMsg:
 		m.fleet.Bump()
 		m.review.SetPRNews(len(m.tabOn().Core.PRWatch.News) > 0)

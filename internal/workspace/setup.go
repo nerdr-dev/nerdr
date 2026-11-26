@@ -48,6 +48,41 @@ var setupTimeout = 15 * time.Minute
 type RepoConfig struct {
 	Copy  []string `toml:"copy"`
 	Setup string   `toml:"setup"`
+	// Auto sets the [auto] events for the repository's pull requests, in
+	// place of the config file's; see RepoAuto.
+	Auto RepoAuto `toml:"auto" json:",omitzero"`
+}
+
+// RepoAuto is a .nerdr.toml's [auto] table: ci_failed, review_comments
+// and conflicts as the config file's [auto] has them, each "" where the
+// file does not set it. An agent can write the file, and "auto" sends
+// what others wrote to an agent unread, so a repository's "auto" holds
+// only once the user has allowed the file as it is (Allowed); until then
+// it counts as "ask". Turning one off or to ask needs no allowing.
+type RepoAuto struct {
+	CIFailed       string `toml:"ci_failed" json:",omitempty"`
+	ReviewComments string `toml:"review_comments" json:",omitempty"`
+	Conflicts      string `toml:"conflicts" json:",omitempty"`
+}
+
+// Mode is what a sets for event ("ci_failed" and the others), "" where it
+// sets nothing.
+func (a RepoAuto) Mode(event string) string {
+	switch event {
+	case "ci_failed":
+		return a.CIFailed
+	case "review_comments":
+		return a.ReviewComments
+	case "conflicts":
+		return a.Conflicts
+	}
+	return ""
+}
+
+// SendsAuto reports whether a sets any event to "auto", which the user
+// has to allow.
+func (a RepoAuto) SendsAuto() bool {
+	return a.CIFailed == "auto" || a.ReviewComments == "auto" || a.Conflicts == "auto"
 }
 
 // LoadRepoConfig reads repo's .nerdr.toml. It looks in the main checkout,
@@ -74,8 +109,11 @@ func LoadRepoConfig(repo string) (RepoConfig, error) {
 // maxRepoConfig bounds the .nerdr.toml LoadRepoConfig reads.
 const maxRepoConfig = 1 << 20
 
-// Empty reports whether the config asks for nothing.
-func (c RepoConfig) Empty() bool { return len(c.Copy) == 0 && strings.TrimSpace(c.Setup) == "" }
+// Empty reports whether the config asks for nothing the user has to
+// allow: nothing to copy or run, and no [auto] event sent by itself.
+func (c RepoConfig) Empty() bool {
+	return len(c.Copy) == 0 && strings.TrimSpace(c.Setup) == "" && !c.Auto.SendsAuto()
+}
 
 // The .nerdr.toml is read from the main checkout, which an agent may write
 // to — its tab can be there, when the branch it works on is checked out in

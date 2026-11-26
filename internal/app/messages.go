@@ -212,6 +212,12 @@ func (m *Model) messagesBody(o *core.Tab, w, h int) []string {
 		if r.A == nil {
 			box = dim("→" + strconv.Itoa(msg.Gone) + " ")
 		}
+		if msg.Origin != "" {
+			lines = append(lines, "      "+dim("by nerdr, to "+msg.Origin+" · it may quote what others wrote"))
+			if n == m.msgCursor {
+				cursorRows++
+			}
+		}
 		for j, row := range rows {
 			switch {
 			case on:

@@ -61,6 +61,30 @@ nerdr watches your pull requests for failed checks and new reviews, and
 tells you in the bar, with `◆` on F2, and on the desktop. Set
 `pr_notify = false` to turn this off.
 
+### Asking the agent by itself
+
+nerdr can write the `f` or `a` message by itself when a check fails or a
+review comes in, and ask the agent to rebase when the pull request
+conflicts with its base. Turn this on per event in
+[`[auto]`](../../configure/configuration/#automatic-asks):
+
+```toml
+[auto]
+ci_failed = "ask"         # or "auto"
+review_comments = "ask"
+conflicts = "auto"
+```
+
+With `ask`, the message waits in the tab's F3 for you to read and send,
+and nerdr tells you. With `auto`, it is sent when the agent is idle.
+F3 marks a message nerdr wrote with `by nerdr`. The tab's panel shows an
+`auto:` row, and the history (F5) records when it was sent.
+
+nerdr waits until the CI run has ended, and acts once per head commit. It
+sends at most `max_tries` (3) in a row for one pull request. It does not
+wake a tab that is asleep or cold unless `wake = true`. In each of these
+cases the message waits for you instead.
+
 ## Issues
 
 Issues assigned to you across these repositories (`ctrl+q g o`).
@@ -85,4 +109,8 @@ calls per tab and by command, live.
 Review comments and CI logs contain text written by others. They may
 include instructions meant for the agent, and the agent acts within its
 permissions. Drafts open for you to read and edit before they are sent.
+With `auto` in [`[auto]`](../../configure/configuration/#automatic-asks),
+nobody reads them before they are sent. nerdr still holds back a review
+message that quotes someone outside the repository, and the CI log of a
+branch in a fork, until you read them.
 </Aside>

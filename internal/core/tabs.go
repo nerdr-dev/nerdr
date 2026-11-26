@@ -766,6 +766,12 @@ type Tab struct {
 	// read a moment later, cannot put back the prompt before it.
 	LastAt time.Time
 
+	// AutoNote is what the panel says of the last [auto] message, waiting
+	// or sent; AutoSentAt is LastAt as it was sent, so that the panel
+	// stops saying so once the agent is sent something else. See auto.go.
+	AutoNote   string
+	AutoSentAt time.Time
+
 	// SpinoffBusy says what is being made for the part of Spinoff asked
 	// about, while it is; see spinoff.go. spinoffSince is when
 	// SpinoffReport began to wait for the tabs made.

@@ -25,6 +25,8 @@ import (
 //	note: your note for the tab, one row
 //	swap: that a switch of agent waits for the old one's handoff
 //	rev:  the code review going on, or how the last one ended
+//	auto: a message nerdr wrote by itself for an [auto] event, waiting
+//	      to be sent when the agent is idle, or sent last
 //	msgs: the messages waiting in F3
 //	pr:   that the tab's work is merged, and how to close it
 //
@@ -118,6 +120,9 @@ func (m *Model) taskRows(t *core.Tab, w, h int) []core.PanelRow {
 			tone = core.ToneApproved
 		}
 		rows = append(rows, core.PanelRow{Label: "rev:", Text: ansi.Truncate(s, textW, "…"), Tone: tone})
+	}
+	if s := t.AutoLine(); s != "" {
+		rows = append(rows, core.PanelRow{Label: "auto:", Text: ansi.Truncate(s, textW, "…"), Tone: core.ToneReview})
 	}
 	if s := m.messagesLine(t); s != "" {
 		rows = append(rows, core.PanelRow{Label: "tasks:", Text: ansi.Truncate(s, textW, "…"), Dim: true})

@@ -25,7 +25,7 @@ func init() {
 		ToastMsg(""), NoticeMsg(""), HistoryMsg{}, LightMsg{}, ReviewNewsMsg{}, ReviewMsg{},
 		PaneOpenedMsg{}, PaneClosedMsg{}, PanesMsg{}, LayoutMsg{}, StartedMsg{},
 		TermsMsg{}, SwitchedMsg{}, SpinoffAskMsg{}, SwitchAskMsg{}, SpinoffPromptMsg{}, IssuesMsg{},
-		IssueNewsMsg{}, IssuesDueMsg{}, PRsMsg{}, PRNewsMsg{}, PRMarkMsg{},
+		IssueNewsMsg{}, IssuesDueMsg{}, PRsMsg{}, PRNewsMsg{}, PRMarkMsg{}, AutoMsg{},
 		OverlapsMsg{}, DetectStartMsg{}, DetectDoneMsg{}, PluginUIStartedMsg{},
 		PluginUIGoneMsg{}, PluginRunMsg{}, AskMsg{}, AnsweredMsg{}, TypedInMsg{},
 		UnseenMsg{}, SetupAnsweredMsg{}, SpinoffFailedMsg{}, SpinoffNextMsg{},

@@ -187,6 +187,10 @@ type Config struct {
 	// internal/codereview.
 	Review Review `toml:"review" scope:"core"`
 
+	// Auto is what nerdr asks a tab's agent by itself when something
+	// happens to the tab's pull request; see Auto and core's auto.go.
+	Auto Auto `toml:"auto" scope:"core"`
+
 	// dataDirSet is whether the file sets data_dir, so the first-start
 	// setup does not write it a second time; worktreesDirSet the same for
 	// worktrees_dir.
@@ -328,6 +332,75 @@ const (
 	NamesByNerdr = "nerdr"
 	NamesByAgent = "agent"
 )
+
+// Auto is the [auto] table: for each thing that can happen to a pull
+// request of yours that a tab works on, what nerdr does by itself. "off"
+// does nothing (the news of it is told as before), "ask" writes the
+// message F2 would and keeps it in the tab's F3 for you to read and send,
+// telling you so, and "auto" has it sent to the tab's agent when it is
+// idle. A repository's .nerdr.toml may set them for itself; see
+// workspace.RepoAuto.
+type Auto struct {
+	// CIFailed is when checks have come to fail on the PR's head, once
+	// none is still running: fix the build, with the failing jobs' logs.
+	CIFailed string `toml:"ci_failed"`
+	// ReviewComments is when a review that is not an approval comes in:
+	// draft replies to the reviews and comments.
+	ReviewComments string `toml:"review_comments"`
+	// Conflicts is when the PR has come to conflict with its base: rebase
+	// onto it.
+	Conflicts string `toml:"conflicts"`
+	// MaxTries is how many times in a row one of them is sent by itself
+	// for one pull request, without it being cleared up between (the
+	// checks passing, an approval, the conflict gone): the next is kept
+	// for you, as with "ask".
+	MaxTries int `toml:"max_tries"`
+	// Wake lets an auto message wake a tab whose agent is asleep, or that
+	// has gone cold; off, it waits there for you as with "ask".
+	Wake bool `toml:"wake"`
+}
+
+// The [auto] settings of each event.
+const (
+	AutoOff  = "off"
+	AutoAsk  = "ask"
+	AutoSend = "auto"
+)
+
+// The [auto] events, by their keys.
+const (
+	EventCIFailed       = "ci_failed"
+	EventReviewComments = "review_comments"
+	EventConflicts      = "conflicts"
+)
+
+// AutoEvents is every [auto] event, in the order they are told of.
+var AutoEvents = []string{EventCIFailed, EventReviewComments, EventConflicts}
+
+// DefaultAutoTries is max_tries when the file does not set it.
+const DefaultAutoTries = 3
+
+// Mode is what is set for event, AutoOff for an unknown one.
+func (a Auto) Mode(event string) string {
+	switch event {
+	case EventCIFailed:
+		return a.CIFailed
+	case EventReviewComments:
+		return a.ReviewComments
+	case EventConflicts:
+		return a.Conflicts
+	}
+	return AutoOff
+}
+
+// AutoMode is s as an [auto] setting: AutoOff for anything else.
+func AutoMode(s string) string {
+	switch s {
+	case AutoAsk, AutoSend:
+		return s
+	}
+	return AutoOff
+}
 
 // KeepAwake settings, besides "off".
 const (
@@ -509,6 +582,13 @@ func defaults(c Config) Config {
 	if c.Review.ModelNames != NamesByAgent {
 		c.Review.ModelNames = NamesByNerdr
 	}
+	c.Auto.CIFailed = AutoMode(c.Auto.CIFailed)
+	c.Auto.ReviewComments = AutoMode(c.Auto.ReviewComments)
+	c.Auto.Conflicts = AutoMode(c.Auto.Conflicts)
+	if c.Auto.MaxTries <= 0 {
+		c.Auto.MaxTries = DefaultAutoTries
+	}
+	c.Auto.MaxTries = min(c.Auto.MaxTries, 20)
 	switch c.Install {
 	case InstallHome, InstallWorktree, InstallOff:
 	default:

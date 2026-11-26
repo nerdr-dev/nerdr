@@ -330,6 +330,29 @@ func (m *Model) settingRows() []settingRow {
 				"nerdr: nerdr looks it up among the models the agent lists, so the review starts sooner. A name that could be several models is sent back, for the agent to ask you which.\n" +
 				"agent: nerdr takes only the agent's own names, and the agent asking for the review looks the name up itself.",
 			example: `model_names = "agent"`},
+
+		{label: "Automatic asks"},
+		{table: "auto", key: "ci_failed", kind: sChoice, choices: []string{"off", "ask", "auto"}, def: `"off"`,
+			desc: "When a CI check comes to fail on a pull request of yours that a tab works on, once the rest of the run has ended: the message F2's f writes, asking the tab's agent to fix it, with the failing jobs' logs.\n" +
+				"ask: it waits in the tab's F3 for you to read and send, and you are told.\n" +
+				"auto: it is sent when the agent is idle, unread. A CI log can hold text that others wrote, meant for the agent, so turn this on only where you trust what the build prints. The log of a branch in a fork is never sent unread.",
+			example: `ci_failed = "ask"`},
+		{table: "auto", key: "review_comments", kind: sChoice, choices: []string{"off", "ask", "auto"}, def: `"off"`,
+			desc: "When a review that is not an approval comes in on a pull request of yours that a tab works on: the message F2's a writes, asking the agent to draft replies to the reviews and comments.\n" +
+				"ask: it waits in the tab's F3 for you.\n" +
+				"auto: it is sent when the agent is idle, but only when everyone it quotes is you or an owner, member or collaborator of the repository; otherwise it waits for you, as with ask.",
+			example: `review_comments = "ask"`},
+		{table: "auto", key: "conflicts", kind: sChoice, choices: []string{"off", "ask", "auto"}, def: `"off"`,
+			desc: "When a pull request of yours that a tab works on comes to conflict with its base: a message asking the agent to rebase onto the base and resolve the conflicts. It quotes nobody.\n" +
+				"ask: it waits in the tab's F3 for you. auto: it is sent when the agent is idle.",
+			example: `conflicts = "auto"`},
+		{table: "auto", key: "max_tries", kind: sInt, lo: 1, hi: 20, def: "3",
+			desc:    "How many times in a row nerdr sends one of these by itself for the same pull request before it leaves the next to you, as with ask: so an agent that cannot fix it is not sent the same again and again. The checks passing, an approval or the conflict going away starts the count again.",
+			example: `max_tries = 2`},
+		{table: "auto", key: "wake", kind: sBool, def: "false",
+			desc: "Lets an automatic message wake a tab whose agent nerdr put to sleep, or that has gone cold.\n" +
+				"Off, the message waits in that tab's F3 for you, as with ask.",
+			example: `wake = true`},
 	}
 	for _, k := range m.settingAgents() {
 		table := "agents." + string(k)
