@@ -254,6 +254,9 @@ func (m *Model) draw() string {
 		box := m.walkHint()
 		bw, bh := lipgloss.Width(box), lipgloss.Height(box)
 		if bw+m.sideW()+4 <= m.width && bh+2 <= len(body) {
+			// Its own area: a click on it ends the walk, as one on the
+			// hint does, and reaches nothing under it.
+			box = m.area(box, func(*Model, tea.MouseMsg) tea.Cmd { return nil })
 			body = overlayAt(body, box, m.width, m.width-bw-2, len(body)-bh-1)
 		}
 	}

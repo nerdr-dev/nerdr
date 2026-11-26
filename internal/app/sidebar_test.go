@@ -220,3 +220,41 @@ func TestWalkHintSaysThePrefixIsOn(t *testing.T) {
 		t.Fatalf("after enter the box should be gone:\n%s", v)
 	}
 }
+
+// TestWalkHintOff: with prefix_hint off there is no box to bring back,
+// and the prefix again stays in the tab walked to, as enter does.
+func TestWalkHintOff(t *testing.T) {
+	m := sideModel(t)
+	no := false
+	m.home().Core.Cfg.PrefixHint = &no
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	if m.prefix || m.nav {
+		t.Fatalf("the prefix again, the hint off, should end the walk: prefix %v, nav %v", m.prefix, m.nav)
+	}
+}
+
+// TestWalkHintTakesClicks: a click on the corner box ends the walk and
+// reaches nothing under it.
+func TestWalkHintTakesClicks(t *testing.T) {
+	m := sideModel(t)
+	m.handleKey(tea.KeyMsg{Type: tea.KeyCtrlQ})
+	m.handleKey(tea.KeyMsg{Type: tea.KeyDown})
+	tab := m.Cur()
+	for y, line := range strings.Split(ansi.Strip(m.View()), "\n") {
+		if i := strings.Index(line, "stay in this tab"); i >= 0 {
+			if m.zoneAt(ansi.StringWidth(line[:i]), y) < 0 {
+				t.Fatal("the box should be an area of its own, over what is under it")
+			}
+		}
+	}
+	if cmd := clickOn(t, m, "stay in this tab", tea.MouseButtonLeft); cmd != nil {
+		if msg := cmd(); msg != nil {
+			t.Fatalf("a click on the box should do nothing under it, got %T", msg)
+		}
+	}
+	if m.prefix || m.nav || m.Cur() != tab || m.dialog != nil {
+		t.Fatalf("the click should end the walk in the tab: prefix %v, nav %v, dialog %T", m.prefix, m.nav, m.dialog)
+	}
+}
