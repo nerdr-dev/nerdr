@@ -100,7 +100,7 @@ func (m *Model) footAll() string {
 // footTabMenu lists tabs, above the bottom bar: picked, one is gone to, or
 // with closing asked to be closed.
 func (m *Model) footTabMenu(title string, tabs []*core.Tab, closing bool) tea.Cmd {
-	items := []menuItem{{label: title}}
+	var items []menuItem
 	for _, t := range tabs {
 		label := t.Name + " · " + m.where(t)
 		run := func(m *Model) tea.Cmd { return m.selectTab(m.fleet.TabIndex(t)) }
@@ -112,8 +112,9 @@ func (m *Model) footTabMenu(title string, tabs []*core.Tab, closing bool) tea.Cm
 		}
 		items = append(items, menuItem{label: label, run: run})
 	}
-	y := max(m.height-m.footRows()-len(items)-2, m.barRows())
-	m.dialog = &menu{title: title, items: items, x: 1, y: y, hi: 1}
+	// The title row and the border's two above the bottom bar.
+	y := max(m.height-m.footRows()-len(items)-3, m.barRows())
+	m.dialog = &menu{title: title, items: items, x: 1, y: y}
 	return nil
 }
 

@@ -106,10 +106,10 @@ func TestBottomBarAllTabs(t *testing.T) {
 	}
 	clickOn(t, m, "✗ 1 CI", tea.MouseButtonLeft)
 	mu, ok := m.dialog.(*menu)
-	if !ok || len(mu.items) != 2 || !strings.HasPrefix(mu.items[1].label, "logout") {
-		t.Fatalf("a click on the failing CI should list logout: %#v", m.dialog)
+	if !ok || len(mu.items) != 1 || !strings.HasPrefix(mu.items[0].label, "logout") {
+		t.Fatalf("a click on the failing CI should list logout, under the title alone: %#v", m.dialog)
 	}
-	mu.items[1].run(m)
+	mu.items[0].run(m)
 	if m.Cur().Name != "logout" {
 		t.Fatalf("picked, the tab is gone to: active %q", m.Cur().Name)
 	}
