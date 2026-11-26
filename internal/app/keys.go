@@ -51,9 +51,10 @@ func (m *Model) handleKey(msg tea.KeyMsg) tea.Cmd {
 		if m.nav {
 			m.nav = false
 			switch {
-			case m.isPrefix(msg) && m.sideW() > 0:
+			case m.isPrefix(msg) && m.sideW() > 0 && m.hintWanted() && !m.railShown():
 				// The prefix again, walking the sidebar: every key, in the
 				// box the walk's corner gave way to; the arrows walk on.
+				// With no box to show, it stays in the tab, as enter does.
 				m.prefix, m.prefixPage, m.prefixAt = true, 0, time.Now().Add(-hintDelay)
 				return nil
 			case k == "enter" || k == "esc" || m.isPrefix(msg):
