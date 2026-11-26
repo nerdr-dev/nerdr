@@ -355,7 +355,7 @@ func (m *Model) settingRows() []settingRow {
 				desc:    "Environment variables the agent gets, on top of those nerdr has. Type them as NAME=value with a space between. NERDR_ and HERDR_ variables are nerdr's own and cannot be set here.",
 				example: `env = { HTTPS_PROXY = "http://proxy:8080" }`},
 			settingRow{table: table, key: "command", kind: sList, def: fmt.Sprintf("%q", agents.DefaultSpec(k).Command),
-				desc:    "The program that starts the agent. Change it to run the agent through a wrapper, such as a sandbox, or a copy installed elsewhere. The first word must be a program on your PATH. nerdr adds args, and then its own arguments for the conversation, at the end; a wrapper must pass them on.",
+				desc:    "The program that starts the agent. Change it to run the agent through a wrapper, such as a sandbox, or a copy installed elsewhere. The first word must be a program on your PATH, or the name of a [wrappers.<name>] script in the config file. nerdr adds args, and then its own arguments for the conversation, at the end; a wrapper must pass them on.",
 				example: fmt.Sprintf(`command = ["my-sandbox", "--", %q]`, string(k))},
 			settingRow{table: table, key: "sandboxed", kind: sBool, def: "false",
 				desc: "Say that command runs the agent in a sandbox, so nerdr is not its way out: " +

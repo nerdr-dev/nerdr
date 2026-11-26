@@ -3,8 +3,11 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/nerdr-dev/nerdr/internal/agents"
 
 	"github.com/BurntSushi/toml"
 )
@@ -258,6 +261,94 @@ func TestReviewModelNames(t *testing.T) {
 	for _, c := range []struct{ in, want string }{{"", NamesByNerdr}, {"nerdr", NamesByNerdr}, {"agent", NamesByAgent}, {"me", NamesByNerdr}} {
 		if got := defaults(Config{Review: Review{ModelNames: c.in}}).Review.ModelNames; got != c.want {
 			t.Errorf("model_names = %q: got %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+// TestWrappers covers a wrapper script kept in the config: an agent's
+// command and check_command that start with its name run it, with the
+// rest of the command after it, and other commands are left alone.
+func TestWrappers(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", dir)
+	_ = os.MkdirAll(filepath.Join(dir, "nerdr"), 0o755)
+	write := func(s string) {
+		if err := os.WriteFile(Path(), []byte(s), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(`
+[wrappers.box]
+script = '''
+exec "$@"
+'''
+
+[wrappers.zbox]
+shell = "/bin/sh"
+script = 'exec "$@"'
+
+[agents.copilot]
+command = ["box", "nav-pilot", "--"]
+check_command = ["zbox", "cplt", "exec", "--"]
+
+[agents.claude]
+command = ["my-sandbox", "box", "claude"]
+`)
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	cp := c.Agents["copilot"]
+	if want := []string{"bash", "-c", "exec \"$@\"\n", "box", "nav-pilot", "--"}; !slices.Equal(cp.Command, want) {
+		t.Fatalf("command %q, want %q", cp.Command, want)
+	}
+	if want := []string{"/bin/sh", "-c", `exec "$@"`, "zbox", "cplt", "exec", "--"}; !slices.Equal(cp.CheckCommand, want) {
+		t.Fatalf("check_command %q, want %q", cp.CheckCommand, want)
+	}
+	if cl := c.Agents["claude"]; !slices.Equal(cl.Command, []string{"my-sandbox", "box", "claude"}) || cl.CheckCommand != nil {
+		t.Fatalf("claude %+v", cl)
+	}
+
+	for _, bad := range []string{
+		"[wrappers.box]\nscript = \"  \"\n",
+		"[wrappers.\"a b\"]\nscript = \"x\"\n",
+		"[wrappers.box]\nscript = \"x\"\nshell = \"sh -e\"\n",
+	} {
+		write(bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("no error for %q", bad)
+		}
+	}
+}
+
+// TestUnwrapped covers telling a wrapper's words from the rest of a
+// command: only words WrapSpec put there count as a wrapper's.
+func TestUnwrapped(t *testing.T) {
+	c := Config{Wrappers: map[string]Wrapper{"box": {Script: "x"}}}
+	s := c.WrapSpec(agents.Spec{Command: []string{"box", "--", "codex"}})
+	if pre, rest := s.Unwrapped(); !slices.Equal(pre, []string{"bash", "-c", "x", "box"}) || !slices.Equal(rest, []string{"--", "codex"}) {
+		t.Fatalf("%q %q", pre, rest)
+	}
+	plain := c.WrapSpec(agents.Spec{Command: []string{"bash", "-c", "x", "box", "codex"}})
+	if pre, rest := plain.Unwrapped(); pre != nil || len(rest) != 5 {
+		t.Errorf("a command that only looks wrapped: %q %q", pre, rest)
+	}
+}
+
+// TestResumeThroughAWrapper covers an agent nerdr does not know carrying
+// on a conversation its integration reported, with a wrapper from the
+// config in its command: the agent's program counts, and the wrapper's
+// shell is no program of the agent's.
+func TestResumeThroughAWrapper(t *testing.T) {
+	c := Config{Wrappers: map[string]Wrapper{"box": {Script: `exec "$@"`}}}
+	specs := map[agents.Kind]agents.Spec{"my-agent": c.WrapSpec(agents.Spec{Command: []string{"box", "my-agent"}})}
+	l, ok := agents.ResumeReported(specs, "my-agent", []string{"my-agent", "--resume", "x"})
+	if want := []string{"bash", "-c", `exec "$@"`, "box", "my-agent", "--resume", "x"}; !ok || !slices.Equal(l.Argv, want) {
+		t.Fatalf("the agent's own: %v %q", ok, l.Argv)
+	}
+	for _, other := range [][]string{{"bash", "--resume", "x"}, {"box", "--resume", "x"}} {
+		if _, ok := agents.ResumeReported(specs, "my-agent", other); ok {
+			t.Errorf("%q taken as the agent's", other)
 		}
 	}
 }

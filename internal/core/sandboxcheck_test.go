@@ -660,3 +660,31 @@ func TestTheHomeInstallIsWarnedOfOnceUntilItChanges(t *testing.T) {
 		}
 	}
 }
+
+// A wrapper kept in the config is looked past for the agent's program:
+// its name, though the agent's, and its script, though it ends in the
+// agent's program, are no place for the check. One with the program after
+// it is checked through it.
+func TestAConfigWrapperIsLookedPast(t *testing.T) {
+	for _, w := range []struct{ name, script string }{
+		{"codex", "exec sleep 30"},
+		{"box", "exec sleep 30 /usr/bin/codex"},
+	} {
+		c, tb, cl := checkedCore(t, runsCodex)
+		c.Cfg.Wrappers = map[string]config.Wrapper{w.name: {Script: w.script}}
+		c.Cfg.Agents[agents.Codex] = c.Cfg.WrapSpec(agents.Spec{Command: []string{w.name}, Sandboxed: true})
+		askedHelp(c.Cfg.Agents)
+		_, started := check(t, c, tb, cl)
+		if started || !strings.Contains(tb.Err, "its command ("+w.name+") names no codex") {
+			t.Errorf("%s: started %v: %q", w.name, started, tb.Err)
+		}
+	}
+
+	c, tb, cl := checkedCore(t, runsCodex)
+	c.Cfg.Wrappers = map[string]config.Wrapper{"box": {Script: `shift; exec "$@"`}}
+	c.Cfg.Agents[agents.Codex] = c.Cfg.WrapSpec(agents.Spec{Command: []string{"box", "--", "codex"}, Sandboxed: true})
+	askedHelp(c.Cfg.Agents)
+	if _, started := check(t, c, tb, cl); started || !strings.Contains(tb.Err, "client socket") {
+		t.Errorf("through the wrapper: started %v: %q", started, tb.Err)
+	}
+}

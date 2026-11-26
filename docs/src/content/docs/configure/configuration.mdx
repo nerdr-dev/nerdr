@@ -246,6 +246,18 @@ the agent's place in `command`. See
 `sandbox_check = "once"` trades some of the check's safety for a quicker
 start; see [Checking once](../agents/#checking-once).
 
+A wrapper that is a short script can be kept in the config as
+`[wrappers.<name>]`, and a `command` or `check_command` that starts with
+the name runs it. See
+[A wrapper script in the config](../agents/#a-wrapper-script-in-the-config-wrappers).
+
+```toml
+[wrappers.my-wrapper]
+script = '''
+exec my-sandbox --allow-write="$HOME/.cache/tool" "$@"
+'''
+```
+
 ## Servers
 
 `[[servers]]` lists other machines whose agents nerdr shows beside this
@@ -274,7 +286,7 @@ nerdr:
 `keep_screen_on`, `keep_screen_max` and `[[servers]]`.
 
 The rest are read by the machine the agents run on, from
-`~/.config/nerdr/config.toml` there: `[agents]`, `[review]`, `shell`,
+`~/.config/nerdr/config.toml` there: `[agents]`, `[wrappers]`, `[review]`, `shell`,
 `repo_dirs`, `worktrees_dir`, `data_dir`, `install`, `enabled_skills`,
 `max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `headless_cols`,
 `headless_rows`, `github_refresh`,

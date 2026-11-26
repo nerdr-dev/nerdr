@@ -75,6 +75,26 @@ type Spec struct {
 	// SandboxCheck is how often the sandbox is checked: CheckOnce, or
 	// before every launch, as anything else is taken to mean.
 	SandboxCheck string `toml:"sandbox_check"`
+	// Wrapped is whether config's Load put one of its [wrappers] in place
+	// of Command's first word: then the first WrapperWords words of
+	// Command are the wrapper's, its shell, -c, script and name, and none
+	// of them is a program of the agent's. Not a setting of the file's.
+	Wrapped bool `toml:"-"`
+}
+
+// WrapperWords is how many words of a Spec's Command a wrapper from the
+// config puts in place of its name.
+const WrapperWords = 4
+
+// Unwrapped is s's Command split into the words a wrapper from the
+// config put there, nil when it has none, and the rest: what to look for
+// the agent's program in. The script and the name it has as $0 are no
+// program the command runs.
+func (s Spec) Unwrapped() (prefix, rest []string) {
+	if s.Wrapped && len(s.Command) >= WrapperWords {
+		return s.Command[:WrapperWords:WrapperWords], s.Command[WrapperWords:]
+	}
+	return nil, s.Command
 }
 
 // SandboxCheck values. CheckAlways is the default: any other value than
@@ -640,7 +660,7 @@ func ResumeReported(specs map[Kind]Spec, k Kind, reported []string) (l Launch, o
 		return Launch{}, false
 	}
 	s := specFor(specs, k)
-	if !slices.ContainsFunc(s.Command, func(w string) bool { return filepath.Base(w) == reported[0] }) {
+	if _, rest := s.Unwrapped(); !slices.ContainsFunc(rest, func(w string) bool { return filepath.Base(w) == reported[0] }) {
 		return Launch{}, false
 	}
 	return Launch{Argv: append(startArgs(s, k), reported[1:]...), Env: envList(k, s)}, true

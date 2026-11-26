@@ -298,7 +298,9 @@ list to the agent, and `x` in the list stops the program. When it ends,
 its last screen stays until `enter` starts it again.
 
 The screen gets the tab's variables (`NERDR_WORKTREES`, a JSON list of
-the tab's worktrees, among them), `NERDR_PLUGIN` and `NERDR_PLUGIN_DIR`;
+the tab's worktrees, and `NERDR_WORKTREE_INFO`, more about each, see
+[Agents](../agents/#the-tabs-worktrees-for-a-wrapper-nerdr_worktree_info),
+among them), `NERDR_PLUGIN` and `NERDR_PLUGIN_DIR`;
 a global plugin's screen gets no tab's.
 To do what an agent would, it runs its own `run`, or `"$NERDR_BIN"
 plugin run NAME …`.
