@@ -4,8 +4,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -13,6 +15,8 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
+
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 func tabsModel(t *testing.T, tabs ...state.Tab) *Model {
@@ -121,6 +125,96 @@ func TestAgentRequestOpensAMessageForTheTab(t *testing.T) {
 	d.key(m, keyMsg("enter"))
 	if q := m.home().Core.Tabs[1].Messages; len(q) != 1 || !q[0].Auto || !strings.Contains(q[0].Text, "why?") {
 		t.Fatalf("enter should queue it for the tab: %v", q)
+	}
+}
+
+// TestAgentRequestSaysWhenItIsSent covers review comments sent from F1:
+// the panel hears that the message went, to take them away, only when it
+// was queued, not when it was cancelled.
+func TestAgentRequestSaysWhenItIsSent(t *testing.T) {
+	m := tabsModel(t, state.Tab{ID: "a", Name: "a", Dir: "/w/a", Worktrees: []workspace.Worktree{{Path: "/w/a"}}})
+	sent := review.CommentsSentMsg{Sent: map[int]string{1: "a", 2: "b"}}
+	m.askAgent(review.AgentMsg{Dir: "/w/a", Text: "comments", Sent: sent})
+	if cmd := m.dialog.(*messageDialog).key(m, keyMsg("esc")); hasMsg(cmd, sent) {
+		t.Fatal("a cancelled message was not sent")
+	}
+	m.askAgent(review.AgentMsg{Dir: "/w/a", Text: "comments", Sent: sent})
+	if cmd := m.dialog.(*messageDialog).key(m, keyMsg("enter")); !hasMsg(cmd, sent) {
+		t.Fatal("the panel should hear that the message was queued")
+	}
+	// The same text again, the first still queued: core says this one
+	// was queued too.
+	m.askAgent(review.AgentMsg{Dir: "/w/a", Text: "comments", Sent: sent})
+	if cmd := m.dialog.(*messageDialog).key(m, keyMsg("enter")); !hasMsg(cmd, sent) {
+		t.Fatal("a message like one already queued is queued too")
+	}
+
+	// A core that cannot take the task: nothing is queued, and the panel
+	// keeps its comments.
+	m.askAgent(review.AgentMsg{Dir: "/w/a", Text: "comments again", Sent: sent})
+	d := m.dialog.(*messageDialog)
+	m.home().Core.Copy = true // a server never connected to
+	if cmd := d.key(m, keyMsg("enter")); hasMsg(cmd, sent) {
+		t.Fatal("a message not queued was not sent")
+	}
+	m.home().Core.Copy = false
+
+	// The agent gone by the time core has the request: core says it was
+	// not queued for it, as a core in another process may whose copy here
+	// still has the agent.
+	m.askAgent(review.AgentMsg{Dir: "/w/a", Text: "comments once more", Sent: sent})
+	d = m.dialog.(*messageDialog)
+	m.home().Core.Client = goneClient{m}
+	cmd := d.key(m, keyMsg("enter"))
+	m.home().Core.Client = m
+	if hasMsg(cmd, sent) {
+		t.Fatal("a message for an agent gone was not sent")
+	}
+	if !strings.Contains(m.toastText, "not queued: 1 agent gone") {
+		t.Errorf("the toast should say it was not queued: %q", m.toastText)
+	}
+
+	// For a machine nerdr does not show: no message at all.
+	m.dialog = nil
+	m.askAgent(review.AgentMsg{Dir: "/w/a", Text: "x", Machine: "gone", OnMachine: true})
+	if m.dialog != nil {
+		t.Fatal("a message for a machine not shown should not open for another's tab")
+	}
+}
+
+// goneClient is the TUI told by a core that found none of the agents a
+// message with a token was for.
+type goneClient struct{ *Model }
+
+func (c goneClient) Tell(ev core.Event) core.Cmd {
+	if q, ok := ev.(core.MessagesQueuedMsg); ok {
+		q.Missing = 1
+		ev = q
+	}
+	return c.Model.Tell(ev)
+}
+
+// hasMsg is whether cmd, or a command a batch of it holds, makes want.
+// Commands that wait are given up on.
+func hasMsg(cmd tea.Cmd, want tea.Msg) bool {
+	if cmd == nil {
+		return false
+	}
+	got := make(chan tea.Msg, 1)
+	go func() { got <- cmd() }()
+	select {
+	case msg := <-got:
+		if b, ok := msg.(tea.BatchMsg); ok {
+			for _, c := range b {
+				if hasMsg(c, want) {
+					return true
+				}
+			}
+			return false
+		}
+		return reflect.DeepEqual(msg, want)
+	case <-time.After(time.Second):
+		return false
 	}
 }
 

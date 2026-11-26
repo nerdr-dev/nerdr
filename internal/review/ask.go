@@ -20,6 +20,13 @@ import (
 type AgentMsg struct {
 	Dir  string
 	Text string
+	// Machine, with OnMachine, is the machine Dir is on, as Pin.Machine
+	// names it; without, it is the one the panel shows.
+	Machine   string
+	OnMachine bool
+	// Sent, if set, is handed back to the panel once the message has been
+	// sent or queued, and not if it is cancelled.
+	Sent tea.Msg
 }
 
 // askAgent is the command that hands text to nerdr for the worktree's

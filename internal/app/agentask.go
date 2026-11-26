@@ -16,7 +16,16 @@ import (
 // askAgent opens the message dialog for the tab working in msg.Dir, with
 // msg.Text written in.
 func (m *Model) askAgent(msg review.AgentMsg) tea.Cmd {
-	t := m.machineOf(m.panelOwner()).Core.TabFor(msg.Dir)
+	mc := m.machineOf(m.panelOwner())
+	if msg.OnMachine {
+		// The panel may show another machine's tab by now; the message
+		// is for the agent of Dir on the machine it was read from.
+		if mc = m.fleet.Named(msg.Machine); mc == nil {
+			m.toast("nerdr no longer shows the machine " + msg.Machine)
+			return nil
+		}
+	}
+	t := mc.Core.TabFor(msg.Dir)
 	if t == nil {
 		m.toast("no tab works in " + msg.Dir)
 		return nil
@@ -32,6 +41,7 @@ func (m *Model) askAgent(msg review.AgentMsg) tea.Cmd {
 	}
 	d.note = dim("Read it before sending: it may quote what others wrote.")
 	d.auto = true
+	d.sent = msg.Sent
 	d.input.SetValue(msg.Text)
 	d.fit(m)
 	return cmd

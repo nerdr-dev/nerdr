@@ -125,6 +125,8 @@ func (m Model) View() string {
 // when there is one; see statusRows.
 func (m Model) withStatus(W int, parts ...string) string {
 	switch {
+	case m.commenting:
+		parts = append(parts, m.commentBar(W))
 	case m.filtering:
 		parts = append(parts, m.filterInput.View())
 	case m.statusRows() > 0:
@@ -152,12 +154,43 @@ func (m Model) zoomedView(W, H int, filesTitle, diffTitle string) string {
 	return m.withStatus(W, pane)
 }
 
-// diffHint picks the diff pane's key row; see hintDiff.
+// diffHint picks the diff pane's key row; see hintDiff. On a comment's
+// row, it is that comment's keys; with comments, R sends them.
 func (m Model) diffHint() string {
-	if len(m.jumpHistory) > 0 {
-		return hintDiffJumped
+	if _, ok := m.commentAt(m.diffCursor); ok {
+		return "enter edit · x delete · " + m.sendCommentsHint()
 	}
-	return hintDiff
+	hint := hintDiff
+	if len(m.jumpHistory) > 0 {
+		hint = hintDiffJumped
+	}
+	if s := m.sendCommentsHint(); s != "" {
+		return s + hintSep + hint
+	}
+	return hint
+}
+
+// sendCommentsHint is R's hint while there are comments to send.
+func (m Model) sendCommentsHint() string {
+	if n := len(m.pendingComments()); n > 0 {
+		return fmt.Sprintf("R send %d %s", n, plural(n, "comment"))
+	}
+	return ""
+}
+
+func plural(n int, word string) string {
+	if n == 1 {
+		return word
+	}
+	return word + "s"
+}
+
+// commentsMark is the file list's mark for a file with n comments.
+func commentsMark(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return " " + commentStyle.Render(fmt.Sprintf("%s%d", commentMark, n))
 }
 
 // menuPart is the menu's row, as the first of the parts a screen is made
@@ -533,6 +566,7 @@ func (m Model) treeItems(width int) []string {
 	for _, note := range m.whyIndex.All() {
 		withWhy[note.File] = true
 	}
+	comments := m.commentCounts()
 	items := make([]string, len(rows))
 	for i, r := range rows {
 		n := r.node
@@ -564,7 +598,7 @@ func (m Model) treeItems(width int) []string {
 			name = dimStyle.Render(name)
 		}
 		row := indent + "  " + statusColor(n.status).Render(statusMark(n.status)) + " " + name + check +
-			m.fileMarks(n.path, withWhy[n.path])
+			m.fileMarks(n.path, withWhy[n.path]) + commentsMark(comments[n.path])
 		// What the reading order says this file is for takes the place of
 		// the folder; e shows it whole when the pane cuts it.
 		if about != "" {
@@ -640,8 +674,8 @@ const (
 	// do it. The row only fits so many keys, so "u back" takes the
 	// place of "n/p file" once there is actually somewhere to go back to:
 	// mid-jump, returning is the thing you want and switching file isn't.
-	hintDiff       = "n/p file · v whole/old · a ask agent · s ask…"
-	hintDiffJumped = "v whole/old · a ask agent · s ask… · u back"
+	hintDiff       = "n/p file · v whole/old · r comment · a ask agent · s ask…"
+	hintDiffJumped = "v whole/old · r comment · a ask agent · s ask… · u back"
 )
 
 // filesHints are the file list's keys, each a button on its hint row. g
@@ -654,6 +688,9 @@ const (
 // regardless of installed skills.
 func (m *Model) filesHints() []string {
 	hints := strings.Split(hintFiles, hintSep)
+	if s := m.sendCommentsHint(); s != "" {
+		hints = append([]string{s}, hints...)
+	}
 	switch {
 	case m.walkWanted != "" && m.walkWanted == m.curWT:
 		hints = append(hints, "g guide…")

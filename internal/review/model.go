@@ -8,6 +8,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/linecomments"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/why"
 
@@ -209,6 +210,19 @@ type Model struct {
 	// whyIndex holds the rationale notes agents wrote for this worktree.
 	whyIndex why.Index
 
+	// comments is where the user's comments on lines are kept, shared
+	// with nerdr's other panels, and commentsVer the version of it the
+	// diff's rows were drawn from; see comments.go. commenting is set
+	// while one is written in commentInput, commentDraft.
+	comments    *linecomments.Store
+	commentsVer int
+	// pinGen counts the pins the panel has had (see Pin): what was read
+	// under one is not taken under the next.
+	pinGen       int
+	commenting   bool
+	commentInput textinput.Model
+	commentDraft *commentDraft
+
 	// zoomed expands the focused pane to fill the window, for reading a
 	// long diff or a long answer without the other panes taking the space.
 	zoomed bool
@@ -281,6 +295,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !ok {
 		return nm, cmd
 	}
+	mm.syncComments()
 	if (mm.refreshing || mm.diffSlow) && !mm.spinning {
 		mm.spinning = true
 		cmd = tea.Batch(cmd, mm.spinner.Tick)
@@ -366,6 +381,7 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tickMsg:
 		m.decay()
+		m.comments.Refresh() // another nerdr may have written some
 		// tea.Every is a one-shot timer, so the next tick has to be asked
 		// for here. Without it the whole poll stops after its first firing:
 		// no live refresh, and the ● markers never decay.
@@ -390,6 +406,13 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case diffMsg:
 		m.onDiff(msg)
+		return m, nil
+
+	case commentsReadyMsg:
+		return m, m.onCommentsReady(msg)
+
+	case CommentsSentMsg:
+		m.onCommentsSent(msg)
 		return m, nil
 
 	case editorDoneMsg:
@@ -419,7 +442,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleMouse(msg)
 
 	case tea.KeyMsg:
+		sel := m.diffSel
 		m.diffSel = lineSpan{} // a key may move or change the lines it is of
+		if m.commenting {
+			switch msg.String() {
+			case "f1", "f2", "f3", "f4", "f5":
+				m.closeCommentInput() // the key goes on to the menu
+			default:
+				return m.handleCommentKey(msg)
+			}
+		}
 		if m.filtering {
 			switch msg.String() {
 			case "f1", "f2", "f3", "f4", "f5":
@@ -500,6 +532,23 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.move(1)
 			return m, m.onFocusMove()
 
+		case "shift+up", "shift+down":
+			// Lines chosen from the keyboard, as with the mouse: for r.
+			if m.focus != focusDiff {
+				return m, nil
+			}
+			if !sel.on {
+				sel = lineSpan{from: m.diffCursor, to: m.diffCursor, on: true}
+			}
+			if msg.String() == "shift+up" {
+				m.move(-1)
+			} else {
+				m.move(1)
+			}
+			sel.to = m.diffCursor
+			m.diffSel = sel
+			return m, nil
+
 		case "pgup":
 			m.page(-1)
 			return m, nil
@@ -516,6 +565,9 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			if m.focus == focusDiff {
+				if c, ok := m.commentAt(m.diffCursor); ok && msg.String() == "enter" {
+					return m, m.editComment(c)
+				}
 				if cmd, ok := m.jumpToSelected(); ok {
 					return m, cmd
 				}
@@ -611,6 +663,16 @@ func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case "s":
 			return m, m.askSelected(true)
+
+		case "r":
+			return m, m.startComment(sel)
+
+		case "x":
+			m.deleteComment()
+			return m, nil
+
+		case "R":
+			return m, m.sendComments()
 
 		case "z":
 			m.zoomed = !m.zoomed

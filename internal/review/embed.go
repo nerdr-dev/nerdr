@@ -24,6 +24,9 @@ import (
 type Pin struct {
 	Repo string // the primary repository
 	Path string // the worktree
+	// Machine is the machine the worktree is on, as nerdr names it: ""
+	// for this one. Comments on its lines are kept by it with the path.
+	Machine string
 }
 
 // LayoutMsg tells nerdr that F1's files were put beside the diff, or back
@@ -96,6 +99,7 @@ func (m Model) Pin(pins []Pin) (Model, tea.Cmd) {
 		return m, nil
 	}
 	m.pins = pins
+	m.pinGen++
 	m.repos = nil
 	for _, p := range pins {
 		m.repos = append(m.repos, git.Repo{Name: filepath.Base(p.Repo), Path: p.Repo})
@@ -449,7 +453,7 @@ func (m Model) sharedWith(path string) []string {
 // statusRows is the rows the status bar takes: none beside an agent,
 // but for the filter while one is typed.
 func (m Model) statusRows() int {
-	if !m.filtering {
+	if !m.filtering && !m.commenting {
 		return 0
 	}
 	return 1

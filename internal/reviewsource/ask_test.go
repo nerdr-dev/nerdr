@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -189,5 +190,18 @@ func TestAskerFailsWhatWillNotBeAnswered(t *testing.T) {
 	}
 	if len(k.jobs) != 0 {
 		t.Errorf("jobs left waiting: %v", k.jobs)
+	}
+}
+
+// TestAFileNotThereIsToldApart covers a file read that is not there: the
+// answer says so, for the panel to tell a deleted file from one it could
+// not read.
+func TestAFileNotThereIsToldApart(t *testing.T) {
+	a := Query{Op: OpReadFile, Wt: t.TempDir(), File: "gone.go"}.Run(Local{})
+	if !a.NotExist || !errors.Is(a.err(), fs.ErrNotExist) {
+		t.Fatalf("answer %#v, err %v", a, a.err())
+	}
+	if b := (Answer{Err: "timed out"}); errors.Is(b.err(), fs.ErrNotExist) {
+		t.Fatal("another failure is not a file not there")
 	}
 }

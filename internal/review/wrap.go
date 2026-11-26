@@ -32,7 +32,11 @@ func diffBody(dl diffLine) (body, sign string) {
 	case 'a':
 		body = refStyle.Render(dl.text)
 	case 'w':
-		body = whyStyle.Render(dl.text)
+		if dl.comment != 0 {
+			body = commentStyle.Render(dl.text)
+		} else {
+			body = whyStyle.Render(dl.text)
+		}
 	case '+', '-':
 		sign = string(dl.kind)
 		body = dl.hl

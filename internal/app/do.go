@@ -14,6 +14,32 @@ import (
 // core.Request.
 func (m *Model) do(r core.Request) tea.Cmd { return m.doOn(m.forOf(r), r) }
 
+// doChecked is do, and whether r was done: not when there is no core to
+// do it, or a core in another process failed to. For what is to follow
+// only once r is done, such as review comments taken away once the
+// message with them is queued.
+func (m *Model) doChecked(r core.Request) (tea.Cmd, bool) {
+	mc := m.forOf(r)
+	switch {
+	case mc.Conn == nil && mc.Core.Copy:
+		m.toast(m.goneToast(mc))
+		return nil, false
+	case mc.Conn == nil:
+		return fromCore(r.Do(&mc.Core)), true
+	case mc.Away || mc.Gone != "":
+		m.toast(m.goneToast(mc))
+		return nil, false
+	}
+	m.sayState(mc)
+	evs, err := mc.Conn.Run(r)
+	cmd := m.told(mc, evs)
+	if err != nil {
+		m.toast(err.Error())
+		return cmd, false
+	}
+	return cmd, true
+}
+
 // forOf is the machine to do r: that of the tab or pane it names, else
 // that of the dialog open or the active tab (dialogOn).
 func (m *Model) forOf(r core.Request) *fleet.Machine {

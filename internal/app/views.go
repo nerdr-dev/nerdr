@@ -219,7 +219,7 @@ func (m *Model) viewOf(t *core.Tab, p *core.PaneTab) *viewPane {
 	m.views[p] = v
 	m.later = append(m.later, m.inView(t, p, func() tea.Cmd {
 		var pin, shown tea.Cmd
-		m.review, pin = m.review.Pin(tabPins(t))
+		m.review, pin = m.review.Pin(m.tabPins(t))
 		screen := m.review.SetScreen(review.ScreenAt(p.Screen))
 		m.review = m.review.SetFixed(true) // its pane is of this screen
 		m.review, shown = m.review.SetShown(true)
@@ -243,7 +243,7 @@ func (m *Model) freshReview() (review.Model, tea.Cmd) {
 	if m.reviewAsk != nil {
 		src = m.reviewAsk
 	}
-	r := review.NewEmbedded(src).SetFocused(false).SetScreenKeys(m.screenMenuKeys())
+	r := review.NewEmbedded(src).SetFocused(false).SetScreenKeys(m.screenMenuKeys()).SetComments(m.lineComments)
 	r = r.SetPRRefresh(m.home().Core.GithubEvery(core.PrPanelEvery))
 	return r.SetDiffColors(m.cfg().DiffColors)
 }

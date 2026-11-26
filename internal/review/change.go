@@ -5,6 +5,8 @@ package review
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"time"
 
 	chroma "github.com/alecthomas/chroma/v2"
@@ -167,6 +169,7 @@ func (r diffReq) read() diffMsg {
 				// binary file's diff has none, and the file could be huge.
 				msg.old, _ = r.src.OldSource(r.c, r.original)
 			}
+			msg.srcGone = errors.Is(err, fs.ErrNotExist)
 		}
 	}
 	if msg.err == nil {
@@ -211,6 +214,7 @@ type diffMsg struct {
 	old        string // the file before the change, when its removed lines are coloured by syntax
 	oneSide    bool   // one whole file, the new or the old, numbered in one column
 	scheme     diffScheme
+	srcGone    bool              // the file is not there: deleted, and its src known empty
 	symbols    []analysis.Symbol // what path declares, and where each is used
 	refs       [][]analysis.Ref
 	incomplete string
@@ -264,6 +268,9 @@ func (m *Model) onDiff(msg diffMsg) {
 	} else {
 		m.diffLines = m.annotateLines(path, msg.diffLines())
 	}
+	m.followComments(msg, m.diffLines)
+	m.commentsVer = m.comments.Version()
+	m.diffLines = m.withComments(m.diffLines)
 	m.diffSel = lineSpan{}
 	switch {
 	case aim == nil:

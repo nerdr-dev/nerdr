@@ -38,6 +38,10 @@ type diffLine struct {
 	// line of it opened in the diff (see toggleWhyInline).
 	whyDetail string
 	whyMore   bool
+
+	// comment is the user's comment a 'w' line is, by its ID; see
+	// comments.go.
+	comment int
 }
 
 // buildDiffLines parses a unified diff, applies word-level highlighting to
