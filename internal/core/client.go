@@ -135,6 +135,9 @@ type (
 	// switch with. Both wait in T until then.
 	SpinoffAskMsg struct{ T TabRef }
 	SwitchAskMsg  struct{ T TabRef }
+	// SpinoffPromptMsg is the prompt of one of the parts T split off come,
+	// sent after the plan: the dialog waiting for it goes on.
+	SpinoffPromptMsg struct{ T TabRef }
 
 	// IssuesMsg is a change in what is known of the issues; IssueNewsMsg,
 	// issues newly assigned to you, kept in IssueWatch.News too, to tell

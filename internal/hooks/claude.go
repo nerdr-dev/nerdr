@@ -58,6 +58,11 @@ type ClaudeEvent struct {
 	Event     string `json:"hook_event_name"`
 	SessionID string `json:"session_id"`
 	Tool      string `json:"tool_name"`
+	// Input is the tool's input, as far as nerdr reads it: the skill a
+	// Skill tool takes up.
+	Input struct {
+		Skill string `json:"skill"`
+	} `json:"tool_input"`
 	// Type is a Notification's type, and Message its text, for a claude
 	// that does not give the type.
 	Type    string `json:"notification_type"`
@@ -210,6 +215,9 @@ func claudeReport(ev ClaudeEvent, pane string, w SubagentWait) (string, map[stri
 	if ev.Event == "SessionStart" && ev.Source != "" {
 		p["session_start_source"] = ev.Source
 	}
+	if s := claudeSkill(ev); s == PrepSpinoff || s == PrepReview {
+		p["preparing"] = s
+	}
 	switch {
 	case state != "":
 		p["state"] = state
@@ -224,6 +232,19 @@ func claudeReport(ev ClaudeEvent, pane string, w SubagentWait) (string, map[stri
 		return ReportAgentSession, p
 	}
 	return "", nil
+}
+
+// claudeSkill is the skill the agent itself takes up with the Skill tool
+// in ev, its name without the plugin or folder before it; "" for none.
+func claudeSkill(ev ClaudeEvent) string {
+	if ev.Event != "PreToolUse" || ev.Tool != "Skill" || ev.AgentID != "" {
+		return ""
+	}
+	s := strings.TrimSpace(ev.Input.Skill)
+	if i := strings.LastIndex(s, ":"); i >= 0 {
+		s = s[i+1:]
+	}
+	return s
 }
 
 // ClaudeCommand is `nerdr hook claude`: reads the event claude gives on

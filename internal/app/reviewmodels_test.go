@@ -61,8 +61,17 @@ func reviewOn(t *testing.T, m *Model) *core.Tab {
 func TestReadyNamesTheReviewer(t *testing.T) {
 	m := testModel(t)
 	out := argvAgent(t, m)
-	tb := reviewOn(t, m)
-	cmd := m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Reviewers: []hooks.Reviewer{{Kind: "codex", Model: "gpt-6-astra"}}})
+	tb := m.Cur()
+	m.home().Core.AgentModels = map[agents.Kind]core.ModelList{agents.Codex: {
+		Models: []agents.AgentModel{{ID: "gpt-6-astra-mini"}, {ID: "gpt-6-astra"}, {ID: "gpt-6-sol"}}, At: time.Now()}}
+	tb = reviewOn(t, m)
+	// As the user named it: nerdr finds codex's own name, and says it.
+	reply := make(chan hooks.Answer, 1)
+	cmd := m.home().Core.OnReady(hooks.Report{Method: hooks.RequestReview, Pane: tb.HookKey(), Reply: reply,
+		Reviewers: []hooks.Reviewer{{Kind: "codex", Model: "6 astra"}}})
+	if a := <-reply; a.Err != "" || !strings.Contains(a.Text, "codex reviews with gpt-6-astra") {
+		t.Fatalf("answer %+v", a)
+	}
 	if cmd == nil {
 		t.Fatal("ready between turns looks at the worktree")
 	}

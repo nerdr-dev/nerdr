@@ -43,6 +43,11 @@ type spinoffDialog struct {
 	// promptTop its first line.
 	showPrompt bool
 	promptTop  int
+	// waiting is set while the tab is to be made as soon as the part's
+	// prompt comes: the agent sends it after the plan. waitOn is the
+	// machine it is to be made on, as the user said with enter.
+	waiting bool
+	waitOn  *fleet.Machine
 	// repos are the repositories the new tab can be made in: the tab's,
 	// those of others the agent named, and, while others is set, every
 	// one nerdr has. repoOn says which the new tab gets a worktree in;
@@ -114,7 +119,7 @@ func (d *spinoffDialog) reset(m *Model) bool {
 	pt := d.t.Spinoff.Next[0]
 	d.branch.SetValue(pt.Branch)
 	d.branch.CursorEnd()
-	d.rewrite, d.showPrompt, d.promptTop, d.err = false, false, 0, ""
+	d.rewrite, d.showPrompt, d.promptTop, d.err, d.waiting = false, false, 0, "", false
 	return d.resetTarget(m)
 }
 
@@ -277,6 +282,13 @@ func (d *spinoffDialog) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		}
 		return nil // wait for it
 	}
+	if d.waiting && msg.String() != "enter" {
+		// Any other key is to change what is made, or not make it.
+		d.waiting = false
+		if k := msg.String(); k == "esc" || k == "ctrl+c" {
+			return nil
+		}
+	}
 	switch msg.String() {
 	case "esc", "ctrl+c":
 		// Skips every part left, rather than putting them off: put off,
@@ -411,11 +423,34 @@ func (m *Model) spinoffMake(d *spinoffDialog) tea.Cmd {
 		return nil
 	}
 	d.err = ""
+	if pt.Prompt == "" {
+		// The agent writes it still: made as soon as it comes.
+		d.waiting, d.waitOn = true, d.target(m)
+		return nil
+	}
+	d.waiting = false
 	if d.remote(m) {
 		return m.spinoffRemote(d, kind, name, reuse, elsewhere, group)
 	}
 	return m.do(core.SpinoffCreate{T: m.fleet.Ref(t), Part: pt, Kind: kind, Name: name, Reuse: reuse, Elsewhere: elsewhere,
 		Group: group, Repos: repos, Own: own})
+}
+
+// spinoffPrompted goes on with the dialog for t, waiting for the prompt
+// of the part it asks about, once it has come.
+func (m *Model) spinoffPrompted(t *core.Tab) tea.Cmd {
+	d, ok := m.dialog.(*spinoffDialog)
+	if !ok || d.t != t || !d.waiting || t.Spinoff == nil || len(t.Spinoff.Next) == 0 || d.part().Prompt == "" {
+		return nil
+	}
+	if d.target(m) != d.waitOn {
+		// Gone meanwhile: the tab would be made elsewhere than said, with
+		// the repositories found there.
+		d.waiting = false
+		d.err = machineLabel(d.waitOn) + " cannot be reached now: pick where to make the tab, and press enter again"
+		return nil
+	}
+	return m.spinoffMake(d)
 }
 
 // spinoffFailed is the tab for t's first part not made: said in the
@@ -487,7 +522,9 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 		parentBranch = t.Worktrees[0].Branch
 	}
 	lines := []string{dim(fmt.Sprintf("%s's agent split its work up; part %d of %d:", t.Name, i, n)), ""}
-	if d.showPrompt {
+	if d.showPrompt && pt.Prompt == "" {
+		lines = append(lines, dim("The agent is still writing the prompt for the new agent."))
+	} else if d.showPrompt {
 		room := max(height-18, 5)
 		rows := wrapLines(pt.Prompt, inner, 1<<20)
 		d.promptTop = min(d.promptTop, max(len(rows)-room, 0))
@@ -592,9 +629,16 @@ func (d *spinoffDialog) view(m *Model, width, height int) string {
 	if remote {
 		where += " on " + there
 	}
-	lines = append(lines, dim(fmt.Sprintf("A new branch from origin's main %s; the agent is given a prompt of %s.", where, core.Plural(len(pt.Prompt), "character"))))
+	given := "the agent is given a prompt of " + core.Plural(len(pt.Prompt), "character")
+	if pt.Prompt == "" {
+		given = "the agent that split its work up is still writing the prompt for the new one"
+	}
+	lines = append(lines, dim(fmt.Sprintf("A new branch from origin's main %s; %s.", where, given)))
 	if busy := d.busy(m); busy != "" {
 		lines = append(lines, "", warn(busy), dim("esc hides this; the tab opens when it is ready"))
+	} else if d.waiting {
+		lines = append(lines, "", warn("Waiting for the prompt: the tab is made as soon as it comes."),
+			dim("any other key stops waiting, to change something first"))
 	} else {
 		pairs := []string{"enter", "make tab"}
 		if len(pt.Commits) > 0 && d.ownTicked() {

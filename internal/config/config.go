@@ -229,6 +229,11 @@ type Review struct {
 	// of the one they start with otherwise; picked in the review pane or
 	// given to nerdr request-review, another goes for that review.
 	Models map[agents.Kind]string `toml:"models"`
+	// ModelNames is who turns the model the user named for a review, as
+	// they said it ("astra 6.2"), into the agent's own name for it:
+	// "nerdr", from the models the agent lists, or "agent", the agent
+	// asking for the review, which looks the name up itself.
+	ModelNames string `toml:"model_names"`
 }
 
 // Review settings.
@@ -238,6 +243,8 @@ const (
 	FindingsAuto = "auto"
 	WhenReady    = "ready"
 	WhenTurn     = "turn"
+	NamesByNerdr = "nerdr"
+	NamesByAgent = "agent"
 )
 
 // KeepAwake settings, besides "off".
@@ -413,6 +420,9 @@ func defaults(c Config) Config {
 	}
 	if c.Review.When != WhenTurn {
 		c.Review.When = WhenReady
+	}
+	if c.Review.ModelNames != NamesByAgent {
+		c.Review.ModelNames = NamesByNerdr
 	}
 	switch c.Install {
 	case InstallHome, InstallWorktree, InstallOff:

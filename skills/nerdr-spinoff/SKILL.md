@@ -50,41 +50,70 @@ for:
 Do this on your own branch only. Do not push, rebase or rewrite history
 the user did not ask you to.
 
-## 2. Write the plan
+## 2. Send the plan, without the prompts
 
-The plan is JSON with one entry per part — a branch name to propose, a
-summary for the user, the prompt for the new agent, and optionally the
-commits and repositories. `"${NERDR_BIN:-nerdr}" spinoff --help` shows
-its shape and what each field takes.
-
-- **summary** — one to three sentences: what the part is, not how.
-- **prompt** — the new agent has **none of your conversation**, so put in
-  everything it needs, as fully as you can:
-  - the goal, and why the user wants it;
-  - what has been decided already, and the reasons, including options
-    you or the user rejected;
-  - what you found out: the relevant files, functions, the cause of a
-    bug, constraints, pitfalls you hit;
-  - what is done and what is left, and how to check it (tests to run);
-  - what is *not* part of this branch, so it stays focused.
-  Write in the language the user is working with you in.
-- **repos** — leave it out when the part is in your tab's repositories.
-  Give a repository's name only when the user asks for the part to be
-  made in one your tab does not have.
-
-## 3. Send it
+Send the plan as soon as the commits are made: a branch name to propose,
+a summary for the user, and the commits and repositories, with no prompts
+yet. nerdr then asks the user about the first part at once, while you
+write the prompts, and prints the id it gave each part. This is all the
+plan takes; you need no `--help`.
 
 ```bash
 "${NERDR_BIN:-nerdr}" spinoff - <<'JSON'
-{"parts": [ … ]}
+{"parts": [
+  {"branch":  "fix/parser-nil",
+   "summary": "The parser no longer crashes on an empty file.",
+   "commits": ["a1b2c3d"]},
+  {"branch":  "docs/config",
+   "summary": "The config page documents the new keys."}
+]}
 JSON
 ```
+
+- **branch** — the name you propose; the user may change it.
+- **summary** — one to three sentences: what the part is, not how.
+  Under 600 bytes.
+- **commits** — optional: the commits with this part's work and nothing
+  else, from step 1. Leave it out for a part with no code yet.
+- **repos** — optional; leave it out when the part is in your tab's
+  repositories. In a tab with several (a folder each in yours), the
+  folders of those it changes; give another repository's name only when
+  the user asks for the part to be made in one your tab does not have.
 
 The command checks the plan and says what is wrong with which part: fix it
 and send it again. If it fails for another reason, show the user its
 message and stop there. Do not look for, build or run another nerdr, and
 do not talk to nerdr's socket yourself: the command is the only way to send
 a plan.
+
+## 3. Send each part's prompt
+
+Then, at once and before anything else, write each part's prompt and send
+it, one command a part, with the id nerdr printed for it — the command is
+printed too:
+
+```bash
+"${NERDR_BIN:-nerdr}" spinoff --prompt 3f9a01bc - <<'PROMPT'
+…
+PROMPT
+```
+
+The user goes through the parts meanwhile, and nerdr makes a tab once its
+prompt has come: one not sent leaves the user waiting. The new agent has
+**none of your conversation**, so put in everything it needs, as fully as
+you can:
+
+- the goal, and why the user wants it;
+- what has been decided already, and the reasons, including options you
+  or the user rejected;
+- what you found out: the relevant files, functions, the cause of a bug,
+  constraints, pitfalls you hit;
+- what is done and what is left, and how to check it (tests to run);
+- what is *not* part of this branch, so it stays focused.
+
+Write it in the language the user is working with you in. If nerdr
+answers that the user has already been through the part, go on with the
+next: nerdr tells you what became of each.
 
 This skill is up to date: nerdr writes it anew whenever it changes. An old
 date on the file means only that it has not changed since.

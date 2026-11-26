@@ -96,13 +96,20 @@ handle() {
       # work, then hand the parts to new tabs.
       echo a > part-a.txt; git add part-a.txt; git commit -qm "part a"; a=$(git rev-parse --short HEAD)
       echo b > part-b.txt; git add part-b.txt; git commit -qm "part b"; b=$(git rev-parse --short HEAD)
-      "${NERDR_BIN:-nerdr}" spinoff - <<EOF 2>&1
+      # Part B's prompt comes after the plan, as the skill has it sent:
+      # the dialog waits for it.
+      out=$("${NERDR_BIN:-nerdr}" spinoff - <<EOF 2>&1
 {"parts": [
   {"branch": "part-a", "summary": "Summary of part A", "prompt": "Prompt for part A", "commits": ["$a"]},
-  {"branch": "part-b", "summary": "Summary of part B", "prompt": "Prompt for part B", "commits": ["$b"]},
+  {"branch": "part-b", "summary": "Summary of part B", "commits": ["$b"]},
   {"branch": "part-c", "summary": "Summary of part C", "prompt": "Prompt for part C"}
 ]}
 EOF
+)
+      echo "$out"
+      id=$(printf '%s\n' "$out" | sed -n 's/.*spinoff --prompt \([0-9a-f]*\) -.*/\1/p')
+      sleep 3
+      echo "Prompt for part B" | "${NERDR_BIN:-nerdr}" spinoff --prompt "$id" - 2>&1
       ;;
     *"nerdr: the user is switching this tab's agent"*)
       # What the nerdr-handoff skill has an agent do, unless it is to act
@@ -136,6 +143,7 @@ REVIEW
     FAKEHANDOFF*) echo "given the handoff" ;;
     plugin-run-*) "${NERDR_BIN:-nerdr}" plugin run "${line#plugin-run-}" 2>&1; echo "plugin-exit-$?" ;;
     plugin-stop-*) "${NERDR_BIN:-nerdr}" plugin stop "${line#plugin-stop-}" 2>&1 ;;
+    "Prompt for part "*) echo "given: $line" >> "$FAKE_LOG"; echo "given the part's prompt" ;;
     quit) exit 0 ;;
     *) printf "got: %q\n" "$line" ;;
   esac

@@ -27,8 +27,13 @@ type Part struct {
 	// Summary is what the user reads in the dialog: a few lines at most.
 	Summary string `json:"summary"`
 	// Prompt is what the new agent is given: all the agent knows that the
-	// new one needs.
+	// new one needs. It may come after the plan (CheckPrompt), so the user
+	// is asked about the part while the agent writes it: until then it is
+	// "", and the tab waits for it.
 	Prompt string `json:"prompt"`
+	// ID is what nerdr calls the part, given as it takes the plan: its
+	// prompt comes by it, if after the plan.
+	ID string `json:"id,omitempty"`
 	// Commits are the commits in the agent's branch with this part's
 	// work, which the new branch can start with.
 	Commits []string `json:"commits,omitempty"`
@@ -111,10 +116,8 @@ func Check(parts []Part, valid func(string) error) error {
 		} else if len(pt.Summary) > MaxSummary {
 			errs = append(errs, fmt.Sprintf("%s: summary is %d bytes; keep it under %d and put the rest in the prompt", name, len(pt.Summary), MaxSummary))
 		}
-		if pt.Prompt == "" {
-			errs = append(errs, name+": prompt is empty")
-		} else if len(pt.Prompt) > MaxPrompt {
-			errs = append(errs, fmt.Sprintf("%s: prompt is %d KB; keep it under %d KB — the new agent can read files and git for the details", name, len(pt.Prompt)/1024, MaxPrompt/1024))
+		if err := CheckPrompt(pt.Prompt); err != nil {
+			errs = append(errs, name+": "+err.Error())
 		}
 		for j := range pt.Repos {
 			// Kept trimmed, as it is checked: the folder is joined to a
@@ -219,6 +222,15 @@ type Parent struct {
 	// Machine is the machine the tab is on, when the new one is on
 	// another; "" when it is on the same.
 	Machine string
+}
+
+// CheckPrompt says what is wrong with prompt, a part's prompt, or nil;
+// "" is none yet, sent after the plan.
+func CheckPrompt(prompt string) error {
+	if len(prompt) > MaxPrompt {
+		return fmt.Errorf("prompt is %d KB; keep it under %d KB — the new agent can read files and git for the details", len(prompt)/1024, MaxPrompt/1024)
+	}
+	return nil
 }
 
 // Prompt is what the new tab's agent is given: the part's prompt, and

@@ -79,6 +79,29 @@ func Models(specs map[Kind]Spec, k Kind) ([]AgentModel, error) {
 	return nil, nil
 }
 
+// ModelsListing says where an agent asking for a review with k finds k's
+// own names for its models: the command, or the file, nerdr reads them
+// from. "" for a kind nerdr does not list.
+func ModelsListing(k Kind) string {
+	switch k {
+	case Codex:
+		return "the slugs in " + filepath.Join(codexHome(), "models_cache.json")
+	case Cursor:
+		return "cursor-agent models"
+	case Antigravity:
+		return "agy models"
+	case Grok:
+		return "grok models"
+	case OpenCode:
+		return "opencode models"
+	case Copilot:
+		return "copilot help config"
+	case Claude:
+		return "the --model aliases in claude --help, or a full model id"
+	}
+	return ""
+}
+
 // OwnModel is the model k starts with when nerdr names none, as far as
 // can be told without starting it: the model flag on its command line in
 // the config, opencode's config_model, or the model the agent's own

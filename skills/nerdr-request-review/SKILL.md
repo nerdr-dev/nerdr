@@ -33,25 +33,34 @@ language. Leave it out when nothing stands out: the reviewer reads the
 whole change either way.
 
 When the user names who should review — an agent, and perhaps its model
-("have codex with astra review it") — say so with `--agent` and
-`--model`, before the text:
+("have codex with astra 6.2 review it") — say so with `--agent` and
+`--model`, before the text. Give the model as the user said it: do not
+look its name up first, nerdr finds the agent's own name for it and says
+which it took.
 
 ```sh
-"${NERDR_BIN:-nerdr}" request-review --agent codex --model gpt-6-astra "The retry loop in fetch.go."
+"${NERDR_BIN:-nerdr}" request-review --agent codex --model "astra 6.2" "The retry loop in fetch.go."
 ```
 
 When the user names more than one, give `--agent` for each, each
 followed by its own `--model` if the user gave one; they review together
-("review it with codex on astra and agy on gemini 4"):
+("review it with codex on astra and agy on gemini 4"), up to 4, each kind
+once:
 
 ```sh
-"${NERDR_BIN:-nerdr}" request-review --agent codex --model gpt-6-astra --agent agy --model gemini-4 "The retry loop in fetch.go."
+"${NERDR_BIN:-nerdr}" request-review --agent codex --model astra --agent agy --model "gemini 4" "The retry loop in fetch.go."
 ```
 
-`nerdr request-review --help` says how to name them. Leave both out when
-the user named no one: the reviewer they set up reviews. This is the
-review that sends you findings to fix; do not start a reviewer with
-`nerdr agent` and a message instead.
+`--agent` is the kind: claude, codex, opencode, cursor, copilot, agy,
+gemini, grok, or another the user set up. Leave both out when the user
+named no one: the reviewer they set up reviews. If nerdr answers that the
+model could be several, ask the user which, in a line, and run the command
+again with the one they pick. If it answers that it takes only the
+agent's own names, look the name up where the answer says and run the
+command again with it. You need no `--help`: this is all the command
+takes, besides `-` for reading the text from stdin. This is the review
+that sends you findings to fix; do not start a reviewer with `nerdr
+agent` and a message instead.
 
 If the command fails, show the user its message and stop there; do not
 look for, build or run another nerdr.
