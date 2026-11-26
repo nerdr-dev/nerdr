@@ -352,3 +352,19 @@ func TestResumeThroughAWrapper(t *testing.T) {
 		}
 	}
 }
+
+// TestAutoDefaults: every [auto] event is off unless set to ask or auto,
+// and max_tries is 3 unless set, within bounds.
+func TestAutoDefaults(t *testing.T) {
+	var c Config
+	if _, err := toml.Decode("[auto]\nci_failed = \"auto\"\nreview_comments = \"bogus\"\nmax_tries = 50\n", &c); err != nil {
+		t.Fatal(err)
+	}
+	c = defaults(c)
+	if c.Auto.CIFailed != AutoSend || c.Auto.ReviewComments != AutoOff || c.Auto.Conflicts != AutoOff || c.Auto.MaxTries != 20 || c.Auto.Wake {
+		t.Fatalf("auto = %+v", c.Auto)
+	}
+	if d := defaults(Config{}).Auto; d.Mode(EventCIFailed) != AutoOff || d.MaxTries != DefaultAutoTries {
+		t.Fatalf("default auto = %+v", d)
+	}
+}

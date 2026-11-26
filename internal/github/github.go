@@ -52,6 +52,10 @@ type Review struct {
 	Body        string
 	SubmittedAt time.Time
 	URL         string
+	// Association is how the reviewer stands to the repository, as GitHub
+	// says it: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE and others.
+	// See Trusted.
+	Association string
 }
 
 // Comment is a comment in a PR's conversation, or on a line of its code:
@@ -64,6 +68,8 @@ type Comment struct {
 	URL       string
 	Path      string
 	Line      int
+	// Association is as Review's.
+	Association string
 }
 
 // Check is one CI check/status, normalised across GitHub Actions check runs
@@ -150,7 +156,7 @@ func lineComments(dir, url string) []Comment {
 	}
 	// Every page of them: given longer than one call.
 	out, err := ghWithin(ghLongTimeout, dir, "api", "--paginate", "repos/"+mm[1]+"/pulls/"+mm[2]+"/comments",
-		"--jq", `.[] | {author: .user.login, body, created: .created_at, url: .html_url, path, line: (.line // 0)}`)
+		"--jq", `.[] | {author: .user.login, body, created: .created_at, url: .html_url, path, line: (.line // 0), association: .author_association}`)
 	if err != nil {
 		return nil
 	}
@@ -158,14 +164,15 @@ func lineComments(dir, url string) []Comment {
 	dec := json.NewDecoder(strings.NewReader(string(out)))
 	for {
 		var c struct {
-			Author, Body, URL, Path string
-			Created                 time.Time
-			Line                    int
+			Author, Body, URL, Path, Association string
+			Created                              time.Time
+			Line                                 int
 		}
 		if dec.Decode(&c) != nil {
 			return cs
 		}
-		cs = append(cs, Comment{Author: c.Author, Body: c.Body, CreatedAt: c.Created, URL: c.URL, Path: c.Path, Line: c.Line})
+		cs = append(cs, Comment{Author: c.Author, Body: c.Body, CreatedAt: c.Created, URL: c.URL, Path: c.Path, Line: c.Line,
+			Association: c.Association})
 	}
 }
 
@@ -179,9 +186,10 @@ const (
 	// because the list is open PRs of one author: a handful, not hundreds.
 	// Each reviewer's latest review and the branch's head commit come too:
 	// nerdr watches the list for checks that come to fail and reviews that
-	// come in (see the app's prwatch.go).
+	// come in (see the app's prwatch.go), and whether it conflicts with its
+	// base, for nerdr's automatic asks (core's auto.go).
 	prListFields = "number,title,url,state,isDraft,author,updatedAt,headRefName,headRefOid,baseRefName," +
-		"isCrossRepository,headRepositoryOwner,reviewDecision,latestReviews,statusCheckRollup,comments"
+		"isCrossRepository,headRepositoryOwner,mergeable,reviewDecision,latestReviews,statusCheckRollup,comments"
 
 	// prAllFields is what the list of everyone's pull requests asks for:
 	// that of yours without the comments, which would be heavy for a
@@ -198,6 +206,18 @@ func NotOnGitHub(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "no git remotes") || strings.Contains(msg, "known github host")
+}
+
+// Trusted reports whether someone who stands to a repository as
+// association (a Review's or Comment's) has a say in it: its owner, a
+// member of the organisation that owns it, or a collaborator on it. A
+// contributor of an earlier pull request, or anyone else, has not.
+func Trusted(association string) bool {
+	switch strings.ToUpper(association) {
+	case "OWNER", "MEMBER", "COLLABORATOR":
+		return true
+	}
+	return false
 }
 
 // Failed reports whether a check's Status means it failed.
@@ -343,6 +363,7 @@ type rawAuthor struct {
 
 type rawReview struct {
 	Author      rawAuthor `json:"author"`
+	Association string    `json:"authorAssociation"`
 	State       string    `json:"state"`
 	Body        string    `json:"body"`
 	SubmittedAt time.Time `json:"submittedAt"`
@@ -350,14 +371,16 @@ type rawReview struct {
 }
 
 func (rv rawReview) toReview() Review {
-	return Review{Author: rv.Author.Login, State: rv.State, Body: rv.Body, SubmittedAt: rv.SubmittedAt, URL: rv.URL}
+	return Review{Author: rv.Author.Login, State: rv.State, Body: rv.Body, SubmittedAt: rv.SubmittedAt, URL: rv.URL,
+		Association: rv.Association}
 }
 
 type rawComment struct {
-	Author    rawAuthor `json:"author"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"createdAt"`
-	URL       string    `json:"url"`
+	Author      rawAuthor `json:"author"`
+	Association string    `json:"authorAssociation"`
+	Body        string    `json:"body"`
+	CreatedAt   time.Time `json:"createdAt"`
+	URL         string    `json:"url"`
 }
 
 // rawCheck covers both statusCheckRollup shapes: a GitHub Actions CheckRun
@@ -432,7 +455,7 @@ func (r rawPR) toPR() PR {
 	}
 	for _, c := range r.Comments {
 		pr.Comments = append(pr.Comments, Comment{
-			Author: c.Author.Login, Body: c.Body, CreatedAt: c.CreatedAt, URL: c.URL,
+			Author: c.Author.Login, Body: c.Body, CreatedAt: c.CreatedAt, URL: c.URL, Association: c.Association,
 		})
 	}
 	for _, c := range r.StatusCheckRollup {

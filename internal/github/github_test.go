@@ -17,10 +17,10 @@ func TestRawPRToPR(t *testing.T) {
 		"reviewDecision": "CHANGES_REQUESTED",
 		"latestReviews": [
 			{"author": {"login": "alice"}, "state": "APPROVED", "body": "", "submittedAt": "2026-01-01T00:00:00Z", "url": "https://x/1"},
-			{"author": {"login": "bob"}, "state": "CHANGES_REQUESTED", "body": "fix this", "submittedAt": "2026-01-02T00:00:00Z", "url": "https://x/2"}
+			{"author": {"login": "bob"}, "authorAssociation": "MEMBER", "state": "CHANGES_REQUESTED", "body": "fix this", "submittedAt": "2026-01-02T00:00:00Z", "url": "https://x/2"}
 		],
 		"comments": [
-			{"author": {"login": "carol"}, "body": "looks good", "createdAt": "2026-01-03T00:00:00Z", "url": "https://x/3"}
+			{"author": {"login": "carol"}, "authorAssociation": "NONE", "body": "looks good", "createdAt": "2026-01-03T00:00:00Z", "url": "https://x/3"}
 		],
 		"statusCheckRollup": [
 			{"__typename": "CheckRun", "name": "build", "workflowName": "CI", "status": "COMPLETED", "conclusion": "SUCCESS", "detailsUrl": "https://x/4"},
@@ -40,6 +40,9 @@ func TestRawPRToPR(t *testing.T) {
 	}
 	if len(pr.Reviews) != 2 || pr.Reviews[0].Author != "alice" || pr.Reviews[1].State != "CHANGES_REQUESTED" {
 		t.Fatalf("reviews wrong: %+v", pr.Reviews)
+	}
+	if pr.Mergeable != "MERGEABLE" || !Trusted(pr.Reviews[1].Association) || Trusted(pr.Comments[0].Association) {
+		t.Fatalf("association or mergeable wrong: %q %+v %+v", pr.Mergeable, pr.Reviews[1], pr.Comments[0])
 	}
 	if len(pr.Comments) != 1 || pr.Comments[0].Author != "carol" {
 		t.Fatalf("comments wrong: %+v", pr.Comments)

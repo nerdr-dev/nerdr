@@ -109,6 +109,7 @@ func (m *Core) WakeTab(t *Tab) Cmd {
 func (m *Core) SleepIdle(now time.Time) Cmd {
 	var cmds []Cmd
 	for _, t := range m.Tabs {
+		m.HoldAutoAsleep(t) // nerdr's own wake it only with [auto] wake
 		switch {
 		case t.Light == StAsleep && (TabHasAuto(t) || m.kept(t)):
 			// Given a task since, or on screen by a way track missed.

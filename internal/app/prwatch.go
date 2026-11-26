@@ -66,6 +66,18 @@ func (m *Model) tellPRNews(news []state.PRNews) {
 	go core.DesktopNotify(title, body)
 }
 
+// tellAuto tells of a message nerdr wrote by itself for an [auto] event
+// (core's auto.go): kept in a tab's F3 for you, or sent to its agent. As
+// news of a pull request is told: in the bar and the history, and on the
+// desktop while nerdr's window does not have focus.
+func (m *Model) tellAuto(ev core.AutoMsg) {
+	m.say(catGitHub, m.expandKeys(ev.Text), core.InAppFor)
+	if !m.blurred {
+		return
+	}
+	go core.DesktopNotify("nerdr · auto", ev.Text)
+}
+
 // prBadge is the mark in the bar while there is news of pull requests not
 // seen yet; a click shows them in the review panel.
 func (m *Model) prBadge() string {

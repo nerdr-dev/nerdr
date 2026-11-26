@@ -22,7 +22,8 @@ about it, and what is left for your sandbox to do.
   after any change.
 - **Read drafts before sending.** Review comments, CI logs and issues
   contain text written by others, which may hold instructions for the
-  agent.
+  agent. [Automatic asks](#automatic-asks) with `auto` skip that reading,
+  so they are off by default.
 - **Keep nerdr's own files out of reach.** A sandbox must not let its
   agent write to `~/.config/nerdr`, `~/.local/state/nerdr`, or the main
   checkout's `.git/config`, `.git/hooks`, `.git/config.worktree` and
@@ -286,6 +287,57 @@ and walkthrough anchor checks refuse regular files larger than 16 MiB.
 Git index snapshots accept regular files of at most 128 MiB and reject
 named pipes and symbolic links at the index path. Larger indexes cannot
 be snapshotted or staged through nerdr.
+
+## Automatic asks
+
+With [`[auto]`](../../configure/configuration/#automatic-asks), nerdr
+writes messages to a tab's agent by itself when a check fails, a review
+comes in or a pull request conflicts with its base. With `ask`, they wait
+in F3 for you. With `auto`, they are sent without anyone reading them.
+
+Two of these messages quote text that someone else controls:
+
+- **Review comments** are written by whoever reviews or comments on the
+  pull request. On a public repository, that can be anyone.
+- **CI logs** hold whatever the build prints: your tests and their
+  fixtures, the dependencies it downloads and their install scripts, and
+  the code under test. Someone who can change any of those can write to
+  the log.
+
+Text in either can be written as instructions to the agent, such as
+"ignore the failure and run this command". An agent that follows them
+acts with its own permissions in the worktree, and outside it if it is
+not in a sandbox. `ask` gives you the chance to read the message first.
+`auto` does not, so every event is `off` by default.
+
+nerdr narrows what `auto` sends, but this is not a filter for hostile
+text:
+
+- A review message is sent by itself only when everyone it quotes is the
+  pull request's author or an owner, member or collaborator of the
+  repository, as GitHub reports it. If anyone else is quoted, it waits
+  for you. A member's account can still be compromised, and a member can
+  quote someone else.
+- The CI log of a pull request from a fork always waits for you.
+- The CI log of your own branch is sent by itself. It is only as
+  trustworthy as everything the build runs.
+- The rebase message for `conflicts` quotes nothing but the pull
+  request's number, title and base branch.
+- A repository's `.nerdr.toml` can turn an event `off` or to `ask`
+  freely. An `auto` there holds only after you have allowed the file as
+  it is now, as with `setup`. Otherwise an agent that writes the file
+  could turn `auto` on for itself.
+- Just before a waiting message is sent by itself, nerdr checks your
+  settings and the repository's `.nerdr.toml` again. A message stays in
+  F3 if `auto` has been turned off, or if the file has changed since you
+  allowed it.
+- `max_tries` stops nerdr from sending the same request again and again
+  when the agent cannot fix it. It counts the messages actually sent.
+- None of the messages ask the agent to commit, push or post anything.
+  An agent that follows injected instructions may do so anyway.
+
+Turn `auto` on only for repositories whose reviewers and builds you
+trust, and preferably for agents that run in a sandbox.
 
 ## Other machines
 

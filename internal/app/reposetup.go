@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/clean"
+	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -56,6 +57,11 @@ func (m *Model) askRepoSetup(q core.Question) {
 					head = "         "
 				}
 				scroll = append(scroll, head+shown(l))
+			}
+		}
+		for _, ev := range config.AutoEvents {
+			if c.Auto.Mode(ev) == config.AutoSend {
+				scroll = append(scroll, "  auto:  "+ev+" — sent to the tab's agent without your reading it")
 			}
 		}
 		scroll = append(scroll, "")

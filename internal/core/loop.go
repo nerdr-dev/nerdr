@@ -447,7 +447,9 @@ func (m *Core) Handle(ev Event) (Cmd, bool) {
 	case TreeMsg:
 		return m.OnTree(ev), true
 	case PRWatchMsg:
-		m.OnPRWatch(ev)
+		return m.OnPRWatch(ev), true
+	case autoFetched:
+		m.OnAutoFetched(ev)
 		return nil, true
 	case IssueWatchMsg:
 		m.OnIssueWatch(ev)

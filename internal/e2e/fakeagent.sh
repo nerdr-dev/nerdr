@@ -145,7 +145,7 @@ REVIEW
     plugin-stop-*) "${NERDR_BIN:-nerdr}" plugin stop "${line#plugin-stop-}" 2>&1 ;;
     "Prompt for part "*) echo "given: $line" >> "$FAKE_LOG"; echo "given the part's prompt" ;;
     quit) exit 0 ;;
-    *) printf "got: %q\n" "$line" ;;
+    *) printf "got: %q\n" "$line"; if [ -n "$FAKE_LINES" ]; then echo "$line" >> "$FAKE_LINES"; fi ;;
   esac
   prompt
 }

@@ -94,6 +94,7 @@ func (q ToggleAuto) Do(m *Core) Cmd {
 	l := *list
 	old := l[i]
 	l[i].Auto = !l[i].Auto
+	l[i].AutoKey, l[i].AutoEvent = "", "" // the user's choice now, not an [auto] one
 	if l[i].Auto && !a.InSandbox {
 		l[i].Sandboxed = false
 	}

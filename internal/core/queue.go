@@ -248,8 +248,16 @@ func (m *Core) DeliverQueue(t *Tab, now time.Time) Cmd {
 		return nil
 	}
 	i := t.NextAuto()
-	msg := t.Messages[i].Text
+	if why := m.AutoHold(t, t.Messages[i]); why != "" {
+		m.autoHeld(t, i, why)
+		return nil
+	}
+	sent := t.Messages[i]
+	msg := sent.Text
 	t.DropMessage(i)
+	if sent.AutoKey != "" {
+		m.autoCount(sent) // before anything saves the queue it left
+	}
 	if t.Review == nil && codereview.IsFixPrompt(msg) {
 		t.FindingsSent = true // see findingsDone
 	}
@@ -258,6 +266,9 @@ func (m *Core) DeliverQueue(t *Tab, now time.Time) Cmd {
 	m.SaveSession()
 	enter := t.TypeMessage(msg, now)
 	t.NoteSaid(msg)
+	if sent.AutoKey != "" {
+		m.autoSent(t, sent)
+	}
 	if t.Owner() != m.Front() {
 		t.Owner().Away.Sent++
 	}

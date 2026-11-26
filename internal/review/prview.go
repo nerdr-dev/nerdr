@@ -2,7 +2,6 @@ package review
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/prask"
 )
 
 // uiMode is the top-level menu selection.
@@ -815,57 +815,18 @@ func (m *Model) startPRFix() tea.Cmd {
 	}
 }
 
-// FixMessage is the message f writes for pr: the failing jobs' logs, as
-// github.FailedRunLogs read them (at most LogLimit of each), and the ask
-// to fix the build. Without a failing check it is an error saying so.
-func FixMessage(pr github.PR, logs string) (string, error) {
-	if _, fail, _ := countChecks(pr.Checks); fail == 0 {
-		return "", fmt.Errorf("no failing checks on #%d", pr.Number)
-	}
-	return fixPrompt(pr, logs), nil
-}
+// FixMessage is prask.FixMessage, the message f writes for pr.
+func FixMessage(pr github.PR, logs string) (string, error) { return prask.FixMessage(pr, logs) }
 
-// ReplyMessage is the message A writes for pr: drafts for every review and
-// comment; "" when there is nothing to answer.
-func ReplyMessage(pr github.PR) string {
-	if len(pr.Comments) == 0 && !hasReviewBody(pr) {
-		return ""
-	}
-	return replyPrompt(pr)
-}
+// ReplyMessage is prask.ReplyMessage, the message A writes for pr.
+func ReplyMessage(pr github.PR) string { return prask.ReplyMessage(pr) }
 
-// LogLimit is how much failing-build log goes into the message. The agent
-// can read the repository itself, so this only has to carry the failure.
-const LogLimit = 6000
+// LogLimit is how much failing-build log goes into the message.
+const LogLimit = prask.LogLimit
 
-// said is the reviews that came with words: all of them when the PR was
-// fetched by itself, else each reviewer's latest.
-func said(pr github.PR) []github.Review {
-	if len(pr.Said) > 0 {
-		return pr.Said
-	}
-	return pr.Reviews
-}
-
-// where is the line a comment is on, "" for one in the conversation.
-func where(c github.Comment) string {
-	switch {
-	case c.Path == "":
-		return ""
-	case c.Line > 0:
-		return c.Path + ":" + strconv.Itoa(c.Line)
-	}
-	return c.Path
-}
-
-func hasReviewBody(pr github.PR) bool {
-	for _, r := range said(pr) {
-		if strings.TrimSpace(r.Body) != "" {
-			return true
-		}
-	}
-	return false
-}
+func said(pr github.PR) []github.Review { return prask.Said(pr) }
+func where(c github.Comment) string     { return prask.Where(c) }
+func hasReviewBody(pr github.PR) bool   { return prask.HasReviewBody(pr) }
 
 // otherEntries is the rest of the conversation, so a single reply knows
 // what has already been said without being asked to answer it.
@@ -908,54 +869,9 @@ func replyOnePrompt(pr github.PR, entry convEntry) string {
 	return b.String()
 }
 
-func replyPrompt(pr github.PR) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "Help me answer the review feedback on pull request #%d (%s).\n\n", pr.Number, pr.Title)
-	n := 0
-	for _, r := range said(pr) {
-		if strings.TrimSpace(r.Body) == "" {
-			continue
-		}
-		n++
-		fmt.Fprintf(&b, "[%d] review by %s (%s):\n%s\n\n", n, r.Author,
-			strings.ToLower(r.State), strings.TrimSpace(r.Body))
-	}
-	for _, c := range pr.Comments {
-		n++
-		on := ""
-		if w := where(c); w != "" {
-			on = " on " + w
-		}
-		fmt.Fprintf(&b, "[%d] comment by %s%s:\n%s\n\n", n, c.Author, on, strings.TrimSpace(c.Body))
-	}
-	b.WriteString("Draft a reply to each, numbered to match. Check what each one claims " +
-		"against the code before agreeing with it: say so plainly when a comment is " +
-		"mistaken, and say what you would change when it is right. A few sentences each, " +
-		"plain text. These are drafts for me to review and send — do not post anything, " +
-		"and do not change any files yet.")
-	return b.String()
-}
+func replyPrompt(pr github.PR) string { return prask.ReplyPrompt(pr) }
 
-func fixPrompt(pr github.PR, logs string) string {
-	var b strings.Builder
-	fmt.Fprintf(&b, "A CI check on pull request #%d (%s) failed. Find out why, and fix it.\n\n", pr.Number, pr.Title)
-	b.WriteString("Failing checks:\n")
-	for _, c := range pr.Checks {
-		// Only what failed: one still queued or running has not.
-		if !github.Failed(c.Status) {
-			continue
-		}
-		fmt.Fprintf(&b, "  - %s (%s)\n", c.Name, strings.ToLower(c.Status))
-	}
-	b.WriteString("\nFrom the job log — the lines leading up to each error the runner " +
-		"reported, with the rest cut:\n\n")
-	b.WriteString(logs)
-	b.WriteString("\n\nWork out the cause from the log and the code, make the smallest change " +
-		"that fixes it, and run the project's own tests or linter for the part you touched. " +
-		"Do not commit, push, or comment on the pull request. Then tell me what was wrong, " +
-		"what you changed, and what you ran to check it.")
-	return b.String()
-}
+func fixPrompt(pr github.PR, logs string) string { return prask.FixPrompt(pr, logs) }
 
 // scrollTo returns the viewport top that keeps cursor visible, moving it as
 // little as possible — the same rule the diff pane uses, so a cursor moving
