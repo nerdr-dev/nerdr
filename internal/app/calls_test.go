@@ -62,7 +62,12 @@ func TestCallsDialogOfACoreElsewhere(t *testing.T) {
 	m, here, _, told := remoteTUI(t, "sh", "-c", `stty -echo; echo ready; while read l; do echo "got $l"; done`)
 	pump(t, m, told, "the tab", func(v string) bool { return strings.Contains(v, "ready") })
 	proc.Detach(exec.Command("git", "-C", "/w/login/zz-sub", "status"))
-	proc.Detach(exec.Command("git", "-C", "/w/login", "zz-calls"))
+	// Run often enough to be among the commands the dialog lists, the
+	// most run first: the package's tests run many others, more on some
+	// systems than on others, and the list stops at core.CallCmdsShown.
+	for range 20 {
+		proc.Detach(exec.Command("git", "-C", "/w/login", "zz-calls"))
+	}
 
 	locked(m, func() { m.toastDenied() }) // what was turned down before is said already
 	here.Mu.Lock()
