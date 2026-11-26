@@ -49,6 +49,36 @@ func (m *Model) hintShown() bool {
 		!(m.nav && m.sideW() > 0) && !m.railShown()
 }
 
+// walkHintShown reports whether the small box saying the prefix is still
+// on shows: while the arrows walk the sidebar, in place of the hint.
+func (m *Model) walkHintShown() bool {
+	return m.prefix && m.nav && m.sideW() > 0 && m.keyGroup == "" && m.dialog == nil &&
+		m.hintWanted() && !m.railShown()
+}
+
+// walkHint is the box in the corner while the arrows walk the sidebar: the
+// prefix is still on, what the arrows do, how to stay in the tab, and the
+// prefix again for all the keys.
+func (m *Model) walkHint() string {
+	tabs, repos := "tabs", "repositories"
+	if m.onGroups {
+		tabs, repos = repos, tabs
+	}
+	kw := max(7, ansi.StringWidth(m.cfg().Prefix)+1)
+	row := func(k, what string) string { return keyHint(padTo(k, kw)) + dim(what) }
+	lines := []string{
+		lipgloss.NewStyle().Bold(true).Foreground(accent).Render(m.cfg().Prefix + " is still on"),
+		row("↑ ↓", tabs),
+		row("← →", repos),
+		row("enter", "stay in this tab"),
+		row(m.cfg().Prefix, "all the keys"),
+		dim("another key: its command,"),
+		dim("for the tab walked to"),
+	}
+	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(accent).
+		Padding(0, 1).Render(strings.Join(lines, "\n"))
+}
+
 // hintOrder is the prefix's keys (their Run) the most used first. The rest
 // come after them in the order of the menu, the rare ones last.
 var hintOrder = []string{
