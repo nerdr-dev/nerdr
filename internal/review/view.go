@@ -284,6 +284,9 @@ func (m Model) prView(W, H int) string {
 	if m.prConvCursor < len(entries) && !m.OnRepoList() {
 		cursor = entries[m.prConvCursor].row
 	}
+	if s := prSplit(W); s > 0 {
+		items, cursor = m.prColumns(rows, cursor, s, W, H)
+	}
 	hint := "r reload"
 	h := H - m.statusRows() - m.menuRows()
 	// nerdr has f, a and A on its row of keys above, as buttons.
@@ -300,6 +303,41 @@ func (m Model) prView(W, H int) string {
 	// and the two views on the line below it, where they stay.
 	views := strings.Join(PRViews(ViewBranch, m.prNews, m.issueNews), "") + "  " + styleHints("tab next")
 	return renderTitledList(items, cursor, m.prConvViewTop, W, h, !m.unfocused, title, views, hint)
+}
+
+// prColumns is the PR screen's rows with two columns, W×H, the left s
+// wide: the branch and the PR's state on the left, kept where they are,
+// beside rows, which scroll; cursor's row of them is marked in its column
+// alone, so the cursor is passed on as none.
+func (m Model) prColumns(rows []relLine, cursor, s, W, H int) ([]string, int) {
+	side := m.prSide()
+	top := clamp(m.prConvViewTop, 0, max(0, len(rows)-1))
+	innerH := max(1, H-m.statusRows()-m.menuRows()-3-hintRows)
+	// Down to the bottom, so the line between the columns is too: no more
+	// rows than scrolling has, once there is any.
+	n := max(len(rows), top+innerH)
+	rw := max(W-2-s-4, 1)
+	sel := selectedStyle
+	if m.unfocused {
+		sel = selectedInactiveStyle
+	}
+	rule := dimStyle.Render("│")
+	items := make([]string, n)
+	for i := range items {
+		left := ""
+		if j := i - top; j >= 0 && j < len(side) {
+			left = side[j].text
+		}
+		right := ""
+		if i < len(rows) {
+			right = rows[i].text
+			if i == cursor {
+				right = sel.Render(fit(stripANSI(right), rw))
+			}
+		}
+		items[i] = " " + fit(left, s-2) + "\x1b[0m " + rule + "   " + right
+	}
+	return items, -1
 }
 
 // renderTitledList is renderScrollList with title in the top border, the

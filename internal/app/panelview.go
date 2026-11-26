@@ -26,7 +26,7 @@ var reuseCheck = os.Getenv("NERDR_CHECK_REUSE") != ""
 // reviewSet gives r what the panel is drawn with from outside it.
 func (m *Model) reviewSet(r review.Model, w int) review.Model {
 	if r.BranchPR() {
-		r = r.SetBranch(m.branchRows(w - 3)) // the border, and a column off it
+		r = r.SetBranch(m.branchRows(review.BranchWidth(w))) // the border, a column off it; the left column with two
 	}
 	return r
 }
