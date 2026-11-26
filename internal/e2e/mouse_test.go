@@ -106,7 +106,7 @@ func TestMouse(t *testing.T) {
 
 	// The tab row's +: a new tab in the same repository, at its branch.
 	h.clickFrom(0, "+") // one repository: the tab row is the top one
-	h.waitFor("New worktree for repoB", 2*time.Second)
+	h.waitFor("New tab for repoB", 2*time.Second)
 	h.keys("feat-n")
 	h.clickContinue()
 	h.click("1  claude")
@@ -172,7 +172,7 @@ func TestMouseNewTabFromGroupMenu(t *testing.T) {
 	// Right click on repoA's group: a new tab in repoA.
 	h.click("repoA (1)", 2)
 	h.click("New tab in repoA…")
-	h.waitFor("New worktree for repoA", 2*time.Second)
+	h.waitFor("New tab for repoA", 2*time.Second)
 	h.keys("three")
 	h.clickContinue()
 	h.click("1  claude")

@@ -184,7 +184,7 @@ func TestSidebarDetailsOnTheTabsLine(t *testing.T) {
 			t.Fatalf("details on a line of their own:\n%s", all)
 		}
 	}
-	for _, want := range []string{"+ new repo", "+ new worktree"} {
+	for _, want := range []string{"+ new repo", "+ new tab"} {
 		if !strings.Contains(all, want) {
 			t.Fatalf("no %q:\n%s", want, all)
 		}
