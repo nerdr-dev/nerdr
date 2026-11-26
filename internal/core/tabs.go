@@ -38,7 +38,7 @@ func NewTabID() string {
 // to report to this one, and one in a sandbox never to a socket it was
 // not given. The user's own, such as NERDR_DEBUG_LOG, are passed on.
 var TabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK", "NERDR_GROK_HOOK",
-	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_BIN", "NERDR_DATA_DIR", EnvByAgent, holder.EnvNested}
+	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_WORKTREE_INFO", "NERDR_BIN", "NERDR_DATA_DIR", EnvByAgent, holder.EnvNested}
 
 // HostVars are left out of what an agent or terminal of a tab inherits.
 // The first say nerdr was started
@@ -85,7 +85,7 @@ func ChildEnvFrom(base []string, t *Tab) []string {
 		paths = append(paths, w.Path)
 	}
 	encoded, _ := json.Marshal(paths)
-	env := append(withoutTabVars(base), "NERDR_WORKTREES="+string(encoded), "NERDR_TAB="+t.HookKey())
+	env := append(withoutTabVars(base), "NERDR_WORKTREES="+string(encoded), worktreeInfoEnv(t.Worktrees, t.Dir), "NERDR_TAB="+t.HookKey())
 	return nerdrEnv(env)
 }
 
@@ -383,6 +383,10 @@ type SpawnPrep struct {
 	Looked bool
 	Gone   bool
 	Failed []string
+	// WorktreeInfo is the NERDR_WORKTREE_INFO the check ran with, for the
+	// agent to start with the same: what it tells of the worktrees can
+	// change between the two, by another agent of the tab moving them.
+	WorktreeInfo string
 }
 
 // SpawnReady is a tab's agent to start, with what its CLI said first.
@@ -402,6 +406,7 @@ type SpawnReady struct {
 // One the check refuses is not asked more, nor its folder touched.
 func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
 	env := m.LaunchEnv(t, l)
+	info := envEntry(env, "NERDR_WORKTREE_INFO")
 	check := m.CheckSandbox(t, env)
 	ask := m.prepareAgent(t, l, env)
 	dir, project := t.Dir, m.projectSkillsOf(t)
@@ -420,7 +425,7 @@ func (m *Core) Prepare(t *Tab, l agents.Launch) func() SpawnPrep {
 		if ask != nil {
 			p = ask()
 		}
-		p.Check = c
+		p.Check, p.WorktreeInfo = c, info
 		p.Looked = true
 		if _, err := os.Stat(dir); err != nil {
 			p.Gone = true
@@ -662,7 +667,11 @@ func (m *Core) SpawnPrepared(t *Tab, l agents.Launch, resume bool, prep SpawnPre
 	}
 	w, h := m.Client.TabSize(m.Ref(t))
 	w, h = m.startSize(m.PaneRef(t.PaneOf()), w, h)
-	spec := spawn.Spec{Argv: l.Argv, Dir: t.Dir, Env: WithUserEnv(m.AgentEnv(t), l.Env), W: w, H: h}
+	env := WithUserEnv(m.AgentEnv(t), l.Env)
+	if prep.WorktreeInfo != "" {
+		env = withEntry(env, prep.WorktreeInfo)
+	}
+	spec := spawn.Spec{Argv: l.Argv, Dir: t.Dir, Env: env, W: w, H: h}
 	m.Hold(&spec, AgentHeldLabel(t), t.InSandbox, t.HookKey())
 	p, err := term.StartWith(m.Programs(), spec, m.Notify)
 	if err != nil {

@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -38,6 +39,10 @@ type Config struct {
 	WorktreesDir string `toml:"worktrees_dir" scope:"core"`
 	// Agents overrides how each agent kind is started.
 	Agents map[agents.Kind]agents.Spec `toml:"agents" scope:"core"`
+	// Wrappers are scripts kept in the config, by name, for an agent's
+	// command or check_command to start with: [wrappers.<name>]. See
+	// Wrapper. Load has already put them in place in Agents.
+	Wrappers map[string]Wrapper `toml:"wrappers" scope:"core"`
 	// Notify is when an agent's tab tells you it needs you: a desktop
 	// notification while nerdr's window does not have focus, a message in
 	// the bar while you are in another tab. "blocked" (an agent needs
@@ -187,6 +192,82 @@ type Config struct {
 	dataDirSet, worktreesDirSet bool
 }
 
+// Wrapper is a [wrappers.<name>] table: a script for the wrapper an
+// agent is started through, such as one that puts it in a sandbox, kept in
+// the config rather than in a file of its own. An agent's command or
+// check_command whose first word is the wrapper's name runs
+//
+//	<shell> -c <script> <name> <the rest of the command> <nerdr's arguments>
+//
+// so the script has its name as $0, and the rest, with what nerdr adds
+// after it, as "$@".
+type Wrapper struct {
+	Script string `toml:"script"`
+	// Shell is the program that runs Script: DefaultWrapperShell when
+	// empty. A name on PATH or an absolute path, of a shell that takes -c.
+	Shell string `toml:"shell"`
+}
+
+// DefaultWrapperShell is a wrapper's shell when it names none.
+const DefaultWrapperShell = "bash"
+
+// wrapperName is what a wrapper's name, or its shell when not a path, may
+// be: one plain word, as a command's first word on PATH is.
+var wrapperName = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]*$`)
+
+// Wrapped is argv with c's wrapper in place of its first word, when that
+// is a wrapper's name; argv as it is otherwise.
+func (c Config) Wrapped(argv []string) []string {
+	if len(argv) == 0 {
+		return argv
+	}
+	w, ok := c.Wrappers[argv[0]]
+	if !ok {
+		return argv
+	}
+	return slices.Concat(w.prefix(argv[0]), argv[1:])
+}
+
+// prefix is what w, named name, puts in place of its name in a command.
+func (w Wrapper) prefix(name string) []string {
+	shell := w.Shell
+	if shell == "" {
+		shell = DefaultWrapperShell
+	}
+	return []string{shell, "-c", w.Script, name}
+}
+
+// WrapSpec is s with c's wrappers in place in its command and
+// check_command, as Load puts them.
+func (c Config) WrapSpec(s agents.Spec) agents.Spec {
+	if len(s.Command) > 0 {
+		_, s.Wrapped = c.Wrappers[s.Command[0]]
+	}
+	s.Command, s.CheckCommand = c.Wrapped(s.Command), c.Wrapped(s.CheckCommand)
+	return s
+}
+
+// useWrappers checks c's wrappers and puts each in place in the agents'
+// command and check_command that start with its name, so that everything
+// that runs an agent's command, the sandbox check among them, runs it.
+func useWrappers(c *Config) error {
+	for _, name := range slices.Sorted(maps.Keys(c.Wrappers)) {
+		w := c.Wrappers[name]
+		switch {
+		case !wrapperName.MatchString(name):
+			return fmt.Errorf("[wrappers.%s]: a wrapper's name is one word of letters, digits, _, . and -", name)
+		case strings.TrimSpace(w.Script) == "":
+			return fmt.Errorf("[wrappers.%s]: script is empty", name)
+		case w.Shell != "" && !filepath.IsAbs(w.Shell) && !wrapperName.MatchString(w.Shell):
+			return fmt.Errorf("[wrappers.%s]: shell is a program on PATH, such as \"sh\", or an absolute path", name)
+		}
+	}
+	for k, s := range c.Agents {
+		c.Agents[k] = c.WrapSpec(s)
+	}
+	return nil
+}
+
 // DefaultWorktreesDir is where new worktrees go when the config file does
 // not say: one folder wherever nerdr is started, not one beside each
 // folder it happens to be started in.
@@ -301,6 +382,9 @@ func Load() (Config, error) {
 	if err == nil {
 		md, err := toml.Decode(string(data), &c)
 		if err != nil {
+			return defaults(Config{}), fmt.Errorf("%s: %w", Path(), err)
+		}
+		if err := useWrappers(&c); err != nil {
 			return defaults(Config{}), fmt.Errorf("%s: %w", Path(), err)
 		}
 		c.dataDirSet = md.IsDefined("data_dir")

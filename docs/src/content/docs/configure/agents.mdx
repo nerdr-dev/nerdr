@@ -16,7 +16,7 @@ with `[agents.<name>]`:
 
 | Setting | Effect |
 |---|---|
-| `command` | Replaces the command. Can include a wrapper and fixed arguments. The first word must be on your PATH. |
+| `command` | Replaces the command. Can include a wrapper and fixed arguments. The first word must be on your PATH, or the name of a [wrapper script in the config](#a-wrapper-script-in-the-config-wrappers). |
 | `args` | Added after `command` on every launch. |
 | `env` | Overrides inherited environment variables. nerdr's own variables, `NERDR_*` among them, are reserved. Agents and terminals do not inherit variables naming the agent or terminal nerdr was started from, such as `CLAUDECODE`, `TMUX` or `KITTY_WINDOW_ID`, and get `TERM_PROGRAM=nerdr`. |
 | `config_model` | opencode only: its model as `provider/model`. opencode 2 dropped `--model`, so nerdr merges it into the `OPENCODE_CONFIG_CONTENT` variable, which only opencode's own server (`--standalone`, which nerdr always uses) reads. |
@@ -606,6 +606,140 @@ Use `check_command` only with a command whose sandbox is the agent's, or
 denies the same as it at least, and test that yourself. Everything else
 holds as without it: if the check does not answer, or reaches what it
 must not, nerdr does not start the agent.
+
+### A wrapper script in the config: `[wrappers]`
+
+A wrapper that is a short script can be kept in the config instead of a
+file of its own. Give it a name under `[wrappers]`, and start `command`
+or `check_command` with that name:
+
+```toml
+[wrappers.my-wrapper]
+script = '''
+set -eu
+exec my-sandbox --allow-write="$HOME/.cache/tool" "$@"
+'''
+
+[agents.opencode]
+command = ["my-wrapper", "--agent", "opencode", "--"]
+check_command = ["my-wrapper", "exec", "--"]
+sandboxed = true
+```
+
+nerdr runs a command that starts with a wrapper's name as
+`bash -c <script> <name> <the rest of the command>`, with its own
+arguments added at the end as always. The script has its name as `$0` and
+the rest as `"$@"`, so it must pass `"$@"` on. This holds everywhere
+nerdr runs the agent's command: new, resumed and switched agents,
+reviewers, the sandbox check and the commands nerdr asks the agent for its
+models or help with.
+
+| Setting | Effect |
+|---|---|
+| `script` | The script. Write it as a literal string, `'''…'''`, so that TOML leaves `\` and `$` in it alone. |
+| `shell` | What runs it: `bash` when not set. A program on your `PATH`, such as `sh` or `zsh`, or an absolute path such as `/opt/homebrew/bin/bash`. It must take `-c`. |
+
+A wrapper's name is one word of letters, digits, `_`, `.` and `-`, and
+it takes the place of a program of the same name in `command`. It counts
+only as the first word: anywhere else in `command` a word is what it
+says. When nerdr looks for the agent's program among the words of
+`command`, for the sandbox check and to resume an agent it does not
+know, it looks past the wrapper's script and name. nerdr refuses a
+config with a wrapper whose script is empty, whose name is not such a
+word, or whose shell is neither such a word nor an absolute path.
+
+nerdr lists an agent in the picker when the first word of its command
+is on your `PATH`. For a wrapper that is its shell, so an agent whose
+command starts with one is listed even when the program the script
+starts is not there; it then fails when it starts, with the script's
+message. Wrappers are not in the settings dialog: write them in the
+config file. On a [server](../../use/remote/), as with `[agents]`, the
+wrappers are those of the config on the server.
+
+### The tab's worktrees, for a wrapper: `NERDR_WORKTREE_INFO`
+
+A tab with several repositories starts its agent in the folder above
+their worktrees. That folder is no repository, so a sandbox that grants
+Git what it needs by looking at the folder it starts in finds nothing to
+grant: each linked worktree's shared Git directory is in its main
+checkout, outside the tab. A wrapper can grant them itself from
+`NERDR_WORKTREE_INFO`, which every agent, terminal and plugin of a tab
+gets beside `NERDR_WORKTREES`, the sandbox check too. It is a JSON list,
+one entry for each of the tab's worktrees:
+
+```json
+[
+  {"path": "/Users/me/worktrees-nerdr/tab/api", "main_checkout": "/Users/me/src/api",
+   "git_common_dir": "/Users/me/src/api/.git", "linked": true, "start": false}
+]
+```
+
+| Field | Meaning |
+|---|---|
+| `path` | The worktree |
+| `main_checkout` | Its repository's main checkout, from nerdr's own record of the worktree; `""` when nerdr has none, or its path is not UTF-8 |
+| `git_common_dir` | The main checkout's `.git` folder: objects, refs and the worktrees' indexes. `""` when that is not a folder there, as when it is a link |
+| `linked` | Whether `path` is a linked worktree, not the main checkout |
+| `start` | Whether `path` is the folder the agent starts in: the one worktree of a tab with one repository, none in a tab with several |
+
+The entries come from what nerdr recorded when it made the worktrees,
+not from the worktrees' `.git` files, which the agent can write. Paths
+have their links followed (`/var` is `/private/var` on macOS). A
+worktree that is a link, or is not there, is left out: the agent can
+write the folder it is in, and a link put there could lead a wrapper to
+grant whatever the link points at. The sandbox check and the agent it
+checks get the same list, taken once before the check, so another agent
+of the tab cannot change what one of them is told. An agent keeps the
+list it was started with until it starts again, when a repository is
+added to its tab or taken out of it too.
+
+It is the wrapper that reads the list, before it starts the sandbox: the
+agent inside needs none of it, and the sandbox may pass it on or not.
+It holds nothing secret, only the paths the worktrees' `.git` files
+lead to as well; a wrapper that would rather keep it from the agent
+runs `unset NERDR_WORKTREE_INFO` before it starts the sandbox.
+
+The entries that need a grant are the linked worktrees the agent does
+not start in, and what they need is their `git_common_dir`. That folder
+is in the main checkout, which the agent cannot write, so no link the
+agent makes changes where it leads. `path` is in the tab's folder, which
+the agent, and the tab's other agents, can write: one of them could put
+a link in its place after nerdr looked. Do not give `path` to a sandbox
+that follows links in the paths it is given to grant; a tab with several
+repositories starts its agent in the folder above them, which the
+sandbox grants anyway. For example, a wrapper that grants each Git
+directory:
+
+```toml
+[wrappers.my-sandbox-git]
+script = '''
+set -euo pipefail
+dirs=$(jq -r '.[] | select(.linked and (.start | not)) | .git_common_dir
+    | if . == "" then error("no git directory to grant")
+      elif test("\n") then error("a git directory with a newline in its path")
+      else . end' <<<"${NERDR_WORKTREE_INFO:-[]}") ||
+    { echo "$0: cannot read NERDR_WORKTREE_INFO" >&2; exit 1; }
+flags=()
+while IFS= read -r git; do
+    if [ -n "$git" ]; then flags+=("--allow-write=$git"); fi
+done <<<"$dirs"
+exec my-sandbox ${flags[@]+"${flags[@]}"} "$@"
+'''
+```
+
+A path can have a newline in it, so a script that reads the list a line
+at a time refuses those, as this one does, rather than grant half a
+path. nerdr leaves out a worktree whose path is not UTF-8, which JSON
+cannot carry, and gives a main checkout whose path is not as `""`.
+
+Granting the main checkout's `.git` must still leave `.git/config`,
+`.git/hooks`, `.git/config.worktree` and `.git/worktrees/*/config.worktree`
+out of the agent's reach (see [Agents in a sandbox](#agents-in-a-sandbox-sandboxed)).
+The sandbox check tries to write `.git/config` and `.git/hooks`, and
+nerdr does not start an agent that can. It does not try the
+`config.worktree` files: those are for the sandbox to deny, and nerdr
+runs no Git in a repository that reads them where an agent has run in a
+sandbox.
 
 ## With servers: SSH keys and the SSH agent
 

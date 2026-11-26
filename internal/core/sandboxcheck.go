@@ -93,13 +93,23 @@ func (m *Core) CheckSandbox(t *Tab, env []string) func() SandboxCheckedMsg {
 		if d := agents.DefaultSpec(kind).Command; len(d) > 0 {
 			names = append(names, filepath.Base(d[0]))
 		}
+		// A wrapper from the config is looked past: neither its script nor
+		// its name is the agent's program.
+		resolved := specs[kind]
+		resolved.Command = command // the default's when the config gives none
+		prefix, rest := resolved.Unwrapped()
+		shown := rest
+		if prefix != nil {
+			shown = append([]string{prefix[len(prefix)-1]}, rest...)
+		}
 		var ok bool
-		wrapper, ok = sandboxcheck.Wrapper(command, names...)
+		wrapper, ok = sandboxcheck.Wrapper(rest, names...)
 		if !ok {
 			return unknown(fmt.Sprintf("its command (%s) names no %s to run the check in place of; "+
 				"set check_command to a command that runs the program after it in the same sandbox",
-				strings.Join(command, " "), strings.Join(names, " or ")))
+				strings.Join(shown, " "), strings.Join(names, " or ")))
 		}
+		wrapper = slices.Concat(prefix, wrapper)
 	}
 	bin, err := spawn.Bin()
 	if err != nil {

@@ -57,10 +57,10 @@ func TestGlobalPluginIsOneForAllTabs(t *testing.T) {
 
 // A global plugin's programs run with no tab's variables.
 func TestGlobalEnvHasNoTab(t *testing.T) {
-	base := []string{"HOME=/h", "NERDR_TAB=x", "NERDR_WORKTREES=[]", "HERDR_PANE=1"}
+	base := []string{"HOME=/h", "NERDR_TAB=x", "NERDR_WORKTREES=[]", "NERDR_WORKTREE_INFO=[]", "HERDR_PANE=1"}
 	env := GlobalEnvFrom(base)
 	for _, kv := range env {
-		if strings.HasPrefix(kv, "NERDR_TAB=") || strings.HasPrefix(kv, "NERDR_WORKTREES=") || strings.HasPrefix(kv, "HERDR_") {
+		if strings.HasPrefix(kv, "NERDR_TAB=") || strings.HasPrefix(kv, "NERDR_WORKTREES=") || strings.HasPrefix(kv, "NERDR_WORKTREE_INFO=") || strings.HasPrefix(kv, "HERDR_") {
 			t.Errorf("global env has %s", kv)
 		}
 	}
