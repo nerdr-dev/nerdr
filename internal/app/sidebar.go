@@ -336,7 +336,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 		lines = append(lines, m.zone(s, func(m *Model, ev tea.MouseMsg) tea.Cmd { return m.tabMouse(t, ev) }))
 	}
 	if m.mouseOn() {
-		plus := " + new worktree"
+		plus := " + new tab"
 		if small {
 			plus = " + "
 		}
@@ -345,7 +345,7 @@ func (m *Model) tabList(w, h int, small bool) []string {
 				return m.openWizardFor(repo)
 			}
 			return m.openWizard()
-		}), "New worktree, in this repository, with a tab of its own"))
+		}), "New tab, in this repository, with a worktree of its own"))
 	}
 	// "tabs in" before the repository, so the list says what it is; a
 	// long name is cut at its end and the "tabs in" stays.

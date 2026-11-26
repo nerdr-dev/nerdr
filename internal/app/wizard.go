@@ -998,7 +998,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 		for _, r := range w.pickedRepos() {
 			names = append(names, r.Name)
 		}
-		lines = append(lines, "New worktree for "+strings.Join(names, ", "), "",
+		lines = append(lines, "New tab for "+strings.Join(names, ", "), "",
 			m.onClick(w.branch.View(), func(m *Model) tea.Cmd { return w.focusField(fieldBranch) }), "")
 		if w.on != "" {
 			lines = append(lines,

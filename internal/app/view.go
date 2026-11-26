@@ -443,7 +443,7 @@ func (m *Model) groupBar() string {
 	var plus string
 	if m.mouseOn() {
 		// A new tab in any repository; the tab row's + is for its group.
-		plus = bar.Render(" ") + m.tip(m.onClick(plusStyle.Render(" + "), (*Model).openWizard), "New worktree, in any repository, with a tab of its own")
+		plus = bar.Render(" ") + m.tip(m.onClick(plusStyle.Render(" + "), (*Model).openWizard), "New tab, in any repository, with a worktree of its own")
 	}
 	avail := m.width - reserve - lipgloss.Width(plus)
 	left := m.scrollBar(items, at, &m.groupRow, avail, "repository",
@@ -541,7 +541,7 @@ func (m *Model) tabBar() string {
 				return m.openWizardFor(repo)
 			}
 			return m.openWizard()
-		}), "New worktree, in this repository, with a tab of its own")
+		}), "New tab, in this repository, with a worktree of its own")
 	}
 	warning := m.topWarning()
 	var repo, msg string

@@ -290,7 +290,7 @@ func TestGroupNameKeptAndRenamed(t *testing.T) {
 }
 
 // TestWizardForARepoClosesOnEsc covers the dialog opened with its
-// repository picked, as "+ new worktree" does: esc at the branch name
+// repository picked, as "+ new tab" does: esc at the branch name
 // closes it, not going back to the repository list it never showed.
 func TestWizardForARepoClosesOnEsc(t *testing.T) {
 	m := tabsModel(t)
