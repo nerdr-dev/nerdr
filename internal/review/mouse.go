@@ -214,6 +214,14 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 			return nil
 		}
 		if i := l.prConv.contentRow(y, 0); i >= 0 {
+			if s := prSplit(l.prConv.w); s > 0 && x-l.prConv.x-1 < s {
+				// The left column, which does not scroll: only its button
+				// does anything.
+				if side := m.prSide(); i < len(side) && side[i].button {
+					return openInBrowser(side[i].openURL)
+				}
+				return nil
+			}
 			row := m.prConvViewTop + i
 			if rows, _ := m.prContent(); row < len(rows) && rows[row].button {
 				return openInBrowser(rows[row].openURL)

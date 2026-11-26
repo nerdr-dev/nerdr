@@ -486,3 +486,44 @@ func convLines(pr github.PR, width int, fetched bool) []relLine {
 	rows, _ := prConversation(pr, width, fetched)
 	return rows
 }
+
+// TestWidePRScreenHasTwoColumns covers a wide PR screen putting the PR's
+// state beside its conversation, rather than above it with most of the
+// screen empty, and the button on the left still opening the PR.
+func TestWidePRScreenHasTwoColumns(t *testing.T) {
+	m := prModel(samplePR())
+	m.width = 200
+	var title, comment string
+	for _, l := range strings.Split(stripANSI(m.View()), "\n") {
+		if strings.Contains(l, "#7 Tighten access control") {
+			title = l
+		}
+		if strings.Contains(l, "CI / lint") {
+			comment = l
+		}
+	}
+	if title == "" || comment == "" || !strings.Contains(title, "│") {
+		t.Fatalf("no two columns:\n%s", stripANSI(m.View()))
+	}
+	if strings.Index(comment, "CI / lint") < prSplit(200) {
+		t.Errorf("the conversation should be in the right column: %q", comment)
+	}
+	side := m.prSide()
+	button := -1
+	for i, r := range side {
+		if r.button {
+			button = i
+		}
+	}
+	if button < 0 {
+		t.Fatalf("no button on the left: %#v", side)
+	}
+	l := m.layout(200, 40)
+	if m.handleMouse(tea.MouseMsg{X: l.prConv.x + 3, Y: l.prConv.y + 2 + button,
+		Button: tea.MouseButtonLeft, Action: tea.MouseActionPress}) == nil {
+		t.Error("a click on the button on the left should open the PR")
+	}
+	if BranchWidth(200) >= 200/2 || BranchWidth(120) != 117 {
+		t.Errorf("the branch rows get the left column only with two: %d, %d", BranchWidth(200), BranchWidth(120))
+	}
+}

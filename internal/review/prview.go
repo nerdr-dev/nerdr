@@ -423,66 +423,120 @@ func (m *Model) reloadPR() tea.Cmd {
 //
 // Inside nerdr the line that switches to all your pull requests is above
 // it, in the pane's heading (see prView), and a blank line sets it apart.
+//
+// A screen prWideMin wide or more has two columns: the branch and the
+// PR's state on the left, which stay put (see prSide), and on the right
+// what is read — the checks not passed and the conversation — which is
+// what prContent then is, scrolled and stepped through.
 func (m Model) prContent() ([]relLine, []convEntry) {
-	rows, entries := m.prOwnContent()
+	W := m.prWidth()
 	top := []relLine{{text: ""}}
-	if len(m.branch) > 0 {
-		width := m.width
-		if width == 0 {
-			width = 120
+	var conv []relLine
+	var entries []convEntry
+	if s := prSplit(W); s > 0 {
+		if m.prOK && m.curWT != "" && !m.noGh {
+			conv, entries = prConversation(m.pr, W-s-7, true)
 		}
-		top = append(top, section("branch", width-6))
-	}
-	for _, r := range m.branch {
-		top = append(top, relLine{text: r})
-	}
-	if len(m.branch) > 0 {
-		top = append(top, relLine{text: ""})
+	} else {
+		top = append(top, m.branchSection(W-4)...)
+		top = append(top, m.prState(W-4)...)
+		if m.prOK && m.curWT != "" && !m.noGh {
+			top = append(top, relLine{text: ""})
+			conv, entries = prConversation(m.pr, W-4, true)
+		}
 	}
 	for i := range entries {
 		entries[i].row += len(top)
 	}
-	return append(top, rows...), entries
+	return append(top, conv...), entries
 }
 
-// prOwnContent is the worktree's PR, as prContent shows it.
-func (m Model) prOwnContent() ([]relLine, []convEntry) {
+// prSide is the left column of a PR screen with two (see prContent): the
+// branch with nerdr's keys for it, and the PR's state. Nil with one.
+func (m Model) prSide() []relLine {
+	s := prSplit(m.prWidth())
+	if s == 0 {
+		return nil
+	}
+	rows := append([]relLine{{text: ""}}, m.branchSection(s-3)...)
+	return append(rows, m.prState(s-3)...)
+}
+
+// prWideMin is how wide the PR screen is to have two columns: from there
+// one column leaves most of the screen empty, the conversation's lines
+// being kept short enough to read.
+const prWideMin = 140
+
+// prSplit is how wide the left column of a PR screen W wide is, its
+// leading space in it: 0 for a screen with one column.
+func prSplit(W int) int {
+	if W < prWideMin {
+		return 0
+	}
+	return min(max(W*2/5, 60), 90)
+}
+
+// BranchWidth is how wide the rows SetBranch is given may be on a PR
+// screen w wide: the left column's, with two.
+func BranchWidth(w int) int {
+	if s := prSplit(w); s > 0 {
+		return s - 4
+	}
+	return w - 3
+}
+
+// prWidth is the PR screen's width, as View has it.
+func (m Model) prWidth() int {
+	if m.width == 0 {
+		return 120
+	}
+	return m.width
+}
+
+// branchSection is nerdr's rows about the worktree's branches under their
+// rule, width wide, and a blank line: none outside nerdr.
+func (m Model) branchSection(width int) []relLine {
+	if len(m.branch) == 0 {
+		return nil
+	}
+	rows := []relLine{section("branch", width), {text: ""}}
+	for _, r := range m.branch {
+		rows = append(rows, relLine{text: r})
+	}
+	return append(rows, relLine{text: ""})
+}
+
+// prState is the worktree's PR under its rule, width wide — title,
+// branches, review, checks, whether it merges — with the button that
+// opens it; or why there is none.
+func (m Model) prState(width int) []relLine {
 	switch {
 	case m.curWT == "":
-		return []relLine{{text: "(no worktree)"}}, nil
+		return []relLine{{text: "(no worktree)"}}
 	case m.noGh:
-		return []relLine{{text: "(the gh CLI is not installed)"}}, nil
+		return []relLine{{text: "(the gh CLI is not installed)"}}
 	case !m.prOK:
 		msg := m.prMsg
 		if msg == "" {
 			msg = "no pull request for this branch"
 		}
 		// nerdr's keys above, with the branches, push and open one.
-		return []relLine{{text: "(" + printableLine(msg) + ")"}}, nil
+		return []relLine{{text: "(" + printableLine(msg) + ")"}}
 	}
-	width := m.width
-	if width == 0 {
-		width = 120
-	}
-	rows := append([]relLine{section("pull request", width-6)}, prHeader(m.pr)...)
+	rows := append([]relLine{section("pull request", width), {text: ""}}, prHeader(m.pr, width)...)
 	if m.pr.URL != "" {
 		rows = append(rows, relLine{text: ""},
 			relLine{text: prButtonStyle.Render(" o  open in browser "), openURL: m.pr.URL, button: true})
 	}
-	rows = append(rows, relLine{text: ""})
-	conv, entries := prConversation(m.pr, width-6, true)
-	for i := range entries {
-		entries[i].row += len(rows)
-	}
-	return append(rows, conv...), entries
+	return rows
 }
 
 var prButtonStyle = lipgloss.NewStyle().Background(lipgloss.Color("63")).Foreground(lipgloss.Color("231")).Bold(true)
 
 // section is the line a part of the PR screen starts with: its name on a
-// rule, as wide as the text below it, within reason.
+// rule across the column, width wide.
 func section(name string, width int) relLine {
-	n := max(min(width, 100)-len(name)-4, 3)
+	n := max(width-lipgloss.Width(name)-4, 3)
 	return relLine{text: dimStyle.Render("── ") + headingText.Render(name) + dimStyle.Render(" "+strings.Repeat("─", n))}
 }
 
@@ -501,18 +555,48 @@ func prStateStyle(state string) lipgloss.Style {
 	return dimStyle
 }
 
-// prHeader is the PR in a few lines: title, state, review verdict, checks,
-// the last two labelled in a column of their own.
-func prHeader(pr github.PR) []relLine {
+// prHeader is the PR in a few lines, width wide: its title, wrapped, with
+// its state; then in a column of labels, its branches and who opened it,
+// the review verdict, the checks and whether it merges cleanly.
+func prHeader(pr github.PR, width int) []relLine {
 	state := printableLine(pr.State)
 	if pr.IsDraft {
 		state = "DRAFT"
 	}
-	out := []relLine{
-		{text: headingText.Render(fmt.Sprintf("#%d %s", pr.Number, printableLine(pr.Title))) + "  " + prStateStyle(state).Render(state), openURL: pr.URL},
-		{text: ""},
+	var out []relLine
+	title := wrapText(fmt.Sprintf("#%d %s", pr.Number, pr.Title), max(width-lipgloss.Width(state)-2, 20), 3)
+	for i, l := range title {
+		text := headingText.Render(l)
+		if i == len(title)-1 {
+			text += "  " + prStateStyle(state).Render(state)
+		}
+		out = append(out, relLine{text: text, openURL: pr.URL})
 	}
+	out = append(out, relLine{text: ""})
 	label := func(s string) string { return dimStyle.Render(fmt.Sprintf("%-8s", s)) }
+	if pr.Branch != "" {
+		branches := printableLine(pr.Branch)
+		if pr.Fork != "" {
+			branches = printableLine(pr.Fork) + ":" + branches
+		}
+		if pr.Base != "" {
+			branches += dimStyle.Render(" → ") + printableLine(pr.Base)
+		}
+		out = append(out, relLine{text: label("branch") + branches})
+	}
+	var by []string
+	if pr.Author != "" {
+		by = append(by, printableLine(pr.Author))
+	}
+	if !pr.UpdatedAt.IsZero() {
+		by = append(by, dimStyle.Render("updated "+pr.UpdatedAt.Local().Format("2006-01-02 15:04")))
+	}
+	if len(by) > 0 {
+		out = append(out, relLine{text: label("by") + strings.Join(by, dimStyle.Render(" · "))})
+	}
+	if len(out) > len(title)+1 {
+		out = append(out, relLine{text: ""}) // where it is, apart from how it stands
+	}
 	decision := strings.ReplaceAll(strings.ToLower(pr.ReviewDecision), "_", " ")
 	if decision == "" {
 		decision = "no review yet"
@@ -530,8 +614,11 @@ func prHeader(pr github.PR) []relLine {
 			text: label("checks") + fmt.Sprintf("%s %d passed · %d failed · %d pending", checksGlyph(pr), pass, fail, pending),
 		})
 	}
-	if pr.Mergeable == "CONFLICTING" {
-		out = append(out, relLine{text: failStyle.Render("conflicts with the base branch")})
+	switch pr.Mergeable {
+	case "CONFLICTING":
+		out = append(out, relLine{text: label("merge") + failStyle.Render("✗ conflicts with the base branch")})
+	case "MERGEABLE":
+		out = append(out, relLine{text: label("merge") + okStyle.Render("✓") + " no conflicts"})
 	}
 	return out
 }
@@ -996,7 +1083,7 @@ func prConversation(pr github.PR, width int, fetched bool) ([]relLine, []convEnt
 	add := func(e convEntry, head string) {
 		if !conversation {
 			conversation = true
-			rows = append(rows, section("conversation", width))
+			rows = append(rows, section("conversation", width), relLine{text: ""})
 		}
 		e.row = len(rows)
 		entries = append(entries, e)
@@ -1018,7 +1105,7 @@ func prConversation(pr github.PR, width int, fetched bool) ([]relLine, []convEnt
 			glyph = failStyle.Render("✗ ")
 		}
 		if len(rows) == 0 {
-			rows = append(rows, section("checks not passed", width))
+			rows = append(rows, section("checks not passed", width), relLine{text: ""})
 		}
 		entries = append(entries, convEntry{
 			row: len(rows), kind: "check", author: c.Name, url: c.DetailsURL,
@@ -1052,7 +1139,7 @@ func prConversation(pr github.PR, width int, fetched bool) ([]relLine, []convEnt
 	}
 
 	if !conversation {
-		rows = append(rows, section("conversation", width))
+		rows = append(rows, section("conversation", width), relLine{text: ""})
 		if !fetched {
 			rows = append(rows, relLine{text: dimStyle.Render("(press enter to read the conversation)")})
 		} else {
