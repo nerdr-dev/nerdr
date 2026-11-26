@@ -114,9 +114,9 @@ func (m Model) View() string {
 
 	var top string
 	if m.sideBySide(W) {
-		top = lipgloss.JoinHorizontal(lipgloss.Top, filesPane, diffPane)
+		top = joinBeside(filesPane, diffPane, m.hasFocus(focusFiles), m.hasFocus(focusDiff))
 	} else {
-		top = stack(filesPane, diffPane)
+		top = joinStacked(filesPane, diffPane, m.hasFocus(focusDiff))
 	}
 	return m.withStatus(W, append(m.menuPart(W), top)...)
 }
@@ -804,6 +804,57 @@ func renderDiff(c *rowCache, lines []diffLine, cursor, viewTop, width, height in
 	rows = append(rows, hintRow(hint, innerW, active))
 	return scrollbar(framed(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n"), active),
 		v.rowOf(len(lines)), start, innerH, 2, active)
+}
+
+// joinBeside puts right beside left, the two panes sharing the column
+// between them, as the layout has them: one frame with a line down it.
+// The column is left's, its scrollbar and all, but for its plain line
+// taking right's colour while right is active.
+func joinBeside(left, right string, leftActive, rightActive bool) string {
+	ls, rs := strings.Split(left, "\n"), strings.Split(right, "\n")
+	n := min(len(ls), len(rs))
+	out := make([]string, n)
+	for i := range n {
+		lw := ansi.StringWidth(ls[i])
+		if lw == 0 {
+			out[i] = rs[i]
+			continue
+		}
+		mid := ansi.Cut(ls[i], lw-1, lw)
+		st := frameInactive
+		if leftActive || rightActive {
+			st = frameActive
+		}
+		switch {
+		case i == 0:
+			mid = st.Render("┬")
+		case i == n-1:
+			mid = st.Render("┴")
+		case rightActive && ansi.Strip(mid) == "│":
+			mid = frameActive.Render("│")
+		}
+		out[i] = ansi.Cut(ls[i], 0, lw-1) + mid + ansi.Cut(rs[i], 1, ansi.StringWidth(rs[i]))
+	}
+	return strings.Join(out, "\n")
+}
+
+// joinStacked puts bottom under top, the two panes sharing the row between
+// them, as the layout has them: bottom's top edge, title and all, in
+// place of top's bottom edge.
+func joinStacked(top, bottom string, bottomActive bool) string {
+	ts, bs := strings.Split(top, "\n"), strings.Split(bottom, "\n")
+	if len(ts) < 2 || len(bs) == 0 {
+		return stack(top, bottom)
+	}
+	b0 := bs[0]
+	if w := ansi.StringWidth(b0); w >= 2 && strings.HasPrefix(ansi.Strip(b0), "╭") && strings.HasSuffix(ansi.Strip(b0), "╮") {
+		st := frameInactive
+		if bottomActive {
+			st = frameActive
+		}
+		bs[0] = st.Render("├") + ansi.Cut(b0, 1, w-1) + st.Render("┤")
+	}
+	return stack(strings.Join(ts[:len(ts)-1], "\n"), strings.Join(bs, "\n"))
 }
 
 func plainText(s string, w, h int) string {

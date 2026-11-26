@@ -411,7 +411,8 @@ func (m Model) embeddedLayout(W, H int) paneLayout {
 	if m.sideBySide(W) {
 		filesW := min(max(W*3/10, 32), 56)
 		l.files = rect{0, m.menuRows(), filesW, rest}
-		l.diff = rect{filesW, m.menuRows(), max(W-filesW, 20), rest}
+		// The panes share the column between them: one frame, split.
+		l.diff = rect{filesW - 1, m.menuRows(), max(W-filesW+1, 20), rest}
 		return l
 	}
 	rows := len(m.flatRows())
@@ -422,7 +423,7 @@ func (m Model) embeddedLayout(W, H int) paneLayout {
 	filesH := min(max(rest*2/5, 5), max(rows+3+hintRows+m.filesHeader(), 5))
 	diffH := max(rest-filesH, 3)
 	l.files = rect{0, m.menuRows(), W, filesH}
-	l.diff = rect{0, m.menuRows() + filesH, W, diffH}
+	l.diff = rect{0, m.menuRows() + filesH - 1, W, diffH + 1} // sharing the row between them
 	return l
 }
 

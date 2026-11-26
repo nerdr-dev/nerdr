@@ -89,7 +89,7 @@ func TestFilesBesideTheDiff(t *testing.T) {
 		t.Error("narrow, the files should be above the diff")
 	}
 	l := m.embeddedLayout(160, 40)
-	if l.files.y != l.diff.y || l.files.x+l.files.w != l.diff.x || l.diff.x+l.diff.w != 160 {
+	if l.files.y != l.diff.y || l.files.x+l.files.w-1 != l.diff.x || l.diff.x+l.diff.w != 160 {
 		t.Errorf("wide, the files should be beside the diff: %+v %+v", l.files, l.diff)
 	}
 	m.width = 80
