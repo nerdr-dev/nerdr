@@ -230,3 +230,33 @@ func TestDraggingTheFilesScrollbarLeavesThePeek(t *testing.T) {
 		t.Fatal("the cursor should be on a file of the change")
 	}
 }
+
+// TestSharedRowIsTheDiffs: stacked, the row the panes share holds the
+// diff's title, and the mouse there is the diff's; beside, the column
+// they share is the files', its scrollbar.
+func TestSharedRowIsTheDiffs(t *testing.T) {
+	lines := make([]diffLine, 200)
+	for i := range lines {
+		lines[i] = diffLine{kind: ' ', text: "code"}
+	}
+	m := Model{src: Local{}, width: 120, height: 40, focus: focusFiles, diffLines: lines}
+	lay := m.layout(m.width, m.height)
+	if m.sideBySide(m.width) || lay.files.y+lay.files.h-1 != lay.diff.y {
+		t.Fatalf("want the panes stacked, sharing a row: %+v %+v", lay.files, lay.diff)
+	}
+	m = m.send(tea.MouseMsg{X: lay.diff.x + 5, Y: lay.diff.y, Button: tea.MouseButtonWheelDown})
+	if m.diffViewTop != wheelRows {
+		t.Fatalf("the wheel on the diff's title should scroll the diff: top %d", m.diffViewTop)
+	}
+	m = m.send(tea.MouseMsg{X: lay.diff.x + 5, Y: lay.diff.y, Button: tea.MouseButtonLeft, Action: tea.MouseActionPress})
+	if m.focus != focusDiff {
+		t.Fatalf("a click on the diff's title should give the diff focus, not %v", m.focus)
+	}
+
+	beside := Model{src: Local{}, width: 120, height: 40, side: sideBeside}
+	l := beside.layout(beside.width, beside.height)
+	x, y := l.files.x+l.files.w-1, l.files.y+3
+	if !l.onFiles(x, y) || x != l.diff.x {
+		t.Fatalf("beside, the shared column (%d) should be the files': %+v %+v", x, l.files, l.diff)
+	}
+}
