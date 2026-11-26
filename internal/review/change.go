@@ -4,8 +4,11 @@ package review
 // and loading it into the diff pane in each of its views.
 
 import (
+	"bytes"
 	"time"
 
+	chroma "github.com/alecthomas/chroma/v2"
+	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/git"
 
@@ -91,6 +94,7 @@ func (m *Model) loadDiff() tea.Cmd {
 	r := diffReq{
 		src: m.src, wt: m.worktrees[m.wtIdx].Path, path: path,
 		token: m.diffToken, peek: m.peek != nil, relations: m.projectVer != 0,
+		scheme: curScheme,
 	}
 	if !r.peek {
 		r.c, r.mode = m.comparison(), m.diffMode
@@ -129,11 +133,15 @@ type diffReq struct {
 	peek      bool // path is a file peeked at, shown as it is
 	relations bool // the worktree's code has been read, for its symbols
 	token     int
+	scheme    diffScheme // the colours the diff is drawn in, as they were asked for
 }
 
 // read is the diff and its source.
 func (r diffReq) read() diffMsg {
-	msg := diffMsg{wt: r.wt, path: r.path, token: r.token, peek: r.peek}
+	if r.scheme.syntax == nil {
+		r.scheme = diffSchemes[DiffColors[0]] // a request that names none
+	}
+	msg := diffMsg{wt: r.wt, path: r.path, token: r.token, peek: r.peek, scheme: r.scheme}
 	if r.relations {
 		msg.symbols, msg.refs, msg.incomplete = r.src.Relations(r.wt, r.path)
 	}
@@ -144,9 +152,21 @@ func (r diffReq) read() diffMsg {
 		if r.mode == diffModeOld {
 			src, err := r.src.OldSource(r.c, r.original)
 			msg.src, msg.srcOK = src, err == nil
+			// The old file is shown on the new side, to be coloured and
+			// opened by; its numbers are its own, in one column.
+			msg.oneSide = !r.untracked
 		} else {
 			src, err := r.src.ReadFile(r.wt, r.path)
 			msg.src, msg.srcOK = src, err == nil
+			// The whole new file's numbers are its own: the change's
+			// removed lines are not in it to count the old side by.
+			msg.oneSide = r.mode == diffModeNewFull && !r.untracked
+			if r.scheme.syntaxChanged && !r.untracked && msg.err == nil && hasRemovedLines(msg.diff) && lexers.Match(r.path) != nil {
+				// The removed lines' code is coloured from the file before.
+				// Read only when there are some to colour: a deleted
+				// binary file's diff has none, and the file could be huge.
+				msg.old, _ = r.src.OldSource(r.c, r.original)
+			}
 		}
 	}
 	if msg.err == nil {
@@ -188,6 +208,9 @@ type diffMsg struct {
 	peek       bool
 	diff, src  string
 	srcOK      bool
+	old        string // the file before the change, when its removed lines are coloured by syntax
+	oneSide    bool   // one whole file, the new or the old, numbered in one column
+	scheme     diffScheme
 	symbols    []analysis.Symbol // what path declares, and where each is used
 	refs       [][]analysis.Ref
 	incomplete string
@@ -203,9 +226,15 @@ func (msg diffMsg) diffLines() []diffLine {
 		return msg.lines
 	}
 	if msg.peek {
-		return plainSourceLines(msg.path, msg.diff)
+		return plainSourceLines(msg.scheme.syntax, msg.path, msg.diff)
 	}
-	return builtDiffLines(msg.path, msg.diff, msg.src, msg.srcOK)
+	lines := builtDiffLines(msg.path, msg.diff, msg.src, msg.srcOK, msg.old, msg.scheme)
+	if msg.oneSide {
+		for i := range lines {
+			lines[i].oldLine = 0
+		}
+	}
+	return lines
 }
 
 // onDiff puts a diff read in the background in place, if it is still the
@@ -255,17 +284,47 @@ func (m *Model) onDiff(msg diffMsg) {
 // load rather than per render frame, since chroma tokenisation of a full
 // file is too expensive to redo on every keystroke, scroll or tick.
 func (m *Model) displayLines(path, diff, src string, srcOK bool) []diffLine {
-	return m.annotateLines(path, builtDiffLines(path, diff, src, srcOK))
+	return m.annotateLines(path, builtDiffLines(path, diff, src, srcOK, "", curScheme))
 }
 
 // builtDiffLines is the costly part of displayLines, which diffReq.read
 // does in the background: it needs nothing of the model.
-func builtDiffLines(path, diff, src string, srcOK bool) []diffLine {
-	lines := buildDiffLines(diff)
+func builtDiffLines(path, diff, src string, srcOK bool, old string, s diffScheme) []diffLine {
+	lines := buildDiffLinesIn(diff, s)
+	// Each file is tokenised once, for all the lines that show it.
+	var newToks [][]chroma.Token
 	if srcOK {
-		lines = highlightContextLines(lines, path, src)
+		newToks = highlightTokens(path, src)
+		lines = contextFromTokens(s.syntax, lines, newToks)
+	}
+	if s.syntaxChanged && hasKind(lines, '+', '-') {
+		var oldToks [][]chroma.Token
+		if old != "" && hasKind(lines, '-') {
+			oldToks = highlightTokens(path, old)
+		}
+		lines = highlightChangedLines(lines, newToks, oldToks, s)
 	}
 	return lines
+}
+
+// hasKind is whether any of lines is of one of kinds.
+func hasKind(lines []diffLine, kinds ...byte) bool {
+	for _, l := range lines {
+		if bytes.IndexByte(kinds, l.kind) >= 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// hasRemovedLines is whether diff removes any line.
+func hasRemovedLines(diff string) bool {
+	for _, d := range git.ParseDiff(diff) {
+		if d.Kind == '-' {
+			return true
+		}
+	}
+	return false
 }
 
 // annotateLines puts the symbol references and the notes in lines.

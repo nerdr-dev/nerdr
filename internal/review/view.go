@@ -839,9 +839,35 @@ func renderDiff(c *rowCache, lines []diffLine, cursor, viewTop, width, height in
 	for len(rows) < innerH {
 		rows = append(rows, strings.Repeat(" ", innerW))
 	}
+	for i, r := range rows {
+		rows[i] = onPaneBG(r)
+	}
 	rows = append(rows, hintRow(hint, innerW, active))
 	return scrollbar(framed(headingRow(title, innerW, active)+"\n"+strings.Join(rows, "\n"), active),
 		v.rowOf(len(lines)), start, innerH, 2, active)
+}
+
+// onPaneBG is row on the diff scheme's own background and in its text
+// colour, when it has them, under all that is drawn on it: each reset in
+// row would end them, so they are set again after each. The text colour
+// goes with the background, or code with no colour of its own would be
+// the terminal's, dark on a light terminal, on a dark pane.
+func onPaneBG(row string) string {
+	if paneBG == "" {
+		return row
+	}
+	p := lipgloss.ColorProfile()
+	bgSeq, fgSeq := p.Color(string(paneBG)).Sequence(true), p.Color(string(paneFG)).Sequence(false)
+	if bgSeq == "" {
+		return row
+	}
+	bg := "\x1b[" + bgSeq + "m"
+	if fgSeq != "" {
+		bg = "\x1b[" + bgSeq + ";" + fgSeq + "m"
+	}
+	row = strings.ReplaceAll(row, "\x1b[0m", "\x1b[0m"+bg)
+	row = strings.ReplaceAll(row, "\x1b[m", "\x1b[m"+bg)
+	return bg + row + ansi.ResetStyle
 }
 
 // joinBeside puts right beside left, the two panes sharing the column
