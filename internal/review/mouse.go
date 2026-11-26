@@ -8,6 +8,13 @@ import (
 // rect is a pane's place on screen, in terminal cells.
 type rect struct{ x, y, w, h int }
 
+// onFiles reports whether (x, y) is the file list's: all of its rect but,
+// stacked, the row it shares with the diff, which holds the diff's title.
+// Beside it, the column they share is the list's, its scrollbar.
+func (l paneLayout) onFiles(x, y int) bool {
+	return l.files.contains(x, y) && !(l.diff.y > l.files.y && l.diff.contains(x, y))
+}
+
 func (r rect) contains(x, y int) bool {
 	return r.w > 0 && r.h > 0 && x >= r.x && x < r.x+r.w && y >= r.y && y < r.y+r.h
 }
@@ -140,7 +147,7 @@ func (m *Model) wheel(l paneLayout, x, y, delta int) tea.Cmd {
 	case l.zoom.contains(x, y):
 		return m.scrollFocused(delta)
 
-	case l.files.contains(x, y):
+	case l.onFiles(x, y):
 		m.moveCursor(delta)
 		return m.loadDiff()
 	case l.diff.contains(x, y):
@@ -214,7 +221,7 @@ func (m *Model) click(l paneLayout, x, y int) tea.Cmd {
 			m.selectConvRow(row)
 		}
 
-	case l.files.contains(x, y):
+	case l.onFiles(x, y):
 		// The hint row is drawn only while the list has the keyboard, and
 		// each key on it is a button.
 		if m.hasFocus(focusFiles) && y == l.files.y+l.files.h-2 {
