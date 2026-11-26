@@ -853,6 +853,10 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		m.dialog = &explainDialog{e: msg}
 		return nil
 
+	case sentShowMsg:
+		msg.d.shown = true
+		return nil
+
 	case closeShowMsg:
 		if m.dialog == msg.c {
 			msg.c.shown = true
