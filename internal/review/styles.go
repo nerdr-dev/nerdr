@@ -86,7 +86,9 @@ var (
 	wordAddStyle = lipgloss.NewStyle().Background(lipgloss.Color("#2f5e3d")).Foreground(lipgloss.Color("#e3f7e7"))
 	wordDelStyle = lipgloss.NewStyle().Background(lipgloss.Color("#6b2d37")).Foreground(lipgloss.Color("#fbe3e6"))
 
-	hunkStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("81"))
+	// The diff's scheme sets these, and the gutter's below (see
+	// useDiffColors).
+	hunkStyle   lipgloss.Style
 	headerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 
 	recentStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
@@ -101,6 +103,10 @@ var (
 	selStyle        = lipgloss.NewStyle().Background(lipgloss.Color("24")).Foreground(lipgloss.Color("231"))
 	whyStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("179")).Italic(true)
 	toastStyle      = lipgloss.NewStyle().Foreground(lipgloss.Color("110")).Bold(true)
+
+	numStyle, addNumStyle, delNumStyle, hunkNumStyle lipgloss.Style
+	bothNums                                         bool
+	paneBG, paneFG                                   lipgloss.Color
 )
 
 // statusColor returns the style for a porcelain status code, by the kind

@@ -49,11 +49,17 @@ goes beside the diff.
 | `v` | Cycle: the diff, the whole file with changes marked, the old code |
 | `a` | Ask the agent what this line does and why, on any line, unchanged code too |
 | `s` | Write your own question about it |
-| `c` | Switch between nerdr's colours and GitHub's dark diff and syntax colours |
+| `c` | Switch between GitHub's dark diff and nerdr's own colours |
+
+The diff is drawn as GitHub draws one in its dark mode, in its colours:
+GitHub's background, the old and the new line number side by side, in a
+stronger tint on a changed line, each hunk's `@@` header on a blue band,
+and the code coloured by its syntax on every line, changed ones too.
+`diff_colors = "nerdr"` starts with nerdr's own softer colours and the
+new line number only.
 
 Drag over lines to copy their code when you let go: whole lines, without
-the `+` and `-`, line numbers or hunk headers. `diff_colors = "github"`
-starts with GitHub's colours.
+the `+` and `-`, line numbers or hunk headers.
 
 `o` opens the file at the current line in `editor`, else `$VISUAL`,
 `$EDITOR` or `vim`. Graphical editors open their own window, and VS Code

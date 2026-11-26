@@ -90,8 +90,9 @@ type Config struct {
 	// side by side: past it, the ones used longest ago are minimised to
 	// the row over them.
 	PaneMinWidth int `toml:"pane_min_width" scope:"client"`
-	// DiffColors is the colour scheme F1 shows changes in: "nerdr", its
-	// own soft tints, or "github", GitHub's dark diff and syntax colours.
+	// DiffColors is the colour scheme F1 shows changes in: "github",
+	// GitHub's dark diff, layout and syntax colours, or "nerdr", its own
+	// soft tints.
 	DiffColors string `toml:"diff_colors" scope:"client"`
 	// Mouse is whether nerdr takes the mouse: clicks on tabs, menus and
 	// buttons, the wheel, selecting an agent's output. Off, the terminal
@@ -443,7 +444,7 @@ func defaults(c Config) Config {
 	switch c.DiffColors {
 	case "nerdr", "github":
 	default:
-		c.DiffColors = "nerdr"
+		c.DiffColors = "github"
 	}
 	switch c.StatusLights {
 	case "dots", "symbols":

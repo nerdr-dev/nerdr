@@ -105,20 +105,22 @@ func TestFilesBesideTheDiff(t *testing.T) {
 	}
 }
 
-// c in F1 steps through the diff's colour schemes, and back to nerdr's.
+// c in F1 steps through the diff's colour schemes, GitHub's first, and
+// back to it; GitHub's shows the old line numbers too.
 func TestDiffColors(t *testing.T) {
+	defer useDiffColors(DiffColors[0])
 	m := NewEmbedded(Local{})
 	m, _ = m.SetDiffColors("unknown")
-	if m.diffColors != "nerdr" {
-		t.Fatalf("an unknown scheme is nerdr's, got %q", m.diffColors)
+	if m.diffColors != "github" || !bothNums || syntaxStyle.Name != "github-web-dark" {
+		t.Fatalf("an unknown scheme is GitHub's, got %q", m.diffColors)
 	}
-	nerdrAdd := addStyle.Render("x")
+	githubAdd := addStyle.Render("x")
 	m.cycleDiffColors()
-	if m.diffColors != "github" || addStyle.Render("x") == nerdrAdd || syntaxStyle.Name != "github-dark" {
-		t.Fatalf("c should show GitHub's colours: %q, syntax %q", m.diffColors, syntaxStyle.Name)
+	if m.diffColors != "nerdr" || addStyle.Render("x") == githubAdd || syntaxStyle.Name != "monokai" || bothNums {
+		t.Fatalf("c should show nerdr's colours: %q, syntax %q", m.diffColors, syntaxStyle.Name)
 	}
 	m.cycleDiffColors()
-	if m.diffColors != "nerdr" || addStyle.Render("x") != nerdrAdd || syntaxStyle.Name != "monokai" {
-		t.Fatalf("c again should go back to nerdr's: %q", m.diffColors)
+	if m.diffColors != "github" || addStyle.Render("x") != githubAdd || syntaxStyle.Name != "github-web-dark" {
+		t.Fatalf("c again should go back to GitHub's: %q", m.diffColors)
 	}
 }

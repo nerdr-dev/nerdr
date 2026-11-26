@@ -237,12 +237,12 @@ func (m *Model) settingRows() []settingRow {
 			"Shows a row along the bottom of the screen. On its left, what wants a look in all the tabs: failing CI checks, news of your pull requests and issues, tabs waiting for you and tabs whose work is merged. In the middle, the active tab's branch, how far it is ahead of and behind its base, the files not committed, the commits not pushed, the lines changed and its pull request. On its right, the tab's tasks and the saved prompts. A click on any of them opens its screen.\n"+
 				"Off, the news and the active tab's details show in the bar at the top instead. The prefix and l g shows or hides the row while nerdr runs.",
 			`bottom_bar = false`),
-		{key: "diff_colors", kind: sChoice, choices: []string{"nerdr", "github"}, def: `"nerdr"`,
+		{key: "diff_colors", kind: sChoice, choices: []string{"github", "nerdr"}, def: `"github"`,
 			desc: "The colours F1 shows changed lines in.\n" +
-				"nerdr: soft tints that are easy on the eyes.\n" +
-				"github: the dark colours of GitHub's diffs, with code coloured by its syntax.\n" +
+				"github: GitHub's diff in its dark mode, in its colours, with the old and new line numbers and all code coloured by its syntax.\n" +
+				"nerdr: soft tints that are easy on the eyes, with the new line number only.\n" +
 				"c in F1 switches between them.",
-			example: `diff_colors = "github"`},
+			example: `diff_colors = "nerdr"`},
 		{key: "status_lights", kind: sChoice, choices: []string{"dots", "symbols"}, def: `"dots"`,
 			desc: "How the status lights of tabs and agents are drawn.\n" +
 				"dots: coloured circles, yellow ● working, red ● needs input, green ● done, ○ idle.\n" +

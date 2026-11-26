@@ -40,7 +40,7 @@ func TestWrapStarts(t *testing.T) {
 // is shown, on rows of the pane's width, the ones after the first with ↪
 // where the line number would be.
 func TestLongLinesWrap(t *testing.T) {
-	long := "+" + strings.Repeat("word ", 30) + "END"
+	long := "+" + strings.Repeat("word ", 25) + "END"
 	lines := []diffLine{
 		{kind: ' ', text: " before", newLine: 1},
 		{kind: '+', text: long, newLine: 2},
@@ -188,5 +188,33 @@ func TestDiffRowsPreserveGraphemes(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// TestGitHubGutter covers the diff as GitHub draws it: the old and the new
+// line number side by side, a removed line with the old one alone, an
+// added line with the new one alone, and the hunk's header on a band to
+// the pane's edge.
+func TestGitHubGutter(t *testing.T) {
+	defer useDiffColors(DiffColors[0])
+	useDiffColors("github")
+	lines := buildDiffLines("@@ -7,3 +7,3 @@\n same\n-old\n+new\n tail")
+	pane := renderDiff(nil, lines, 0, 0, 40, 10, false, "diff", "", lineSpan{})
+	rows := strings.Split(ansi.Strip(pane), "\n")
+	want := []string{
+		"│       @@ -7,3 +7,3 @@                │",
+		"│  7 7   same                          │",
+		"│  8    -old                           │",
+		"│    8  +new                           │",
+		"│  9 9   tail                          │",
+	}
+	for i, w := range want {
+		if rows[i+2] != w {
+			t.Errorf("row %d = %q, want %q", i+2, rows[i+2], w)
+		}
+	}
+	hunk := strings.Split(pane, "\n")[2]
+	if !strings.Contains(hunk, hunkStyle.Render("@@ -7,3 +7,3 @@"+strings.Repeat(" ", 16))) {
+		t.Errorf("the hunk's band should reach the pane's edge: %q", hunk)
 	}
 }

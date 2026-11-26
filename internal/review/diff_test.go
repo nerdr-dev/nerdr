@@ -4,6 +4,10 @@ import (
 	"strings"
 	"testing"
 
+	chroma "github.com/alecthomas/chroma/v2"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 )
 
@@ -123,7 +127,7 @@ func TestBuildDiffLinesShowsControlCharactersInsteadOfSendingThem(t *testing.T) 
 	for _, l := range lines {
 		got = append(got, l.text)
 	}
-	want := []string{"@@ -0,0 +1,2 @@", "+a␛[2Jb\tc", "+d␍e", ""}
+	want := []string{"@@ -0,0 +1,2 @@", "+a␛[2Jb\tc", "+d␍e"} // the line end ends the last line, it starts none
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Fatalf("lines = %q, want %q", got, want)
 	}
@@ -158,5 +162,43 @@ func TestIncompleteReferencesShownInDiff(t *testing.T) {
 	lines = m.displayLines("a.ts", "", "", false)
 	if len(lines) == 0 || !strings.Contains(lines[0].text, "Reference analysis incomplete") {
 		t.Fatal("warning hidden without symbols")
+	}
+}
+
+// In GitHub's colours, an added or removed line's code is coloured by its
+// syntax on the tint, the removed one's from the file before, and the
+// changed words keep their stronger tint.
+func TestChangedLinesSyntax(t *testing.T) {
+	defer lipgloss.SetColorProfile(lipgloss.ColorProfile())
+	lipgloss.SetColorProfile(termenv.TrueColor)
+	defer useDiffColors(DiffColors[0])
+	useDiffColors("github")
+	old := "package p\n\nvar a = 1\n"
+	src := "package p\n\nvar b = 1\n"
+	lines := builtDiffLines("p.go", "@@ -3 +3 @@\n-var a = 1\n+var b = 1", src, true, old, curScheme)
+	kw := syntaxLipglossStyle(chroma.Keyword)
+	if want := kw.Background(delStyle.GetBackground()).Render("var"); !strings.Contains(lines[1].hl, want) {
+		t.Errorf("the removed line's keyword should be in its syntax colour on the tint: %q", lines[1].hl)
+	}
+	if want := kw.Background(addStyle.GetBackground()).Render("var"); !strings.Contains(lines[2].hl, want) {
+		t.Errorf("the added line's keyword should be in its syntax colour on the tint: %q", lines[2].hl)
+	}
+	name := syntaxLipglossStyle(highlightTokens("p.go", src)[2][2].Type)
+	if want := name.Background(wordAddStyle.GetBackground()).Render("b"); !strings.Contains(lines[2].hl, want) {
+		t.Errorf("the changed word should keep its stronger tint: %q", lines[2].hl)
+	}
+}
+
+// A diff ends in a line end, which is no line of its own: a diff that
+// adds one line has that line and its header, no empty line 2 after it.
+// An empty line of the file is a context line, a space.
+func TestDiffLineEndMakesNoLine(t *testing.T) {
+	lines := buildDiffLines("@@ -0,0 +1 @@\n+only\n")
+	if len(lines) != 2 || lines[1].newLine != 1 {
+		t.Fatalf("lines = %+v, want the header and line 1", lines)
+	}
+	lines = buildDiffLines("@@ -1,2 +1,2 @@\n-a\n+b\n \n")
+	if l := lines[len(lines)-1]; l.kind != ' ' || l.newLine != 2 || l.oldLine != 2 {
+		t.Fatalf("an empty context line should stay, numbered: %+v", l)
 	}
 }

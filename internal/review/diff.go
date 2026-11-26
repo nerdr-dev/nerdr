@@ -2,6 +2,9 @@ package review
 
 import (
 	"fmt"
+
+	chroma "github.com/alecthomas/chroma/v2"
+	"github.com/charmbracelet/lipgloss"
 	"strings"
 	"time"
 
@@ -20,6 +23,11 @@ type diffLine struct {
 	kind    byte // 'h' header, '@' hunk, '+' added, '-' removed, ' ' context, 'a' annotation, 'w' why
 	hl      string
 	newLine int // 1-based line number in the "new" side of the diff; 0 if not applicable
+	oldLine int // 1-based line number in the "old" side of the diff; 0 if not applicable
+
+	// changed is the byte ranges of an added or removed line's text, after
+	// its sign, that the word diff marks as changed.
+	changed [][2]int
 
 	// refFile/refLine are the jump target for an 'a' annotation line (the
 	// first reference it lists), so the user can select it and jump there.
@@ -37,19 +45,25 @@ type diffLine struct {
 // the "new" side (needed to align syntax highlighting from a full-file
 // tokenisation with the diff's context/added lines).
 func buildDiffLines(diff string) []diffLine {
-	diff = printable(diff)
+	return buildDiffLinesIn(diff, curScheme)
+}
+
+// buildDiffLinesIn is buildDiffLines in scheme s.
+func buildDiffLinesIn(diff string, s diffScheme) []diffLine {
+	// A diff ends in a line end, not in an empty line after it.
+	diff = strings.TrimSuffix(printable(diff), "\n")
 	raw := strings.Split(diff, "\n")
 	lines := make([]diffLine, 0, len(raw))
 	for i, d := range git.ParseDiff(diff) {
 		if d.Kind == 'h' && gitHeader(raw[i]) {
 			continue // the file's name is the pane's title; the rest is git's bookkeeping
 		}
-		lines = append(lines, diffLine{text: raw[i], kind: d.Kind, newLine: d.NewLine})
+		lines = append(lines, diffLine{text: raw[i], kind: d.Kind, newLine: d.NewLine, oldLine: d.OldLine})
 	}
 
 	var removed, added []int
 	flush := func() {
-		applyWordHighlight(lines, removed, added)
+		applyWordHighlight(lines, removed, added, s)
 		removed = nil
 		added = nil
 	}
@@ -107,17 +121,27 @@ func gitHeader(line string) bool {
 // added/removed lines. Added/removed lines keep their existing diff
 // colouring untouched.
 func highlightContextLines(lines []diffLine, path, source string) []diffLine {
-	colored := highlightSource(path, source)
-	if colored == nil {
+	return highlightContextLinesIn(syntaxStyle, lines, path, source)
+}
+
+// highlightContextLinesIn is highlightContextLines in chroma style st.
+func highlightContextLinesIn(st *chroma.Style, lines []diffLine, path, source string) []diffLine {
+	return contextFromTokens(st, lines, highlightTokens(path, source))
+}
+
+// contextFromTokens colours the context lines from toks, the new file's
+// tokens, drawing only the lines the diff shows.
+func contextFromTokens(st *chroma.Style, lines []diffLine, toks [][]chroma.Token) []diffLine {
+	if toks == nil {
 		return lines
 	}
 	out := make([]diffLine, len(lines))
 	copy(out, lines)
 	for i, l := range out {
-		if l.kind != ' ' || l.newLine <= 0 || l.newLine > len(colored) {
+		if l.kind != ' ' || l.newLine <= 0 || l.newLine > len(toks) {
 			continue
 		}
-		out[i].hl = " " + colored[l.newLine-1]
+		out[i].hl = " " + renderTokens(st, toks[l.newLine-1])
 	}
 	return out
 }
@@ -188,13 +212,13 @@ func formatWhyDetail(n why.Note) string {
 // plainSourceLines renders a file's full content as unmarked, syntax-
 // highlighted diff lines — used to "peek" at a file that isn't part of the
 // current diff (e.g. a jump target outside the changed-file tree).
-func plainSourceLines(path, source string) []diffLine {
+func plainSourceLines(st *chroma.Style, path, source string) []diffLine {
 	source = printable(source)
 	src := strings.Split(source, "\n")
 	if len(src) > 0 && src[len(src)-1] == "" {
 		src = src[:len(src)-1]
 	}
-	colored := highlightSource(path, source)
+	colored := highlightSourceIn(st, path, source)
 	lines := make([]diffLine, len(src))
 	for i, l := range src {
 		dl := diffLine{text: " " + l, kind: ' ', newLine: i + 1}
@@ -297,7 +321,7 @@ const wordDiffMax = 2048
 // a diff of many pairs then hangs the pane while it is read.
 const wordDiffTimeout = 50 * time.Millisecond
 
-func applyWordHighlight(lines []diffLine, removed, added []int) {
+func applyWordHighlight(lines []diffLine, removed, added []int, s diffScheme) {
 	dmp := diffmatchpatch.New()
 	dmp.DiffTimeout = wordDiffTimeout
 	n := min(len(removed), len(added))
@@ -312,8 +336,9 @@ func applyWordHighlight(lines []diffLine, removed, added []int) {
 		if !worthWordHighlight(diffs, rText, aText) {
 			continue // the row tint alone says the line changed
 		}
-		lines[rIdx].hl = renderInline(diffs, true)
-		lines[aIdx].hl = renderInline(diffs, false)
+		lines[rIdx].hl = renderInline(diffs, true, s)
+		lines[aIdx].hl = renderInline(diffs, false, s)
+		lines[rIdx].changed, lines[aIdx].changed = changedRanges(diffs)
 	}
 }
 
@@ -333,23 +358,114 @@ func worthWordHighlight(diffs []diffmatchpatch.Diff, removed, added string) bool
 	return longest > 0 && same*2 >= longest
 }
 
-func renderInline(diffs []diffmatchpatch.Diff, isRemoved bool) string {
+// changedRanges is where diffs marks the removed line's words and the
+// added line's, as byte ranges of each.
+func changedRanges(diffs []diffmatchpatch.Diff) (removed, added [][2]int) {
+	r, a := 0, 0
+	for _, d := range diffs {
+		n := len(d.Text)
+		switch d.Type {
+		case diffmatchpatch.DiffEqual:
+			r, a = r+n, a+n
+		case diffmatchpatch.DiffDelete:
+			removed = append(removed, [2]int{r, r + n})
+			r += n
+		case diffmatchpatch.DiffInsert:
+			added = append(added, [2]int{a, a + n})
+			a += n
+		}
+	}
+	return removed, added
+}
+
+// highlightChangedLines colours the code of added and removed lines by its
+// syntax too, on their tint, as GitHub does: added lines from src, the
+// new file, and removed ones from old, the file before. A line whose text
+// is not its file's line, as when the file was read after the diff, keeps
+// the tint's own colour.
+func highlightChangedLines(lines []diffLine, newToks, oldToks [][]chroma.Token, s diffScheme) []diffLine {
+	if newToks == nil && oldToks == nil {
+		return lines
+	}
+	out := make([]diffLine, len(lines))
+	copy(out, lines)
+	for i, l := range out {
+		toks, n := newToks, l.newLine
+		line, word := s.add, s.wordAdd
+		switch l.kind {
+		case '+':
+		case '-':
+			toks, n = oldToks, l.oldLine
+			line, word = s.del, s.wordDel
+		default:
+			continue
+		}
+		if n <= 0 || n > len(toks) {
+			continue
+		}
+		text := l.text[1:]
+		var joined strings.Builder
+		for _, t := range toks[n-1] {
+			joined.WriteString(t.Value)
+		}
+		if joined.String() != text {
+			continue
+		}
+		out[i].hl = tintedSyntax(s.syntax, toks[n-1], l.changed, line, word)
+	}
+	return out
+}
+
+// tintedSyntax draws a line's tokens in their syntax colours on line's
+// background, and the bytes in changed on word's.
+func tintedSyntax(st *chroma.Style, toks []chroma.Token, changed [][2]int, line, word lipgloss.Style) string {
+	var b strings.Builder
+	pos := 0
+	for _, t := range toks {
+		fg := syntaxStyleOf(st, t.Type)
+		if _, unset := fg.GetForeground().(lipgloss.NoColor); unset {
+			fg = fg.Foreground(line.GetForeground())
+		}
+		v := t.Value
+		for v != "" {
+			// The run up to the next edge of a changed range.
+			in, end := false, pos+len(v)
+			for _, c := range changed {
+				switch {
+				case pos >= c[0] && pos < c[1]:
+					in, end = true, min(end, c[1])
+				case c[0] > pos:
+					end = min(end, c[0])
+				}
+			}
+			bg := line
+			if in {
+				bg = word
+			}
+			b.WriteString(fg.Background(bg.GetBackground()).Render(v[:end-pos]))
+			v, pos = v[end-pos:], end
+		}
+	}
+	return b.String()
+}
+
+func renderInline(diffs []diffmatchpatch.Diff, isRemoved bool, s diffScheme) string {
 	var b strings.Builder
 	for _, d := range diffs {
 		switch d.Type {
 		case diffmatchpatch.DiffEqual:
 			if isRemoved {
-				b.WriteString(delStyle.Render(d.Text))
+				b.WriteString(s.del.Render(d.Text))
 			} else {
-				b.WriteString(addStyle.Render(d.Text))
+				b.WriteString(s.add.Render(d.Text))
 			}
 		case diffmatchpatch.DiffDelete:
 			if isRemoved {
-				b.WriteString(wordDelStyle.Render(d.Text))
+				b.WriteString(s.wordDel.Render(d.Text))
 			}
 		case diffmatchpatch.DiffInsert:
 			if !isRemoved {
-				b.WriteString(wordAddStyle.Render(d.Text))
+				b.WriteString(s.wordAdd.Render(d.Text))
 			}
 		}
 	}

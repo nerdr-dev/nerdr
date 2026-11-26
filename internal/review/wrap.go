@@ -103,6 +103,7 @@ type diffView struct {
 	lines  []diffLine
 	textW  int // the columns after the gutter
 	gutter int
+	numW   int // the width of one line number
 	innerH int
 	sel    lineSpan // the lines chosen with the mouse, drawn as chosen
 	first  []int    // the row each line starts on, and the rows in all last
@@ -117,12 +118,13 @@ func newDiffView(lines []diffLine, paneW, innerH int) diffView {
 func newCachedDiffView(c *rowCache, lines []diffLine, paneW, innerH int) diffView {
 	numWidth := 1
 	for _, dl := range lines {
-		if dl.newLine > 0 {
-			numWidth = max(numWidth, len(strconv.Itoa(dl.newLine)))
-		}
+		numWidth = max(numWidth, len(strconv.Itoa(max(dl.newLine, dl.oldLine))))
 	}
 	gutter := numWidth + 3 // mark + space + number + space
-	v := diffView{lines: lines, textW: paneW - 2 - gutter, gutter: gutter, innerH: max(innerH, 1)}
+	if bothNums {
+		gutter += numWidth + 2 // and the old side's number, a space before it and one after
+	}
+	v := diffView{lines: lines, textW: paneW - 2 - gutter, gutter: gutter, numW: numWidth, innerH: max(innerH, 1)}
 	v.first = c.starts(v)
 	return v
 }
@@ -250,8 +252,6 @@ func (v diffView) rowOf(i int) int {
 // render draws the rows from screen row top on, innerH of them, each
 // gutter+textW wide, with the mark on line cursor's first.
 func (v diffView) render(top, cursor int, active bool) []string {
-	numWidth := v.gutter - 3
-	cont := strings.Repeat(" ", numWidth-1) + dimStyle.Render("↪")
 	rows := make([]string, 0, v.innerH)
 	first := v.lineAt(0, top)
 	if first < 0 {
@@ -263,10 +263,6 @@ func (v diffView) render(top, cursor int, active bool) []string {
 		mark := " "
 		if active && i == cursor {
 			mark = cursorMarkStyle.Render("▶")
-		}
-		num := strings.Repeat(" ", numWidth)
-		if dl.newLine > 0 {
-			num = dimStyle.Render(fmt.Sprintf("%*d", numWidth, dl.newLine))
 		}
 		drawn := diffRows(dl, v.bodyW(i))
 		if v.sel.has(i) {
@@ -281,13 +277,47 @@ func (v diffView) render(top, cursor int, active bool) []string {
 				break
 			}
 			if j == 0 {
-				rows = append(rows, mark+" "+num+" "+r)
+				rows = append(rows, mark+v.nums(dl, false)+r)
 			} else {
-				rows = append(rows, "  "+cont+" "+r)
+				rows = append(rows, " "+v.nums(dl, true)+r)
 			}
 		}
 	}
 	return rows
+}
+
+// nums is the gutter after its mark: the line's numbers, the old side's
+// too when the scheme shows both, in the tint of the row's kind. A row
+// that continues a wrapped line has a ↪ in place of the new number.
+func (v diffView) nums(dl diffLine, cont bool) string {
+	// The space after GitHub's numbers is the row's own, in its tint.
+	style, gap := numStyle, " "
+	switch dl.kind {
+	case '+':
+		style, gap = addNumStyle, addStyle.Render(" ")
+	case '-':
+		style, gap = delNumStyle, delStyle.Render(" ")
+	case '@':
+		style, gap = hunkNumStyle, hunkStyle.Render(" ")
+	}
+	num := func(n int) string {
+		if n <= 0 {
+			return strings.Repeat(" ", v.numW)
+		}
+		return fmt.Sprintf("%*d", v.numW, n)
+	}
+	newNum := num(dl.newLine)
+	if cont {
+		newNum = strings.Repeat(" ", v.numW-1) + "↪"
+	}
+	if !bothNums {
+		return style.Render(" "+newNum) + " "
+	}
+	oldNum := num(dl.oldLine)
+	if cont {
+		oldNum = num(0)
+	}
+	return style.Render(" "+oldNum+" "+newNum+" ") + gap
 }
 
 // selRows is diffRows for a line chosen with the mouse: its text alone,
@@ -325,6 +355,11 @@ func diffRows(dl diffLine, w int) []string {
 		e := end
 		if j+1 < len(starts) {
 			e = starts[j+1]
+		}
+		if dl.kind == '@' {
+			// The hunk's band, like a changed line's tint, goes to the edge.
+			rows[j] = hunkStyle.Render(fit(ansi.Cut(plain, s, e), w))
+			continue
 		}
 		row := ansi.Cut(body, s, e) + ansi.ResetStyle
 		if sign == "" {

@@ -178,7 +178,7 @@ func splitLines(s string) []string {
 	return lines
 }
 
-var hunkHeaderRe = regexp.MustCompile(`^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
+var hunkHeaderRe = regexp.MustCompile(`^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@`)
 
 // DiffLine is how one line of a unified diff reads.
 type DiffLine struct {
@@ -188,6 +188,9 @@ type DiffLine struct {
 	// NewLine is the 1-based line number on the new side for '+' and ' '
 	// lines, and 0 otherwise.
 	NewLine int
+	// OldLine is the 1-based line number on the old side for '-' and ' '
+	// lines, and 0 otherwise.
+	OldLine int
 }
 
 // ParseDiff classifies each line of diff, split on "\n". Inside a hunk
@@ -198,7 +201,7 @@ func ParseDiff(diff string) []DiffLine {
 	raw := strings.Split(diff, "\n")
 	out := make([]DiffLine, len(raw))
 	inHunk := false
-	newLine := 0
+	newLine, oldLine := 0, 0
 	for i, l := range raw {
 		var d DiffLine
 		switch {
@@ -206,7 +209,8 @@ func ParseDiff(diff string) []DiffLine {
 			d.Kind = '@'
 			inHunk = true
 			if m := hunkHeaderRe.FindStringSubmatch(l); m != nil {
-				newLine, _ = strconv.Atoi(m[1])
+				oldLine, _ = strconv.Atoi(m[1])
+				newLine, _ = strconv.Atoi(m[2])
 			}
 		case strings.HasPrefix(l, "diff "):
 			d.Kind = 'h'
@@ -225,10 +229,12 @@ func ParseDiff(diff string) []DiffLine {
 			d.Kind, d.NewLine = '+', newLine
 			newLine++
 		case strings.HasPrefix(l, "-"):
-			d.Kind = '-'
+			d.Kind, d.OldLine = '-', oldLine
+			oldLine++
 		default:
-			d.Kind, d.NewLine = ' ', newLine
+			d.Kind, d.NewLine, d.OldLine = ' ', newLine, oldLine
 			newLine++
+			oldLine++
 		}
 		out[i] = d
 	}
