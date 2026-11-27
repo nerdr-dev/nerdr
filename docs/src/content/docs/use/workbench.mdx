@@ -51,14 +51,17 @@ and questions, messages sent, new commits, pull request and CI changes.
 
 ![Claude, a terminal running the Go tests, and Codex beside it, with the latest request, status and tab note above Claude](../../../assets/workbench.png)
 
-The buttons at the top of the agent's frame, `+terminal`, `+agent` and
-`+review`, open a pane beside it, in the same worktree:
+The buttons at the top of the agent's frame, `+terminal`, `+agent`,
+`+review`, `+changes` and `+plugins`, open a pane beside it, in the same
+worktree:
 
 | Pane | Keys | What it is |
 |---|---|---|
 | **Terminal** | `ctrl+q t t` | Your shell, for tests, a dev server or `git log`. It runs until you close its pane or the shell exits. |
 | **Agent** | `ctrl+q t a` | Another agent, picked in a dialog, in a new conversation of its own. |
 | **Code review** | `ctrl+q t r` | A second agent reviews the work of the agent whose pane has the keyboard. See [Code review](../code-review/). |
+| **Code changes** | `ctrl+q t c` | The tab's changed files and their diff. See [Code changes](../../panel/code-changes/). |
+| **Plugins** | `ctrl+q t p` | The tab's plugins, to run or watch. See [Plugins](../../panel/plugins/). |
 
 Each agent in the tab has a number, shown in its frame with its status
 light: `1:claude`, `2:codex`. Agents use these numbers to [talk to each
