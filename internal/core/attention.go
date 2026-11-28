@@ -96,9 +96,9 @@ func PrLabel(in TabInfo) string {
 		return ""
 	}
 	if in.Merged() {
-		return "#" + strconv.Itoa(prs[0].Number) + " merged"
+		return prs[0].Ref() + " merged"
 	}
-	return "#" + strconv.Itoa(prs[0].Number) + " " + PrState(prs[0])
+	return prs[0].Ref() + " " + PrState(prs[0])
 }
 
 type SummaryMsg struct{ S Summary }

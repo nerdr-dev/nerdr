@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 	"github.com/nerdr-dev/nerdr/internal/why"
@@ -57,7 +57,7 @@ type Query struct {
 	Diff      string         `json:",omitempty"`
 	Untracked bool           `json:",omitempty"`
 	Paths     []string       `json:",omitempty"`
-	Checks    []github.Check `json:",omitempty"`
+	Checks    []forge.Check  `json:",omitempty"`
 	Limit     int            `json:",omitempty"`
 }
 
@@ -71,7 +71,7 @@ type Answer struct {
 	Stamps    map[string]string        `json:",omitempty"`
 	N         [3]int                   `json:",omitzero"` // Summary's files, add, del
 	OK        bool                     `json:",omitempty"`
-	PR        github.PR                `json:",omitzero"`
+	PR        forge.PR                 `json:",omitzero"`
 	Msg       string                   `json:",omitempty"`
 	Err       string                   `json:",omitempty"`
 	// NotExist is set when Err is of a file that is not there, which
@@ -296,15 +296,15 @@ func (k *Asker) GhAvailable() bool {
 	return a.OK || a.Err != ""
 }
 
-func (k *Asker) CurrentPR(wt string) (github.PR, bool, string) {
+func (k *Asker) CurrentPR(wt string) (forge.PR, bool, string) {
 	a := k.ask(Query{Op: OpCurrentPR, Wt: wt})
 	if a.Err != "" {
-		return github.PR{}, false, a.Err
+		return forge.PR{}, false, a.Err
 	}
 	return a.PR, a.OK, a.Msg
 }
 
-func (k *Asker) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
+func (k *Asker) FailedRunLogs(wt string, checks []forge.Check, limit int) (string, error) {
 	a := k.ask(Query{Op: OpFailedRunLogs, Wt: wt, Checks: checks, Limit: limit})
 	return a.Text, a.err()
 }

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/store"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -106,6 +107,7 @@ func configMod() time.Time {
 // not running yet.
 func (m *Core) WatchConfigFile(cfg config.Config) {
 	m.Cfg = cfg
+	forge.SetHosts(cfg.Forges)
 	m.ConfigFile = config.Path()
 	m.cfgMod = configMod()
 	m.cfgWatch = true
@@ -224,5 +226,6 @@ func (m *Core) takeConfig(c config.Config) {
 	if !reflect.DeepEqual(c.Agents, m.Cfg.Agents) {
 		m.LookForAgentsSoon()
 	}
+	forge.SetHosts(c.Forges)
 	m.Cfg = c
 }

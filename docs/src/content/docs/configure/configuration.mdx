@@ -114,15 +114,27 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 | `port_base` | `20000` | The first port of the ranges given to tabs. See [Ports of the tab's own](../../use/tabs/#ports-of-the-tabs-own). |
 | `ports_per_tab` | `10` | Ports in each tab's range, which an agent gets from `nerdr ports` and the tab's terminals, plugins and setup from `NERDR_PORT` and `NERDR_PORT_END`. `0` gives tabs none. Open tabs keep the range they have. |
 
-## Notifications and GitHub
+## Notifications and pull requests
 
 | Setting | Default | |
 |---|---|---|
 | `notify` | `"all"` | When to notify: `all`, `blocked` (needs input), `done` or `off`. Done is told once the tab's work is over, not when an agent hands it on to a reviewer or another agent in the tab. |
-| `pr_notify` | `true` | Tell you about failed checks and new reviews on your pull requests. Off, GitHub is not asked, unless [`[auto]`](#automatic-asks) turns something on. |
-| `issue_notify` | `true` | Tell you about issues newly assigned to you. Off, GitHub is not asked. |
-| `github_refresh` | `90` | Seconds between GitHub checks of the tab on screen, 15–3600; other checks scale with it. |
+| `pr_notify` | `true` | Tell you about failed checks and new reviews on your pull requests. Off, GitHub and GitLab are not asked, unless [`[auto]`](#automatic-asks) turns something on. |
+| `issue_notify` | `true` | Tell you about issues newly assigned to you. Off, GitHub and GitLab are not asked. |
+| `github_refresh` | `90` | Seconds between checks of the tab on screen's pull request, on GitHub or GitLab, 15–3600; other checks scale with it. |
+| `repo_host` | `"github.com"` | Where `owner/name` is cloned from in the new-tab dialog, and a new repository is made: `github.com`, `gitlab.com` or a server of your own. |
 | `claude_status_line` | `true` | Start claude with nerdr's status line, which reports the rate limits and then shows yours. See [Usage](../../use/progress/#usage-and-rate-limits). |
+
+nerdr asks each repository's service by its `origin` remote: GitHub
+through `gh` (github.com and GitHub Enterprise), GitLab through `glab`
+(gitlab.com, and a host with `gitlab` in its name). Say which service
+any other host runs in `[forges]`:
+
+```toml
+[forges]
+"git.example.com" = "gitlab"
+"code.example.com" = "github"   # GitHub Enterprise
+```
 
 ## Programs
 
@@ -295,7 +307,7 @@ worktree and branch it is about.
 nerdr watches your pull requests while `pr_notify` is on, or while
 `[auto]`, in your config or in the `.nerdr.toml` of a repository a tab
 works in, turns anything on. It asks GitHub as often as
-[`github_refresh`](#notifications-and-github) says: every two minutes at the default.
+[`github_refresh`](#notifications-and-pull-requests) says: every two minutes at the default.
 
 <Aside type="caution" title="auto sends what others wrote, unread">
 Review comments and CI logs contain text written by others. A CI log
@@ -381,6 +393,7 @@ The rest are read by the machine the agents run on, from
 `repo_dirs`, `worktrees_dir`, `data_dir`, `install`, `enabled_skills`,
 `max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `headless_cols`,
 `headless_rows`, `port_base`, `ports_per_tab`, `github_refresh`,
+`[forges]`, `repo_host`,
 `claude_status_line`, `confirm_plugin_runs` and `keep_awake`, and the
 plugins beside that file. An agent's command and sandbox on your laptop
 never apply on a server. With nerdr on one machine, it is all one file.

@@ -1,13 +1,15 @@
 ---
-title: GitHub (F2)
-description: Commit, push and open pull requests, send review comments and failing CI to the agent, and browse your pull requests and issues.
+title: GitHub and GitLab (F2)
+description: Commit, push and open pull requests or merge requests, send review comments and failing CI to the agent, and browse your pull requests and issues.
 ---
 
 import { Aside } from '@astrojs/starlight/components';
 
 F2 takes a tab from finished work to a pull request, and back to the
 agent when review comments or CI need it. It needs the GitHub CLI, `gh`,
-signed in.
+signed in, for repositories on GitHub, and the GitLab CLI, `glab`, for
+those on GitLab: a tab, and the lists, can hold both at once. See
+[GitLab](#gitlab) below.
 
 F2 has three views. Press `F2` again or `tab` to go to the next,
 `shift+tab` to go back. A `◆` marks news you have not seen, and F2 opens
@@ -99,11 +101,46 @@ Issues assigned to you across these repositories (`ctrl+q g o`).
 nerdr checks assigned issues every few minutes and tells you of new ones
 the same way. Set `issue_notify = false` to turn this off.
 
-## How often nerdr asks GitHub
+## GitLab
+
+A repository whose `origin` is on gitlab.com, or on a host with `gitlab`
+in its name, is asked through `glab`; name any other GitLab host in
+[`[forges]`](../../configure/configuration/#notifications-and-pull-requests).
+Sign in once for each host:
+
+```sh
+glab auth login                                 # gitlab.com
+glab auth login --hostname git.example.com      # a server of your own
+```
+
+Everything above works the same, with GitLab's words: a merge request
+is `!12`, and `P` opens one into the project's default branch, or the
+branch a stacked one is on, titled from its commits. Its pipeline's jobs
+are its checks, and `f` gives the agent the log of each failed one. A job
+allowed to fail, or a manual one you may skip, does not count as failed.
+
+What GitLab says differently:
+
+- **Approvals** are reviews that approve. A reviewer who asks for
+  changes marks the merge request so, but GitLab does not say when, so it
+  makes no notification of its own.
+- **Approved** shows only when the project needs approvals and has them
+  all, as GitHub shows it only when a branch rule asks for reviews.
+- **A fork's** lists of merge requests and issues are those of the fork,
+  `origin`. The merge request of the branch a tab is on is looked for in
+  the project of the `upstream` remote too, when it is on the same host,
+  but merge requests from the fork into it are not in the lists, nor
+  watched.
+- **A trigger job** that runs another pipeline is one of the checks, and
+  a failed pipeline is failed even when none of the jobs it shows failed.
+- Each list asks a few more calls per merge request than GitHub's does:
+  GitLab gives a merge request's approvals and pipeline only one by one.
+
+## How often nerdr asks GitHub and GitLab
 
 nerdr checks the tab on screen every `github_refresh` seconds (90 by
-default); other checks scale with it. `ctrl+q g l` counts the git and `gh`
-calls per tab and by command, live.
+default); other checks scale with it. `ctrl+q g l` counts the git, `gh`
+and `glab` calls per tab and by command, live.
 
 <Aside type="caution" title="Read drafts before sending">
 Review comments and CI logs contain text written by others. They may

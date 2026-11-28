@@ -10,7 +10,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/fleet"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -241,7 +241,7 @@ func TestMergedTabSaysSoWithoutADialog(t *testing.T) {
 	m.home().Core.Client = m
 	a := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "a", Name: "a", Worktrees: []workspace.Worktree{{Path: "/x"}}}}}
 	b := &core.Tab{AgentState: core.Agent{Tab: state.Tab{ID: "b", Name: "b"}}}
-	a.Info.Wts = []core.WtInfo{{HasPR: true, Pr: github.Status{Number: 3, State: "MERGED"}}}
+	a.Info.Wts = []core.WtInfo{{HasPR: true, Pr: forge.Status{Number: 3, State: "MERGED"}}}
 	a.Info.At = time.Now()
 	m.home().Core.Tabs = []*core.Tab{b, a}
 	m.entered = b

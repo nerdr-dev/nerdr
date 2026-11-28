@@ -3,8 +3,8 @@ package core
 import (
 	"slices"
 
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -51,7 +51,7 @@ func mergedBranchHeads(wts []workspace.Worktree) map[string]string {
 		if w.Branch == "" || git.CurrentBranch(w.Path) != w.Branch {
 			continue
 		}
-		pr, ok := github.BranchStatus(w.Path)
+		pr, ok := forges.BranchStatus(w.Path)
 		if ok && pr.State == "MERGED" && pr.HeadOID != "" && workspace.Head(w) == pr.HeadOID {
 			heads[w.Path] = pr.HeadOID
 		}

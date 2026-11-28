@@ -11,7 +11,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -40,19 +40,19 @@ func TestPickingAPRGoesWhereItsBranchIs(t *testing.T) {
 	)
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
 
-	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 3, Branch: "fix/login"}, Wt: "/w/b"}))
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: forge.PR{Number: 3, Branch: "fix/login"}, Wt: "/w/b"}))
 	if m.dialog != nil || m.Cur().ID != "b" {
 		t.Fatalf("a PR with a tab should go to it: dialog %T, tab %s", m.dialog, m.Cur().ID)
 	}
 
-	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 4, Branch: "feat/x"}, Wt: "/elsewhere/x"}))
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: forge.PR{Number: 4, Branch: "feat/x"}, Wt: "/elsewhere/x"}))
 	w, ok := m.dialog.(*wizard)
 	if !ok || w.step != stepAgent || w.group == nil || w.group.Dir != "/elsewhere/x" ||
 		w.group.Worktrees[0].Branch != "feat/x" || w.group.Worktrees[0].Repo != "/r/app" {
 		t.Fatalf("a checked-out branch should be offered for opening: %#v", m.dialog)
 	}
 
-	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}}))
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: forge.PR{Number: 5, Branch: "feat/y"}}))
 	c, ok := m.dialog.(*confirm)
 	if !ok || !strings.Contains(strings.Join(c.lines, " "), "No worktree has feat/y") {
 		t.Fatalf("a branch nowhere should ask to make a worktree: %#v", m.dialog)
@@ -90,7 +90,7 @@ func TestPRToItsWorktree(t *testing.T) {
 		}
 	}
 	m := tabsModel(t)
-	replies(m, m.goToPR(core.PREntry{Repo: workspace.Repo{Name: "app", Path: repo}, PR: github.PR{Number: 9, Branch: "feat/z"}}))
+	replies(m, m.goToPR(core.PREntry{Repo: workspace.Repo{Name: "app", Path: repo}, PR: forge.PR{Number: 9, Branch: "feat/z"}}))
 	w, ok := m.dialog.(*wizard)
 	// Compared as the folders they are: on a Mac the temporary folder is
 	// under /var, which git gives as /private/var.
@@ -295,9 +295,9 @@ func TestPRListPointsAtTheTabsPR(t *testing.T) {
 	)
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
 	entries := []core.PREntry{
-		{Repo: repo, PR: github.PR{Number: 1, Branch: "other"}},
-		{Repo: repo, PR: github.PR{Number: 2, Branch: "fix/login"}},
-		{Repo: repo, PR: github.PR{Number: 3, Branch: "more"}},
+		{Repo: repo, PR: forge.PR{Number: 1, Branch: "other"}},
+		{Repo: repo, PR: forge.PR{Number: 2, Branch: "fix/login"}},
+		{Repo: repo, PR: forge.PR{Number: 3, Branch: "more"}},
 	}
 	d := &prList{}
 	d.pointAt(m.Cur())
@@ -350,14 +350,14 @@ func TestLatePRAnswerIsDropped(t *testing.T) {
 	)
 	repo := workspace.Repo{Name: "app", Path: "/r/app"}
 
-	late := m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}})
-	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 3, Branch: "fix/login"}}))
+	late := m.goToPR(core.PREntry{Repo: repo, PR: forge.PR{Number: 5, Branch: "feat/y"}})
+	replies(m, m.goToPR(core.PREntry{Repo: repo, PR: forge.PR{Number: 3, Branch: "fix/login"}}))
 	replies(m, late)
 	if m.dialog != nil || m.Cur().ID != "b" {
 		t.Fatalf("an answer about a PR picked before another should be dropped: dialog %T", m.dialog)
 	}
 
-	late = m.goToPR(core.PREntry{Repo: repo, PR: github.PR{Number: 5, Branch: "feat/y"}})
+	late = m.goToPR(core.PREntry{Repo: repo, PR: forge.PR{Number: 5, Branch: "feat/y"}})
 	other := &confirm{title: "something else"}
 	m.dialog = other
 	replies(m, late)
@@ -370,7 +370,7 @@ func TestLatePRAnswerIsDropped(t *testing.T) {
 	m.dialog = nil
 	m.prPick, m.prPickOn = "fork", nil
 	m.dialog = other
-	fork := core.PREntry{Repo: repo, PR: github.PR{Number: 9, Branch: "main", Fork: "bob"}}
+	fork := core.PREntry{Repo: repo, PR: forge.PR{Number: 9, Branch: "main", Fork: "bob"}}
 	m.Update(core.Reply{Ev: core.ForkFetchedMsg{Job: "fork", E: fork}})
 	if m.dialog != other || !strings.Contains(m.toastText, "fetched #9") {
 		t.Fatalf("a fork fetched late should be told, not opened: %T %q", m.dialog, m.toastText)

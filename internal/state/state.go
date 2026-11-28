@@ -297,6 +297,9 @@ type PRNews struct {
 	Repo   string `json:"repo"` // the repository's name
 	Number int    `json:"number"`
 	What   string `json:"what"`
+	// Kind is its service's, as forge.Kind has it: "" for GitHub, as news
+	// kept from before there was another has it too.
+	Kind string `json:"kind,omitempty"`
 	// Tab is the name of the tab working on its branch, if one was.
 	Tab string `json:"tab,omitempty"`
 	// Checks is the failing checks it tells of, as in PRSeen.Failing: once
@@ -311,6 +314,10 @@ type IssueWatch struct {
 	// not among them at the next look is news.
 	Known []string    `json:"known,omitempty"`
 	News  []IssueNews `json:"news,omitempty"`
+	// Hosts is the hosts Known was learned of: github.com, and GitLab
+	// hosts. Kept from before there was another than github.com, it is
+	// empty.
+	Hosts []string `json:"hosts,omitempty"`
 }
 
 // IssueNews is an issue newly assigned to you.

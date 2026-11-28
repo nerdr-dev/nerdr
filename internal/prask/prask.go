@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 )
 
 // LogLimit is how much failing-build log goes into the message. The agent
@@ -23,10 +23,10 @@ import (
 const LogLimit = 6000
 
 // Failing is how many of checks failed, and how many are still to end.
-func Failing(checks []github.Check) (fail, pending int) {
+func Failing(checks []forge.Check) (fail, pending int) {
 	for _, c := range checks {
 		switch st := strings.ToUpper(c.Status); {
-		case github.Failed(st):
+		case forge.Failed(st):
 			fail++
 		case st == "SUCCESS" || st == "NEUTRAL" || st == "SKIPPED":
 		default:
@@ -37,18 +37,18 @@ func Failing(checks []github.Check) (fail, pending int) {
 }
 
 // FixMessage is the message f writes for pr: the failing jobs' logs, as
-// github.FailedRunLogs read them (at most LogLimit of each), and the ask
+// forges.FailedRunLogs read them (at most LogLimit of each), and the ask
 // to fix the build. Without a failing check it is an error saying so.
-func FixMessage(pr github.PR, logs string) (string, error) {
+func FixMessage(pr forge.PR, logs string) (string, error) {
 	if fail, _ := Failing(pr.Checks); fail == 0 {
-		return "", fmt.Errorf("no failing checks on #%d", pr.Number)
+		return "", fmt.Errorf("no failing checks on %s", pr.Ref())
 	}
 	return FixPrompt(pr, logs), nil
 }
 
 // ReplyMessage is the message A writes for pr: drafts for every review and
 // comment; "" when there is nothing to answer.
-func ReplyMessage(pr github.PR) string {
+func ReplyMessage(pr forge.PR) string {
 	if len(pr.Comments) == 0 && !HasReviewBody(pr) {
 		return ""
 	}
@@ -57,7 +57,7 @@ func ReplyMessage(pr github.PR) string {
 
 // Said is the reviews that came with words: all of them when the PR was
 // fetched by itself, else each reviewer's latest.
-func Said(pr github.PR) []github.Review {
+func Said(pr forge.PR) []forge.Review {
 	if len(pr.Said) > 0 {
 		return pr.Said
 	}
@@ -65,7 +65,7 @@ func Said(pr github.PR) []github.Review {
 }
 
 // Where is the line a comment is on, "" for one in the conversation.
-func Where(c github.Comment) string {
+func Where(c forge.Comment) string {
 	switch {
 	case c.Path == "":
 		return ""
@@ -76,7 +76,7 @@ func Where(c github.Comment) string {
 }
 
 // HasReviewBody reports whether some review of pr came with words.
-func HasReviewBody(pr github.PR) bool {
+func HasReviewBody(pr forge.PR) bool {
 	for _, r := range Said(pr) {
 		if strings.TrimSpace(r.Body) != "" {
 			return true
@@ -86,13 +86,13 @@ func HasReviewBody(pr github.PR) bool {
 }
 
 // Strangers is who, of those whose words ReplyMessage quotes, has no say
-// in the repository (github.Trusted), pr's author aside: sorted, each
+// in the repository (forge.Trusted), pr's author aside: sorted, each
 // once. None means every word quoted is the author's own or a member's.
-func Strangers(pr github.PR) []string {
+func Strangers(pr forge.PR) []string {
 	seen := map[string]bool{}
 	var out []string
 	add := func(who, association string) {
-		if who == pr.Author || github.Trusted(association) || seen[who] {
+		if who == pr.Author || forge.Trusted(association) || seen[who] {
 			return
 		}
 		seen[who] = true
@@ -111,9 +111,9 @@ func Strangers(pr github.PR) []string {
 }
 
 // ReplyPrompt asks for drafts of replies to every review and comment.
-func ReplyPrompt(pr github.PR) string {
+func ReplyPrompt(pr forge.PR) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Help me answer the review feedback on pull request #%d (%s).\n\n", pr.Number, pr.Title)
+	fmt.Fprintf(&b, "Help me answer the review feedback on %s %s (%s).\n\n", pr.Kind.PRWord(), pr.Ref(), pr.Title)
 	n := 0
 	for _, r := range Said(pr) {
 		if strings.TrimSpace(r.Body) == "" {
@@ -140,13 +140,13 @@ func ReplyPrompt(pr github.PR) string {
 }
 
 // FixPrompt asks for the failing checks of pr to be fixed, with logs.
-func FixPrompt(pr github.PR, logs string) string {
+func FixPrompt(pr forge.PR, logs string) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "A CI check on pull request #%d (%s) failed. Find out why, and fix it.\n\n", pr.Number, pr.Title)
+	fmt.Fprintf(&b, "A CI check on %s %s (%s) failed. Find out why, and fix it.\n\n", pr.Kind.PRWord(), pr.Ref(), pr.Title)
 	b.WriteString("Failing checks:\n")
 	for _, c := range pr.Checks {
 		// Only what failed: one still queued or running has not.
-		if !github.Failed(c.Status) {
+		if !forge.Failed(c.Status) {
 			continue
 		}
 		fmt.Fprintf(&b, "  - %s (%s)\n", c.Name, strings.ToLower(c.Status))
@@ -163,15 +163,16 @@ func FixPrompt(pr github.PR, logs string) string {
 
 // RebasePrompt asks for the branch of pr, which conflicts with its base,
 // to be rebased onto it. It quotes nobody: the title is the author's.
-func RebasePrompt(pr github.PR) string {
+func RebasePrompt(pr forge.PR) string {
 	base := pr.Base
 	if base == "" {
 		base = "its base branch"
 	}
-	return fmt.Sprintf("Pull request #%d (%s) has conflicts with %s on GitHub. "+
+	word := pr.Kind.PRWord()
+	return fmt.Sprintf("%s %s (%s) has conflicts with %s on %s. "+
 		"Fetch the remote, rebase this branch onto the remote's %s, and resolve the conflicts, "+
 		"keeping what each side meant to do. Run the project's own tests for the parts that "+
-		"conflicted. Do not push or comment on the pull request. Then tell me what conflicted, "+
+		"conflicted. Do not push or comment on the %s. Then tell me what conflicted, "+
 		"how you resolved it, and what you ran to check it.",
-		pr.Number, pr.Title, base, base)
+		pr.Kind.PRTitle(), pr.Ref(), pr.Title, base, pr.Kind.Name(), base, word)
 }

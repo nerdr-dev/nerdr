@@ -65,7 +65,7 @@ func TestCloseShowsTheCheckWhenSlow(t *testing.T) {
 	path := tb.Worktrees[0].Path
 	m.Update(core.Reply{Ev: core.CloseInfoMsg{T: m.home().Core.Ref(tb), MergedHeads: map[string]string{path: "abc"}, Heads: map[string]string{path: "abc"}}})
 	v = ansi.Strip(m.View())
-	if !strings.Contains(v, "y delete the worktree and the branch — merged on GitHub") ||
+	if !strings.Contains(v, "y delete the worktree and the branch — merged") ||
 		!strings.Contains(v, "w delete the worktree, keep the branch") ||
 		strings.Index(v, "y delete") > strings.Index(v, "w delete") {
 		t.Fatalf("merged:\n%s", v)
@@ -145,7 +145,7 @@ func TestEnterInTheCloseDialog(t *testing.T) {
 		c := m.dialog.(*closeTab)
 		want := "keep the branch (enter)"
 		if merged {
-			want = "merged on GitHub (enter)"
+			want = "— merged (enter)"
 		}
 		if v := ansi.Strip(m.View()); !strings.Contains(v, want) {
 			t.Fatalf("merged %v: no %q:\n%s", merged, want, v)

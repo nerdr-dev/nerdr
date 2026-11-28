@@ -3,12 +3,12 @@ package core
 import (
 	"fmt"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/prask"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -58,7 +58,7 @@ const autoRetries = 3
 
 // What is what the message asks, for F3, the panel and the bar.
 func (j autoJob) What() string {
-	n := "#" + strconv.Itoa(j.Entry.PR.Number)
+	n := j.Entry.PR.Ref()
 	switch j.Event {
 	case config.EventCIFailed:
 		return "fix " + n + "'s failing CI"
@@ -74,7 +74,7 @@ func (j autoJob) What() string {
 // failing jobs' logs for one of failing CI.
 type autoFetched struct {
 	Job  autoJob
-	PR   github.PR
+	PR   forge.PR
 	Logs string
 	Err  string
 }
@@ -205,7 +205,7 @@ func (m *Core) AutoJobs(key string, e PREntry, before, now state.PRSeen) []autoJ
 // its checks is still running, and some still fail, it is acted on, once
 // for that head. All of them passing clears the tries up; none at all, as
 // a head just pushed may have before CI has started, does not.
-func autoCI(tr *state.AutoTry, pr github.PR, before, now state.PRSeen) bool {
+func autoCI(tr *state.AutoTry, pr forge.PR, before, now state.PRSeen) bool {
 	fail, pending := prask.Failing(pr.Checks)
 	if len(pr.Checks) > 0 && fail == 0 && pending == 0 {
 		tr.Want, tr.Tries = "", 0
@@ -235,7 +235,7 @@ func autoCI(tr *state.AutoTry, pr github.PR, before, now state.PRSeen) bool {
 // not by the author that is not an approval; or one whose job could not
 // read the pull request, kept in Want, to try again. An approval that
 // comes in clears the tries up; the PR staying approved does not.
-func autoReview(tr *state.AutoTry, pr github.PR, before, now state.PRSeen) bool {
+func autoReview(tr *state.AutoTry, pr forge.PR, before, now state.PRSeen) bool {
 	var latest time.Time
 	for author, rv := range now.Reviews {
 		if old, ok := before.Reviews[author]; ok && !rv.At.After(old.At) {
@@ -267,7 +267,7 @@ func autoReview(tr *state.AutoTry, pr github.PR, before, now state.PRSeen) bool 
 // since it was acted on that conflicts still is acted on again. Its being
 // mergeable again clears the tries up, and lets the same head's coming
 // to conflict again (its base moved) be acted on.
-func autoConflict(tr *state.AutoTry, pr github.PR, before, now state.PRSeen) bool {
+func autoConflict(tr *state.AutoTry, pr forge.PR, before, now state.PRSeen) bool {
 	if pr.Mergeable == "MERGEABLE" {
 		tr.Tries, tr.Done = 0, ""
 	}
@@ -312,9 +312,9 @@ func fetchForAuto(j autoJob) Cmd {
 	return func() Event {
 		out := autoFetched{Job: j}
 		dir := j.Entry.Repo.Path
-		pr, err := github.FetchPR(dir, j.Entry.PR.Number)
+		pr, err := forges.FetchPR(dir, j.Entry.PR.Number)
 		if err == nil && j.Event == config.EventCIFailed {
-			out.Logs, err = github.FailedRunLogs(dir, pr.Checks, prask.LogLimit)
+			out.Logs, err = forges.FailedRunLogs(dir, pr.Checks, prask.LogLimit)
 		}
 		out.PR = pr
 		if err != nil {

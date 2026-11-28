@@ -9,8 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 	"github.com/nerdr-dev/nerdr/internal/why"
@@ -77,12 +77,12 @@ func (s countingSource) GhAvailable() bool {
 	return s.Local.GhAvailable()
 }
 
-func (s countingSource) CurrentPR(wt string) (github.PR, bool, string) {
+func (s countingSource) CurrentPR(wt string) (forge.PR, bool, string) {
 	s.n.Add(1)
-	return github.PR{}, false, "no pull request in tests"
+	return forge.PR{}, false, "no pull request in tests"
 }
 
-func (s countingSource) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
+func (s countingSource) FailedRunLogs(wt string, checks []forge.Check, limit int) (string, error) {
 	s.n.Add(1)
 	return "", nil
 }

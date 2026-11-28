@@ -6,8 +6,8 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/browser"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/linecomments"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/why"
@@ -153,7 +153,7 @@ type Model struct {
 	pinPending bool
 	pinToken   int
 
-	pr    github.PR
+	pr    forge.PR
 	prOK  bool
 	prMsg string
 	noGh  bool // gh is not installed, as the PR's last reading found

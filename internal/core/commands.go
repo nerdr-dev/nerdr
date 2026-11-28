@@ -87,10 +87,10 @@ func KeyGroups() map[string]CommandGroup {
 			{Key: "g", Label: "This branch: PR, push (F2)", Run: "g g", Desc: "the tab's branches: changes, ahead/behind, PR and CI; push, open a PR"},
 			{Key: "c", Label: "Code changes (F1)", Run: "g c", Desc: "the tab's changes against main, file by file"},
 			{Key: "p", Label: "All my pull requests", Run: "g p", Desc: "yours across the repositories, or m: everyone's, those asking your review marked; enter goes to, or opens, the branch's tab"},
-			{Key: "b", Label: "Open the PR in the browser", Run: "g b", Desc: "the tab's pull request on GitHub, in your browser"},
+			{Key: "b", Label: "Open the PR in the browser", Run: "g b", Desc: "the tab's pull request on GitHub, or merge request on GitLab, in your browser"},
 			{Key: "r", Label: "Repositories of the tab", Run: "g r", Desc: "add repositories to the tab, each a worktree on its branch, or take them away; its last one stays"},
 			{Key: "o", Label: "Open issues", Run: "g o", Desc: "the issues assigned to you, or all open (a); enter starts a tab for one"},
-			{Key: "l", Label: "git and gh calls", Run: "g l", Rare: true, Desc: "how many times nerdr has run git and gh for each tab, and which commands, since it started; and what of nerdr's was turned down, as in a sandbox"},
+			{Key: "l", Label: "git, gh and glab calls", Run: "g l", Rare: true, Desc: "how many times nerdr has run git, gh and glab for each tab, and which commands, since it started; and what of nerdr's was turned down, as in a sandbox"},
 		}},
 		"a": {"Agent", []CommandEntry{
 			{Key: "a", Label: "Focus agent", Run: "a a", Desc: "give the keyboard back to the agent"},

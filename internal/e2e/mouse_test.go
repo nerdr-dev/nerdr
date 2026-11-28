@@ -63,7 +63,7 @@ func (h *harness) still() string {
 // wider, and so move the button out from under a click already aimed.
 func (h *harness) clickContinue() {
 	h.t.Helper()
-	h.waitGone("asking gh…", 5*time.Second)
+	h.waitGone("asking…", 5*time.Second)
 	h.click("enter continue")
 }
 

@@ -82,7 +82,7 @@ func (m *Core) CallRows(calls map[proc.Call]int) []CallRow {
 		switch c.Program {
 		case "git":
 			r.Git += n
-		case "gh":
+		case "gh", "glab":
 			r.Gh += n
 		default:
 			r.Others += n

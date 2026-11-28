@@ -6,8 +6,8 @@ package review
 
 import (
 	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 	"github.com/nerdr-dev/nerdr/internal/why"
@@ -48,7 +48,7 @@ func (m *Model) switchWorktree() bool {
 	if wt == "" {
 		m.projectVer, m.imports = 0, nil
 		m.baseRef = ""
-		m.pr, m.prOK, m.prMsg = github.PR{}, false, ""
+		m.pr, m.prOK, m.prMsg = forge.PR{}, false, ""
 		m.whyIndex = why.Index{}
 		m.orderIndex = order.Index{}
 		m.setWalk(walkthrough.Walkthrough{}, false, false)
@@ -58,7 +58,7 @@ func (m *Model) switchWorktree() bool {
 	// the background — see loadContextCmd — so moving between worktrees
 	// doesn't freeze the screen while they finish.
 	m.projectVer, m.imports = 0, nil
-	m.pr, m.prOK, m.prMsg = github.PR{}, false, "looking up the PR…"
+	m.pr, m.prOK, m.prMsg = forge.PR{}, false, "looking up the PR…"
 	m.ctxLoad = wt
 	m.baseRef = ""
 	m.whyIndex = why.Index{}
@@ -71,7 +71,7 @@ func (m *Model) switchWorktree() bool {
 type worktreeContextMsg struct {
 	wt         string
 	projectVer int
-	pr         github.PR
+	pr         forge.PR
 	prOK       bool
 	prMsg      string
 	noGh       bool // gh is not installed

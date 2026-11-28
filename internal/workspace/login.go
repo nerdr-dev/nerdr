@@ -252,7 +252,9 @@ func pathArgs(args []string, names ...string) bool {
 // helpersAlike says whether every credential helper of set, as git config
 // --null --get-regexp lists them, that may be for host is one that answers
 // alike wherever git runs it: one of alikeHelpers, by name or by its whole
-// path, or gh's (gh auth setup-git).
+// path, or gh's (gh auth setup-git). Not glab's: glab takes a token from
+// the repository's own config too (glab config set without --global), so
+// it may answer each repository otherwise.
 func helpersAlike(set, host string) bool {
 	for _, entry := range strings.Split(set, "\x00") {
 		name, value, _ := strings.Cut(entry, "\n")

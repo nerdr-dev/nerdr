@@ -33,6 +33,8 @@ var updateSourceCalls = flag.Bool("update-sourcecalls", false, "write testdata/s
 var readPkgs = map[string]bool{
 	"github.com/nerdr-dev/nerdr/internal/analysis":     true,
 	"github.com/nerdr-dev/nerdr/internal/codereview":   true,
+	"github.com/nerdr-dev/nerdr/internal/forge":        true,
+	"github.com/nerdr-dev/nerdr/internal/forges":       true,
 	"github.com/nerdr-dev/nerdr/internal/git":          true,
 	"github.com/nerdr-dev/nerdr/internal/github":       true,
 	"github.com/nerdr-dev/nerdr/internal/gitsafe":      true,
@@ -60,7 +62,8 @@ var readStays = map[string]bool{
 func init() {
 	for _, s := range strings.Fields(`
 		analysis.ParseSymbolDecl analysis.GroupEdges
-		git.ParseDiff github.Failed
+		git.ParseDiff forge.Failed forge.Trusted forge.CISummary
+		forge.PR.Ref forge.Status.Ref forge.Kind.Ref forge.Kind.Name forge.Kind.PRWord forge.Kind.PRTitle forge.Kind.CLI
 		order.Label order.Roles
 		order.Index.Files order.Index.For order.Index.Len
 		order.Index.Read order.Index.Summary

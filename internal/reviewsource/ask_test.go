@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
 	"github.com/nerdr-dev/nerdr/internal/why"
@@ -48,10 +48,10 @@ func (echo) Stamps(wt string, paths []string) map[string]string {
 	return map[string]string{paths[0]: wt}
 }
 func (echo) GhAvailable() bool { return true }
-func (echo) CurrentPR(wt string) (github.PR, bool, string) {
-	return github.PR{Number: 7, Title: wt}, true, "msg"
+func (echo) CurrentPR(wt string) (forge.PR, bool, string) {
+	return forge.PR{Number: 7, Title: wt}, true, "msg"
 }
-func (echo) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
+func (echo) FailedRunLogs(wt string, checks []forge.Check, limit int) (string, error) {
 	return fmt.Sprint(wt, checks[0].Name, limit), nil
 }
 
@@ -137,7 +137,7 @@ func TestAskerAsks(t *testing.T) {
 	pr, ok, msg := k.CurrentPR("/wt")
 	pr2, ok2, msg2 := e.CurrentPR("/wt")
 	same("CurrentPR", []any{pr, ok, msg}, []any{pr2, ok2, msg2})
-	checks := []github.Check{{Name: "ci"}}
+	checks := []forge.Check{{Name: "ci"}}
 	same("FailedRunLogs", both(k.FailedRunLogs("/wt", checks, 9)), both(e.FailedRunLogs("/wt", checks, 9)))
 	same("Notes", k.Notes("/wt").All(), e.Notes("/wt").All())
 	same("Notes read", k.Notes("/wt").Read(), 3)

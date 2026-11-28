@@ -124,7 +124,7 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 		name := r.Name
 		return "  " + m.onClick(s, func(m *Model) tea.Cmd { d.pick = name; return nil })
 	}
-	lines := []string{"  " + dim(line("tab", "git", "gh", "other"))}
+	lines := []string{"  " + dim(line("tab", "git", "gh/glab", "other"))}
 	all := core.CallRow{Name: core.AllCalls, Cmds: map[string]int{}}
 	picked := &all
 	for i := range rows {
@@ -190,7 +190,7 @@ func (d *callsDialog) view(m *Model, w, h int) string {
 		dim("new: since this was opened. The counts go up as calls are made."),
 		dim("turned down: refused for lack of permission, or by a sandbox such as cplt or its proxy."),
 		"", m.button("↑↓", "pick a row")+"  "+m.button("esc", "close"))
-	return box("git and gh calls", lines, w)
+	return box("git, gh and glab calls", lines, w)
 }
 
 // deniedLines lists ds, what nerdr was turned down for, the latest first,

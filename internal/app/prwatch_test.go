@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/review"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -51,9 +51,9 @@ func TestPRWatchTellsWhatChanged(t *testing.T) {
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
 	t0 := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
-	pr := github.PR{Number: 7, Title: "Fix login", Author: "me", Head: "c1",
-		Checks:  []github.Check{{Name: "build", Status: "FAILURE"}, {Name: "test", Status: "IN_PROGRESS"}},
-		Reviews: []github.Review{{Author: "ann", State: "COMMENTED", SubmittedAt: t0}},
+	pr := forge.PR{Number: 7, Title: "Fix login", Author: "me", Head: "c1",
+		Checks:  []forge.Check{{Name: "build", Status: "FAILURE"}, {Name: "test", Status: "IN_PROGRESS"}},
+		Reviews: []forge.Review{{Author: "ann", State: "COMMENTED", SubmittedAt: t0}},
 	}
 
 	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
@@ -64,12 +64,12 @@ func TestPRWatchTellsWhatChanged(t *testing.T) {
 	// The test fails, ann approves, and I answer a comment (a review of
 	// my own); lib answers for the first time with a failing PR.
 	pr.Checks[1].Status = "FAILURE"
-	pr.Reviews = []github.Review{
+	pr.Reviews = []forge.Review{
 		{Author: "ann", State: "APPROVED", SubmittedAt: t0.Add(time.Hour)},
 		{Author: "bob", State: "CHANGES_REQUESTED", SubmittedAt: t0.Add(time.Hour)},
 		{Author: "me", State: "COMMENTED", SubmittedAt: t0.Add(time.Hour)},
 	}
-	libPR := github.PR{Number: 3, Author: "me", Checks: []github.Check{{Name: "lint", Status: "FAILURE"}}}
+	libPR := forge.PR{Number: 3, Author: "me", Checks: []forge.Check{{Name: "lint", Status: "FAILURE"}}}
 	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app, lib}, nil, core.PREntry{Repo: app, PR: pr}, core.PREntry{Repo: lib, PR: libPR}))
 	if got, want := newsOf(m), "check failed: test|approved by ann|changes requested by bob"; got != want {
 		t.Fatalf("news = %q, want %q", got, want)
@@ -109,9 +109,9 @@ func TestPRWatchTellsWhatChanged(t *testing.T) {
 func TestPRWatchGonePR(t *testing.T) {
 	m := testModel(t)
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	pr := github.PR{Number: 7, Author: "me"}
+	pr := forge.PR{Number: 7, Author: "me"}
 	tb := m.home().Core.Tabs[1]
-	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", HasPR: true, Pr: github.Status{Number: 7, State: "OPEN"}}}}
+	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", HasPR: true, Pr: forge.Status{Number: 7, State: "OPEN"}}}}
 	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
 	m.home().Core.OnPRWatch(prLook(nil, []workspace.Repo{app}))
 	if tb.Info.StalePR {
@@ -130,7 +130,7 @@ func TestPRWatchChecks(t *testing.T) {
 	yes := true
 	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	pr := github.PR{Number: 7, Author: "me", Head: "c1", Checks: []github.Check{{Name: "lint", Status: "FAILURE"}}}
+	pr := forge.PR{Number: 7, Author: "me", Head: "c1", Checks: []forge.Check{{Name: "lint", Status: "FAILURE"}}}
 	look := func() { m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr})) }
 	look()
 
@@ -141,7 +141,7 @@ func TestPRWatchChecks(t *testing.T) {
 	}
 
 	m.home().Core.PRWatch.News = nil
-	pr.Head, pr.Checks = "c3", []github.Check{{Name: "lint", Status: "CANCELLED"}}
+	pr.Head, pr.Checks = "c3", []forge.Check{{Name: "lint", Status: "CANCELLED"}}
 	look()
 	if got := newsOf(m); got != "" {
 		t.Fatalf("a cancelled check is no news: %q", got)
@@ -158,7 +158,7 @@ func TestPRWatchDropsStaleNews(t *testing.T) {
 	yes := true
 	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	pr := github.PR{Number: 7, Author: "me", Head: "c1", Checks: []github.Check{{Name: "lint", Status: "SUCCESS"}}}
+	pr := forge.PR{Number: 7, Author: "me", Head: "c1", Checks: []forge.Check{{Name: "lint", Status: "SUCCESS"}}}
 	look := func(prs ...core.PREntry) { m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, prs...)) }
 	look(core.PREntry{Repo: app, PR: pr})
 
@@ -177,7 +177,7 @@ func TestPRWatchDropsStaleNews(t *testing.T) {
 	pr.Checks[0].Status = "FAILURE"
 	look(core.PREntry{Repo: app, PR: pr})
 	pr.Head, pr.Checks[0].Status = "c2", "IN_PROGRESS"
-	pr.Reviews = []github.Review{{Author: "ann", State: "APPROVED", SubmittedAt: time.Now()}}
+	pr.Reviews = []forge.Review{{Author: "ann", State: "APPROVED", SubmittedAt: time.Now()}}
 	look(core.PREntry{Repo: app, PR: pr})
 	if got := newsOf(m); got != "approved by ann" {
 		t.Fatalf("a push past a failing check should take its news away, not a review's: %q", got)
@@ -223,14 +223,14 @@ func TestPRWatchAcrossRestarts(t *testing.T) {
 	yes := true
 	m.home().Core.Cfg.PRNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	pr := github.PR{Number: 7, Author: "me", Head: "c1"}
+	pr := forge.PR{Number: 7, Author: "me", Head: "c1"}
 	m.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
 
 	saved := m.home().Core.SavedPRWatch()
 	m2 := tabsModel(t)
 	m2.home().Core.Cfg.PRNotify = &yes
 	m2.home().Core.LoadPRWatch(saved)
-	pr.Reviews = []github.Review{{Author: "ann", State: "APPROVED", SubmittedAt: time.Now()}}
+	pr.Reviews = []forge.Review{{Author: "ann", State: "APPROVED", SubmittedAt: time.Now()}}
 	m2.home().Core.OnPRWatch(prLook([]workspace.Repo{app}, nil, core.PREntry{Repo: app, PR: pr}))
 	if got := newsOf(m2); got != "approved by ann" {
 		t.Fatalf("news after a restart = %q", got)
@@ -262,7 +262,7 @@ func TestAllPRsInPanel(t *testing.T) {
 	m.panelDlg = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.home().Core.PRWatch.At = time.Now() // known already: GitHub is not asked
-	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Fix login"}}}
+	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: forge.PR{Number: 7, Title: "Fix login"}}}
 
 	m.handleKey(keyMsg("f2"))
 	if m.review.AllPRs() {
@@ -321,8 +321,8 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.home().Core.PRWatch.At = time.Now()
 	m.home().Core.PRWatch.Entries = []core.PREntry{
-		{Repo: app, PR: github.PR{Number: 7, Branch: "fix/login", Title: "Fix login"}},
-		{Repo: app, PR: github.PR{Number: 9, Branch: "nowhere", Title: "Elsewhere"}},
+		{Repo: app, PR: forge.PR{Number: 7, Branch: "fix/login", Title: "Fix login"}},
+		{Repo: app, PR: forge.PR{Number: 9, Branch: "nowhere", Title: "Elsewhere"}},
 	}
 	m.showAllPRs()
 	login := m.home().Core.Tabs[1]
@@ -369,10 +369,12 @@ func TestActingOnPRsFromPanel(t *testing.T) {
 	}
 }
 
-// TestAskRepo covers which repositories the search lets off asking: those
-// on github.com with none of your PRs open, and those with no remote.
+// TestAskRepo covers which repositories the searches let off asking:
+// those on a host that answered with none of your PRs open, and those
+// with no remote. One on a host whose search failed is asked.
 func TestAskRepo(t *testing.T) {
-	withPRs := map[string]bool{"acme/nerdr": true}
+	withPRs := map[string]bool{"acme/nerdr": true, "gitlab.com/grp/sub/app": true}
+	searched := func(host string) bool { return host == "github.com" || host == "gitlab.com" }
 	for _, c := range []struct {
 		names     []string
 		elsewhere bool
@@ -383,8 +385,11 @@ func TestAskRepo(t *testing.T) {
 		{[]string{"me/nerdr-fork", "acme/nerdr"}, false, true}, // a fork with upstream as a remote too
 		{[]string{"acme/other"}, true, true},                   // also on a host the search does not cover
 		{nil, false, false},                                    // no remote: no PRs
+		{[]string{"gitlab.com/grp/sub/app"}, false, true},
+		{[]string{"gitlab.com/grp/other"}, false, false},
+		{[]string{"git.corp.example/grp/app"}, false, true}, // that host's search failed
 	} {
-		if got := core.AskRepo(c.names, c.elsewhere, withPRs); got != c.want {
+		if got := core.AskRepo(c.names, c.elsewhere, withPRs, searched); got != c.want {
 			t.Errorf("askRepo(%v, %v) = %v, want %v", c.names, c.elsewhere, got, c.want)
 		}
 	}
@@ -425,8 +430,8 @@ func TestBranchLinesLeaveShownPR(t *testing.T) {
 	tb := m.Cur()
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/a", Path: "/w/a", Branch: "x"}, {Repo: "/r/b", Path: "/w/b", Branch: "x"}}
 	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{
-		{HasPR: true, Pr: github.Status{Number: 3, State: "OPEN"}},
-		{HasPR: true, Pr: github.Status{Number: 4, State: "OPEN"}},
+		{HasPR: true, Pr: forge.Status{Number: 3, State: "OPEN"}},
+		{HasPR: true, Pr: forge.Status{Number: 4, State: "OPEN"}},
 	}}
 	p := &tabPanel{t: tb}
 	f2 := strings.Join(p.branchLines(m, "/w/a/"), "\n")
@@ -483,7 +488,7 @@ func TestF3ListsTheReposBranches(t *testing.T) {
 	a, b := t.TempDir(), t.TempDir()
 	tb.Worktrees = []workspace.Worktree{{Repo: "/r/front", Path: a, Branch: "x"}, {Repo: "/r/back", Path: b, Branch: "y"}}
 	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{
-		{HasPR: true, Pr: github.Status{Number: 3, State: "OPEN"}},
+		{HasPR: true, Pr: forge.Status{Number: 3, State: "OPEN"}},
 		{},
 	}}
 	m.pinReview()
@@ -544,14 +549,14 @@ func TestEveryonesPRsInPanel(t *testing.T) {
 	m.panelDlg = true
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	m.home().Core.PRWatch.At = time.Now()
-	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me"}}}
+	m.home().Core.PRWatch.Entries = []core.PREntry{{Repo: app, PR: forge.PR{Number: 7, Title: "Mine", Author: "me"}}}
 	now := time.Now()
 	m.home().Core.PRAll.Repos = map[string]core.RepoPRs{app.Path: {At: now, Names: []string{"acme/app"}, Entries: []core.PREntry{
-		{Repo: app, PR: github.PR{Number: 7, Title: "Mine", Author: "me", Branch: "mine", UpdatedAt: now}},
-		{Repo: app, PR: github.PR{Number: 8, Title: "Theirs", Author: "ann", Branch: "theirs", UpdatedAt: now.Add(-time.Hour)}},
-		{Repo: app, PR: github.PR{Number: 9, Title: "Forked", Author: "bob", Branch: "main", Fork: "bob", UpdatedAt: now.Add(-2 * time.Hour)}},
+		{Repo: app, PR: forge.PR{Number: 7, Title: "Mine", Author: "me", Branch: "mine", UpdatedAt: now}},
+		{Repo: app, PR: forge.PR{Number: 8, Title: "Theirs", Author: "ann", Branch: "theirs", UpdatedAt: now.Add(-time.Hour)}},
+		{Repo: app, PR: forge.PR{Number: 9, Title: "Forked", Author: "bob", Branch: "main", Fork: "bob", UpdatedAt: now.Add(-2 * time.Hour)}},
 	}}}
-	m.home().Core.PRAll.Asked = map[string]bool{github.RequestKey("Acme/App", 9): true}
+	m.home().Core.PRAll.Asked = map[string]bool{forge.RequestKey("Acme/App", 9): true}
 
 	m.handleKey(keyMsg("f2"))
 	m.handleKey(keyMsg("f2"))
@@ -623,5 +628,54 @@ func TestEscLeavesBranchPR(t *testing.T) {
 	}
 	if _, ok := cmd().(review.LeaveMsg); !ok {
 		t.Fatal("esc on F2's branch view should leave it")
+	}
+}
+
+// TestReviewAskedByHost: the pull requests your review is asked for are
+// kept by host. A host whose search failed keeps its marks, and a look
+// with no host answering keeps them all.
+func TestReviewAskedByHost(t *testing.T) {
+	m := tabsModel(t)
+	c := &m.home().Core
+	c.OnPRAll(core.PRAllMsg{Asked: map[string]bool{"acme/app#1": true, "gitlab.com/grp/app#2": true},
+		AskedHosts: []string{"github.com", "gitlab.com"}})
+	c.OnPRAll(core.PRAllMsg{Asked: map[string]bool{"acme/app#3": true}, AskedHosts: []string{"github.com"},
+		AskedErr: "review requests: gitlab.com: glab timed out"})
+	a := c.PRAll.Asked
+	if a["acme/app#1"] || !a["acme/app#3"] || !a["gitlab.com/grp/app#2"] {
+		t.Fatalf("asked: %v", a)
+	}
+	c.OnPRAll(core.PRAllMsg{AskedErr: "review requests: no host answered"})
+	if len(c.PRAll.Asked) != 2 {
+		t.Fatalf("a look with no answer should keep the marks: %v", c.PRAll.Asked)
+	}
+}
+
+// A repository whose service does not answer keeps its rows in the list
+// of everyone's pull requests, with why they are not newer; another's are
+// taken as it answers.
+func TestRepoPRsKeptOnFailure(t *testing.T) {
+	m := tabsModel(t)
+	c := &m.home().Core
+	row := func(n int) []core.PREntry { return []core.PREntry{{PR: forge.PR{Number: n}}} }
+	c.OnPRAll(core.PRAllMsg{Repos: map[string]core.RepoPRs{"/r/gl": {Entries: row(1)}, "/r/gh": {Entries: row(2)}}})
+	c.OnPRAll(core.PRAllMsg{Repos: map[string]core.RepoPRs{"/r/gl": {Err: "app: glab timed out"}, "/r/gh": {Entries: row(3)}}})
+	gl, gh := c.PRAll.Repos["/r/gl"], c.PRAll.Repos["/r/gh"]
+	if len(gl.Entries) != 1 || gl.Entries[0].PR.Number != 1 || gl.Err == "" {
+		t.Fatalf("the failed one: %+v", gl)
+	}
+	if len(gh.Entries) != 1 || gh.Entries[0].PR.Number != 3 {
+		t.Fatalf("the other: %+v", gh)
+	}
+}
+
+// News of a merge request names it !12, as GitLab does; news kept from
+// before there was GitLab, with no kind, is GitHub's #12.
+func TestPrNewsLabelByKind(t *testing.T) {
+	if got := core.PrNewsLabel(state.PRNews{Repo: "lab", Number: 12, Kind: string(forge.GitLab)}); got != "lab !12" {
+		t.Errorf("gitlab: %q", got)
+	}
+	if got := core.PrNewsLabel(state.PRNews{Tab: "fix", Number: 12}); got != "fix #12" {
+		t.Errorf("github: %q", got)
 	}
 }

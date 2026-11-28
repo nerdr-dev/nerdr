@@ -194,7 +194,7 @@ func (m *Model) footTab() string {
 	}
 	if unpushed > 0 {
 		parts = append(parts, m.tip(m.onClick(footStyle("81").Render("⇡"+strconv.Itoa(unpushed)), (*Model).showBranchPR),
-			core.Plural(unpushed, "commit")+" not pushed · click: the branch on GitHub (F2), where p pushes"))
+			core.Plural(unpushed, "commit")+" not pushed · click: the branch in F2, where p pushes"))
 	}
 	if add+del > 0 {
 		parts = append(parts, m.tip(m.onClick(footStyle("71").Render("+"+strconv.Itoa(add))+footStyle("167").Render("−"+strconv.Itoa(del)), f1),
@@ -229,14 +229,14 @@ func (m *Model) footPR(t *core.Tab) string {
 			return ""
 		}
 		return m.tip(m.onClick(footStyle("244").Render("+ PR"), (*Model).showBranchPR),
-			"No pull request yet · click: the branch on GitHub (F2), where P opens one")
+			"No pull request yet · click: the branch in F2, where P opens one")
 	}
 	pr := prs[0]
-	s := footStyle("110").Render("#" + strconv.Itoa(pr.Number) + " " + strings.ToLower(pr.State))
-	tip := "Pull request #" + strconv.Itoa(pr.Number) + ", " + strings.ToLower(pr.State)
+	s := footStyle("110").Render(pr.Ref() + " " + strings.ToLower(pr.State))
+	tip := pr.Kind.PRTitle() + " " + pr.Ref() + ", " + strings.ToLower(pr.State)
 	if pr.After > 0 {
 		s += footStyle("179").Render(" +" + strconv.Itoa(pr.After) + " after")
-		tip += " · " + core.Plural(pr.After, "commit") + " after it, in no pull request"
+		tip += " · " + core.Plural(pr.After, "commit") + " after it, in no " + pr.Kind.PRWord()
 	}
 	switch in.Ci() {
 	case "pass":

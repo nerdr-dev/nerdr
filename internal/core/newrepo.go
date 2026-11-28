@@ -5,7 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -14,7 +15,8 @@ import (
 
 func init() { registerRequests(MakeRepo{}) }
 
-// MakeRepo makes the repository called Name, on GitHub too with OnGitHub;
+// MakeRepo makes the repository called Name, on the config's repo_host
+// too (GitHub unless it says) with OnGitHub;
 // or with Clone, clones the one Name says: owner/name, or a URL or path git
 // can clone. It is told as a RepoMadeMsg of Job, once the repositories
 // have been looked for again.
@@ -41,11 +43,11 @@ type repoMadeMsg struct {
 }
 
 func (q MakeRepo) Do(m *Core) Cmd {
-	dir, gh := m.Scan.NewRepoDir, !m.NoGh
+	dir, host := m.Scan.NewRepoDir, m.Cfg.NewRepoHost()
 	scan := m.ScanRepos()
 	return func() Event {
 		made := RepoMadeMsg{Job: q.Job}
-		path, warning, err := makeRepo(q, dir, gh)
+		path, warning, err := makeRepo(q, dir, host)
 		made.Path, made.Warning = path, warning
 		if err != nil {
 			made.Err = err.Error()
@@ -62,23 +64,24 @@ func (m *Core) onRepoMade(msg repoMadeMsg) Cmd {
 	return Batch(m.OnRepoScan(msg.Scan), m.Tell(msg.Made))
 }
 
-// makeRepo makes or clones the repository q says, in dir; on GitHub only
-// with gh.
-func makeRepo(q MakeRepo, dir string, gh bool) (path, warning string, err error) {
+// makeRepo makes or clones the repository q says, in dir: a new one on
+// host too, and owner/name cloned from host, with host's CLI when it is
+// there.
+func makeRepo(q MakeRepo, dir, host string) (path, warning string, err error) {
 	if dir == "" {
 		return "", "", errors.New("there is no folder to make a repository in")
 	}
 	value := strings.TrimSpace(q.Name)
 	if q.Clone {
-		name, url, onGitHub, err := workspace.CloneSource(value)
+		name, url, on, repo, err := workspace.CloneSource(value, host)
 		if err == nil {
 			err = workspace.CheckNewRepo(dir, name)
 		}
 		if err != nil {
 			return "", "", err
 		}
-		if onGitHub && gh {
-			path, err = github.CloneRepo(dir, value, name)
+		if on != "" && forges.CanMake(on) {
+			path, err = forges.CloneRepo(dir, on, repo, name)
 		} else {
 			path, err = workspace.CloneRepo(dir, name, url)
 		}
@@ -93,9 +96,14 @@ func makeRepo(q MakeRepo, dir string, gh bool) (path, warning string, err error)
 		// worktree of it says what is missing.
 		return path, "", err
 	}
-	if q.OnGitHub && gh {
-		if _, err := github.CreateRepo(path); err != nil {
-			return path, "made " + filepath.Base(path) + " here, but not on GitHub: " + err.Error(), nil
+	if q.OnGitHub {
+		service := forge.KindOf(host).Name()
+		if !forges.CanMake(host) {
+			return path, "made " + filepath.Base(path) + " here, but not on " + service + ": " +
+				forge.KindOf(host).CLI() + " is not installed", nil
+		}
+		if _, err := forges.CreateRepo(path, host); err != nil {
+			return path, "made " + filepath.Base(path) + " here, but not on " + service + ": " + err.Error(), nil
 		}
 	}
 	return path, "", nil

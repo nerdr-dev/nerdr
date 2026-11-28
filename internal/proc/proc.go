@@ -177,9 +177,13 @@ func Counts() (map[Call]int, time.Time) {
 	return out, started
 }
 
+// forgeCLI is whether program is the CLI of a service nerdr asks about
+// pull requests: gh, or glab.
+func forgeCLI(program string) bool { return program == "gh" || program == "glab" }
+
 // sub is what program was asked to do, from its arguments: git's
-// subcommand, past the options before it, and gh's command and the
-// subcommand after it ("pr view", but "api" alone, not its path).
+// subcommand, past the options before it, and gh's (or glab's) command
+// and the subcommand after it ("pr view", but "api" alone, not its path).
 func sub(program string, args []string) string {
 	var words []string
 	for i := 0; i < len(args); i++ {
@@ -194,14 +198,14 @@ func sub(program string, args []string) string {
 		default:
 			words = append(words, a)
 		}
-		if len(words) > 0 && (program != "gh" || len(words) == 2) {
+		if len(words) > 0 && (!forgeCLI(program) || len(words) == 2) {
 			break
 		}
 	}
-	if program == "gh" && len(words) == 2 && strings.ContainsAny(words[1], "/{") {
+	if forgeCLI(program) && len(words) == 2 && (words[0] == "api" || strings.ContainsAny(words[1], "/{")) {
 		words = words[:1]
 	}
-	if program != "git" && program != "gh" {
+	if program != "git" && !forgeCLI(program) {
 		return ""
 	}
 	return strings.Join(words, " ")

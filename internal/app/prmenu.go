@@ -159,7 +159,7 @@ func (p *tabPanel) branchLines(m *Model, shown string) []string {
 		case shown != "" && filepath.Clean(wt.Path) == filepath.Clean(shown):
 			// F2 draws this one's PR below.
 		case wi.HasPR:
-			line := "  PR #" + strconv.Itoa(wi.Pr.Number) + " " + core.PrState(wi.Pr)
+			line := "  " + wi.Pr.Kind.PRShort() + " " + wi.Pr.Ref() + " " + core.PrState(wi.Pr)
 			if wi.Pr.CI != "" {
 				line += " · CI " + wi.Pr.CI
 			}
@@ -169,7 +169,7 @@ func (p *tabPanel) branchLines(m *Model, shown string) []string {
 				return nil
 			}))
 		case m.machineOf(t).Core.NoGh:
-			lines = append(lines, "  "+dim("no gh CLI: pull requests unknown"))
+			lines = append(lines, "  "+dim("no gh or glab CLI: pull requests unknown"))
 		default:
 			lines = append(lines, "  "+dim("no pull request"))
 		}
@@ -208,7 +208,7 @@ func (p *tabPanel) branchList(m *Model, shown string) []string {
 					" · "+strconv.Itoa(wi.Stats.Ahead)+" ahead, "+strconv.Itoa(wi.Stats.Behind)+" behind") + "  "
 				switch {
 				case wi.HasPR:
-					pr := "#" + strconv.Itoa(wi.Pr.Number) + " " + core.PrState(wi.Pr)
+					pr := wi.Pr.Ref() + " " + core.PrState(wi.Pr)
 					if wi.Pr.CI != "" {
 						pr += " · CI " + wi.Pr.CI
 					}

@@ -2,7 +2,6 @@ package app
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -97,7 +96,7 @@ func (w *wizard) shownPRs() []core.PREntry {
 	}
 	var out []core.PREntry
 	for _, e := range w.pulls.entries {
-		hay := strings.ToLower(strings.Join([]string{"#" + strconv.Itoa(e.PR.Number), headName(e), e.PR.Title, e.PR.Author}, " "))
+		hay := strings.ToLower(strings.Join([]string{e.PR.Ref(), headName(e), e.PR.Title, e.PR.Author}, " "))
 		if strings.Contains(hay, q) {
 			out = append(out, e)
 		}
@@ -144,7 +143,7 @@ func (w *wizard) prsKey(m *Model, msg tea.KeyMsg) (tea.Cmd, bool) {
 // is checked out in, or on to the branch, continued, once a fork's is
 // fetched.
 func (w *wizard) pickPR(m *Model, e core.PREntry) tea.Cmd {
-	w.err, w.busy = "", "looking for #"+strconv.Itoa(e.PR.Number)+"'s worktree…"
+	w.err, w.busy = "", "looking for "+e.PR.Ref()+"'s worktree…"
 	return m.do(core.LookUpCheckout{Job: w.id, E: e})
 }
 
@@ -158,7 +157,7 @@ func (w *wizard) pickedPR(m *Model, e core.PREntry, group *workspace.Group) tea.
 		return w.toAgent(m)
 	}
 	if e.PR.Fork != "" {
-		w.err, w.busy = "", "fetching #"+strconv.Itoa(e.PR.Number)+" from origin…"
+		w.err, w.busy = "", "fetching "+e.PR.Ref()+" from origin…"
 		return m.do(core.FetchForkPR{Job: w.id, E: e})
 	}
 	return w.continuePR(m, e)
@@ -203,7 +202,7 @@ func (w *wizard) prLines(m *Model, inner, rows int, sel lipgloss.Style) []string
 	lines := []string{"", head}
 	switch {
 	case w.pulls.loading:
-		return append(lines, dim("  asking gh…"))
+		return append(lines, dim("  asking…"))
 	case len(w.pulls.entries) == 0 && w.pulls.err == "":
 		return append(lines, dim("  (none open)"))
 	case len(shown) == 0 && len(w.pulls.entries) > 0:
@@ -213,7 +212,7 @@ func (w *wizard) prLines(m *Model, inner, rows int, sel lipgloss.Style) []string
 	rows = max(min(rows, wizardPRRows), 3)
 	var out []string
 	for i, e := range shown {
-		row := padTo("#"+strconv.Itoa(e.PR.Number), prColNum) +
+		row := padTo(e.PR.Ref(), prColNum) +
 			padTo(m.prWhere(e), prColWhere) +
 			padTo(ansi.Truncate(term.PrintableLine(headName(e)), prColBranch(true)-1, "…"), prColBranch(true)) +
 			padTo(ansi.Truncate(term.PrintableLine(e.PR.Author), prColAuthor-1, "…"), prColAuthor)

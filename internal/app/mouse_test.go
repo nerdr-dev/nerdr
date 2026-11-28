@@ -14,7 +14,7 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/browser"
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/input"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/term"
@@ -569,7 +569,7 @@ func TestClickPRNumber(t *testing.T) {
 	m.showDetails = true
 	for i, n := range []int{7, 8} {
 		m.home().Core.Tabs[i].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true,
-			Pr: github.Status{Number: n, State: "OPEN", URL: "https://github.com/o/app/pull/" + strconv.Itoa(n)}}}}
+			Pr: forge.Status{Number: n, State: "OPEN", URL: "https://github.com/o/app/pull/" + strconv.Itoa(n)}}}}
 	}
 	m.selectTab(0)
 	m.View()

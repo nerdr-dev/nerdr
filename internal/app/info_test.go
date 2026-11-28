@@ -8,7 +8,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/config"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/proc"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
@@ -127,7 +127,7 @@ func TestLineCountsOnTheActiveTabOnly(t *testing.T) {
 // or every branch with commits already has its open pull request.
 func TestPushAndOpenPRWhenThereIsSomethingToDo(t *testing.T) {
 	at := time.Now()
-	open := github.Status{State: "OPEN"}
+	open := forge.Status{State: "OPEN"}
 	cases := []struct {
 		name         string
 		wi           core.WtInfo
@@ -136,7 +136,7 @@ func TestPushAndOpenPRWhenThereIsSomethingToDo(t *testing.T) {
 		{"all pushed, no PR", core.WtInfo{Stats: workspace.Stats{Ahead: 2}}, false, true},
 		{"unpushed, open PR", core.WtInfo{Stats: workspace.Stats{Ahead: 2}, Unpushed: 1, Pr: open, HasPR: true}, true, false},
 		{"nothing ahead", core.WtInfo{}, false, false},
-		{"merged PR, new commits", core.WtInfo{Stats: workspace.Stats{Ahead: 1}, Unpushed: 1, Pr: github.Status{State: "MERGED"}, HasPR: true}, true, true},
+		{"merged PR, new commits", core.WtInfo{Stats: workspace.Stats{Ahead: 1}, Unpushed: 1, Pr: forge.Status{State: "MERGED"}, HasPR: true}, true, true},
 	}
 	for _, c := range cases {
 		in := core.TabInfo{Wts: []core.WtInfo{c.wi}, At: at}
@@ -187,7 +187,7 @@ func TestLocalCommitUnmergesCachedPR(t *testing.T) {
 	head := gitIn("rev-parse", "HEAD")
 	wts := []workspace.Worktree{{Repo: dir, Path: dir, Branch: "brew"}}
 	prev := core.LookAt(wts, core.TabInfo{}, false, false)
-	prev.Wts[0].Pr = github.Status{Number: 16, State: "MERGED", HeadOID: head, Base: "main"}
+	prev.Wts[0].Pr = forge.Status{Number: 16, State: "MERGED", HeadOID: head, Base: "main"}
 	prev.Wts[0].HasPR = true
 	if !prev.Merged() {
 		t.Fatal("the branch at its merged PR's head should be merged")

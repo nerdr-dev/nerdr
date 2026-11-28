@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -143,11 +144,14 @@ func (w *wizard) handleNewRepo(m *Model, msg core.RepoMadeMsg) tea.Cmd {
 func (w *wizard) newRepoLines(m *Model, sel lipgloss.Style) []string {
 	f := &w.newRepo
 	var lines []string
+	host := m.dialogOn().Core.Cfg.NewRepoHost()
+	kind := forge.KindWith(host, m.dialogOn().Core.Cfg.Forges)
 	if f.clone {
 		lines = append(lines, "Clone a repository into "+dim(w.repoDir), "",
 			f.input.View(), "",
-			dim("owner/name clones from GitHub, with gh when it is installed, so that"),
-			dim("private repositories work too; or any URL or path git can clone."))
+			dim("owner/name clones from "+host+", and host/group/name from that host,"),
+			dim("with gh or glab when installed, so that private repositories work too;"),
+			dim("or any URL or path git can clone."))
 	} else {
 		lines = append(lines, "New repository in "+dim(w.repoDir), "",
 			m.onClick(f.input.View(), func(m *Model) tea.Cmd {
@@ -160,12 +164,12 @@ func (w *wizard) newRepoLines(m *Model, sel lipgloss.Style) []string {
 			if f.onGitHub {
 				box = "[✓]"
 			}
-			lines = append(lines, "", m.onClick(cursorLine(f.field == 1, box+" Also a private repository on GitHub, as origin", sel), func(m *Model) tea.Cmd {
+			lines = append(lines, "", m.onClick(cursorLine(f.field == 1, box+" Also a private repository on "+kind.Name()+", as origin", sel), func(m *Model) tea.Cmd {
 				f.field = 1
 				f.input.Blur()
 				f.onGitHub = !f.onGitHub
 				return nil
-			}), dim("    gh repo create --private, under the account gh is logged in as"))
+			}), dim("    made private with "+kind.CLI()+" on "+host+", under the account it is logged in as"))
 		}
 	}
 	lines = append(lines, "")

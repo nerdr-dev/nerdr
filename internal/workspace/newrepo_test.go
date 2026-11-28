@@ -94,21 +94,24 @@ func TestNewRepoInsideAnother(t *testing.T) {
 
 func TestCloneSource(t *testing.T) {
 	for _, c := range []struct {
-		src, name, url string
-		github         bool
+		src, name, url, host, path string
 	}{
-		{"me/app", "app", "https://github.com/me/app.git", true},
-		{"https://github.com/me/app.git", "app", "https://github.com/me/app.git", false},
-		{"git@github.com:me/app.git", "app", "git@github.com:me/app.git", false},
-		{"/srv/git/lib/", "lib", "/srv/git/lib/", false},
-		{"./me/app", "app", "./me/app", false},
+		{"me/app", "app", "https://github.com/me/app.git", "github.com", "me/app"},
+		{"https://github.com/me/app.git", "app", "https://github.com/me/app.git", "", ""},
+		{"git@github.com:me/app.git", "app", "git@github.com:me/app.git", "", ""},
+		{"/srv/git/lib/", "lib", "/srv/git/lib/", "", ""},
+		{"./me/app", "app", "./me/app", "", ""},
+		{"gitlab.com/group/sub/app", "app", "https://gitlab.com/group/sub/app.git", "gitlab.com", "group/sub/app"},
 	} {
-		name, url, gh, err := CloneSource(c.src)
-		if err != nil || name != c.name || url != c.url || gh != c.github {
-			t.Errorf("%q: %q %q %v %v", c.src, name, url, gh, err)
+		name, url, host, path, err := CloneSource(c.src, "github.com")
+		if err != nil || name != c.name || url != c.url || host != c.host || path != c.path {
+			t.Errorf("%q: %q %q %q %q %v", c.src, name, url, host, path, err)
 		}
 	}
-	if _, _, _, err := CloneSource("  "); err == nil {
+	if _, url, host, _, _ := CloneSource("me/app", "gitlab.example.com"); host != "gitlab.example.com" || url != "https://gitlab.example.com/me/app.git" {
+		t.Errorf("owner/name not on repo_host: %q %q", host, url)
+	}
+	if _, _, _, _, err := CloneSource("  ", "github.com"); err == nil {
 		t.Error("nothing typed taken for a source")
 	}
 }

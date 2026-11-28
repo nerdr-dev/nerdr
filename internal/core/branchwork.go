@@ -5,7 +5,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -204,7 +204,7 @@ func CreatePRs(name string, wts []workspace.Worktree, have map[string]bool, hook
 		if have[w.Repo] {
 			continue // the branch was pushed; only making the PR is skipped
 		}
-		url, err := github.CreatePR(w.Path, w.Origin)
+		url, err := forges.CreatePR(w.Path, w.Origin)
 		if err != nil {
 			errs = append(errs, repo+": "+err.Error())
 			continue

@@ -135,7 +135,7 @@ func (m *Model) branchKey(k string) (tea.Cmd, bool) {
 			}
 		}
 		title := "Push " + t.Name + "?"
-		what := "Pushes " + strings.Join(branches, ", ") + " to GitHub."
+		what := "Pushes " + strings.Join(branches, ", ") + " to origin."
 		if k == "P" {
 			title = "Push and open a pull request?"
 			what = "Pushes " + strings.Join(branches, ", ") + " and opens a pull request for each branch without one."
@@ -398,10 +398,10 @@ func (m *Model) askAboutPR(fix bool) tea.Cmd {
 			dir = w.Path
 		}
 	}
-	what := "draft replies to #" + strconv.Itoa(e.PR.Number) + "'s reviews"
+	what := "draft replies to " + e.PR.Ref() + "'s reviews"
 	if fix {
-		what = "fix #" + strconv.Itoa(e.PR.Number) + "'s build"
-		m.toast("reading the build log of #" + strconv.Itoa(e.PR.Number) + "…")
+		what = "fix " + e.PR.Ref() + "'s build"
+		m.toast("reading the build log of " + e.PR.Ref() + "…")
 	}
 	m.prAsking[key] = prAsk{t: t, what: what, fix: fix}
 	return m.do(core.FetchPR{Job: key, Dir: dir, Number: e.PR.Number, Logs: fix, Limit: review.LogLimit})
@@ -421,7 +421,7 @@ func (m *Model) onPRFetched(msg core.PRFetchedMsg) {
 		out.text, out.err = review.FixMessage(msg.PR, msg.Logs)
 	default:
 		if out.text = review.ReplyMessage(msg.PR); out.text == "" {
-			out.err = fmt.Errorf("no reviews or comments with words on #%d", msg.PR.Number)
+			out.err = fmt.Errorf("no reviews or comments with words on %s", msg.PR.Ref())
 		}
 	}
 	m.onPRAsk(out)

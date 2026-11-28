@@ -29,9 +29,9 @@ question.*
 - **Review before you merge.** Word-level diffs, the agent's notes on why,
   guided walkthroughs, and a second agent that reviews the work and sends
   findings back. [Code review →](https://nerdr.app/use/code-review/)
-- **From task to merge.** Commit, push, open pull requests, hand review
-  comments and failing CI to the agent, and close the tab when it is
-  merged. [GitHub →](https://nerdr.app/panel/github/)
+- **From task to merge.** Commit, push, open pull requests on GitHub or
+  merge requests on GitLab, hand review comments and failing CI to the
+  agent, and close the tab when it is merged. [GitHub and GitLab →](https://nerdr.app/panel/github/)
 - **Your agents, as they are.** Claude Code, Codex, Copilot, opencode,
   Cursor, Gemini, Antigravity and Grok, with their own settings, in a sandbox
   if you like. [Agents →](https://nerdr.app/configure/agents/)
@@ -65,7 +65,7 @@ or with Homebrew, `brew install nerdr-dev/tap/nerdr`, or with Go 1.27 or
 newer, `go install github.com/nerdr-dev/nerdr/cmd/nerdr@latest`. The
 binaries are also on the [releases page](https://github.com/nerdr-dev/nerdr/releases).
 You need Git 2.31 or newer and at least one coding agent on your PATH. Sign in to `gh`
-for pull requests, CI and issues. See [install](https://nerdr.app/start/install/)
+(or `glab`, for GitLab) for pull requests, CI and issues. See [install](https://nerdr.app/start/install/)
 for the details and for building from source.
 
 Start it in the folder that holds your repositories:

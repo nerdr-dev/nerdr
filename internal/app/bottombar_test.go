@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -25,7 +25,7 @@ func footModel(t *testing.T) *Model {
 	tb := m.home().Core.Tabs[0]
 	tb.Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{Repo: "/r/app", Branch: "login",
 		Add: 12, Del: 3, Uncommitted: 4, Unpushed: 2,
-		HasPR: true, Pr: github.Status{Number: 7, State: "OPEN", CI: "pass"}}}}
+		HasPR: true, Pr: forge.Status{Number: 7, State: "OPEN", CI: "pass"}}}}
 	tb.Messages = []state.Message{{Text: "later"}}
 	m.selectTab(0)
 	return m
@@ -98,8 +98,8 @@ func TestBottomBarButtons(t *testing.T) {
 
 func TestBottomBarAllTabs(t *testing.T) {
 	m := footModel(t)
-	m.home().Core.Tabs[1].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true, Pr: github.Status{Number: 8, State: "OPEN", CI: "fail"}}}}
-	m.home().Core.Tabs[2].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true, Pr: github.Status{Number: 9, State: "MERGED"}}}}
+	m.home().Core.Tabs[1].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true, Pr: forge.Status{Number: 8, State: "OPEN", CI: "fail"}}}}
+	m.home().Core.Tabs[2].Info = core.TabInfo{At: time.Now(), Wts: []core.WtInfo{{HasPR: true, Pr: forge.Status{Number: 9, State: "MERGED"}}}}
 	foot := lastLine(m)
 	if !strings.Contains(foot, "✗ 1 CI") || !strings.Contains(foot, "✓ 1 merged") {
 		t.Fatalf("the bottom bar should count the failing and the merged: %q", foot)

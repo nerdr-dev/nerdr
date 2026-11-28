@@ -10,7 +10,7 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -465,13 +465,13 @@ func TestWizardOffersOpenPullRequests(t *testing.T) {
 	now := time.Now()
 	got := core.RepoPRs{At: now, Names: []string{"acme/app"}}
 	for i := 1; i <= 20; i++ {
-		got.Entries = append(got.Entries, core.PREntry{Repo: app, PR: github.PR{Number: i, Title: fmt.Sprintf("Change %d", i),
+		got.Entries = append(got.Entries, core.PREntry{Repo: app, PR: forge.PR{Number: i, Title: fmt.Sprintf("Change %d", i),
 			Author: "ann", Branch: fmt.Sprintf("change-%d", i), UpdatedAt: now.Add(-time.Duration(i) * time.Hour)}})
 	}
-	got.Entries = append(got.Entries, core.PREntry{Repo: app, PR: github.PR{Number: 21, Title: "From a fork", Author: "bob",
+	got.Entries = append(got.Entries, core.PREntry{Repo: app, PR: forge.PR{Number: 21, Title: "From a fork", Author: "bob",
 		Branch: "main", Fork: "bob", UpdatedAt: now.Add(-48 * time.Hour)}})
 	w.pulls = wizardPRs{repo: app.Path}
-	w.setPRs(m, got, map[string]bool{github.RequestKey("acme/app", 15): true})
+	w.setPRs(m, got, map[string]bool{forge.RequestKey("acme/app", 15): true})
 	for _, e := range w.pulls.entries {
 		if e.PR.Number == 2 {
 			t.Fatal("#2 has a tab open on its branch: there is no new tab to make for it")
