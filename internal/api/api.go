@@ -89,6 +89,13 @@ type Request struct {
 	// Cols and Rows are view's: the size the client shows the program at.
 	Cols int `json:"cols,omitempty"`
 	Rows int `json:"rows,omitempty"`
+	// Part is spinoff_create's and spinoff_skip's: the id of the part
+	// asked about. Kind and Reuse are spinoff_create's: the agent to run
+	// in its tab, and whether the branch starts with its commits (left
+	// out, it does).
+	Part  string `json:"part,omitempty"`
+	Kind  string `json:"kind,omitempty"`
+	Reuse *bool  `json:"reuse,omitempty"`
 }
 
 // Answer is the core's answer to a request: Result, or Error.
@@ -241,12 +248,10 @@ func (s *Server) Observe(ev core.Event) {
 		out = &Event{Event: "notice", Text: string(ev)}
 	case core.NoticeMsg:
 		out = &Event{Event: "notice", Text: string(ev), Important: true}
-	case core.AskMsg, core.AnsweredMsg, core.PanesMsg:
+	case core.AskMsg, core.AnsweredMsg, core.PanesMsg,
+		core.SpinoffAskMsg, core.SpinoffPromptMsg, core.SpinoffFailedMsg, core.SpinoffNextMsg:
 		// Looked at at once, rather than at the next poll.
-		select {
-		case s.poll <- struct{}{}:
-		default:
-		}
+		s.pollSoon()
 	}
 	if out == nil {
 		return
@@ -255,6 +260,15 @@ func (s *Server) Observe(ev core.Event) {
 	defer s.mu.Unlock()
 	for c := range s.subs {
 		c.event(*out)
+	}
+}
+
+// pollSoon has the state looked at for events at once, rather than at the
+// next poll.
+func (s *Server) pollSoon() {
+	select {
+	case s.poll <- struct{}{}:
+	default:
 	}
 }
 
@@ -683,6 +697,26 @@ func (c *conn) do(r Request) (any, error) {
 			cmd, err := m.APIReview(r.Agent, r.By, r.Model)
 			return nil, cmd, err
 		})
+	case "spinoff_create":
+		q := core.APISpinoffMake{Tab: r.Tab, Part: r.Part, Branch: r.Branch, Kind: r.Kind, Reuse: r.Reuse, Repos: r.Repos}
+		// Those the agent or the client named that are not the tab's are
+		// looked for among them all, away from the loop.
+		places, err := s.repoPlaces()
+		if err != nil {
+			return nil, err
+		}
+		all := places.Scan()
+		defer s.pollSoon() // busy, at once
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			cmd, err := m.APISpinoffCreate(q, all)
+			return nil, cmd, err
+		})
+	case "spinoff_skip":
+		defer s.pollSoon()
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			cmd, err := m.APISpinoffSkip(r.Tab, r.Part)
+			return nil, cmd, err
+		})
 	case "quit":
 		// As the user quitting in the TUI: every program stops, and the
 		// core ends, the tabs kept for next time. The answer comes before
@@ -697,7 +731,7 @@ func (c *conn) do(r Request) (any, error) {
 	case "":
 		return nil, errors.New("a request needs an op")
 	}
-	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, scroll, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_pane, close_tab and quit", r.Op)
+	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, scroll, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_pane, spinoff_create, spinoff_skip, close_tab and quit", r.Op)
 }
 
 // closeTab closes tab id, as the TUI's close dialog does, and answers once

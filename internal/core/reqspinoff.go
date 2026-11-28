@@ -81,10 +81,10 @@ func (q SpinoffCreate) Do(m *Core) Cmd {
 	// one gone through since, and may not have a prompt sent after the
 	// plan yet.
 	if t.Spinoff == nil || len(t.Spinoff.Next) == 0 || t.Spinoff.Next[0].ID != q.Part.ID {
-		return m.Tell(SpinoffFailedMsg{T: q.T, Branch: q.Name, Err: "this part is no longer the one asked about"})
+		return m.spinoffFailed(t, q.Name, "this part is no longer the one asked about")
 	}
 	if q.Part.Prompt = t.Spinoff.Next[0].Prompt; q.Part.Prompt == "" {
-		return m.Tell(SpinoffFailedMsg{T: q.T, Branch: q.Name, Err: "the agent has not sent this part's prompt yet"})
+		return m.spinoffFailed(t, q.Name, "the agent has not sent this part's prompt yet")
 	}
 	var paths []string
 	for _, r := range q.Repos {
@@ -140,7 +140,7 @@ func (m *Core) SpinoffMade(msg SpinoffMsg) Cmd {
 	}
 	t.SpinoffBusy = ""
 	if msg.Err != nil {
-		return m.Tell(SpinoffFailedMsg{T: m.Ref(t), Branch: msg.Outcome.Branch, Err: msg.Err.Error()})
+		return m.spinoffFailed(t, msg.Outcome.Branch, msg.Err.Error())
 	}
 	parent := spinoff.Parent{Name: t.Name, Dir: t.Dir}
 	if len(t.Worktrees) > 0 {
@@ -180,6 +180,7 @@ func (m *Core) SpinoffNext(t *Tab, o spinoff.Outcome) Cmd {
 	}
 	p.Done = append(p.Done, o)
 	p.Next = p.Next[1:]
+	t.SpinoffFailed = nil // that of the part gone through
 	if len(p.Next) > 0 {
 		m.SaveSession()
 		return m.Tell(SpinoffNextMsg{T: m.Ref(t), Left: len(p.Next)})

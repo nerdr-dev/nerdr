@@ -80,6 +80,10 @@ var schemaOps = []opSpec{
 		fields: []string{"agent", "by", "model"}, required: []string{"agent"}},
 	{op: "close_pane", desc: "Close an agent or a terminal in a tab, stopping what runs in it, as the TUI does; an agent's conversation is kept. The tab's first agent, whose ID is the tab's, stays as long as the tab and is refused: close the tab with close_tab. The tab gets a tab event, or the agent an agent event. target is an agent's or a terminal's ID; agent works too, for an agent.",
 		fields: []string{"target", "agent"}},
+	{op: "spinoff_create", desc: "Make the tab for part, the first of those a tab's agent split its work into (its spinoff in state), as the TUI's spinoff dialog does: on a new branch from origin's main, named branch (the part's when not given), with the agent kind (the part's kind when not given; one of its kinds), starting with the part's commits unless reuse is false, in the repositories named in repos (by their folder in the tab, or any that repos lists; when not given, those the agent asked for). It needs the part's prompt_ready. nerdr may first ask whether the repositories' setup may run (a repo_setup question); then spinoff.busy says the tab is being made, and a spinoff event comes once the part is gone through, its tab with a tab_opened event, or, when it could not be made (a branch name taken, say), with why in spinoff.failed, the part still first. Parts made on another machine are not the API's.",
+		fields: []string{"tab", "part", "branch", "kind", "reuse", "repos"}, required: []string{"tab", "part"}},
+	{op: "spinoff_skip", desc: "Go past part, the first of those a tab's agent split its work into, with no tab made for it: the agent is told, and keeps the work. A spinoff event follows.",
+		fields: []string{"tab", "part"}, required: []string{"tab", "part"}},
 	{op: "close_tab", desc: "Close a tab, stopping everything in it, and answer once it is closed. With remove its worktrees are deleted too, never by force: it is refused, the tab left open, if that would lose changes not committed or commits not pushed. The branches are kept, unless each one's pull request is merged with the head it has.",
 		fields: []string{"tab", "remove"}, required: []string{"tab"},
 		result: reflect.TypeFor[ClosedResult]()},
@@ -92,6 +96,9 @@ type eventSpec struct {
 	event, desc string
 	fields      []string
 	required    []string
+	// nullable are the fields that may be null: sent so, where the others
+	// are left out.
+	nullable []string
 }
 
 var schemaEvents = []eventSpec{
@@ -109,6 +116,8 @@ var schemaEvents = []eventSpec{
 		fields: []string{"question"}, required: []string{"question"}},
 	{event: "answered", desc: "A question is answered, here or in another client, or its time ran out.",
 		fields: []string{"question_id"}, required: []string{"question_id"}},
+	{event: "spinoff", desc: "The parts a tab's agent split its work into, waiting for the user (its spinoff in state), changed: they came, a part's prompt came, one was gone through, its tab began to be made, or could not be (failed). spinoff is null once none wait.",
+		fields: []string{"tab_id", "spinoff"}, required: []string{"tab_id", "spinoff"}, nullable: []string{"spinoff"}},
 	{event: "notice", desc: "What nerdr tells the user in its status bar; important for what it keeps on screen until seen.",
 		fields: []string{"text", "important"}, required: []string{"text"}},
 	{event: "lost", desc: "The client read too slowly and events were dropped: get the state afresh."},
@@ -369,7 +378,11 @@ func makeSchema(t *testing.T) []byte {
 	var evs []any
 	for _, e := range schemaEvents {
 		s := g.object(ev, append([]string{"event"}, e.fields...), append([]string{"event"}, e.required...))
-		s["properties"].(map[string]any)["event"] = map[string]any{"const": e.event}
+		props := s["properties"].(map[string]any)
+		props["event"] = map[string]any{"const": e.event}
+		for _, f := range e.nullable {
+			props[f] = map[string]any{"anyOf": []any{props[f], map[string]any{"type": "null"}}}
+		}
 		s["description"] = e.desc
 		name := camel(e.event) + "Event"
 		g.defs[name] = s

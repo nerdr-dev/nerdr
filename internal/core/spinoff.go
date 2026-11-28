@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"slices"
@@ -342,7 +343,7 @@ func (m *Core) OnSpinoffPrompt(r hooks.Report) Cmd {
 // repository path, which are: the part's commits are brought into those
 // alone, though a fork elsewhere may have them too.
 func (m *Core) SpinoffCreate(t *Tab, pt spinoff.Part, kind agents.Kind, name string, reuse, elsewhere bool, group string, repos []workspace.Repo, own map[string]bool) Cmd {
-	t.SpinoffBusy = "making " + name + "…"
+	t.SpinoffBusy, t.SpinoffFailed = "making "+name+"…", nil
 	wtRoot := m.WtRoot
 	allowed := SetupAllowedFile()
 	return func() Event {
@@ -412,4 +413,148 @@ func makePart(res *SpinoffMsg, wtRoot, allowed string, repos []workspace.Repo, p
 			res.Outcome.PickFailed = err.Error()
 		}
 	}
+}
+
+// SpinoffChoice is the repositories a part can be made in, and which of
+// them it is to be: what the spinoff dialog offers, and the API goes by.
+// Repos are the tab's own first, in the order of its worktrees.
+type SpinoffChoice struct {
+	Repos []SpinoffRepo
+	On    []bool
+	// Unknown are those the agent named that nerdr does not have, and
+	// Confined those it named, in a sandbox, that are not the tab's: they
+	// are not ticked for it, though the user may tick them.
+	Unknown, Confined []string
+}
+
+// ChooseSpinoff is what part pt, sent from a tab on worktrees wts, is to
+// be made in at first: as SpinoffRepos picks among the tab's, and the
+// others the agent named, found among those others gives (OtherRepos, of
+// the repositories had so far). there, when set, makes each of the tab's
+// what it is on the machine the tab is to be made on: one with Err set is
+// not ticked.
+func ChooseSpinoff(wts []workspace.Worktree, pt spinoff.Part, there func(i int, r *SpinoffRepo),
+	others func(have []SpinoffRepo) []workspace.Repo) SpinoffChoice {
+	c := SpinoffChoice{On: SpinoffRepos(wts, pt)}
+	for i, w := range wts {
+		r := SpinoffRepo{Repo: workspace.Repo{Name: filepath.Base(w.Repo), Path: filepath.Clean(w.Repo)},
+			Label: RepoName(w), Own: true}
+		if there != nil {
+			there(i, &r)
+			if r.Err != "" {
+				c.On[i] = false
+			}
+		}
+		c.Repos = append(c.Repos, r)
+	}
+	// Those the agent named that the tab does not have are looked for
+	// among the rest; an agent in a sandbox gets the tab's alone, as with
+	// nerdr tab new, and the user can still tick another.
+	names := UnknownRepos(wts, pt.Repos)
+	if len(names) == 0 {
+		return c
+	}
+	// Named none of the tab's, and found another: not the tab's as well.
+	noneOwn := len(names) == len(pt.Repos)
+	all := others(c.Repos)
+	for _, n := range names {
+		i := slices.IndexFunc(all, func(r workspace.Repo) bool { return r.Name == n })
+		switch {
+		case i < 0:
+			c.Unknown = append(c.Unknown, n)
+		case pt.Sandboxed:
+			c.Confined = append(c.Confined, n)
+		default:
+			if noneOwn {
+				clear(c.On)
+				noneOwn = false
+			}
+			c.Repos = append(c.Repos, SpinoffRepo{Repo: all[i], Label: all[i].Name})
+			c.On = append(c.On, true)
+		}
+	}
+	return c
+}
+
+// OwnTicked reports whether one of the tab's own repositories is ticked:
+// the part's commits can be brought in only there.
+func (c SpinoffChoice) OwnTicked() bool {
+	for i, r := range c.Repos {
+		if r.Own && c.On[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// OthersTicked reports whether a repository not the tab's is ticked.
+func (c SpinoffChoice) OthersTicked() bool {
+	for i, r := range c.Repos {
+		if !r.Own && c.On[i] {
+			return true
+		}
+	}
+	return false
+}
+
+// Why a part cannot be made in the repositories chosen.
+var (
+	ErrSpinoffNoWorktrees = errors.New("this tab has no worktrees to make the new one beside")
+	ErrSpinoffNoRepos     = errors.New("pick at least one repository")
+)
+
+// Create is the request that makes part pt of tab t, ref, in the
+// repositories ticked, on branch name with agent kind: starting with the
+// part's commits unless rewrite is set, when it has them and one of the
+// tab's own repositories is ticked. In the tab's own repositories alone,
+// the new tab goes in the tab's group; with others, in the one nerdr
+// gives it.
+func (c SpinoffChoice) Create(t *Tab, ref TabRef, pt spinoff.Part, kind agents.Kind, name string, rewrite bool) (SpinoffCreate, error) {
+	q := SpinoffCreate{T: ref, Part: pt, Kind: kind, Name: name, Own: map[string]bool{},
+		Reuse: len(pt.Commits) > 0 && !rewrite && c.OwnTicked(), Elsewhere: !c.OwnTicked(), Group: t.Group}
+	for i, r := range c.Repos {
+		if c.On[i] {
+			q.Repos = append(q.Repos, r.Repo)
+			q.Own[r.Path] = r.Own
+		}
+	}
+	if c.OthersTicked() {
+		q.Group = ""
+	}
+	switch {
+	case len(t.Worktrees) == 0:
+		return q, ErrSpinoffNoWorktrees
+	case len(q.Repos) == 0:
+		return q, ErrSpinoffNoRepos
+	}
+	return q, nil
+}
+
+// SpinoffKind is the agent the dialog picks for part pt of t at first:
+// t's own, when it may run it, else the first that may.
+func (m *Core) SpinoffKind(t *Tab, pt spinoff.Part) agents.Kind {
+	kinds := m.SpinoffKinds(pt)
+	switch {
+	case slices.Contains(kinds, t.Agent):
+		return t.Agent
+	case len(kinds) > 0:
+		return kinds[0]
+	}
+	return ""
+}
+
+// SpinoffFailure is why the tab for the part asked about was not made the
+// last time it was tried, for the user to put right: Branch is the name
+// it was to have.
+type SpinoffFailure struct {
+	Branch, Err string
+}
+
+// spinoffFailed records that the tab for t's first part was not made,
+// and tells the client.
+func (m *Core) spinoffFailed(t *Tab, branch, err string) Cmd {
+	if t != nil {
+		t.SpinoffFailed = &SpinoffFailure{Branch: branch, Err: err}
+	}
+	return m.Tell(SpinoffFailedMsg{T: m.Ref(t), Branch: branch, Err: err})
 }

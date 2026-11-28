@@ -1,6 +1,6 @@
 ---
 title: Requests
-description: Everything a program can ask of nerdr's API — the state, an agent's screen, scrolling it and the size it is shown at, messages, keys, answers, new tabs, terminals and agents, reviews, closing tabs and quitting.
+description: Everything a program can ask of nerdr's API — the state, an agent's screen, scrolling it and the size it is shown at, messages, keys, answers, new tabs, terminals and agents, reviews, the tabs an agent split its work into, closing tabs and quitting.
 ---
 
 A request is one line of JSON with an `op`, what to do, and the
@@ -40,6 +40,8 @@ as nerdr runs. A tab's ID is also the ID of its first agent.
 | [`new_agent`](#new_agent) | `tab`, `agent`, `model`, `task` | Start another agent in a tab |
 | [`review`](#review) | `agent`, `by`, `model` | Have an agent's work reviewed |
 | [`close_pane`](#close_pane) | `target` | Close an agent or a terminal in a tab |
+| [`spinoff_create`](#spinoff_create) | `tab`, `part`, `branch`, `kind`, `reuse`, `repos` | Make the tab for a part an agent split off |
+| [`spinoff_skip`](#spinoff_skip) | `tab`, `part` | Skip that part |
 | [`close_tab`](#close_tab) | `tab`, `remove` | Close a tab |
 | [`quit`](#quit) | | Stop nerdr and its agents |
 
@@ -127,6 +129,51 @@ state, which you answer with [`type`](#type).
 | `plugin_run` | May `agent` run `plugin` with `values` in `dir`? If not answered by `until`, the answer is no |
 
 `text` asks the question in one sentence, ready to show.
+
+### Spinoff
+
+When an agent splits its work up into new tabs (`nerdr spinoff`), the
+parts wait on its tab as `spinoff`, and the agent is `blocked` until
+you have been through them, first to last: make a tab for each with
+[`spinoff_create`](#spinoff_create), or skip it with
+[`spinoff_skip`](#spinoff_skip). This is what the TUI's spinoff dialog
+asks, and its inbox shows as "wants 2 new tabs". A tab with no parts
+waiting has no `spinoff`.
+
+```json
+"spinoff": {
+  "parts": [
+    {"id": "5a1e0c3b", "branch": "fix-logout", "summary": "Fix the logout redirect too.",
+     "commits": ["3f2a9c1e0b7d4a6f8e5c2b1a0d9e8f7c6b5a4d3e"], "prompt_ready": true,
+     "kinds": ["claude", "codex"], "kind": "claude"},
+    {"id": "77b2d9e4", "branch": "docs-login", "summary": "Document the login flow.",
+     "repos": ["docs"], "prompt_ready": false, "kinds": ["claude", "codex"], "kind": "claude"}
+  ],
+  "done": 1,
+  "failed": {"branch": "fix-logout", "err": "web: branch fix-logout already exists; pick another name"}
+}
+```
+
+- `parts` are in the order they are gone through; only the first can be
+  answered. `done` counts the parts of the plan gone through already, so
+  the first is part `done`+1 of `done`+`parts.length`.
+- A part's `branch` is the name the agent proposes, `summary` what it
+  says of the part, and `commits` the commits in the tab's branch that
+  already have its work. `repos` are the repositories (by their folder in
+  the tab) the agent named for it; with none named, `in_repos` are those
+  its commits are in.
+- `prompt_ready` says whether the agent has sent the prompt the new
+  agent is to be given; the agent may send it after the plan, and the
+  tab cannot be made before it comes. The prompt itself is not sent.
+- `sandboxed` is set when the agent that sent it runs in a sandbox: only
+  an agent set `sandboxed = true` may run in its tab. `kinds` are the
+  agents that may, and `kind` the one picked if you name none.
+- `busy` says what is being made, while it is ("making fix-logout…").
+- `failed` is why the first part's tab was not made the last time it was
+  tried, for you to put right and try again.
+
+Parts made on another machine (`[[servers]]`), as the TUI can, are not
+the API's.
 
 ## subscribe
 
@@ -420,6 +467,53 @@ closing its pane in the TUI does.
 The request is refused for the tab's first agent, whose ID is the
 tab's: it stays as long as the tab, which [`close_tab`](#close_tab)
 closes.
+
+## spinoff_create
+
+Makes the tab for `part`, the first of those waiting in `tab`'s
+[`spinoff`](#spinoff), as the TUI's spinoff dialog does: a new branch
+from origin's main, its worktrees, and a tab beside the agent's, whose
+new agent is given the part's prompt.
+
+```json
+{"id":18,"op":"spinoff_create","tab":"9f3c01aa","part":"5a1e0c3b","branch":"fix-logout-2"}
+```
+
+- `branch` is optional; without it, it is the part's `branch`.
+- `kind` is optional; it is one of the part's `kinds`, and without it the
+  part's `kind`.
+- `reuse` is optional: left out or true, the branch starts with the
+  part's `commits`, when it has them and is made in one of the tab's own
+  repositories; false has the new agent write the work anew.
+- `repos` is optional: the repositories to make it in, the tab's by
+  their folder in it, others by their name in [`repos`](#repos). Without
+  it, they are those the agent named, or else those its commits are in,
+  or else all of the tab's.
+- The part's `prompt_ready` must be set.
+- The answer comes at once. nerdr may then ask whether the repositories'
+  setup may run (a [`repo_setup`](#questions) question). While the tab is
+  made, `spinoff.busy` says so. Once it is, the tab comes with a
+  `tab_opened` [event](../events/) and the part is gone through; if it
+  could not be (a branch name taken, say), `spinoff.failed` says why, and
+  the part stays first. Either way a `spinoff` event follows.
+
+The request is refused if the part is not the first, its prompt has not
+come, its tab is being made, the tab limit (`max_tabs`) is reached, the
+agent is not one there is, or it is not set sandboxed for a part from an
+agent in a sandbox.
+
+## spinoff_skip
+
+Goes past `part`, the first of those waiting in `tab`'s
+[`spinoff`](#spinoff), with no tab made for it. The agent that sent it is
+told, and keeps the work.
+
+```json
+{"id":19,"op":"spinoff_skip","tab":"9f3c01aa","part":"5a1e0c3b"}
+```
+
+Once every part is gone through, the agent is told what became of each,
+and its `spinoff` is gone: a `spinoff` event with `spinoff` null.
 
 ## close_tab
 
