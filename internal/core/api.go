@@ -48,6 +48,10 @@ type APITab struct {
 	Agents    []APIAgent    `json:"agents"`
 	Terminals []APITerminal `json:"terminals,omitempty"`
 	Branches  []BranchJSON  `json:"branches,omitempty"`
+	// Spinoff is the parts its agent split its work into, waiting for the
+	// user to make a tab for each or skip it; left out when none wait.
+	// The agent is blocked meanwhile.
+	Spinoff *APISpinoff `json:"spinoff,omitempty"`
 }
 
 // APIAgent is an agent of a tab: Num is its number in the tab, as the
@@ -104,7 +108,7 @@ func (m *Core) APIState() APIState {
 	s := APIState{Root: m.Root, Tabs: []APITab{}, Waiting: []string{}, Questions: []APIQuestion{}, Agents: []string{}}
 	for _, t := range m.Tabs {
 		j := APITab{ID: m.Ref(t).Tab, Name: t.Name, Group: t.Group, Dir: t.Dir, Task: t.Goal, Status: t.Status,
-			Agents: []APIAgent{}, Branches: BranchesJSON(t)}
+			Agents: []APIAgent{}, Branches: BranchesJSON(t), Spinoff: m.apiSpinoff(t)}
 		for _, a := range t.AgentsIn() {
 			j.Agents = append(j.Agents, m.apiAgent(a))
 		}

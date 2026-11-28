@@ -1,6 +1,8 @@
 package api
 
 import (
+	"encoding/json"
+	"reflect"
 	"slices"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -20,6 +22,10 @@ import (
 //   - "question", Question: nerdr asks the user something.
 //   - "answered", QuestionID: a question is answered, here or elsewhere,
 //     or its time ran out.
+//   - "spinoff", TabID, Spinoff: the parts a tab's agent split its work
+//     into, waiting for the user, changed: they came, a prompt came, one
+//     was gone through, its tab is being made or could not be. Spinoff is
+//     null once none wait.
 //   - "notice", Text, Important: what nerdr tells the user in its status
 //     bar; Important for what it keeps on screen until seen.
 //   - "lost": the client was too slow, and events were dropped; get the
@@ -36,6 +42,18 @@ type Event struct {
 	QuestionID int               `json:"question_id,omitempty"`
 	Text       string            `json:"text,omitempty"`
 	Important  bool              `json:"important,omitempty"`
+	Spinoff    *core.APISpinoff  `json:"spinoff,omitempty"`
+}
+
+// MarshalJSON is ev as it is sent: a spinoff event has its spinoff, null
+// when none wait, where the other events leave it out.
+func (ev Event) MarshalJSON() ([]byte, error) {
+	type plain Event
+	b, err := json.Marshal(plain(ev))
+	if err != nil || ev.Event != "spinoff" || ev.Spinoff != nil {
+		return b, err
+	}
+	return append(b[:len(b)-1], `,"spinoff":null}`...), nil
 }
 
 // Diff is the events that take a client from state a to state b.
@@ -58,6 +76,9 @@ func Diff(a, b core.APIState) []Event {
 		}
 		if tabChanged(old, t) {
 			out = append(out, Event{Event: "tab", Tab: &t})
+		}
+		if !reflect.DeepEqual(old.Spinoff, t.Spinoff) {
+			out = append(out, Event{Event: "spinoff", TabID: t.ID, Spinoff: t.Spinoff})
 		}
 		was := map[string]core.APIAgent{}
 		for _, ag := range old.Agents {
@@ -117,7 +138,7 @@ func agentKey(ag, o core.APIAgent) core.APIAgent {
 }
 
 // tabChanged reports whether tab a and b differ other than in their
-// agents, which have events of their own.
+// agents and their spinoff, which have events of their own.
 func tabChanged(a, b core.APITab) bool {
 	if a.Name != b.Name || a.Group != b.Group || a.Dir != b.Dir || a.Task != b.Task || a.Status != b.Status ||
 		len(a.Terminals) != len(b.Terminals) || len(a.Branches) != len(b.Branches) {

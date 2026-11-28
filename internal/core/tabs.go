@@ -777,6 +777,9 @@ type Tab struct {
 	// SpinoffReport began to wait for the tabs made.
 	SpinoffBusy  string
 	SpinoffSince time.Time
+	// SpinoffFailed is why the tab for the part asked about was not made
+	// the last time it was tried, until it is tried again or gone through.
+	SpinoffFailed *SpinoffFailure
 
 	// Preparing is the nerdr skill the agent took up at PreparingAt, for
 	// what it is about to send nerdr (hooks.PrepSpinoff, PrepReview): the

@@ -1,6 +1,6 @@
 ---
 title: Events
-description: What nerdr's API tells a subscribed program as it happens — agents changing state, tabs, questions and notices.
+description: What nerdr's API tells a subscribed program as it happens — agents changing state, tabs, questions, the tabs an agent split its work into, and notices.
 ---
 
 After a program sends [`subscribe`](../requests/#subscribe), nerdr also
@@ -20,6 +20,7 @@ between the answers to requests, as things happen.
 | `tab` | `tab` | A tab's name, task, status, branches or terminals changed |
 | `question` | `question` | nerdr asks you [something](../requests/#questions) |
 | `answered` | `question_id` | A question was answered, here or in another client, or timed out |
+| `spinoff` | `tab_id`, `spinoff` | The parts a tab's agent [split off](../requests/#spinoff) changed: they came, a part's prompt came, one was gone through, its tab began to be made, or could not be (`failed`). `spinoff` is null once none wait |
 | `notice` | `text`, `important` | What nerdr shows in its status bar. `important` marks what it keeps on screen until seen |
 | `lost` | | The program read too slowly and events were dropped |
 
@@ -37,7 +38,8 @@ To keep its own copy of nerdr's state, a program:
 2. sends `state` and takes the answer as its copy;
 3. applies each event to the copy: replace the tab or agent with the one
    in the event, remove what is closed or gone, and keep `waiting` and
-   the questions as the events give them.
+   the questions as the events give them; set a tab's `spinoff` to the
+   one in a `spinoff` event, or remove it when that is null.
 
 If an event mentions something the copy does not have, or after `lost`,
 it sends `state` again. That is always safe.
@@ -51,6 +53,10 @@ Most programs only need a few events:
   list, for a badge count.
 - **nerdr asks you something**: `question`, to answer with
   [`answer`](../requests/#answer).
+- **An agent split its work up**: `spinoff`, to go through its parts
+  with [`spinoff_create`](../requests/#spinoff_create) and
+  [`spinoff_skip`](../requests/#spinoff_skip). The agent is `blocked`
+  meanwhile.
 - **A tab arrived or failed**: `tab_opened` after
   [`new_tab`](../requests/#new_tab), or a `notice` saying why it was not
   made.

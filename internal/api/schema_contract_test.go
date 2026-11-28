@@ -302,15 +302,24 @@ func TestEventsMatchTheSchema(t *testing.T) {
 	agent2 := agent
 	agent2.State = "blocked"
 	tab2.Agents = []core.APIAgent{agent2}
+	tab2.Spinoff = &core.APISpinoff{Done: 1, Busy: "making fix-a…", Failed: &core.APISpinoffFailed{Branch: "fix-a", Err: "taken"},
+		Parts: []core.APISpinoffPart{{ID: "p1", Branch: "fix-a", Summary: "a", Commits: []string{"abc"}, Repos: []string{"web"},
+			InRepos: []string{"web"}, Sandboxed: true, PromptReady: true, Kinds: []string{"claude"}, Kind: "claude"}}}
 	changed.Tabs = []core.APITab{tab2}
+	spunOff := changed
+	tab3 := tab2
+	tab3.Spinoff = nil
+	spunOff.Tabs = []core.APITab{tab3}
 
 	var evs []Event
 	evs = append(evs, Diff(empty, full)...)
 	evs = append(evs, Diff(full, changed)...)
+	evs = append(evs, Diff(changed, spunOff)...)
 	evs = append(evs, Diff(changed, empty)...)
 	// What Observe and sendEvents make, not Diff.
 	evs = append(evs, Event{Event: "notice", Text: "made fix", Important: true}, Event{Event: "lost"})
 	mustValidate(t, root, ref("State"), encoded(t, full), "the state")
+	mustValidate(t, root, ref("State"), encoded(t, changed), "the state with a spinoff")
 
 	seen := map[string]bool{}
 	for _, ev := range evs {
