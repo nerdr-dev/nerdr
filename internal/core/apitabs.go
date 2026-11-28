@@ -72,6 +72,32 @@ func (m *Core) APINewAgent(id, kind, model, task string) (string, Cmd, error) {
 	return m.Ref(a).Tab, cmd, nil
 }
 
+// APIClosePane closes the pane of the agent or terminal id, stopping what
+// runs in it, as the user does in the TUI. The tab's first agent stays as
+// long as the tab, so it is refused: close_tab closes that.
+func (m *Core) APIClosePane(id string) (Cmd, error) {
+	if m.Quitting {
+		return nil, ErrAPIQuitting
+	}
+	var t *Tab
+	var p *PaneTab
+	if a := TabList(m.Tabs).Find(id); a != nil {
+		t, p = a.Owner(), a.PaneOf()
+		if p == nil {
+			return nil, fmt.Errorf("the agent %q has no pane", id)
+		}
+	} else if t, p = TabList(m.Tabs).FindPane(id); p == nil || p.Kind != PaneShell {
+		return nil, fmt.Errorf("there is no agent or terminal %q", id)
+	}
+	if t.ReposBusy {
+		return nil, fmt.Errorf("%s: its repositories are being changed; try again in a moment", t.Name)
+	}
+	if p == t.OwnPane() {
+		return nil, fmt.Errorf("%s is the tab's first agent: it stays as long as the tab; close the tab with close_tab", m.AgentLabel(t, t))
+	}
+	return m.ClosePane(t, p, nil), nil
+}
+
 // APIReview starts a code review of agent id's work by kind, with model
 // when it is not "" (else the config's), or adds that reviewer to the
 // review going on. With no kind the reviewer is the one the config gives.

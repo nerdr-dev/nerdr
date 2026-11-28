@@ -647,6 +647,15 @@ func (c *conn) do(r Request) (any, error) {
 			}
 			return NewTabResult{Branch: q.Branch}, cmd, nil
 		})
+	case "close_pane":
+		id := r.Target
+		if id == "" {
+			id = r.Agent
+		}
+		return s.call(true, func(m *core.Core) (any, core.Cmd, error) {
+			cmd, err := m.APIClosePane(id)
+			return nil, cmd, err
+		})
 	case "close_tab":
 		text, err := s.closeTab(r.Tab, r.Remove)
 		if err != nil {
@@ -688,7 +697,7 @@ func (c *conn) do(r Request) (any, error) {
 	case "":
 		return nil, errors.New("a request needs an op")
 	}
-	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, scroll, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_tab and quit", r.Op)
+	return nil, fmt.Errorf("no op %q; the ops are state, subscribe, read, send, type, scroll, view, unview, answer, seen, wake, repos, new_tab, new_terminal, new_agent, review, close_pane, close_tab and quit", r.Op)
 }
 
 // closeTab closes tab id, as the TUI's close dialog does, and answers once

@@ -176,6 +176,25 @@
       ],
       "description": "A line a client sends: hello first, then requests."
     },
+    "ClosePaneRequest": {
+      "description": "Close an agent or a terminal in a tab, stopping what runs in it, as the TUI does; an agent's conversation is kept. The tab's first agent, whose ID is the tab's, stays as long as the tab and is refused: close the tab with close_tab. The tab gets a tab event, or the agent an agent event. target is an agent's or a terminal's ID; agent works too, for an agent.",
+      "properties": {
+        "agent": {
+          "type": "string"
+        },
+        "id": {},
+        "op": {
+          "const": "close_pane"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "op"
+      ],
+      "type": "object"
+    },
     "CloseTabRequest": {
       "description": "Close a tab, stopping everything in it, and answer once it is closed. With remove its worktrees are deleted too, never by force: it is refused, the tab left open, if that would lose changes not committed or commits not pushed. The branches are kept, unless each one's pull request is merged with the head it has.",
       "properties": {
@@ -606,6 +625,9 @@
         },
         {
           "$ref": "#/$defs/ReviewRequest"
+        },
+        {
+          "$ref": "#/$defs/ClosePaneRequest"
         },
         {
           "$ref": "#/$defs/CloseTabRequest"
@@ -1051,6 +1073,14 @@
     "answer": {
       "request": {
         "$ref": "#/$defs/AnswerRequest"
+      },
+      "result": {
+        "type": "object"
+      }
+    },
+    "close_pane": {
+      "request": {
+        "$ref": "#/$defs/ClosePaneRequest"
       },
       "result": {
         "type": "object"

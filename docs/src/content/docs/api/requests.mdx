@@ -39,6 +39,7 @@ as nerdr runs. A tab's ID is also the ID of its first agent.
 | [`new_terminal`](#new_terminal) | `tab` | Open a terminal in a tab |
 | [`new_agent`](#new_agent) | `tab`, `agent`, `model`, `task` | Start another agent in a tab |
 | [`review`](#review) | `agent`, `by`, `model` | Have an agent's work reviewed |
+| [`close_pane`](#close_pane) | `target` | Close an agent or a terminal in a tab |
 | [`close_tab`](#close_tab) | `tab`, `remove` | Close a tab |
 | [`quit`](#quit) | | Stop nerdr and its agents |
 
@@ -396,17 +397,41 @@ of the same kind is reviewing already, if the agent is busy with the
 findings of a review, or if the agent runs in a sandbox and the reviewer
 would not.
 
+## close_pane
+
+Closes one agent or terminal in a tab, stopping what runs in it, as
+closing its pane in the TUI does.
+
+```json
+{"id":17,"op":"close_pane","target":"1b2e77d0"}
+```
+
+```json
+{"id":17,"result":{}}
+```
+
+- `target` is an agent's or a terminal's ID; `agent` works too, for an
+  agent.
+- An agent's conversation is kept, and tasks queued for it wait,
+  inactive. A reviewer that goes leaves the review to the others.
+- The tab's `terminals` lose it, with a `tab` [event](../events/), or
+  the agent's state becomes `gone`, with an `agent` event.
+
+The request is refused for the tab's first agent, whose ID is the
+tab's: it stays as long as the tab, which [`close_tab`](#close_tab)
+closes.
+
 ## close_tab
 
 Closes a tab, stopping every agent, terminal and reviewer in it, as the
 TUI's close dialog does.
 
 ```json
-{"id":17,"op":"close_tab","tab":"9f3c01aa","remove":true}
+{"id":18,"op":"close_tab","tab":"9f3c01aa","remove":true}
 ```
 
 ```json
-{"id":17,"result":{"text":"closed fix-login and deleted its worktree"}}
+{"id":18,"result":{"text":"closed fix-login and deleted its worktree"}}
 ```
 
 - Without `remove`, the worktrees and branches are kept, and the tab
@@ -434,10 +459,10 @@ terminal and plugin stops, and the tabs are kept for the next time nerdr
 starts there. A window open on it closes. `nerdr stop` sends this.
 
 ```json
-{"id":18,"op":"quit"}
+{"id":19,"op":"quit"}
 ```
 
-The answer, `{"id":18,"result":{}}`, says nerdr is quitting, and the
+The answer, `{"id":19,"result":{}}`, says nerdr is quitting, and the
 connection then closes. While the agents stop it can close before the
 answer comes: a program that sent `quit` can take the connection closing
 as the same answer. A `quit` to a nerdr already quitting is answered
