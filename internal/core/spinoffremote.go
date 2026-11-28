@@ -313,12 +313,15 @@ func (m *Core) spinoffLandSetup(q SpinoffLand) Cmd {
 // bringing the commits in from its pack.
 func (m *Core) spinoffLandMake(q SpinoffLand) Cmd {
 	wtRoot, allowed, dir := m.WtRoot, SetupAllowedFile(), m.movesIn[q.Job]
+	var repos []workspace.Repo
+	for _, r := range q.Repos {
+		repos = append(repos, workspace.Repo{Name: r.Name, Path: r.Path})
+	}
+	ports, release := m.HoldPorts(workspace.PlanDir(wtRoot, q.Name, repos))
 	return func() Event {
-		var repos []workspace.Repo
-		for _, r := range q.Repos {
-			repos = append(repos, workspace.Repo{Name: r.Name, Path: r.Path})
-		}
-		res := SpinoffMsg{Kind: q.Kind, Group: q.Group, Outcome: spinoff.Outcome{Part: q.Part, Branch: q.Name,
+		var res SpinoffMsg
+		defer func() { release(res.Err == nil) }()
+		res = SpinoffMsg{Kind: q.Kind, Group: q.Group, Outcome: spinoff.Outcome{Part: q.Part, Branch: q.Name,
 			Agent: string(q.Kind), Reused: q.Reuse, Elsewhere: q.Elsewhere}}
 		var pick func(workspace.Worktree) error
 		if q.Reuse {
@@ -348,7 +351,7 @@ func (m *Core) spinoffLandMake(q SpinoffLand) Cmd {
 				return nil
 			}
 		}
-		makePart(&res, wtRoot, allowed, repos, pick)
+		makePart(&res, wtRoot, allowed, ports, repos, pick)
 		return spinoffLanded{q: q, res: res}
 	}
 }

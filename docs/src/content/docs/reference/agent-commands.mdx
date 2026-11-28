@@ -52,6 +52,7 @@ you ask in plain words. They work only inside a tab, apart from
 | `nerdr status TEXT` | Set the line on where the tab's work stands, above the agent; without TEXT, print it; `--clear` clears it |
 | `nerdr tab new --branch B TASK` | A tab on a new branch from main, its agent given the task (`--repo`, `--kind`, `--model`) |
 | `nerdr search WORDS` / `search --show ID` | Past claude and codex conversations in these folders |
+| `nerdr ports` | The first and last of the [ports the tab has to itself](../../use/tabs/#ports-of-the-tabs-own), a space between; asks nerdr through its socket, so it works in a sandbox that keeps `NERDR_PORT` from the agent |
 | `nerdr usage` | The Claude and Codex plans' rate limits used, as JSON; in a sandbox, needs read access to [`claude-limits.json` and Codex's logs](../../configure/agents/#what-a-sandbox-must-allow) |
 | `nerdr plugin list` / `plugin run NAME …` | List available plugins, or run a plugin with parameters; `plugin stop NAME` stops a watch |
 

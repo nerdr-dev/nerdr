@@ -957,3 +957,15 @@ func TestSandboxedAgentReachesOnlySandboxedLinkedTabs(t *testing.T) {
 		t.Fatalf("to one in a sandbox: %+v %+v", a, lib.Messages)
 	}
 }
+
+// TestConfinedQueryPorts: an agent in a sandbox gets its tab's ports by
+// asking nerdr, whatever variables its sandbox lets through.
+func TestConfinedQueryPorts(t *testing.T) {
+	m, tb := sandboxModel(t)
+	n := 10
+	m.home().Core.Cfg.PortBase, m.home().Core.Cfg.PortsPerTab = 31000, &n
+	a, _ := askNerdr(m, tb, hooks.Report{Method: hooks.Query, What: hooks.QueryPorts})
+	if a.Err != "" || a.Text != "31000 31009" {
+		t.Fatalf("nerdr ports = %+v", a)
+	}
+}

@@ -156,6 +156,7 @@ type setupProgress struct {
 func (q MakeWorktrees) Do(m *Core) Cmd {
 	progress := make(chan string, 16)
 	allowed := SetupAllowedFile()
+	ports, release := m.HoldPorts(q.Plan.Dir)
 	plan := q.Plan
 	plan.Items = slices.Clone(plan.Items)
 	work := Later(func() Event {
@@ -166,7 +167,7 @@ func (q MakeWorktrees) Do(m *Core) Cmd {
 			msg.Wts, err = plan.Execute()
 		}
 		if err == nil {
-			warnings = append(warnings, workspace.Prepare(msg.Wts, plan.SetupIn(), allowed, func(s string) {
+			warnings = append(warnings, workspace.PrepareWith(msg.Wts, plan.SetupIn(), allowed, ports, func(s string) {
 				select {
 				case progress <- s:
 				default: // nobody is listening; fine
@@ -174,6 +175,7 @@ func (q MakeWorktrees) Do(m *Core) Cmd {
 			})...)
 		}
 		msg.Warnings = warnings
+		release(err == nil)
 		if err != nil {
 			msg.Err = err.Error()
 			var fe *workspace.FetchError

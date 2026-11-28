@@ -140,11 +140,29 @@ Set it when the work changes phase: a cause found, a fix made, tests
 running, waiting on the user or something outside.
 `
 
+const portsUsage = `usage: nerdr ports
+
+Prints the first and last of the ports this tab has to itself, a space
+between, such as "20010 20019": no other tab is given them. Start a dev
+server or database on one of them rather than its default port, which a
+server in another tab may have. NERDR_PORT and NERDR_PORT_END say the
+same, where a sandbox lets them through.
+`
+
 const usageUsage = `usage: nerdr usage
 
 Prints how much of the Claude and Codex plans' rate limits is used, in
 percent, and when each window resets, as JSON.
 `
+
+// runPorts is `nerdr ports`.
+func runPorts(args []string) int {
+	if helpAsked(args) || len(args) > 0 {
+		fmt.Fprint(os.Stderr, portsUsage)
+		return 2
+	}
+	return query("nerdr ports", map[string]any{"what": hooks.QueryPorts})
+}
 
 // runAgents is `nerdr agents`.
 func runAgents(args []string) int {

@@ -155,6 +155,9 @@ type Core struct {
 	// packsOut are the folders of the packs of parts' commits for tabs
 	// made on another machine, by job; see spinoffremote.go.
 	packsOut map[string]string
+	// portHolds are the port ranges given to tabs being made, by the
+	// folder each will be in; see ports.go.
+	portHolds *portHolds
 	// Plugins are the user's plugins as last looked for, for a client's
 	// copy; see LookForPlugins.
 	Plugins PluginsLook

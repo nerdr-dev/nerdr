@@ -127,6 +127,14 @@ type Config struct {
 	// repositories. See internal/store.
 	DataDir string `toml:"data_dir" scope:"core"`
 
+	// PortBase is the first port of the ranges given to tabs, and
+	// PortsPerTab how many ports each tab is given, so a dev server in one
+	// tab does not take the port of the same server in another: its agents
+	// ask for them (nerdr ports), and its programs are told them in
+	// NERDR_PORT and NERDR_PORT_END. 0 ports a tab gives tabs none.
+	PortBase    int  `toml:"port_base" scope:"core"`
+	PortsPerTab *int `toml:"ports_per_tab" scope:"core"`
+
 	// MaxTabs is how many tabs may be open at once; a new one is refused
 	// beyond it. 0 for no limit.
 	MaxTabs *int `toml:"max_tabs" scope:"core"`
@@ -281,6 +289,15 @@ const DefaultWorktreesDir = "~/worktrees-nerdr"
 // DefaultFPS is how many times a second the screen may be drawn when the
 // config file does not say.
 const DefaultFPS = 60
+
+// DefaultPortBase and DefaultPortsPerTab are port_base and ports_per_tab
+// when the config file does not say: from 20000, below the ports Linux and
+// macOS hand out to programs that ask for any (32768 and 49152 up), ten
+// to a tab.
+const (
+	DefaultPortBase    = 20000
+	DefaultPortsPerTab = 10
+)
 
 // DefaultPaneMinWidth is pane_min_width when the file does not say.
 const DefaultPaneMinWidth = 60
@@ -523,6 +540,17 @@ func defaults(c Config) Config {
 	case "dots", "symbols":
 	default:
 		c.StatusLights = "dots"
+	}
+	if c.PortBase <= 0 {
+		c.PortBase = DefaultPortBase
+	}
+	c.PortBase = min(max(c.PortBase, 1024), 65535)
+	if c.PortsPerTab == nil || *c.PortsPerTab < 0 {
+		n := DefaultPortsPerTab
+		c.PortsPerTab = &n
+	} else if *c.PortsPerTab > 1000 {
+		n := 1000
+		c.PortsPerTab = &n
 	}
 	c.SleepAfter = min(max(c.SleepAfter, 0), 24*60)
 	c.HeadlessCols = min(max(c.HeadlessCols, 0), 500)

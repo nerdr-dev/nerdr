@@ -191,6 +191,12 @@ func ToAllow(file string, repos []string) map[string]RepoConfig {
 // invalidates that assurance: ignored local files are not covered by the
 // verified base commit, and setup may source them or load their code.
 func Prepare(wts []Worktree, setupIn map[string]bool, file string, progress func(string)) []string {
+	return PrepareWith(wts, setupIn, file, Ports{}, progress)
+}
+
+// PrepareWith is Prepare for a tab given ports: setup is told them, as
+// what runs in the tab is (see Ports.Env), to write them into an .env.
+func PrepareWith(wts []Worktree, setupIn map[string]bool, file string, ports Ports, progress func(string)) []string {
 	var warnings []string
 	for _, w := range wts {
 		name := filepath.Base(w.Repo)
@@ -218,7 +224,7 @@ func Prepare(wts []Worktree, setupIn map[string]bool, file string, progress func
 			warnings = append(warnings, name+": setup not run — the worktree has code not known to be the base's; run "+s+" yourself once you have read it")
 		} else if s != "" {
 			progress(name + ": " + s)
-			if err := RunSetup(w.Path, s); err != nil {
+			if err := runSetup(w.Path, s, ports.Env()); err != nil {
 				warnings = append(warnings, name+": setup failed: "+err.Error())
 			}
 		}
@@ -366,7 +372,10 @@ func copyTree(from *os.Root, src string, root *os.Root, dst string) error {
 // user's shell, away from the terminal (see gitTimeout). The error carries
 // the last line the command printed, which is usually the one that says
 // what went wrong.
-func RunSetup(dir, command string) error {
+func RunSetup(dir, command string) error { return runSetup(dir, command, nil) }
+
+// runSetup is RunSetup with env added to the environment.
+func runSetup(dir, command string, env []string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), setupTimeout)
 	defer cancel()
 	sh := os.Getenv("SHELL")
@@ -375,7 +384,11 @@ func RunSetup(dir, command string) error {
 	}
 	cmd := proc.Detach(exec.CommandContext(ctx, sh, "-c", command))
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "CI=1")
+	// Not the ports of the tab of a nerdr this one was started in: setup
+	// would write them into the new worktree's .env.
+	cmd.Env = append(append(slices.DeleteFunc(os.Environ(), func(kv string) bool {
+		return strings.HasPrefix(kv, "NERDR_PORT=") || strings.HasPrefix(kv, "NERDR_PORT_END=")
+	}), "GIT_TERMINAL_PROMPT=0", "CI=1"), env...)
 	var out bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &out
 	if err := proc.Run(cmd); err != nil {

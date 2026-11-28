@@ -1,6 +1,6 @@
 ---
 name: nerdr-tools
-description: Use nerdr from inside a nerdr tab (NERDR=1). Keep the status line above your pane current when your work changes phase — a cause found, a fix made, tests running, waiting on something (nerdr status). See how the other tabs and agents are doing — branches, pull requests, CI ("which tabs have failing CI?"). Start, restart or close a dev server, watcher or long run in a terminal pane the user sees ("start the dev server", "restart the server", "close the terminal", "run the tests in a terminal"). Find what was said or decided in an earlier conversation ("what did we decide about the cache last week?"). Check the Claude and Codex plans' rate limits before starting more agents or long work ("how much quota is left?"). Make new tabs only when the user says not to be asked about each ("make the tabs, don't ask me"); any other request for new tabs, branches or worktrees is for nerdr-spinoff.
+description: Use nerdr from inside a nerdr tab (NERDR=1). Keep the status line above your pane current when your work changes phase — a cause found, a fix made, tests running, waiting on something (nerdr status). See how the other tabs and agents are doing — branches, pull requests, CI ("which tabs have failing CI?"). Find the ports the tab has to itself for its servers ("which port should the dev server use?", nerdr ports). Start, restart or close a dev server, watcher or long run in a terminal pane the user sees ("start the dev server", "restart the server", "close the terminal", "run the tests in a terminal"). Find what was said or decided in an earlier conversation ("what did we decide about the cache last week?"). Check the Claude and Codex plans' rate limits before starting more agents or long work ("how much quota is left?"). Make new tabs only when the user says not to be asked about each ("make the tabs, don't ask me"); any other request for new tabs, branches or worktrees is for nerdr-spinoff.
 ---
 
 <!-- nerdr: installed and kept up to date by nerdr. Remove this line to keep your own edits. -->
@@ -50,6 +50,9 @@ For what should keep running or be watched — a dev server, a file watcher,
 a long test or build — instead of running it out of sight in your own
 shell. Not for commands you only want the output of; run those yourself.
 
+Start a server on one of the tab's own ports, not on its default port,
+which a server in another tab may have: see `nerdr ports` below.
+
 To go on once a server is up, wait with `read --wait-for TEXT` rather
 than reading again and again yourself: it prints what the terminal shows
 once TEXT is there, and exits 3 after `--timeout` (2m) when it never
@@ -87,6 +90,20 @@ with all of the words; `nerdr search --show ID` prints one. Use it when
 the user refers to earlier work ("as we decided last week") or you need a
 decision from a conversation you were not in, and say which conversation
 you took it from.
+
+## The tab's ports: `nerdr ports`
+
+```sh
+"${NERDR_BIN:-nerdr}" ports    # prints the first and last, e.g. 20010 20019
+read -r first last < <("${NERDR_BIN:-nerdr}" ports)
+"${NERDR_BIN:-nerdr}" terminal npm run dev -- --port "$first"
+```
+
+The tab has a range of ports no other tab is given, for its dev servers,
+databases and the like; ask for it before you start one. In a terminal or
+plugin of the tab, `$NERDR_PORT` and `$NERDR_PORT_END` hold the same.
+Use the range for what you start yourself, not to stop what listens
+elsewhere.
 
 ## Rate limits: `nerdr usage`
 

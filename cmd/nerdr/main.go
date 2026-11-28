@@ -76,6 +76,7 @@ For the agents in its tabs (each takes -h):
   nerdr tab new …    make a tab on a new branch with a task
   nerdr search WORDS find past conversations with WORDS
   nerdr usage        the Claude and Codex plans' rate limits used
+  nerdr ports        the ports this tab has to itself, for its servers
   nerdr plugin …     list the plugins there are, and run one
 
 Start it in the folder that holds your repositories. New worktrees go in
@@ -96,7 +97,7 @@ var usages = map[string]string{
 	"wait": waitUsage, "read": readUsage, "terminal": terminalUsage,
 	"close": closeUsage, "tabs": tabsUsage, "status": statusUsage,
 	"tab": tabUsage, "search": searchUsage, "usage": usageUsage,
-	"plugin": pluginUsage, "plugins": pluginUsage,
+	"plugin": pluginUsage, "plugins": pluginUsage, "ports": portsUsage,
 }
 
 func main() {
@@ -175,6 +176,8 @@ func main() {
 			os.Exit(runSearch(os.Args[2:]))
 		case "usage":
 			os.Exit(runUsage(os.Args[2:]))
+		case "ports":
+			os.Exit(runPorts(os.Args[2:]))
 		case "plugin", "plugins":
 			os.Exit(runPlugin(os.Args[2:]))
 		case "sandbox":

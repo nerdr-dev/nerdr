@@ -368,3 +368,17 @@ func TestAutoDefaults(t *testing.T) {
 		t.Fatalf("default auto = %+v", d)
 	}
 }
+
+func TestPortDefaults(t *testing.T) {
+	c := defaults(Config{})
+	if c.PortBase != DefaultPortBase || *c.PortsPerTab != DefaultPortsPerTab {
+		t.Fatalf("port_base %d, ports_per_tab %d", c.PortBase, *c.PortsPerTab)
+	}
+	off, many := 0, 5000
+	if c := defaults(Config{PortBase: 80, PortsPerTab: &off}); c.PortBase != 1024 || *c.PortsPerTab != 0 {
+		t.Fatalf("port_base %d, ports_per_tab %d", c.PortBase, *c.PortsPerTab)
+	}
+	if c := defaults(Config{PortsPerTab: &many}); *c.PortsPerTab != 1000 {
+		t.Fatalf("ports_per_tab %d", *c.PortsPerTab)
+	}
+}

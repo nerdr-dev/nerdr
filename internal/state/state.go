@@ -125,6 +125,9 @@ type Tab struct {
 	// and this tab's can send each other messages (nerdr send --tab). Kept
 	// on the tab's first agent only.
 	Linked []string `json:"linked,omitempty"`
+	// Ports is the range of ports the tab was given, kept for as long as
+	// it is open, on the machine it runs on; see workspace.Ports.
+	Ports workspace.Ports `json:"ports,omitzero"`
 }
 
 // Prompt is one thing the user sent a tab's agent, and when.

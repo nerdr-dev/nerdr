@@ -346,6 +346,7 @@ func (m *Core) SpinoffCreate(t *Tab, pt spinoff.Part, kind agents.Kind, name str
 	t.SpinoffBusy, t.SpinoffFailed = "making "+name+"…", nil
 	wtRoot := m.WtRoot
 	allowed := SetupAllowedFile()
+	ports, release := m.HoldPorts(workspace.PlanDir(wtRoot, name, repos))
 	return func() Event {
 		res := SpinoffMsg{T: t, Kind: kind, Group: group,
 			Outcome: spinoff.Outcome{Part: pt, Branch: name, Agent: string(kind), Reused: reuse, Elsewhere: elsewhere}}
@@ -359,7 +360,8 @@ func (m *Core) SpinoffCreate(t *Tab, pt spinoff.Part, kind agents.Kind, name str
 				return err
 			}
 		}
-		makePart(&res, wtRoot, allowed, repos, pick)
+		makePart(&res, wtRoot, allowed, ports, repos, pick)
+		release(res.Err == nil)
 		return res
 	}
 }
@@ -370,7 +372,7 @@ func (m *Core) SpinoffCreate(t *Tab, pt spinoff.Part, kind agents.Kind, name str
 // part's commits into each worktree. What it made, and why it did not, go
 // in res: Err when nothing was made, Outcome.PickFailed when a pick did
 // not apply.
-func makePart(res *SpinoffMsg, wtRoot, allowed string, repos []workspace.Repo, pick func(workspace.Worktree) error) {
+func makePart(res *SpinoffMsg, wtRoot, allowed string, ports workspace.Ports, repos []workspace.Repo, pick func(workspace.Worktree) error) {
 	name, pt := res.Outcome.Branch, res.Outcome.Part
 	if err := workspace.ValidBranch(name); err != nil {
 		res.Err = err
@@ -404,7 +406,7 @@ func makePart(res *SpinoffMsg, wtRoot, allowed string, repos []workspace.Repo, p
 	res.Plan, res.Outcome.Dir = plan, plan.Dir
 	// Made ready before the agent's commits are brought in: setup runs
 	// the code it finds as the user, and theirs is the agent's to run.
-	res.Warnings = append(res.Warnings, workspace.Prepare(res.Wts, plan.SetupIn(), allowed, func(string) {})...)
+	res.Warnings = append(res.Warnings, workspace.PrepareWith(res.Wts, plan.SetupIn(), allowed, ports, func(string) {})...)
 	if pick == nil {
 		return
 	}

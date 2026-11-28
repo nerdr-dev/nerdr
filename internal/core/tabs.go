@@ -38,7 +38,7 @@ func NewTabID() string {
 // to report to this one, and one in a sandbox never to a socket it was
 // not given. The user's own, such as NERDR_DEBUG_LOG, are passed on.
 var TabVars = []string{"NERDR", "NERDR_SOCKET", "NERDR_TAB", "NERDR_NO_SOCKET", "NERDR_SANDBOXED", "NERDR_OPENCODE_HOOK", "NERDR_OPENCODE_NOTE", "NERDR_AGY_HOOK", "NERDR_GROK_HOOK",
-	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_WORKTREE_INFO", "NERDR_BIN", "NERDR_DATA_DIR", EnvByAgent, holder.EnvNested}
+	"NERDR_SHELL", "NERDR_WORKTREES", "NERDR_WORKTREE_INFO", "NERDR_BIN", "NERDR_DATA_DIR", "NERDR_PORT", "NERDR_PORT_END", EnvByAgent, holder.EnvNested}
 
 // HostVars are left out of what an agent or terminal of a tab inherits.
 // The first say nerdr was started
@@ -72,10 +72,10 @@ func (m *Core) BaseEnv() []string {
 	return os.Environ()
 }
 
-// TabEnv is ChildEnv with m's BaseEnv in place of nerdr's own. m.Mu is
-// held.
+// TabEnv is ChildEnv with m's BaseEnv in place of nerdr's own, and the
+// tab's ports (see ports.go). m.Mu is held.
 func (m *Core) TabEnv(t *Tab) []string {
-	return ChildEnvFrom(m.BaseEnv(), t)
+	return append(ChildEnvFrom(m.BaseEnv(), t), m.portEnv(t)...)
 }
 
 // ChildEnvFrom is the environment an agent of t runs with, built on base.

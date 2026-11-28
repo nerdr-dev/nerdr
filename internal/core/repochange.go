@@ -174,6 +174,11 @@ func (m *Core) ChangeRepos(t *Tab, c RepoChange) Cmd {
 	m.Toast(t.Name + ": " + c.Doing())
 	wts := append([]workspace.Worktree(nil), t.Worktrees...)
 	allowed := SetupAllowedFile()
+	var ports workspace.Ports
+	if m.portsOn() {
+		m.givePorts(t)
+		ports = t.Ports
+	}
 	force := len(c.Dirty) > 0
 	remove := append([]workspace.Worktree(nil), c.Remove...)
 	return func() Event {
@@ -207,7 +212,7 @@ func (m *Core) ChangeRepos(t *Tab, c RepoChange) Cmd {
 				out.Err = err
 				return out
 			}
-			out.Warnings = append(out.Warnings, workspace.Prepare(made, plan.SetupIn(), allowed, func(string) {})...)
+			out.Warnings = append(out.Warnings, workspace.PrepareWith(made, plan.SetupIn(), allowed, ports, func(string) {})...)
 			out.Wts = append(out.Wts, made...)
 			out.Added = made
 		}
