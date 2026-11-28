@@ -1,6 +1,6 @@
 ---
 name: nerdr-send
-description: Send a message to another agent in the same nerdr tab — the panes the user sees numbered "1:claude", "2:codex" — answer one sent to you, and start more agents in the tab to share out the work. Inside nerdr (NERDR=1), use this whenever the user asks you to tell, ask, send or hand something to another agent or to an agent by number ("send this to agent 2", "ask 2 to review it", "give the plan to agent 3"), to start or orchestrate other agents in the tab ("start a codex agent to write the tests", "run three agents on this"), to close an agent's pane ("close agent 2"), and to answer a "Message from agent N" or a "Task from agent N".
+description: Send a message to another agent in the same nerdr tab — the panes the user sees numbered "1:claude", "2:codex" — or in a tab linked to it (one it made, or that made it, often in another repository), answer one sent to you, and start more agents in the tab to share out the work. Inside nerdr (NERDR=1), use this whenever the user asks you to tell, ask, send or hand something to another agent or to an agent by number ("send this to agent 2", "ask 2 to review it", "give the plan to agent 3", "tell the agent in the other repo"), to start or orchestrate other agents in the tab ("start a codex agent to write the tests", "run three agents on this"), to close an agent's pane ("close agent 2"), and to answer a "Message from agent N" or a "Task from agent N".
 ---
 
 <!-- nerdr: installed and kept up to date by nerdr. Remove this line to keep your own edits. -->
@@ -38,6 +38,24 @@ result, an answer, or that you are done.
 For a back and forth — a question you need answered to go on, turns in a
 game — `nerdr send --wait` prints the answer instead of it coming as a
 message and taking a turn of yours.
+
+### Linked tabs, often in another repository
+
+A tab your tab made, with a spinoff or `nerdr tab new`, and the tab that
+made yours are linked: their agents can reach yours, and yours theirs,
+with `--tab` and the tab's ID, or its name — when the same fix is needed
+in two repositories, say. `nerdr send` alone lists them, with their IDs;
+the messages nerdr gives you name the tab to answer by its ID. Use that:
+a name can have spaces, and the user can change it.
+
+```sh
+"${NERDR_BIN:-nerdr}" send --tab 3f9a01c2 1 "The API now returns 404 for a missing user: match that in the client."
+"${NERDR_BIN:-nerdr}" send --wait --tab 3f9a01c2 1 "Which version of the schema did you land on?"
+```
+
+The other agent works in its own worktree, which may be in a repository
+you do not have: tell it what it needs to know, not where to look in
+yours. Other tabs are not reached: ask the user to pass a message there.
 
 ## Starting other agents: `nerdr agent`
 

@@ -107,6 +107,9 @@ type Report struct {
 	To    int
 	Text  string
 	Reply chan Answer
+	// Tab is the linked tab, by name or ID, whose agent To a Message, or a
+	// Query for a reply, is for; "" for the sender's own tab.
+	Tab string
 	// Kind is the agent a NewAgent report asks for, "" for the sender's
 	// own kind; Text is its task.
 	Kind string
@@ -323,6 +326,7 @@ type params struct {
 	Values           map[string]any     `json:"values"`
 	Dir              string             `json:"dir"`
 	Offset           int                `json:"offset"`
+	Tab              string             `json:"tab"`
 }
 
 // Server is nerdr's end of the socket.
@@ -905,8 +909,10 @@ func handleMessage(c *client, id string, p params) []byte {
 		return invalid(id, "the message is empty")
 	case len(text) > MaxText:
 		return invalid(id, "the message is too long")
+	case len(p.Tab) > 200:
+		return invalid(id, "tab is not a tab's name")
 	}
-	return c.answered(id, Report{Method: Message, Pane: p.PaneID, To: p.To, Text: text})
+	return c.answered(id, Report{Method: Message, Pane: p.PaneID, To: p.To, Text: text, Tab: clean.Line(p.Tab)})
 }
 
 // badModel is why model, which goes on an agent's command line, is not a
@@ -937,7 +943,7 @@ func handleQuery(c *client, id string, p params) []byte {
 	switch p.What {
 	case QueryAgents, QueryTabs, QueryRoots:
 	case QueryReply:
-		if p.To < 1 {
+		if p.To < 1 || len(p.Tab) > 200 {
 			return invalid(id, "reply takes an agent's number")
 		}
 	case QueryRead:
@@ -948,7 +954,7 @@ func handleQuery(c *client, id string, p params) []byte {
 		return invalid(id, "what is agents, read, reply, tabs or roots")
 	}
 	return c.answered(id, Report{Method: Query, Pane: p.PaneID, What: p.What, To: p.To,
-		Name: clean.Line(p.Name), Lines: min(p.Lines, 5000)})
+		Name: clean.Line(p.Name), Lines: min(p.Lines, 5000), Tab: clean.Line(p.Tab)})
 }
 
 func handleTerminal(c *client, id string, p params) []byte {

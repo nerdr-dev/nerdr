@@ -13,13 +13,18 @@ import (
 )
 
 // sendUsage is written for the agent, as requestReviewUsage is.
-const sendUsage = `usage: nerdr send [--wait] [--timeout 10m] N MESSAGE    (or - to read MESSAGE from stdin)
-       nerdr send                 lists the agents of this tab
+const sendUsage = `usage: nerdr send [--wait] [--timeout 10m] [--tab TAB] N MESSAGE    (or - to read MESSAGE from stdin)
+       nerdr send                 lists the agents of this tab, and of the tabs linked to it
 
 Sends MESSAGE to agent number N in this nerdr tab: the agents working in
 the same worktree, each in a pane the user sees numbered, "2:codex". It
 reaches the other agent as a message from you, typed in when it is idle,
 and it can answer the same way.
+
+--tab TAB sends it to agent N of the linked tab TAB, by its name or ID,
+instead: a tab your tab made with a spinoff or nerdr tab new, or the one
+that made yours, often in another repository. Its agent works in its own
+worktree and answers with nerdr send --tab and your tab's name.
 
 Write it for an agent with none of your conversation: what you want of
 it, and what it needs to know to do it.
@@ -38,6 +43,7 @@ func runSend(args []string) int {
 	fs.SetOutput(io.Discard)
 	wait := fs.Bool("wait", false, "")
 	timeout := fs.Duration("timeout", 10*time.Minute, "")
+	tabName := fs.String("tab", "", "")
 	args, err := takeFlags(fs, args)
 	if helpAsked(args) || err != nil {
 		fmt.Fprint(os.Stderr, sendUsage)
@@ -77,7 +83,7 @@ func runSend(args []string) int {
 	if !ok {
 		return 1
 	}
-	answer, err := request(sock, hooks.Message, map[string]any{"pane_id": tab, "to": to, "text": text})
+	answer, err := request(sock, hooks.Message, map[string]any{"pane_id": tab, "to": to, "text": text, "tab": *tabName})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "nerdr send:", err)
 		return 1
@@ -86,17 +92,18 @@ func runSend(args []string) int {
 	if !*wait {
 		return 0
 	}
-	return waitReply(to, *timeout)
+	return waitReply(to, *tabName, *timeout)
 }
 
 // replyEvery is how often nerdr send --wait asks for the answer.
 var replyEvery = time.Second
 
-// waitReply waits for agent n's answer, and prints it.
-func waitReply(n int, timeout time.Duration) int {
+// waitReply waits for the answer of agent n, of the linked tab tabName or
+// of this tab with "", and prints it.
+func waitReply(n int, tabName string, timeout time.Duration) int {
 	deadline := time.Now().Add(timeout)
 	for {
-		answer, ok := ask("nerdr send", hooks.Query, map[string]any{"what": hooks.QueryReply, "to": n})
+		answer, ok := ask("nerdr send", hooks.Query, map[string]any{"what": hooks.QueryReply, "to": n, "tab": tabName})
 		if !ok {
 			return 1
 		}

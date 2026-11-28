@@ -86,7 +86,9 @@ Such an agent:
 - can start agents, tabs (`nerdr agent`, `nerdr tab new`) and spun-off
   parts only with agents that are themselves `sandboxed`;
 - can send messages to, and read the panes of, only agents started in a
-  sandbox, and no terminals. A message it leaves for an agent that later
+  sandbox, and no terminals. The same goes for the agents of a linked tab
+  (`nerdr send --tab`), in whatever repository: one outside a sandbox is
+  not reached. A message it leaves for an agent that later
   starts outside a sandbox waits in F3 for you to approve it. Results
   from work it spun off are reported only to that agent;
 - sees only its own tab in `nerdr tabs`;

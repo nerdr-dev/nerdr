@@ -728,6 +728,12 @@ type Tab struct {
 
 	Err string
 
+	// SentTo is, for each name or ID this agent last gave nerdr send
+	// --tab, the ID of the linked tab it reached then, so that nerdr send
+	// --wait waits on that tab even if it, or another, is renamed in the
+	// meantime. Core's alone, and not saved.
+	SentTo map[string]string `json:"-"`
+
 	// PaneList is the tab's panes, its own agent first.
 	// partOf is, on an agent in another's pane, the tab it is in. See
 	// panes.go.

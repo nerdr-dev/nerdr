@@ -169,3 +169,17 @@ func TestCheckKeepsReposTrimmedAndRefusesControlCharacters(t *testing.T) {
 		}
 	}
 }
+
+// TestPromptSendsBackToTheAgentThatSplitItOff: the new tab's agent is
+// told to answer the agent that sent the plan, by number, and its tab by
+// ID; not on another machine, where the tabs are not linked.
+func TestPromptSendsBackToTheAgentThatSplitItOff(t *testing.T) {
+	pt := Part{Branch: "lib", Prompt: "do it"}
+	got := Prompt(pt, Parent{ID: "ab12", Agent: 2, Name: "API arbeid", Dir: "/w/api"}, Outcome{Elsewhere: true})
+	if !strings.Contains(got, `nerdr send --tab ab12 2 "…"`) {
+		t.Fatalf("prompt: %s", got)
+	}
+	if got := Prompt(pt, Parent{ID: "ab12", Agent: 2, Name: "api", Dir: "/w/api", Machine: "box"}, Outcome{}); strings.Contains(got, "--tab") {
+		t.Fatalf("on another machine: %s", got)
+	}
+}

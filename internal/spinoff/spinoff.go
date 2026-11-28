@@ -216,6 +216,11 @@ func (p *Pending) Count() (int, int) {
 
 // Parent is the tab a plan came from, as the new agent is told of it.
 type Parent struct {
+	// ID is the tab's, and Agent the number of its agent that sent the
+	// plan (0 for 1): what nerdr send --tab reaches it by, when the new
+	// tab is linked to it.
+	ID     string
+	Agent  int
 	Name   string
 	Branch string
 	Dir    string
@@ -250,6 +255,9 @@ func Prompt(pt Part, from Parent, o Outcome) string {
 		fmt.Fprintf(&b, ", in %s. That is another repository than this one: look at its commits there, with git -C and the folder.", from.Dir)
 	default:
 		fmt.Fprintf(&b, ", in %s. Its worktree shares the repository with this one, so its commits can be looked at here with git show.", from.Dir)
+	}
+	if from.Machine == "" && from.ID != "" {
+		fmt.Fprintf(&b, "\n\nYour tab is linked to that one: to ask the agent that split this off something, or tell it what you found or that you are done, use the nerdr-send skill: nerdr send --tab %s %d \"…\"", from.ID, max(from.Agent, 1))
 	}
 	if len(pt.Commits) > 0 {
 		list := strings.Join(pt.Commits, " ")
@@ -308,6 +316,9 @@ func Report(done []Outcome, branch string) string {
 				b.WriteString(" That is another machine than yours: you cannot look at its worktree from here.")
 			case o.Elsewhere:
 				b.WriteString(" It is in another repository than yours.")
+			}
+			if o.Machine == "" && o.Tab != "" {
+				fmt.Fprintf(&b, " Its tab is linked to yours: nerdr send --tab %s 1 \"…\" sends its agent a message, and it can send you one.", o.Tab)
 			}
 			if len(o.Part.Commits) > 0 && o.Elsewhere && o.Machine != "" {
 				fmt.Fprintf(&b, " Commits %s could not go there; its agent writes it from the prompt, and they are still yours.", strings.Join(o.Part.Commits, " "))

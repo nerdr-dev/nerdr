@@ -337,7 +337,16 @@ func (m *Core) OnQuery(r hooks.Report) Cmd {
 	case hooks.QueryRead:
 		reply(m.ReadPane(o, from, r, confined))
 	case hooks.QueryReply:
-		reply(m.TakeReply(o, from, r.To))
+		t := o
+		if r.Tab != "" {
+			lt, why := m.ReplyTab(from, r.Tab)
+			if lt == nil {
+				reply(hooks.Answer{Err: why})
+				return nil
+			}
+			t = lt
+		}
+		reply(m.TakeReply(t, from, r.To))
 	default:
 		reply(hooks.Answer{Err: "nerdr cannot tell " + r.What})
 	}
@@ -349,16 +358,22 @@ func (m *Core) OnQuery(r hooks.Report) Cmd {
 // while there is none yet. Left there, it is typed in when from is next
 // idle, as any other.
 func (m *Core) TakeReply(t, from *Tab, n int) hooks.Answer {
+	fromTab := ""
+	if t != from.Owner() {
+		fromTab = t.ID
+	}
 	for i, msg := range from.Messages {
 		// One an agent in a sandbox wrote is not handed to one outside.
-		if msg.Auto && msg.From == n && (!msg.Sandboxed || from.InSandbox) {
+		if msg.Auto && msg.From == n && msg.FromTab == fromTab && (!msg.Sandboxed || from.InSandbox) {
 			from.DropMessage(i)
 			m.SaveSession()
 			m.Tell(PanesMsg{})
 			return hooks.Answer{Text: msg.Text}
 		}
 	}
-	if a := t.AgentNumbered(n); a == nil || a == from {
+	if a := t.AgentNumbered(n); (a == nil || a == from) && fromTab != "" {
+		return hooks.Answer{Err: fmt.Sprintf("there is no agent %d in the tab %s to wait for; its agents are %s", n, t.Name, m.AgentList(t, nil))}
+	} else if a == nil || a == from {
 		return hooks.Answer{Err: fmt.Sprintf("there is no other agent %d in this tab to wait for; its agents are %s", n, m.AgentList(t, from))}
 	} else if a.Pane == nil {
 		return hooks.Answer{Err: fmt.Sprintf("agent %d is not running: %s", n, StateName(a.Light))}
@@ -512,6 +527,10 @@ func (m *Core) TabMade(msg TabMadeMsg) Cmd {
 		group = msg.From.Owner().Group
 	}
 	t, cmd := m.AddTabWith(msg.Plan.Branch, msg.Plan.Dir, group, msg.Wts, msg.Kind, msg.Model, msg.Task, msg.Confined)
+	linked := msg.From != nil && m.Live(msg.From.Owner())
+	if linked {
+		m.LinkTabs(msg.From.Owner(), t)
+	}
 	m.Tell(PanesMsg{})
 	note := "made " + t.Name
 	if msg.From != nil {
@@ -521,8 +540,12 @@ func (m *Core) TabMade(msg TabMadeMsg) Cmd {
 		note += "; " + strings.Join(msg.Warnings, "; ")
 	}
 	m.Toast(note)
-	tell(fmt.Sprintf("nerdr made the tab %s (%s), in %s, its agent %s given your task. "+
-		"See how it gets on with nerdr tabs; the user reviews and merges its branch.", t.Name, msg.Plan.Branch, t.Dir, t.Agent))
+	text := fmt.Sprintf("nerdr made the tab %s (%s), in %s, its agent %s given your task. "+
+		"See how it gets on with nerdr tabs; the user reviews and merges its branch.", t.Name, msg.Plan.Branch, t.Dir, t.Agent)
+	if linked {
+		text += fmt.Sprintf(" Its tab is linked to yours: nerdr send --tab %s 1 \"…\" sends its agent a message, and it can send you one.", t.ID)
+	}
+	tell(text)
 	return cmd
 }
 
@@ -634,8 +657,9 @@ func (m *Core) OnNewTab(r hooks.Report) Cmd {
 		reply(hooks.Answer{Err: err.Error()})
 		return nil
 	}
-	task := fmt.Sprintf("Task from agent %d (%s) in the nerdr tab %s, which made this tab for you, on a branch of its own:\n\n%s",
-		max(from.Num, 1), from.Agent, from.Owner().Name, r.Text)
+	task := fmt.Sprintf("Task from agent %d (%s) in the nerdr tab %s, in %s, which made this tab for you, on a branch of its own:\n\n%s\n\n"+
+		"Your tab is linked to that one: to ask its agent something, or tell it you are done, use the nerdr-send skill: nerdr send --tab %s %d \"…\"",
+		max(from.Num, 1), from.Agent, from.Owner().Name, from.Owner().Dir, r.Text, from.Owner().ID, max(from.Num, 1))
 	reply(hooks.Answer{Text: fmt.Sprintf("nerdr is making the tab %s, with %s; you get a message when it is there, or why it is not. "+
 		"Follow it with nerdr tabs.", r.Branch, k)})
 	return m.MakeTab(from, r.Branch, k, r.Model, task, confined, repos)
