@@ -26,8 +26,9 @@ type APISpinoff struct {
 	// Done is how many parts of the plan have been gone through already:
 	// the first of Parts is part Done+1 of Done+len(Parts).
 	Done int `json:"done,omitempty"`
-	// Busy says what is being made for the first part, while it is
-	// ("making fix-a…"): it cannot be answered meanwhile.
+	// Busy says what is being done about the first part, while it is
+	// ("making fix-a…", or waiting for the answer to whether the
+	// repositories' setup may run): it cannot be answered meanwhile.
 	Busy string `json:"busy,omitempty"`
 	// Failed is why the tab for the first part was not made the last time
 	// it was tried, for the user to put right, such as a branch name
