@@ -269,6 +269,11 @@ func (it PlanItem) CanStartAnew() bool {
 	return it.Mode != "local" || it.Base != "" && it.Tip != "" && it.Merged()
 }
 
+// PlanDir is the folder MakePlan puts a tab on branch in repos in.
+func PlanDir(wtRoot, branch string, repos []Repo) string {
+	return filepath.Join(wtRoot, dirName(branch, repos))
+}
+
 // MakePlan checks every repository and decides how its worktree will be made.
 func MakePlan(wtRoot, branch string, repos []Repo) (Plan, error) {
 	return MakePlanOn(wtRoot, branch, repos, "")
@@ -282,7 +287,7 @@ func MakePlanOn(wtRoot, branch string, repos []Repo, on string) (Plan, error) {
 	if on != "" && len(repos) != 1 {
 		return p, errors.New("a branch can be stacked on another in one repository only")
 	}
-	p.Dir = filepath.Join(wtRoot, dirName(branch, repos))
+	p.Dir = PlanDir(wtRoot, branch, repos)
 	if _, err := os.Stat(p.Dir); err == nil {
 		return p, fmt.Errorf("%s already exists", p.Dir)
 	}

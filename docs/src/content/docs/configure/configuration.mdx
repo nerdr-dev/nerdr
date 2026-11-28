@@ -111,6 +111,8 @@ branch names, except with an absolute `data_dir`. Why notes are kept.
 | `close_merged` | `true` | Say in a tab's status panel when its pull requests are merged. |
 | `headless_cols` | `120` | Columns an agent or terminal starts at when no window or app shows it yet, such as one started from the [API](../../api/requests/#view) with nerdr's window closed. `0` for the default. |
 | `headless_rows` | `40` | Rows, the same way. |
+| `port_base` | `20000` | The first port of the ranges given to tabs. See [Ports of the tab's own](../../use/tabs/#ports-of-the-tabs-own). |
+| `ports_per_tab` | `10` | Ports in each tab's range, which an agent gets from `nerdr ports` and the tab's terminals, plugins and setup from `NERDR_PORT` and `NERDR_PORT_END`. `0` gives tabs none. Open tabs keep the range they have. |
 
 ## Notifications and GitHub
 
@@ -378,7 +380,7 @@ The rest are read by the machine the agents run on, from
 `~/.config/nerdr/config.toml` there: `[agents]`, `[wrappers]`, `[review]`, `[auto]`, `shell`,
 `repo_dirs`, `worktrees_dir`, `data_dir`, `install`, `enabled_skills`,
 `max_tabs`, `cold_days`, `sleep_after`, `close_merged`, `headless_cols`,
-`headless_rows`, `github_refresh`,
+`headless_rows`, `port_base`, `ports_per_tab`, `github_refresh`,
 `claude_status_line`, `confirm_plugin_runs` and `keep_awake`, and the
 plugins beside that file. An agent's command and sandbox on your laptop
 never apply on a server. With nerdr on one machine, it is all one file.

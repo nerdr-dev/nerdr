@@ -43,6 +43,7 @@ func (m *Core) addTab(q AddTab) (*Tab, Cmd) {
 	t.Sandboxed = q.ImportedSandboxed
 	m.MarkSandboxed(t)
 	TrustWorktrees(t)
+	m.givePorts(t)
 	m.Tabs = append(m.Tabs, t)
 	m.AddMessageFrom(t, q.Task, true, q.Sandboxed) // before the start, which may take it
 	var cmd Cmd

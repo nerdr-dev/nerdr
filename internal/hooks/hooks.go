@@ -270,6 +270,7 @@ const (
 	QueryRead   = "read"   // what agent To, or terminal Name, shows
 	QueryTabs   = "tabs"   // every tab, as JSON
 	QueryRoots  = "roots"  // the folders whose conversations are searched, one a line
+	QueryPorts  = "ports"  // the first and last of the tab's ports
 	// QueryReply takes the message agent To sent the one asking, if one
 	// waits, out of its list: `nerdr send --wait` asks it until one is
 	// there.
@@ -941,7 +942,7 @@ func handleNewAgent(c *client, id string, p params) []byte {
 
 func handleQuery(c *client, id string, p params) []byte {
 	switch p.What {
-	case QueryAgents, QueryTabs, QueryRoots:
+	case QueryAgents, QueryTabs, QueryRoots, QueryPorts:
 	case QueryReply:
 		if p.To < 1 || len(p.Tab) > 200 {
 			return invalid(id, "reply takes an agent's number")
@@ -951,7 +952,7 @@ func handleQuery(c *client, id string, p params) []byte {
 			return invalid(id, "read takes an agent's number or a terminal's name")
 		}
 	default:
-		return invalid(id, "what is agents, read, reply, tabs or roots")
+		return invalid(id, "what is agents, ports, read, reply, tabs or roots")
 	}
 	return c.answered(id, Report{Method: Query, Pane: p.PaneID, What: p.What, To: p.To,
 		Name: clean.Line(p.Name), Lines: min(p.Lines, 5000), Tab: clean.Line(p.Tab)})

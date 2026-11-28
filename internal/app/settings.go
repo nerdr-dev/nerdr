@@ -258,6 +258,14 @@ func (m *Model) settingRows() []settingRow {
 			desc: "The most tabs that can be open at once. When this many are open, nerdr will not open another until you close one. It keeps too many agents from running at the same time.\n" +
 				"0 means no limit.",
 			example: `max_tabs = 10`},
+		{key: "port_base", kind: sInt, lo: 1024, hi: 65535, def: "20000",
+			desc: "The first port of the ranges nerdr gives tabs. Each tab gets ports_per_tab ports of its own from here, so a dev server in one tab does not take the port of the same server in another. Its agents get them with nerdr ports; its terminals, plugins and setup in NERDR_PORT (the first) and NERDR_PORT_END (the last).\n" +
+				"A new range applies to tabs opened after the change: open tabs keep theirs.",
+			example: `port_base = 40000`},
+		{key: "ports_per_tab", kind: sInt, lo: 0, hi: 1000, def: "10",
+			desc: "How many ports each tab gets, from port_base on. An agent gets its tab's with nerdr ports, which works in a sandbox too.\n" +
+				"0 means tabs get no ports.",
+			example: `ports_per_tab = 20`},
 		{key: "cold_days", kind: sInt, lo: 0, hi: 365, def: "5",
 			desc: "After this many days with nothing done in a tab, by you or its agent, nerdr marks it as gone cold and lists it among the tabs that want a look. It reminds you of work you may have forgotten, to finish it or close the tab.\n" +
 				"0 means tabs never go cold.",

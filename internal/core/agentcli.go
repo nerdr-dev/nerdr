@@ -347,6 +347,8 @@ func (m *Core) OnQuery(r hooks.Report) Cmd {
 			t = lt
 		}
 		reply(m.TakeReply(t, from, r.To))
+	case hooks.QueryPorts:
+		reply(m.tabPorts(from))
 	default:
 		reply(hooks.Answer{Err: "nerdr cannot tell " + r.What})
 	}
@@ -676,8 +678,11 @@ func (m *Core) MakeTab(from *Tab, branch string, k agents.Kind, model, task stri
 	}
 	wtRoot, allowed := m.WtRoot, SetupAllowedFile()
 	return m.AskSetup(paths, func() Cmd {
+		ports, release := m.HoldPorts(workspace.PlanDir(wtRoot, branch, repos))
 		return func() Event {
-			res := TabMadeMsg{From: from, Branch: branch, Kind: k, Model: model, Task: task, Confined: confined}
+			var res TabMadeMsg
+			defer func() { release(res.Err == nil) }()
+			res = TabMadeMsg{From: from, Branch: branch, Kind: k, Model: model, Task: task, Confined: confined}
 			plan, err := workspace.MakePlan(wtRoot, branch, repos)
 			// An unpinned base is one the asking agent could have moved.
 			plan.Sandboxed = confined
@@ -699,7 +704,7 @@ func (m *Core) MakeTab(from *Tab, branch string, k agents.Kind, model, task stri
 				return res
 			}
 			res.Plan = plan
-			res.Warnings = append(res.Warnings, workspace.Prepare(res.Wts, plan.SetupIn(), allowed, func(string) {})...)
+			res.Warnings = append(res.Warnings, workspace.PrepareWith(res.Wts, plan.SetupIn(), allowed, ports, func(string) {})...)
 			return res
 		}
 	})

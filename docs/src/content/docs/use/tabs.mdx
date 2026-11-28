@@ -176,6 +176,32 @@ counts only once you have seen its end.
 - If setup fails, nerdr says so and opens the tab anyway.
 - For a long setup, press `esc` to hide the dialog. The tab opens beside
   the one you are in when ready, without taking the keyboard.
+- `setup` is told the tab's ports, as below, so it can write them into
+  an `.env`.
+
+## Ports of the tab's own
+
+Each tab gets a range of ports no other open tab has, so dev servers and
+databases in tabs side by side don't fight over the same port. nerdr hands
+the range out from a pool when the tab is made, and it is free for the
+next tab once the tab is closed. A tab keeps its range while it is open,
+across restarts of nerdr.
+
+An agent asks for the range with `nerdr ports`, which prints the first and
+last port, such as `20010 20019`. nerdr's skill tells it to, before it
+starts a server. The command asks nerdr through the socket the agent
+reports to, so it works in a sandbox with nothing more let through.
+Terminals, plugins and the `setup` of `.nerdr.toml` get the same range in
+`NERDR_PORT` (the first) and `NERDR_PORT_END` (the last), for a setup that
+writes the port into an `.env`, or `npm run dev -- --port $NERDR_PORT` in a
+terminal.
+
+The ports are on the machine the tab runs on: a tab moved to another
+machine gets a range there. `port_base` and `ports_per_tab` in the
+[config](../../configure/configuration/#tabs) set where the pool starts and
+how many ports each tab has; `ports_per_tab = 0` gives tabs none. Ranges
+are handed out per nerdr: two nerdrs started in different folders can give
+their tabs the same ports.
 
 ## Moving between tabs
 

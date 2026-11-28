@@ -96,6 +96,9 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 		}
 		m.Tabs = append(m.Tabs, t)
 	}
+	for _, t := range m.Tabs {
+		m.givePorts(t) // a tab from before tabs had ports; after all, to keep clear of theirs
+	}
 	if sess.Active >= 0 && sess.Active < len(m.Tabs) {
 		m.Tabs[sess.Active].LastActive = now // entered, the tab in front
 	}
