@@ -165,25 +165,41 @@ func TestFleetSpinoffOnAnotherMachineIsHeld(t *testing.T) {
 	}
 }
 
-// TestFleetSpinoffHoldUnanswered: a tab's core that never says it holds
-// the part, of an older nerdr, gives the run up when the wait is over,
-// rather than keeping the dialog busy for ever.
+// TestFleetSpinoffHoldUnanswered: a hold the tab's core has taken, its
+// answer not come in time (or from an older nerdr, never), gives the run
+// up when the wait is over, and is let go of, so the part can be made
+// again at once; the answer coming after is nothing.
 func TestFleetSpinoffHoldUnanswered(t *testing.T) {
 	m, here, box, _, told := twoMachines(t)
 	spinoffRemoteSetup(t, m, told, here, box)
 	pressOn(m, "ctrl+t")
 	pump(t, m, told, "box's repository", func(v string) bool { return strings.Contains(v, "Machine: box") })
-	var job string
+	here.Mu.Lock()
+	ref := here.Ref(here.Tabs[0])
+	// Held, the answer on its way.
+	core.SpinoffHold{Job: "late", T: ref, Part: "pa", Busy: "making part-a on box…"}.Do(here)
+	held := here.Tabs[0].SpinoffHold
+	here.Mu.Unlock()
+	if held != "late" {
+		t.Fatalf("not held: %q", held)
+	}
 	locked(m, func() {
 		d := m.dialog.(*spinoffDialog)
 		// As spinoffRemote has it before its hold is answered.
 		m.spinoffRun = &spinoffRun{job: "late", ref: m.fleet.Ref(d.t), from: m.machineOf(d.t), to: d.target(m),
 			land: core.SpinoffLand{Name: "part-a"}, busy: "making part-a on box…"}
-		job = m.spinoffRun.job
-		m.spinoffHoldLate(job)
+		m.spinoffHoldLate("late")
 		if m.spinoffRun != nil || !strings.Contains(d.err, "did not say it holds the part") {
 			t.Errorf("the run waits on: %q", d.err)
 		}
+		if cmd := m.onSpinoffRun(core.SpinoffHeldMsg{Job: "late"}); cmd != nil || m.spinoffRun != nil {
+			t.Error("the answer after took the run up again")
+		}
+	})
+	pumpUntil(t, m, told, "the hold let go of", func() bool {
+		here.Mu.Lock()
+		defer here.Mu.Unlock()
+		return here.Tabs[0].SpinoffHold == "" && here.Tabs[0].SpinoffBusy == ""
 	})
 }
 

@@ -118,17 +118,36 @@ func (q SpinoffCreate) Do(m *Core) Cmd {
 }
 
 // SpinoffNext records Outcome as what became of tab T's first part, and
-// goes on to the next.
+// goes on to the next. Job is that of the client's SpinoffHold for a part
+// made on another machine: its outcome is taken only while the hold is
+// still Job's. With no Job, as for a part skipped, the part must not be
+// being made, nor held, by anyone.
 type SpinoffNext struct {
 	T       TabRef
 	Outcome spinoff.Outcome
+	Job     string
 }
 
 func (q SpinoffNext) Do(m *Core) Cmd {
-	if t := m.ByRef(q.T); t != nil {
-		return m.SpinoffNext(t, q.Outcome)
+	t := m.ByRef(q.T)
+	if t == nil {
+		return nil
 	}
-	return nil
+	name := q.Outcome.Branch
+	if name == "" {
+		name = q.Outcome.Part.Branch
+	}
+	switch {
+	case q.Job != "" && t.SpinoffHold != q.Job:
+		// Held too long, and let go of: what it made is no longer the
+		// part's, which may be answered another way since.
+		m.Toast("spinoff " + name + ": made too late to count for the part, which waits to be gone through again")
+		return nil
+	case q.Job == "" && t.SpinoffBusy != "":
+		m.Toast("spinoff " + name + ": " + t.SpinoffBusy)
+		return nil
+	}
+	return m.SpinoffNext(t, q.Outcome)
 }
 
 // SpinoffFailedMsg is the tab for tab T's first part not made, for the
