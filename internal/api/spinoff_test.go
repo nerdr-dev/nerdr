@@ -61,12 +61,23 @@ func TestSpinoffOverTheSocket(t *testing.T) {
 	if a := next("", 4); !strings.Contains(a["error"].(string), `no agent "gemini"`) {
 		t.Fatalf("answer %v", a)
 	}
+	// The skip changes the state before its answer is written, so the
+	// event may come before the answer as well as after.
 	c.send(map[string]any{"id": 5, "op": "spinoff_skip", "tab": "t1", "part": "p1"})
-	if a := next("", 5); a["error"] != nil {
-		t.Fatalf("answer %v", a)
+	var answer, done map[string]any
+	for answer == nil || done == nil {
+		l := c.line()
+		switch {
+		case l["id"] == float64(5):
+			answer = l
+		case l["event"] == "spinoff":
+			done = l
+		}
 	}
-	ev = next("spinoff", 0)
-	if v, ok := ev["spinoff"]; !ok || v != nil || ev["tab_id"] != "t1" {
-		t.Fatalf("the spinoff is done: %v", ev)
+	if answer["error"] != nil {
+		t.Fatalf("answer %v", answer)
+	}
+	if v, ok := done["spinoff"]; !ok || v != nil || done["tab_id"] != "t1" {
+		t.Fatalf("the spinoff is done: %v", done)
 	}
 }
