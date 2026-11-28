@@ -250,3 +250,44 @@ func TestAPISpinoffGoneWhileSetupIsAsked(t *testing.T) {
 		t.Fatalf("parts %+v", tab.Spinoff.Next)
 	}
 }
+
+// TestSpinoffHold: a client making the part elsewhere holds it, the first
+// alone and once; it is let go of by its own job, or in time.
+func TestSpinoffHold(t *testing.T) {
+	m, tab, _ := spinoffCore(t)
+	var told []Event
+	m.Observe = func(ev Event) { told = append(told, ev) }
+	hold := func(job, part string) string {
+		told = nil
+		SpinoffHold{Job: job, T: m.Ref(tab), Part: part, Busy: "making fix-a on box…"}.Do(m)
+		return told[len(told)-1].(SpinoffHeldMsg).Err
+	}
+	if err := hold("j1", "p2"); !strings.Contains(err, "no longer the one") {
+		t.Errorf("held the second part: %q", err)
+	}
+	if err := hold("j1", "p1"); err != "" || tab.SpinoffBusy != "making fix-a on box…" {
+		t.Fatalf("%q, busy %q", err, tab.SpinoffBusy)
+	}
+	if err := hold("j2", "p1"); !strings.Contains(err, "being made already") {
+		t.Errorf("held twice: %q", err)
+	}
+	SpinoffHold{Job: "j2", T: m.Ref(tab), Release: true}.Do(m)
+	if tab.SpinoffBusy == "" {
+		t.Error("another job let go of the hold")
+	}
+	m.ExpireSpinoffHolds(time.Now())
+	if tab.SpinoffBusy == "" {
+		t.Error("let go of before its time")
+	}
+	m.ExpireSpinoffHolds(time.Now().Add(SpinoffHoldFor + time.Second))
+	if tab.SpinoffBusy != "" || tab.SpinoffHold != "" {
+		t.Errorf("not let go of in time: %q", tab.SpinoffBusy)
+	}
+	if err := hold("j3", "p1"); err != "" {
+		t.Fatal(err)
+	}
+	SpinoffHold{Job: "j3", T: m.Ref(tab), Release: true}.Do(m)
+	if tab.SpinoffBusy != "" {
+		t.Error("its own job did not let go of it")
+	}
+}

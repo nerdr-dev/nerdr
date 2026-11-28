@@ -309,6 +309,7 @@ func (m *Core) loopEvent(ev Event) (Cmd, Event) {
 		}
 		now := time.Now()
 		m.ExpireViews(now)
+		m.ExpireSpinoffHolds(now)
 		// Also here: with no client, nothing may draw for a frame.
 		return Batch(m.InfoTick(now), m.ExpireAsks(now)), InfoTickMsg{}
 	}

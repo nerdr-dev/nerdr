@@ -324,13 +324,12 @@ func (d *spinoffDialog) tick(i int) {
 // busy is what is being done about the part asked about, "" while
 // nothing is.
 func (d *spinoffDialog) busy(m *Model) string {
-	if d.t.SpinoffBusy != "" {
-		return d.t.SpinoffBusy
-	}
+	// The run's own first: it says how far it has come, where the hold it
+	// has in core says only that it goes on.
 	if r := m.spinoffRun; r != nil && m.fleet.ByRef(r.ref) == d.t {
 		return r.busy
 	}
-	return ""
+	return d.t.SpinoffBusy
 }
 
 // spinoffMake makes the branch and worktrees for the part asked about, in

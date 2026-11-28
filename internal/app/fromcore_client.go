@@ -100,7 +100,7 @@ func (m *Model) Tell(ev core.Event) core.Cmd {
 		return toCore(tea.Batch(m.onMove(ev), m.onSpinoffRun(ev)))
 	case core.MoveCheckMsg, core.MoveLookMsg, core.MovePackedMsg, core.MoveLandedMsg:
 		return toCore(m.onMove(ev))
-	case core.SpinoffPackedMsg, core.SpinoffLandedMsg:
+	case core.SpinoffHeldMsg, core.SpinoffPackedMsg, core.SpinoffLandedMsg:
 		return toCore(m.onSpinoffRun(ev))
 	case core.SpinoffFoundMsg:
 		return toCore(m.spinoffFound(ev))
