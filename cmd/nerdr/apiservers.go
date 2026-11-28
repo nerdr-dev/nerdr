@@ -608,6 +608,23 @@ type machineTagged struct {
 	api.Event
 }
 
+// MarshalJSON is the event as it marshals itself, with machine added: the
+// Event's own MarshalJSON, promoted, would leave Machine out.
+func (t machineTagged) MarshalJSON() ([]byte, error) {
+	b, err := json.Marshal(t.Event)
+	if err != nil {
+		return nil, err
+	}
+	name, err := json.Marshal(t.Machine)
+	if err != nil {
+		return nil, err
+	}
+	if string(b) == "{}" {
+		return append(append([]byte(`{"machine":`), name...), '}'), nil
+	}
+	return append(append(append([]byte(`{"machine":`), name...), ','), b[1:]...), nil
+}
+
 // ask sends request r to m, then for its answer. It is false, and then is
 // not called, when m is not connected.
 func (a *aggregator) ask(m *machine, r map[string]json.RawMessage, then pending) bool {
