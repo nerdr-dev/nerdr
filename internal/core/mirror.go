@@ -26,10 +26,13 @@ import (
 // tab's id, and the copy points at its own tab of that id again.
 
 // Part is a piece of core's state for a client; its Key says which, and a
-// newer part of the same key takes the place of the one before.
+// newer part of the same key takes the place of the one before. It is
+// Body, or, to a client that takes them, Patch: how Body differs from the
+// part of its key sent before (see jsonPatch).
 type Part struct {
-	Key  string
-	Body json.RawMessage
+	Key   string
+	Body  json.RawMessage `json:",omitempty"`
+	Patch *jsonPatch      `json:",omitempty"`
 }
 
 // The keys of the parts: the rest of core, the looks at the agents'
@@ -153,14 +156,18 @@ func (t *Tab) UnmarshalJSON(b []byte) error {
 // Sent is what a client has been sent of core's state, to send it only
 // what changed. The zero Sent has been sent nothing.
 type Sent struct {
-	sums map[string][32]byte
+	// Patch is set when the client takes the parts as patches, and
+	// bodies are then the parts as last sent, by key.
+	Patch  bool
+	bodies map[string]json.RawMessage
+	sums   map[string][32]byte
 	// skills is the skillsSum the looks at the skills were sent at, nil
 	// when they were not.
 	skills *[32]byte
 }
 
 // Reset forgets what was sent: the next Parts are all of it.
-func (s *Sent) Reset() { s.sums, s.skills = nil, nil }
+func (s *Sent) Reset() { s.sums, s.skills, s.bodies = nil, nil, nil }
 
 // Parts are the parts of core's state that changed since s, and s marked
 // as sent them. A part that cannot be encoded is left out, and its error
@@ -180,7 +187,7 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 			return nil
 		}
 		s.sums[key] = sum
-		out = append(out, Part{Key: key, Body: b})
+		out = append(out, s.part(key, b))
 		return nil
 	}
 	m.NoteUnseen() // a tab closed since may leave one
@@ -215,9 +222,35 @@ func (m *Core) Parts(s *Sent) ([]Part, error) {
 	for k := range s.sums {
 		if !live[k] {
 			delete(s.sums, k) // closed: should it be back, it goes again
+			delete(s.bodies, k)
 		}
 	}
 	return out, errors.Join(errs...)
+}
+
+// part is the part of key, b, as the client is to be sent it: how b
+// differs from the one sent before, when the client takes that and it is
+// the shorter.
+func (s *Sent) part(key string, b json.RawMessage) Part {
+	if !s.Patch {
+		return Part{Key: key, Body: b}
+	}
+	if s.bodies == nil {
+		s.bodies = map[string]json.RawMessage{}
+	}
+	old, ok := s.bodies[key]
+	s.bodies[key] = b
+	if !ok {
+		return Part{Key: key, Body: b}
+	}
+	p := diffJSON(old, b)
+	if p == nil || p.V != nil {
+		return Part{Key: key, Body: b}
+	}
+	if enc, err := json.Marshal(p); err != nil || len(enc) >= len(b) {
+		return Part{Key: key, Body: b}
+	}
+	return Part{Key: key, Patch: p}
 }
 
 // agentsOf is tab t and the agents in it, reviewers too, each once: also
@@ -247,12 +280,18 @@ type Mirror struct {
 	progs  []ProgramState  // the programs core's part says run
 	// started is set when a program came that the copy did not know.
 	started bool
+	// bodies are the parts last taken, by key, for a patch to apply to.
+	bodies map[string]json.RawMessage
 }
 
 // NewMirror is a Mirror of nothing yet, into c.
 func NewMirror(c *Core) *Mirror {
-	return &Mirror{C: c, tabs: map[string]*Tab{}, agents: map[string]*Tab{}, in: map[string][]string{}, owner: map[string]string{}, listed: map[string]bool{}}
+	return &Mirror{C: c, tabs: map[string]*Tab{}, agents: map[string]*Tab{}, in: map[string][]string{}, owner: map[string]string{}, listed: map[string]bool{}, bodies: map[string]json.RawMessage{}}
 }
+
+// errPatch is a part's patch that could not be taken: the copy is to be
+// sent every part whole again (ResendParts).
+var errPatch = errors.New("a part's patch")
 
 // Apply takes part p into the copy. C.Mu is held.
 //
@@ -260,6 +299,21 @@ func NewMirror(c *Core) *Mirror {
 // client's own changes do (see Core.Gen), and core's is not taken, so it
 // never goes back to a number already drawn at.
 func (r *Mirror) Apply(p Part) error {
+	if p.Patch != nil {
+		old, ok := r.bodies[p.Key]
+		if !ok {
+			return fmt.Errorf("%w: part %q never came whole", errPatch, p.Key)
+		}
+		b, err := applyJSON(old, p.Patch)
+		if err != nil {
+			// No patch of it is taken until it comes whole again.
+			delete(r.bodies, p.Key)
+			return fmt.Errorf("%w: %w", errPatch, err)
+		}
+		p.Body = b
+	}
+	// Kept first: core takes it the client has it, whatever came of it.
+	r.bodies[p.Key] = p.Body
 	gen := r.C.Gen
 	defer func() { r.C.Gen = gen + 1 }()
 	switch {
@@ -387,6 +441,7 @@ func (r *Mirror) applyCore(body []byte) error {
 			}
 			delete(r.in, id)
 			delete(r.tabs, id)
+			delete(r.bodies, PartTab(id))
 		}
 	}
 	return nil

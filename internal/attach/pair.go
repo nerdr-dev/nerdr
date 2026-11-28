@@ -8,6 +8,7 @@ import (
 
 // Pair is two connected ends, already in, for a client and a core in the
 // same process: what one sends the other receives, as over the socket.
+// Each has the features this nerdr has.
 func Pair() (*Conn, *Conn, error) {
 	// Under ForkLock, so no program started meanwhile is born with an
 	// end before it is closed on exec.
@@ -36,5 +37,8 @@ func Pair() (*Conn, *Conn, error) {
 		}
 		conns[i] = c
 	}
-	return newConn(conns[0]), newConn(conns[1]), nil
+	// Both ends are of this nerdr, and have what it has.
+	a, b := newConn(conns[0]), newConn(conns[1])
+	a.features, b.features = Features, Features
+	return a, b, nil
 }

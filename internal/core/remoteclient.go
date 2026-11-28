@@ -72,7 +72,18 @@ type PaneSize struct {
 }
 
 func init() {
-	registerRequests(ClientSays{}, clientGone{}, noRequest{}, StartWhenSized{}, StartWaiting{}, flushParts{})
+	registerRequests(ClientSays{}, clientGone{}, noRequest{}, StartWhenSized{}, StartWaiting{}, flushParts{}, ResendParts{})
+}
+
+// ResendParts asks core for every part of its state whole again: the
+// client could not take a patch of one.
+type ResendParts struct{}
+
+func (ResendParts) Do(m *Core) Cmd {
+	if rc, ok := m.Client.(*RemoteClient); ok {
+		rc.sent.Reset()
+	}
+	return nil
 }
 
 // ClientSays is what the client shows now.
@@ -180,6 +191,7 @@ var _ Client = (*RemoteClient)(nil)
 func (m *Core) AttachClient(conn *attach.Conn, post func(RequestEv)) *RemoteClient {
 	m.clients++
 	rc := &RemoteClient{conn: conn, post: post, viewer: fmt.Sprintf("client:%d", m.clients)}
+	rc.sent.Patch = conn.Has(attach.FeaturePartPatch)
 	if old, ok := m.Client.(*RemoteClient); ok {
 		// The client before has gone, or goes now: its sizes go with it,
 		// what it still says of them counting for nothing, the API's
@@ -273,6 +285,27 @@ func (rc *RemoteClient) flush(m *Core) {
 		rc.out = nil
 		return
 	}
+	if !rc.behind.Load() && rc.conn.Waiting(partsKey) {
+		// The parts sent last wait to be written still, the client slow
+		// to take them: what changed since goes with what changes until
+		// they are, in one, and what core told it after them, not to
+		// grow a queue of states gone by. What it was told that waits
+		// past what the connection would hold is dropped, as the
+		// connection drops what waits there, and all goes afresh.
+		held := 0
+		for _, b := range rc.out {
+			held += len(b)
+		}
+		if held <= attach.QueueLimit {
+			if !rc.later && rc.post != nil {
+				rc.later = true
+				time.AfterFunc(partsRetry, func() { rc.post(RequestEv{R: flushParts{rc: rc}}) })
+			}
+			return
+		}
+		rc.out = nil
+		rc.behind.Store(true)
+	}
 	behind := rc.behind.Swap(false)
 	if behind {
 		rc.sent.Reset()
@@ -309,7 +342,10 @@ func (rc *RemoteClient) flush(m *Core) {
 		rc.partsErr = ""
 	}
 	if len(parts) > 0 {
-		rc.conn.Send("", wire(wireParts, parts))
+		noteParts(parts)
+		// Keyed only to be told it waits (see above): none is sent
+		// while one does, to take its place.
+		rc.conn.Send(partsKey, wire(wireParts, parts))
 	}
 	if behind {
 		// After the parts: a request it says is done shows in them.
@@ -320,6 +356,13 @@ func (rc *RemoteClient) flush(m *Core) {
 	}
 	rc.out = nil
 }
+
+// partsKey is the key the parts go with.
+const partsKey = "parts"
+
+// partsRetry is how soon the parts are looked at again while those sent
+// before wait to be written.
+var partsRetry = 50 * time.Millisecond
 
 // PartsEvery is how long the parts of core's state may wait to be looked
 // at again while only programs drew.
@@ -381,6 +424,7 @@ func (rc *RemoteClient) Tell(ev Event) Cmd {
 		}
 		return nil
 	}
+	noteWire(fmt.Sprintf("event:%T", ev), len(b))
 	rc.out = append(rc.out, b)
 	return nil
 }
@@ -440,6 +484,7 @@ func (rc *RemoteClient) Forward(ev Event) {
 		return
 	}
 	if b, err := EncodeEvent(ev); err == nil {
+		noteWire(fmt.Sprintf("forward:%T", ev), len(b))
 		rc.conn.Send("", append([]byte{wireEvent}, b...))
 	}
 }

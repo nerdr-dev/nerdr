@@ -155,7 +155,7 @@ func dialRemoteTTY(host, folder string, again bool, tty *os.File) (*attach.Conn,
 	if gen != attach.Generation {
 		return fail(versionMismatch(host, gen, v))
 	}
-	conn, _, err := attach.Handshake(c, attach.Hello{Gen: attach.Generation, Version: version()})
+	conn, _, err := attach.Handshake(c, attach.Hello{Gen: attach.Generation, Version: version(), Features: attach.Features})
 	if err != nil {
 		return fail(fmt.Errorf("%s: %w", host, err))
 	}

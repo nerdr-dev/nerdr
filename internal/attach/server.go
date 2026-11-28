@@ -203,6 +203,7 @@ func (s *Server) serve(c net.Conn) {
 	_ = c.SetDeadline(time.Time{})
 	cn := newConn(c)
 	cn.version = h.Version
+	cn.features = h.Features
 	s.mu.Lock()
 	if s.closed {
 		s.mu.Unlock()

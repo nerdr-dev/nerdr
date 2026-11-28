@@ -223,7 +223,7 @@ func dialCore(root string, start bool) (*attach.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	hello := attach.Hello{Version: version(), Env: os.Environ()}
+	hello := attach.Hello{Version: version(), Features: attach.Features, Env: os.Environ()}
 	conn, w, err := attach.Dial(sock, keyFile, hello)
 	// A core quitting is waited for, to start one afresh.
 	for deadline := time.Now().Add(coreStartWait); quitting(err) && start && time.Now().Before(deadline); {

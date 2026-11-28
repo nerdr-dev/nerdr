@@ -32,6 +32,18 @@ type CoreConn struct {
 	gen    int // of the connection, one more each Reconnect
 	more   chan struct{}
 	lastID int64
+
+	// resync is the id of the ResendParts asked for when a patch could
+	// not be taken, 0 when none is: until it is done, the copy is not
+	// what core takes it to be, and what core told meanwhile (held), and
+	// a request done meanwhile (doneSeen, the last of those), wait for it.
+	// It was asked over the connection of resyncGen: a core started again
+	// (Reconnect) sends every part whole, and none waits for it then.
+	// Read and written by takeUntil alone.
+	resync    int64
+	resyncGen int
+	held      []Event
+	doneSeen  int64
 }
 
 // InboxMsg tells the client core has sent what is to be taken in (Take).
@@ -172,11 +184,36 @@ func (cc *CoreConn) encode(r Request) ([]byte, error) {
 // done; up to then, when it is.
 func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 	var evs []Event
+	// done is what takeUntil comes to with request id done, or the
+	// inbox empty: while a resync is on its way, nothing yet.
+	done := func(ok bool) ([]Event, bool) {
+		if cc.resync != 0 {
+			cc.held = append(cc.held, evs...)
+			if ok {
+				cc.doneSeen = max(cc.doneSeen, id)
+			}
+			return nil, false
+		}
+		// What waited for a resync before a reconnect let it go, too.
+		evs, cc.held = append(cc.held, evs...), nil
+		return evs, ok
+	}
+	// resynced is the resync done, what waited for it taken in; it says
+	// the last request done meanwhile.
+	resynced := func() int64 {
+		seen := cc.doneSeen
+		cc.resync, cc.doneSeen = 0, 0
+		evs, cc.held = append(cc.held, evs...), nil
+		return seen
+	}
 	for {
 		cc.mu.Lock()
+		if cc.resync != 0 && cc.resyncGen != cc.gen {
+			cc.resync, cc.doneSeen = 0, 0
+		}
 		if len(cc.inbox) == 0 {
 			cc.mu.Unlock()
-			return evs, false
+			return done(false)
 		}
 		b := cc.inbox[0]
 		cc.inbox[0] = nil
@@ -192,10 +229,15 @@ func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 				Debugf("core: parts: %v", err)
 				continue
 			}
+			resend := false
 			for _, p := range parts {
 				if err := cc.mirror.Apply(p); err != nil {
 					Debugf("core: part %s: %v", p.Key, err)
+					resend = resend || errors.Is(err, errPatch)
 				}
+			}
+			if resend && cc.resync == 0 {
+				cc.askResync()
 			}
 		case wireEvent:
 			ev, err := DecodeEvent(b[1:])
@@ -212,18 +254,52 @@ func (cc *CoreConn) takeUntil(id int64) ([]Event, bool) {
 			evs = append(evs, ev)
 		case wireDone:
 			var d doneWire
-			if json.Unmarshal(b[1:], &d) == nil && id != 0 && d.ID == id {
-				return evs, true
+			if json.Unmarshal(b[1:], &d) != nil {
+				continue
+			}
+			if cc.resync != 0 && d.ID == cc.resync {
+				if seen := resynced(); id != 0 && seen >= id {
+					return evs, true
+				}
+			}
+			if id != 0 && d.ID == id {
+				return done(true)
 			}
 		case wireBehind:
 			// What core told meanwhile is lost, a done among it maybe:
 			// the parts before this came afresh, and it says which
 			// requests core had done by then.
 			var bw behindWire
-			if json.Unmarshal(b[1:], &bw) == nil && id != 0 && bw.Done >= id {
+			if json.Unmarshal(b[1:], &bw) != nil {
+				continue
+			}
+			var seen int64
+			if cc.resync != 0 {
+				// The parts came whole: the resync is done, asked for
+				// or not.
+				seen = resynced()
+			}
+			if id != 0 && (bw.Done >= id || seen >= id) {
 				return evs, true
 			}
 		}
+	}
+}
+
+// askResync asks core for every part whole again, a patch of one not
+// taken: what it tells from now on waits for them (see takeUntil).
+func (cc *CoreConn) askResync() {
+	b, err := cc.encode(ResendParts{})
+	if err != nil {
+		return
+	}
+	cc.mu.Lock()
+	cc.lastID++
+	id := cc.lastID
+	conn, gen := cc.conn, cc.gen
+	cc.mu.Unlock()
+	if conn != nil && conn.Send("", wire(wireAsked, askedWire{ID: id, Req: b})) {
+		cc.resync, cc.resyncGen = id, gen
 	}
 }
 
