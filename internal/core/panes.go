@@ -313,10 +313,37 @@ func (m *Core) OnMessage(r hooks.Report) Cmd {
 		reply(hooks.Answer{Err: "a reviewer sends its review with nerdr post-review, to the agent it reviews"})
 		return nil
 	}
-	to := o.AgentNumbered(r.To)
+	// dest is the tab the message is for: the sender's own, or one linked
+	// to it (nerdr send --tab).
+	dest, there, back := o, "", ""
+	if r.Tab != "" {
+		lt, why := m.FindLinked(o, r.Tab)
+		if lt == nil {
+			reply(hooks.Answer{Err: why})
+			return nil
+		}
+		dest, there = lt, " in the tab "+lt.Name
+		if from.SentTo == nil {
+			from.SentTo = map[string]string{}
+		}
+		from.SentTo[r.Tab] = lt.ID
+	}
+	to := dest.AgentNumbered(r.To)
 	switch {
+	case r.To == 0 && r.Tab != "":
+		reply(hooks.Answer{Text: "The agents of the tab " + dest.Name + ": " + m.AgentList(dest, nil) +
+			". nerdr send --tab " + dest.ID + " N MESSAGE sends one a message."})
+		return nil
 	case r.To == 0:
-		reply(hooks.Answer{Text: "The agents of this tab: " + m.AgentList(o, from) + ". nerdr send N MESSAGE sends one a message."})
+		text := "The agents of this tab: " + m.AgentList(o, from) + ". nerdr send N MESSAGE sends one a message."
+		if l := m.LinkedList(o); l != "" {
+			text += "\nLinked tabs, which your tab made or was made by: " + l +
+				". nerdr send --tab TAB N MESSAGE sends an agent there a message."
+		}
+		reply(hooks.Answer{Text: text})
+		return nil
+	case to == nil && dest != o:
+		reply(hooks.Answer{Err: fmt.Sprintf("there is no agent %d in the tab %s; its agents are %s", r.To, dest.Name, m.AgentList(dest, nil))})
 		return nil
 	case to == nil:
 		reply(hooks.Answer{Err: fmt.Sprintf("there is no agent %d in this tab; its agents are %s", r.To, m.AgentList(o, from))})
@@ -325,15 +352,29 @@ func (m *Core) OnMessage(r hooks.Report) Cmd {
 		reply(hooks.Answer{Err: fmt.Sprintf("agent %d is you; the others are %s", r.To, m.AgentList(o, from))})
 		return nil
 	case m.Confined(r, from) && !m.InSandbox(to):
-		reply(hooks.Answer{Err: fmt.Sprintf("you run in a sandbox, and agent %d (%s) does not: "+
-			"nerdr does not pass it what you write. Ask the user instead", to.Num, to.Agent)})
+		reply(hooks.Answer{Err: fmt.Sprintf("you run in a sandbox, and agent %d (%s)%s does not: "+
+			"nerdr does not pass it what you write. Ask the user instead", to.Num, to.Agent, there)})
 		return nil
 	}
-	text := fmt.Sprintf("Message from agent %d (%s) in this nerdr tab:\n\n%s\n\n"+
-		"It has none of your conversation. To answer it, or to send it your work, use the nerdr-send skill: nerdr send %d \"…\"",
-		from.Num, from.Agent, r.Text, from.Num)
+	var text string
+	if dest == o {
+		text = fmt.Sprintf("Message from agent %d (%s) in this nerdr tab:\n\n%s\n\n"+
+			"It has none of your conversation. To answer it, or to send it your work, use the nerdr-send skill: nerdr send %d \"…\"",
+			from.Num, from.Agent, r.Text, from.Num)
+	} else {
+		// The ID, not the name: a name may hold spaces, and change.
+		back = "--tab " + o.ID + " "
+		text = fmt.Sprintf("Message from agent %d (%s) in the nerdr tab %s, in %s, which is linked to yours:\n\n%s\n\n"+
+			"It has none of your conversation, and works in its own worktree. To answer it, or to send it your work, "+
+			"use the nerdr-send skill: nerdr send %s%d \"…\"",
+			from.Num, from.Agent, o.Name, o.Dir, r.Text, back, from.Num)
+	}
 	m.AddMessageFrom(to, text, true, m.Confined(r, from))
-	to.Messages[len(to.Messages)-1].From = from.Num // for nerdr send --wait
+	last := &to.Messages[len(to.Messages)-1]
+	last.From = from.Num // for nerdr send --wait
+	if dest != o {
+		last.FromTab = o.ID
+	}
 	if to.StartedBy == from.ID {
 		to.OwesStarter = true
 	}
@@ -342,13 +383,17 @@ func (m *Core) OnMessage(r hooks.Report) Cmd {
 	}
 	m.SaveSession()
 	m.Tell(PanesMsg{})
-	m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " → " + m.AgentLabel(o, to) + ": a message, sent when it is idle")
+	if dest == o {
+		m.Toast(o.Name + ": " + m.AgentLabel(o, from) + " → " + m.AgentLabel(o, to) + ": a message, sent when it is idle")
+	} else {
+		m.Toast(o.Name + " " + m.AgentLabel(o, from) + " → " + dest.Name + " " + m.AgentLabel(dest, to) + ": a message, sent when it is idle")
+	}
 	when := "now"
 	if to.Light != StIdle && to.Light != StDone {
 		when = "when it is idle"
 	}
-	reply(hooks.Answer{Text: fmt.Sprintf("Sent to agent %d (%s): it gets it %s, and answers with nerdr send %d if it has anything to say.",
-		to.Num, to.Agent, when, from.Num)})
+	reply(hooks.Answer{Text: fmt.Sprintf("Sent to agent %d (%s)%s: it gets it %s, and answers with nerdr send %s%d if it has anything to say.",
+		to.Num, to.Agent, there, when, back, from.Num)})
 	return nil
 }
 

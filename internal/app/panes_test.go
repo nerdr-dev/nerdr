@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,7 +13,9 @@ import (
 	"github.com/nerdr-dev/nerdr/internal/codereview"
 	"github.com/nerdr-dev/nerdr/internal/core"
 	"github.com/nerdr-dev/nerdr/internal/hooks"
+	"github.com/nerdr-dev/nerdr/internal/spinoff"
 	"github.com/nerdr-dev/nerdr/internal/state"
+	"github.com/nerdr-dev/nerdr/internal/workspace"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
@@ -924,5 +927,133 @@ func TestCloseBusyTerminal(t *testing.T) {
 	m.handleKey(keyMsg("y"))
 	if m.dialog != nil || slices.Contains(tb.Panes(), p) {
 		t.Fatal("confirmation should close the terminal")
+	}
+}
+
+// TestLinkedTabsSendEachOtherMessages: the agents of a tab and of one it
+// made, in another repository, reach each other with nerdr send --tab,
+// and --wait takes the answer from that tab's agent, not from one of the
+// same number in its own; a tab not linked is not reached.
+func TestLinkedTabsSendEachOtherMessages(t *testing.T) {
+	m := paneModel(t)
+	c := &m.home().Core
+	app, other, lib := c.TabByID("1"), c.TabByID("2"), c.TabByID("3")
+	c.LinkTabs(app, lib)
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Message, Tab: "parse", To: 1, Text: "fix the lexer too"}); a.Err != "" ||
+		!strings.Contains(a.Text, "in the tab parse") || !strings.Contains(a.Text, "nerdr send --tab 1 1") {
+		t.Fatalf("answer %+v", a)
+	}
+	if len(lib.Messages) != 1 || !lib.Messages[0].Auto || lib.Messages[0].FromTab != "1" ||
+		!strings.Contains(lib.Messages[0].Text, "in the nerdr tab login, in "+app.Dir+", which is linked to yours") ||
+		!strings.Contains(lib.Messages[0].Text, "fix the lexer too") || !strings.Contains(lib.Messages[0].Text, "nerdr send --tab 1 1") {
+		t.Fatalf("parse's agent should get it, saying how to answer: %+v", lib.Messages)
+	}
+	if a, _ := askNerdr(m, lib, hooks.Report{Method: hooks.Message, Tab: "login", To: 1, Text: "done"}); a.Err != "" {
+		t.Fatalf("parse answers: %+v", a)
+	}
+	// login's own agent 1 is itself; the answer from parse's agent 1 is
+	// the one taken.
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Query, What: hooks.QueryReply, To: 1}); a.Text != "" {
+		t.Fatalf("no reply from its own tab: %+v", a)
+	}
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Query, What: hooks.QueryReply, Tab: "parse", To: 1}); !strings.Contains(a.Text, "done") || len(app.Messages) != 0 {
+		t.Fatalf("the reply from parse: %+v, %+v", a, app.Messages)
+	}
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Message, Tab: "logout", To: 1, Text: "hi"}); !strings.Contains(a.Err, "no tab linked to yours is called logout") || len(other.Messages) != 0 {
+		t.Fatalf("a tab not linked: %+v", a)
+	}
+	if a, _ := askNerdr(m, other, hooks.Report{Method: hooks.Message, Tab: "parse", To: 1, Text: "hi"}); !strings.Contains(a.Err, "no tab is linked to yours") {
+		t.Fatalf("from a tab with none linked: %+v", a)
+	}
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Message}); !strings.Contains(a.Text, "Linked tabs") || !strings.Contains(a.Text, "parse, --tab 3 (in /w/parse: 1:claude)") {
+		t.Fatalf("the list: %+v", a)
+	}
+	if !slices.Equal(app.Linked, []string{"3"}) || !slices.Equal(lib.Linked, []string{"1"}) {
+		t.Fatalf("links %v %v", app.Linked, lib.Linked)
+	}
+}
+
+// TestTabNewLinksTheTabs: the tab an agent has nerdr make for it is linked
+// to the agent's, and the agent is told it can send to it.
+func TestTabNewLinksTheTabs(t *testing.T) {
+	m := paneModel(t)
+	c := &m.home().Core
+	tb := m.Cur()
+	c.TabMade(core.TabMadeMsg{From: tb, Branch: "lib-fix", Kind: agents.Claude, Task: "fix it there too",
+		Plan: workspace.Plan{Branch: "lib-fix", Dir: t.TempDir()}})
+	nt := c.Tabs[len(c.Tabs)-1]
+	if nt.Name != "lib-fix" || !slices.Contains(tb.Linked, nt.ID) || !slices.Contains(nt.Linked, tb.ID) {
+		t.Fatalf("not linked: %v %v", tb.Linked, nt.Linked)
+	}
+	if len(tb.Messages) == 0 || !strings.Contains(tb.Messages[len(tb.Messages)-1].Text, "nerdr send --tab "+nt.ID+" 1") {
+		t.Fatalf("the agent should be told: %+v", tb.Messages)
+	}
+}
+
+// TestWaitKeepsToTheTabSentTo: nerdr send --wait, given a linked tab's
+// name, waits on the tab it sent to, though that tab is renamed and
+// another linked one takes its name before the answer comes.
+func TestWaitKeepsToTheTabSentTo(t *testing.T) {
+	m := paneModel(t)
+	c := &m.home().Core
+	app, other, lib := c.TabByID("1"), c.TabByID("2"), c.TabByID("3")
+	c.LinkTabs(app, lib)
+	c.LinkTabs(app, other)
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Message, Tab: "parse", To: 1, Text: "which schema?"}); a.Err != "" {
+		t.Fatalf("send: %+v", a)
+	}
+	lib.Name, other.Name = "lexer", "parse"
+	if a, _ := askNerdr(m, other, hooks.Report{Method: hooks.Message, Tab: "1", To: 1, Text: "not this one"}); a.Err != "" {
+		t.Fatalf("from the other: %+v", a)
+	}
+	if a, _ := askNerdr(m, lib, hooks.Report{Method: hooks.Message, Tab: "1", To: 1, Text: "v2"}); a.Err != "" {
+		t.Fatalf("the answer: %+v", a)
+	}
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Query, What: hooks.QueryReply, Tab: "parse", To: 1}); !strings.Contains(a.Text, "v2") {
+		t.Fatalf("the reply from the tab sent to: %+v", a)
+	}
+}
+
+// TestLinkedTabNamedWithSpaces: the command a message gives for an answer
+// names the tab by its ID, which a name with spaces would break.
+func TestLinkedTabNamedWithSpaces(t *testing.T) {
+	m := paneModel(t)
+	c := &m.home().Core
+	app, lib := c.TabByID("1"), c.TabByID("3")
+	app.Name = "API arbeid; rm"
+	c.LinkTabs(app, lib)
+	if a, _ := askNerdr(m, app, hooks.Report{Method: hooks.Message, Tab: "parse", To: 1, Text: "hi"}); a.Err != "" {
+		t.Fatalf("send: %+v", a)
+	}
+	if txt := lib.Messages[0].Text; !strings.Contains(txt, "nerdr send --tab 1 1") || strings.Contains(txt, "--tab API") {
+		t.Fatalf("the command to answer: %s", txt)
+	}
+}
+
+// TestSpinoffFromASecondAgentAnswersIt: a part spun off by the tab's
+// agent 2 links the tabs, and the new agent is told to answer agent 2.
+func TestSpinoffFromASecondAgentAnswersIt(t *testing.T) {
+	m := paneModel(t)
+	fakeAgent(m, agents.Codex)
+	c := &m.home().Core
+	tb := m.Cur()
+	c.NewAgent(tb, agents.Codex)
+	two := tb.ExtraAgents()[0]
+	pt := spinoff.Part{Branch: "lib", Prompt: "fix it there", Summary: "lib", From: two.ID}
+	tb.Spinoff = &spinoff.Pending{Next: []spinoff.Part{pt}}
+	c.SpinoffMade(core.SpinoffMsg{T: tb, Kind: agents.Claude, Outcome: spinoff.Outcome{Part: pt, Branch: "lib"},
+		Plan: workspace.Plan{Branch: "lib", Dir: t.TempDir()}})
+	nt := c.Tabs[len(c.Tabs)-1]
+	if nt.Name != "lib" || !slices.Contains(tb.Linked, nt.ID) {
+		t.Fatalf("not linked: %v", tb.Linked)
+	}
+	var given []string
+	for _, msg := range nt.Messages {
+		given = append(given, msg.Text)
+	}
+	given = append(given, nt.Said...)
+	want := fmt.Sprintf(`nerdr send --tab %s 2 "…"`, tb.ID)
+	if !strings.Contains(strings.Join(given, "\n"), want) {
+		t.Fatalf("the new agent should be told %s: %q", want, given)
 	}
 }

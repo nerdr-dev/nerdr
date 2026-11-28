@@ -35,6 +35,7 @@ you ask in plain words. They work only inside a tab, apart from
 | `nerdr agents` | The tab's agents as JSON: number, kind, model, state, context |
 | `nerdr send N MSG` | Send a message to agent N, typed in when it is idle |
 | `nerdr send --wait N MSG` | Send a message and wait for the answer, printed instead of sent back (`--timeout 10m`) |
+| `nerdr send --tab TAB N MSG` | Send a message to agent N of a linked tab: one the tab made with a spinoff or `nerdr tab new`, or the one that made it |
 | `nerdr agent TASK` | Start another agent in the tab with a task (`--kind`, `--model`) |
 | `nerdr wait N…` | Wait until those agents are done or ask something (`--timeout 10m`) |
 | `nerdr read N` / `read terminal [K]` | What agent N or a terminal shows, as text (`--lines 80`) |

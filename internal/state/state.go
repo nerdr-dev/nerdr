@@ -120,6 +120,11 @@ type Tab struct {
 	// Sandboxed is set once any agent in the tab's worktree has run in a
 	// sandbox, so git commit and push know not to run hooks on its files.
 	Sandboxed bool `json:"sandboxed,omitempty"`
+	// Linked are the IDs of the tabs this one made, or was made by, with a
+	// spinoff or nerdr tab new, in its repositories or others: their agents
+	// and this tab's can send each other messages (nerdr send --tab). Kept
+	// on the tab's first agent only.
+	Linked []string `json:"linked,omitempty"`
 }
 
 // Prompt is one thing the user sent a tab's agent, and when.
@@ -138,6 +143,9 @@ type Message struct {
 	// that came from elsewhere: `nerdr send --wait` takes the answer it
 	// waits for out of the list by it.
 	From int `json:"from,omitempty"`
+	// FromTab is the ID of the linked tab whose agent From sent it, ""
+	// for one from an agent of the same tab.
+	FromTab string `json:"from_tab,omitempty"`
 	// Sandboxed is set on a message an agent in a sandbox wrote. An agent
 	// started outside one does not have it typed in: it waits for the user.
 	Sandboxed bool `json:"sandboxed,omitempty"`

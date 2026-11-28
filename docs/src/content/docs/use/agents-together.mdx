@@ -27,6 +27,15 @@ Above, Claude and Codex play chess in one tab: Claude opens the board in a
 terminal and starts Codex, and they send each other moves with
 `nerdr send`.
 
+### Between linked tabs
+
+A tab an agent had made, with a spinoff or `nerdr tab new`, is linked to
+the agent's own: often the same fix in another repository. Their agents
+reach each other with `nerdr send --tab` and the other tab's name, and
+each is told so when the tab is made. Tabs that are not linked are not
+reached. An agent in a sandbox reaches only the agents of a linked tab
+that run in one too, as in its own tab.
+
 ## Starting more agents
 
 Ask agent 1 to *"start a codex agent to write the tests"*, and a new pane

@@ -176,9 +176,14 @@ func (m *Core) SpinoffMade(msg SpinoffMsg) Cmd {
 	if msg.Err != nil {
 		return m.spinoffFailed(t, msg.Outcome.Branch, msg.Err.Error())
 	}
-	parent := spinoff.Parent{Name: t.Name, Dir: t.Dir}
+	parent := spinoff.Parent{ID: t.ID, Agent: 1, Name: t.Name, Dir: t.Dir}
 	if len(t.Worktrees) > 0 {
 		parent.Branch = t.Worktrees[0].Branch
+	}
+	// The part goes back to the agent of the tab that sent it, which
+	// may be another than its first.
+	if a := m.AgentByID(msg.Outcome.Part.From); a != nil && a.Owner() == t {
+		parent.Agent = a.Num
 	}
 	if pt := msg.Outcome.Part; pt.Sandboxed && !m.SandboxedKind(msg.Kind) {
 		// The config changed while the worktree was made.
@@ -192,6 +197,7 @@ func (m *Core) SpinoffMade(msg SpinoffMsg) Cmd {
 			Kind: msg.Kind, Task: spinoff.Prompt(msg.Outcome.Part, parent, msg.Outcome), Goal: msg.Outcome.Part.Summary,
 			Sandboxed: msg.Outcome.Part.Sandboxed, ImportedSandboxed: msg.Outcome.Part.Sandboxed && msg.Outcome.Reused})
 		msg.Outcome.Tab = nt.ID
+		m.LinkTabs(t, nt)
 		cmds = append(cmds, cmd, m.Tell(PanesMsg{}))
 	}
 	note := "made " + msg.Plan.Branch
