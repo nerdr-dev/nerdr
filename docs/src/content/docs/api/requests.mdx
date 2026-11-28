@@ -168,7 +168,9 @@ waiting has no `spinoff`.
 - `sandboxed` is set when the agent that sent it runs in a sandbox: only
   an agent set `sandboxed = true` may run in its tab. `kinds` are the
   agents that may, and `kind` the one picked if you name none.
-- `busy` says what is being made, while it is ("making fix-logout…").
+- `busy` says what is being done about the first part, while it is
+  ("making fix-logout…", or waiting for the answer to a `repo_setup`
+  question): it can be neither made again nor skipped meanwhile.
 - `failed` is why the first part's tab was not made the last time it was
   tried, for you to put right and try again.
 
@@ -491,8 +493,8 @@ new agent is given the part's prompt.
   or else all of the tab's.
 - The part's `prompt_ready` must be set.
 - The answer comes at once. nerdr may then ask whether the repositories'
-  setup may run (a [`repo_setup`](#questions) question). While the tab is
-  made, `spinoff.busy` says so. Once it is, the tab comes with a
+  setup may run (a [`repo_setup`](#questions) question). While it waits
+  for that answer, and while the tab is made, `spinoff.busy` says so. Once it is, the tab comes with a
   `tab_opened` [event](../events/) and the part is gone through; if it
   could not be (a branch name taken, say), `spinoff.failed` says why, and
   the part stays first. Either way a `spinoff` event follows.

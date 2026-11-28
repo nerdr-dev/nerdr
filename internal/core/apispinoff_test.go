@@ -190,3 +190,63 @@ func TestAPISpinoffCreateWritesAnew(t *testing.T) {
 		t.Error("the commit was brought in")
 	}
 }
+
+// spinoffAsked has t's repository ask for a setup not yet allowed, so
+// making a part waits for the user's answer.
+func spinoffAsked(t *testing.T, repo string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(repo, workspace.RepoConfigFile), []byte("setup = \"true\"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestAPISpinoffHeldWhileSetupIsAsked: while the setup is asked about,
+// the part can be neither made again nor skipped, and the answer makes
+// it, the next part still waiting.
+func TestAPISpinoffHeldWhileSetupIsAsked(t *testing.T) {
+	m, tab, repo := spinoffCore(t)
+	spinoffAsked(t, repo)
+	if _, err := m.APISpinoffCreate(APISpinoffMake{Tab: "t1", Part: "p1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if len(m.Asking) != 1 || m.Asking[0].Kind != AskRepoSetup || tab.SpinoffBusy == "" {
+		t.Fatalf("asked %+v, busy %q", m.Asking, tab.SpinoffBusy)
+	}
+	if _, err := m.APISpinoffSkip("t1", "p1"); err == nil || !strings.Contains(err.Error(), "being made") {
+		t.Errorf("skip while the setup is asked about: %v", err)
+	}
+	if _, err := m.APISpinoffCreate(APISpinoffMake{Tab: "t1", Part: "p1", Branch: "fix-a2"}, nil); err == nil {
+		t.Error("made a second time while the setup is asked about")
+	}
+	if cmd := (SpinoffCreate{T: m.Ref(tab), Part: tab.Spinoff.Next[0], Kind: agents.Claude, Name: "fix-a3"}).Do(m); cmd != nil || len(m.Asking) != 1 {
+		t.Errorf("a request from the TUI meanwhile is not taken: %d asked", len(m.Asking))
+	}
+	cmd := m.Answer(m.Asking[0].ID, RunDeclined)
+	if cmd == nil || tab.SpinoffBusy != "making fix-a…" {
+		t.Fatalf("the answer makes it: busy %q", tab.SpinoffBusy)
+	}
+	if res := cmd().(SpinoffMsg); res.Err != nil || res.Outcome.Part.ID != "p1" || res.Outcome.Branch != "fix-a" {
+		t.Fatalf("made %+v", res)
+	}
+	if ids := []string{tab.Spinoff.Next[0].ID, tab.Spinoff.Next[1].ID}; ids[0] != "p1" || ids[1] != "p2" {
+		t.Fatalf("parts %v", ids)
+	}
+}
+
+// TestAPISpinoffGoneWhileSetupIsAsked: a part gone through some other way
+// while its setup was asked about is not made by the answer, nor is the
+// next in its place.
+func TestAPISpinoffGoneWhileSetupIsAsked(t *testing.T) {
+	m, tab, repo := spinoffCore(t)
+	spinoffAsked(t, repo)
+	if _, err := m.APISpinoffCreate(APISpinoffMake{Tab: "t1", Part: "p1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	m.SpinoffNext(tab, spinoff.Outcome{Part: tab.Spinoff.Next[0], Skipped: true})
+	if cmd := m.Answer(m.Asking[0].ID, AnswerAllowed); cmd != nil || tab.SpinoffBusy != "" {
+		t.Fatalf("the answer made something: busy %q", tab.SpinoffBusy)
+	}
+	if len(tab.Spinoff.Next) != 1 || tab.Spinoff.Next[0].ID != "p2" {
+		t.Fatalf("parts %+v", tab.Spinoff.Next)
+	}
+}

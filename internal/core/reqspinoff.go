@@ -83,6 +83,12 @@ func (q SpinoffCreate) Do(m *Core) Cmd {
 	if t.Spinoff == nil || len(t.Spinoff.Next) == 0 || t.Spinoff.Next[0].ID != q.Part.ID {
 		return m.spinoffFailed(t, q.Name, "this part is no longer the one asked about")
 	}
+	if t.SpinoffBusy != "" {
+		// Being made, or held while its setup is asked about: once is
+		// enough.
+		m.Toast("spinoff " + q.Name + ": " + t.SpinoffBusy)
+		return nil
+	}
 	if q.Part.Prompt = t.Spinoff.Next[0].Prompt; q.Part.Prompt == "" {
 		return m.spinoffFailed(t, q.Name, "the agent has not sent this part's prompt yet")
 	}
@@ -97,7 +103,16 @@ func (q SpinoffCreate) Do(m *Core) Cmd {
 		}
 		m.ImportSandboxed(imported)
 	}
+	// The part is held from here, while the setup is asked about too: it
+	// cannot be made a second time, or skipped, meanwhile, and the next
+	// gone through in its place.
+	t.SpinoffBusy, t.SpinoffFailed = "waiting to be told whether the repositories' setup may run…", nil
 	return m.AskSetup(paths, func() Cmd {
+		// The tab, or the part, may be gone while the user was asked.
+		if m.TabIndex(t) < 0 || t.Spinoff == nil || len(t.Spinoff.Next) == 0 || t.Spinoff.Next[0].ID != q.Part.ID {
+			t.SpinoffBusy = ""
+			return nil
+		}
 		return m.SpinoffCreate(t, q.Part, q.Kind, q.Name, q.Reuse, q.Elsewhere, q.Group, q.Repos, q.Own)
 	})
 }
