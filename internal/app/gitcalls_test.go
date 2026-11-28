@@ -26,6 +26,9 @@ var gitPkgs = map[string]bool{
 	"github.com/nerdr-dev/nerdr/internal/workspace":    true,
 	"github.com/nerdr-dev/nerdr/internal/git":          true,
 	"github.com/nerdr-dev/nerdr/internal/github":       true,
+	"github.com/nerdr-dev/nerdr/internal/forge":        true,
+	"github.com/nerdr-dev/nerdr/internal/forges":       true,
+	"github.com/nerdr-dev/nerdr/internal/gitlab":       true,
 	"github.com/nerdr-dev/nerdr/internal/gitsafe":      true,
 	"github.com/nerdr-dev/nerdr/internal/reviewsource": true,
 	"os/exec": true,
@@ -37,7 +40,7 @@ var gitPure = map[string]bool{}
 
 func init() {
 	for _, s := range strings.Fields(`
-		github.Issue.BranchName github.Issue.Task github.RequestKey
+		forge.Issue.BranchName forge.Issue.Task forge.RequestKey
 		workspace.Plan.CanStartAnew workspace.Plan.Describe
 		workspace.Plan.ExistingItems workspace.Plan.FromBase
 		workspace.Plan.SetupIn workspace.PlanItem.Merged

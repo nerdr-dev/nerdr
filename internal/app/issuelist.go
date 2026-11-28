@@ -153,7 +153,7 @@ func (m *Model) goToIssue(e core.IssueEntry) tea.Cmd {
 	}
 	w.branch.SetValue(e.Issue.BranchName())
 	w.branch.CursorEnd()
-	return tea.Batch(cmd, w.lookUpIssue(m, e.Repo.Path, e.Issue.Number))
+	return tea.Batch(cmd, w.lookUpIssue(m, e.Repo.Path, e.Issue.Repo, e.Issue.Number))
 }
 
 // tabOnIssue is a tab with a worktree of repo on a branch for issue
@@ -235,7 +235,7 @@ func (d *issueList) table(m *Model, inner, rows int) []string {
 	}
 	switch {
 	case d.loading && len(d.entries) == 0:
-		lines = append(lines, dim("asking gh…"))
+		lines = append(lines, dim("asking…"))
 	case len(d.entries) == 0 && len(d.errs) == 0 && d.all:
 		lines = append(lines, dim("(no open issues)"))
 	case len(d.entries) == 0 && len(d.errs) == 0:

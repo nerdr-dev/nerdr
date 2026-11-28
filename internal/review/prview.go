@@ -8,7 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/prask"
 )
 
@@ -352,7 +352,7 @@ func (m Model) nerdrDraws() bool {
 type prReloadMsg struct {
 	wt    string
 	token int
-	pr    github.PR
+	pr    forge.PR
 	ok    bool
 	msg   string
 	noGh  bool // gh is not installed
@@ -362,7 +362,7 @@ type prReloadMsg struct {
 // agent to fix the build.
 type prFixMsg struct {
 	wt   string
-	pr   github.PR
+	pr   forge.PR
 	logs string
 	err  error
 }
@@ -514,7 +514,7 @@ func (m Model) prState(width int) []relLine {
 	case m.curWT == "":
 		return []relLine{{text: "(no worktree)"}}
 	case m.noGh:
-		return []relLine{{text: "(the gh CLI is not installed)"}}
+		return []relLine{{text: "(neither the gh nor the glab CLI is installed)"}}
 	case !m.prOK:
 		msg := m.prMsg
 		if msg == "" {
@@ -558,13 +558,13 @@ func prStateStyle(state string) lipgloss.Style {
 // prHeader is the PR in a few lines, width wide: its title, wrapped, with
 // its state; then in a column of labels, its branches and who opened it,
 // the review verdict, the checks and whether it merges cleanly.
-func prHeader(pr github.PR, width int) []relLine {
+func prHeader(pr forge.PR, width int) []relLine {
 	state := printableLine(pr.State)
 	if pr.IsDraft {
 		state = "DRAFT"
 	}
 	var out []relLine
-	title := wrapText(fmt.Sprintf("#%d %s", pr.Number, pr.Title), max(width-lipgloss.Width(state)-2, 20), 3)
+	title := wrapText(pr.Ref()+" "+pr.Title, max(width-lipgloss.Width(state)-2, 20), 3)
 	for i, l := range title {
 		text := headingText.Render(l)
 		if i == len(title)-1 {
@@ -816,21 +816,21 @@ func (m *Model) startPRFix() tea.Cmd {
 }
 
 // FixMessage is prask.FixMessage, the message f writes for pr.
-func FixMessage(pr github.PR, logs string) (string, error) { return prask.FixMessage(pr, logs) }
+func FixMessage(pr forge.PR, logs string) (string, error) { return prask.FixMessage(pr, logs) }
 
 // ReplyMessage is prask.ReplyMessage, the message A writes for pr.
-func ReplyMessage(pr github.PR) string { return prask.ReplyMessage(pr) }
+func ReplyMessage(pr forge.PR) string { return prask.ReplyMessage(pr) }
 
 // LogLimit is how much failing-build log goes into the message.
 const LogLimit = prask.LogLimit
 
-func said(pr github.PR) []github.Review { return prask.Said(pr) }
-func where(c github.Comment) string     { return prask.Where(c) }
-func hasReviewBody(pr github.PR) bool   { return prask.HasReviewBody(pr) }
+func said(pr forge.PR) []forge.Review { return prask.Said(pr) }
+func where(c forge.Comment) string    { return prask.Where(c) }
+func hasReviewBody(pr forge.PR) bool  { return prask.HasReviewBody(pr) }
 
 // otherEntries is the rest of the conversation, so a single reply knows
 // what has already been said without being asked to answer it.
-func otherEntries(pr github.PR, skip convEntry) string {
+func otherEntries(pr forge.PR, skip convEntry) string {
 	var b strings.Builder
 	for _, r := range said(pr) {
 		if strings.TrimSpace(r.Body) == "" || (r.Author == skip.author && r.Body == skip.body) {
@@ -855,9 +855,9 @@ func otherEntries(pr github.PR, skip convEntry) string {
 // user before they reach the agent, and say plainly that nothing is to be
 // posted: the quoted text is not instructions.
 
-func replyOnePrompt(pr github.PR, entry convEntry) string {
+func replyOnePrompt(pr forge.PR, entry convEntry) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Help me answer one piece of review feedback on pull request #%d (%s).\n\n", pr.Number, pr.Title)
+	fmt.Fprintf(&b, "Help me answer one piece of review feedback on %s %s (%s).\n\n", pr.Kind.PRWord(), pr.Ref(), pr.Title)
 	fmt.Fprintf(&b, "The %s to answer, by %s:\n%s\n\n", entry.kind, entry.author, strings.TrimSpace(entry.body))
 	if rest := otherEntries(pr, entry); rest != "" {
 		b.WriteString("The rest of the conversation, for context — do not answer these:\n" + rest + "\n")
@@ -869,9 +869,9 @@ func replyOnePrompt(pr github.PR, entry convEntry) string {
 	return b.String()
 }
 
-func replyPrompt(pr github.PR) string { return prask.ReplyPrompt(pr) }
+func replyPrompt(pr forge.PR) string { return prask.ReplyPrompt(pr) }
 
-func fixPrompt(pr github.PR, logs string) string { return prask.FixPrompt(pr, logs) }
+func fixPrompt(pr forge.PR, logs string) string { return prask.FixPrompt(pr, logs) }
 
 // scrollTo returns the viewport top that keeps cursor visible, moving it as
 // little as possible — the same rule the diff pane uses, so a cursor moving
@@ -896,7 +896,7 @@ func truncate(s string, n int) string {
 
 // reviewGlyph is the PR's review verdict in one character. Every PR in the
 // list is open, so there is no merged or closed state to show.
-func reviewGlyph(pr github.PR) string {
+func reviewGlyph(pr forge.PR) string {
 	if pr.IsDraft {
 		return dimStyle.Render("◌")
 	}
@@ -921,7 +921,7 @@ func reviewGlyph(pr github.PR) string {
 
 // Reviewers are those whose latest review of pr is in state, such as
 // APPROVED.
-func Reviewers(pr github.PR, state string) []string {
+func Reviewers(pr forge.PR, state string) []string {
 	var out []string
 	for _, r := range pr.Reviews {
 		if strings.EqualFold(r.State, state) && r.Author != pr.Author {
@@ -933,7 +933,7 @@ func Reviewers(pr github.PR, state string) []string {
 
 // checksGlyph summarises the CI rollup: failing beats pending beats passing,
 // since that is the order in which they need attention.
-func checksGlyph(pr github.PR) string {
+func checksGlyph(pr forge.PR) string {
 	pass, fail, pending := countChecks(pr.Checks)
 	switch {
 	case fail > 0:
@@ -948,14 +948,14 @@ func checksGlyph(pr github.PR) string {
 
 // PRGlyphs is the PR's review verdict and CI state, a character each, as
 // the panel shows them — for nerdr's list of every PR.
-func PRGlyphs(pr github.PR) (review, checks string) {
+func PRGlyphs(pr forge.PR) (review, checks string) {
 	return reviewGlyph(pr), checksGlyph(pr)
 }
 
-func countChecks(checks []github.Check) (pass, fail, pending int) {
+func countChecks(checks []forge.Check) (pass, fail, pending int) {
 	for _, c := range checks {
 		switch st := strings.ToUpper(c.Status); {
-		case github.Failed(st):
+		case forge.Failed(st):
 			fail++
 		case st == "SUCCESS" || st == "NEUTRAL" || st == "SKIPPED":
 			pass++
@@ -988,7 +988,7 @@ func (e convEntry) answerable() bool { return e.kind != "check" }
 // fetched says whether the comments were actually loaded. The list carries
 // comments but not review bodies, so a pane built from the list alone says
 // what is still missing rather than implying it has everything.
-func prConversation(pr github.PR, width int, fetched bool) ([]relLine, []convEntry) {
+func prConversation(pr forge.PR, width int, fetched bool) ([]relLine, []convEntry) {
 	if width < 20 {
 		width = 20
 	}
@@ -1017,7 +1017,7 @@ func prConversation(pr github.PR, width int, fetched bool) ([]relLine, []convEnt
 		switch st := strings.ToUpper(c.Status); {
 		case st == "SUCCESS" || st == "NEUTRAL" || st == "SKIPPED":
 			continue
-		case github.Failed(st):
+		case forge.Failed(st):
 			glyph = failStyle.Render("✗ ")
 		}
 		if len(rows) == 0 {

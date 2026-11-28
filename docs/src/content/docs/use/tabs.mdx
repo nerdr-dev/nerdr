@@ -79,9 +79,10 @@ they start in. nerdr tells the tab's agents what changed.
 
 ## Starting points
 
-### From a GitHub issue
+### From an issue
 
-Type `#123` as the branch name to work on issue 123. nerdr builds a
+Type `#123` as the branch name to work on issue 123, on GitHub or
+GitLab. nerdr builds a
 branch name from its title, such as `123-login-fails-…`, and gives the
 agent the issue as its first task. Or pick one from your assigned issues
 with `ctrl+q g o`, where you can read the task before the agent starts.
@@ -136,10 +137,12 @@ pull request.
 ## New and cloned repositories
 
 In the repository list, `n` creates a repository on `main` with an empty
-first commit. With `gh`, nerdr also offers to create a private GitHub
-repository as its origin. `c` clones a GitHub `owner/name`, a URL or a
-local path; GitHub clones use `gh` when available, private repositories
-included.
+first commit. nerdr also offers to create a private repository as its
+origin, on [`repo_host`](../../configure/configuration/#notifications-and-pull-requests)
+(GitHub, with `gh`, unless it says otherwise; GitLab with `glab`). `c`
+clones an `owner/name` from `repo_host`, a `host/group/name` such as
+`gitlab.com/group/app`, a URL or a local path; the short forms use `gh`
+or `glab` when available, private repositories included.
 
 When nerdr is started inside a repository, it uses the first `repo_dirs`
 entry for these. Without one, the keys are unavailable.

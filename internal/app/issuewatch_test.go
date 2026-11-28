@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 
@@ -18,7 +18,7 @@ import (
 // issueLook is a look at the issues assigned to you as fetchMyIssues makes
 // it: entries are those here, others those in repositories not here.
 func issueLook(others []string, entries ...core.IssueEntry) core.IssueWatchMsg {
-	msg := core.IssueWatchMsg{Entries: entries, Keys: others}
+	msg := core.IssueWatchMsg{Entries: entries, Keys: others, Searched: []string{"github.com"}}
 	for _, e := range entries {
 		msg.Keys = append(msg.Keys, core.IssueKey(e.Issue.Repo, e.Issue.Number))
 	}
@@ -35,8 +35,8 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	yes := true
 	m.home().Core.Cfg.IssueNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	old := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "Old", Repo: "me/app"}}
-	fresh := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "Login fails", Repo: "me/app"}}
+	old := core.IssueEntry{Repo: app, Issue: forge.Issue{Number: 3, Title: "Old", Repo: "me/app"}}
+	fresh := core.IssueEntry{Repo: app, Issue: forge.Issue{Number: 9, Title: "Login fails", Repo: "me/app"}}
 
 	m.home().Core.OnIssueWatch(issueLook([]string{"me/far#1"}, old))
 	if len(m.home().Core.IssueWatch.News) != 0 || m.issueBadge() != "" {
@@ -68,6 +68,68 @@ func TestIssueWatchTellsNewlyAssigned(t *testing.T) {
 	}
 }
 
+// TestIssueWatchByHost: with repositories on GitHub and on a GitLab, a
+// host whose search fails keeps what was known of it, so its answering
+// again is no news; a host answering for the first time only learns.
+func TestIssueWatchByHost(t *testing.T) {
+	m := tabsModel(t)
+	yes := true
+	m.home().Core.Cfg.IssueNotify = &yes
+	gh := workspace.Repo{Name: "app", Path: "/r/app"}
+	gl := workspace.Repo{Name: "lab", Path: "/r/lab"}
+	a := core.IssueEntry{Repo: gh, Issue: forge.Issue{Number: 3, Title: "A", Repo: "me/app"}}
+	b := core.IssueEntry{Repo: gl, Issue: forge.Issue{Kind: forge.GitLab, Number: 4, Title: "B", Repo: "gitlab.com/grp/lab"}}
+	c := core.IssueEntry{Repo: gl, Issue: forge.Issue{Kind: forge.GitLab, Number: 5, Title: "C", Repo: "gitlab.com/grp/lab"}}
+	look := func(hosts []string, err string, entries ...core.IssueEntry) core.IssueWatchMsg {
+		msg := core.IssueWatchMsg{Entries: entries, Searched: hosts, Err: err}
+		for _, e := range entries {
+			msg.Keys = append(msg.Keys, core.IssueKey(e.Issue.Repo, e.Issue.Number))
+		}
+		return msg
+	}
+	w := func() *core.IssueWatch { return &m.home().Core.IssueWatch }
+
+	m.home().Core.OnIssueWatch(look([]string{"github.com"}, "gitlab.com: glab is not logged in", a))
+	m.home().Core.OnIssueWatch(look([]string{"github.com", "gitlab.com"}, "", a, b))
+	if len(w().News) != 0 {
+		t.Fatalf("a host's first answer should only learn: %+v", w().News)
+	}
+	m.home().Core.OnIssueWatch(look([]string{"github.com"}, "gitlab.com: timed out", a))
+	if !w().Known["gitlab.com/grp/lab#4"] || len(w().Mine) != 2 {
+		t.Fatalf("a host that failed should keep what was known: %v %+v", w().Known, w().Mine)
+	}
+	m.home().Core.OnIssueWatch(look([]string{"github.com", "gitlab.com"}, "", a, b, c))
+	if len(w().News) != 1 || w().News[0].Key != "gitlab.com/grp/lab#5" {
+		t.Fatalf("news = %+v", w().News)
+	}
+
+	m2 := tabsModel(t)
+	m2.home().Core.LoadIssueWatch(m.home().Core.SavedIssueWatch())
+	if !m2.home().Core.IssueWatch.SeededHosts["gitlab.com"] || !m2.home().Core.IssueWatch.SeededHosts["github.com"] {
+		t.Fatalf("the session should keep the hosts learned: %v", m2.home().Core.IssueWatch.SeededHosts)
+	}
+}
+
+// A look that asked no host (only local repositories here) seeds
+// nothing: saved and taken in again, it is not taken for state of before
+// hosts, all github.com's, and a GitHub repository added later has no
+// news of the issues already assigned.
+func TestIssueWatchNoHostSeedsNothing(t *testing.T) {
+	m := tabsModel(t)
+	yes := true
+	m.home().Core.Cfg.IssueNotify = &yes
+	m.home().Core.OnIssueWatch(core.IssueWatchMsg{})
+	m2 := tabsModel(t)
+	m2.home().Core.Cfg.IssueNotify = &yes
+	m2.home().Core.LoadIssueWatch(m.home().Core.SavedIssueWatch())
+	a := core.IssueEntry{Repo: workspace.Repo{Name: "app", Path: "/r/app"}, Issue: forge.Issue{Number: 3, Title: "A", Repo: "me/app"}}
+	m2.home().Core.OnIssueWatch(core.IssueWatchMsg{Entries: []core.IssueEntry{a}, Keys: []string{core.IssueKey("me/app", 3)},
+		Searched: []string{"github.com"}})
+	if n := m2.home().Core.IssueWatch.News; len(n) != 0 {
+		t.Fatalf("news of an issue already assigned: %+v", n)
+	}
+}
+
 // TestIssueWatchDropsStaleNews: news of an issue not seen yet goes, the
 // mark with it, once the issue is no longer assigned to you or is closed;
 // a look that failed keeps it.
@@ -76,8 +138,8 @@ func TestIssueWatchDropsStaleNews(t *testing.T) {
 	yes := true
 	m.home().Core.Cfg.IssueNotify = &yes
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	a := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 3, Title: "A", Repo: "me/app"}}
-	b := core.IssueEntry{Repo: app, Issue: github.Issue{Number: 9, Title: "B", Repo: "me/app"}}
+	a := core.IssueEntry{Repo: app, Issue: forge.Issue{Number: 3, Title: "A", Repo: "me/app"}}
+	b := core.IssueEntry{Repo: app, Issue: forge.Issue{Number: 9, Title: "B", Repo: "me/app"}}
 
 	m.home().Core.OnIssueWatch(issueLook(nil))
 	m.home().Core.OnIssueWatch(issueLook(nil, a, b))
@@ -113,9 +175,9 @@ func TestIssueListFilters(t *testing.T) {
 		Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/a", Branch: "x"}}})
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
 	lib := workspace.Repo{Name: "lib", Path: "/r/lib"}
-	m.home().Core.IssueWatch.Mine = []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: lib, Issue: github.Issue{Number: 2}}}
+	m.home().Core.IssueWatch.Mine = []core.IssueEntry{{Repo: app, Issue: forge.Issue{Number: 1}}, {Repo: lib, Issue: forge.Issue{Number: 2}}}
 	m.home().Core.IssueWatch.All = map[string]core.RepoIssues{
-		"/r/app": {Entries: []core.IssueEntry{{Repo: app, Issue: github.Issue{Number: 1}}, {Repo: app, Issue: github.Issue{Number: 5}}}, At: time.Now()},
+		"/r/app": {Entries: []core.IssueEntry{{Repo: app, Issue: forge.Issue{Number: 1}}, {Repo: app, Issue: forge.Issue{Number: 5}}}, At: time.Now()},
 	}
 	d := &issueList{scope: []workspace.Repo{app, lib}}
 	d.fill(m)
@@ -141,7 +203,7 @@ func TestPickingAnIssue(t *testing.T) {
 		state.Tab{ID: "b", Name: "b", Dir: "/w/b", Worktrees: []workspace.Worktree{{Repo: "/r/app", Path: "/w/b", Branch: "12-login-fails"}}},
 	)
 	app := workspace.Repo{Name: "app", Path: "/r/app"}
-	m.goToIssue(core.IssueEntry{Repo: app, Issue: github.Issue{Number: 12, Title: "Login fails"}})
+	m.goToIssue(core.IssueEntry{Repo: app, Issue: forge.Issue{Number: 12, Title: "Login fails"}})
 	if m.dialog != nil || m.Cur().ID != "b" {
 		t.Fatalf("an issue with a tab should go to it: dialog %T, tab %s", m.dialog, m.Cur().ID)
 	}
@@ -153,7 +215,7 @@ func TestPickingAnIssue(t *testing.T) {
 	if out, err := exec.Command("git", "init", "-q", here).CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v: %s", err, out)
 	}
-	m.goToIssue(core.IssueEntry{Repo: workspace.Repo{Name: "app", Path: here}, Issue: github.Issue{Number: 40, Title: "Crash on start"}})
+	m.goToIssue(core.IssueEntry{Repo: workspace.Repo{Name: "app", Path: here}, Issue: forge.Issue{Number: 40, Title: "Crash on start"}})
 	w, ok := m.dialog.(*wizard)
 	if !ok || w.step != stepBranch {
 		t.Fatalf("should start the new-tab steps at the branch: %#v", m.dialog)

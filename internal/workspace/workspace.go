@@ -717,7 +717,7 @@ func fetchHint(reason string) string {
 	case strings.Contains(reason, "Host key verification failed"):
 		return "ssh does not know origin's host yet: connect to it once in a terminal to accept its key"
 	case strings.Contains(reason, "terminal prompts disabled"), strings.Contains(reason, "could not read Username"):
-		return "git needs a username and password, which nerdr cannot ask for: set up a credential helper, or log in with gh auth login"
+		return "git needs a username and password, which nerdr cannot ask for: set up a credential helper, or log in with gh auth login (glab auth login on GitLab)"
 	}
 	return ""
 }
@@ -1016,7 +1016,13 @@ func ForkBranch(number int, branch string) string {
 // with the branch set to pull from there, so gh finds its pull request.
 // An existing branch is only moved forward, so work on it is not lost.
 func FetchForkPR(repo string, number int, branch string) error {
-	pull := fmt.Sprintf("refs/pull/%d/head", number)
+	return FetchForkPRRef(repo, number, branch, fmt.Sprintf("refs/pull/%d/head", number))
+}
+
+// FetchForkPRRef is FetchForkPR from pull, the ref the repository's
+// service keeps the pull request's head at: refs/merge-requests/<n>/head
+// on GitLab (see forges.PRRef).
+func FetchForkPRRef(repo string, number int, branch, pull string) error {
 	if _, err := gitTimeout(fetchTimeout, repo, "fetch", "--quiet", "origin", pull+":refs/heads/"+branch); err != nil {
 		return fmt.Errorf("could not fetch #%d from origin: %w", number, err)
 	}
@@ -1029,7 +1035,8 @@ func FetchForkPR(repo string, number int, branch string) error {
 }
 
 // ForkPRNumber is the pull request from a fork that branch was fetched
-// from by FetchForkPR (or gh pr checkout), 0 when it is not one.
+// from by FetchForkPR (or gh pr checkout), or the merge request on GitLab,
+// 0 when it is not one.
 func ForkPRNumber(dir, branch string) int {
 	if branch == "" {
 		return 0
@@ -1038,11 +1045,17 @@ func ForkPRNumber(dir, branch string) int {
 	if err != nil {
 		return 0
 	}
-	n, err := strconv.Atoi(strings.TrimSuffix(strings.TrimPrefix(strings.TrimSpace(out), "refs/pull/"), "/head"))
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(out), "refs/pull/") {
-		return 0
+	ref := strings.TrimSpace(out)
+	for _, prefix := range []string{"refs/pull/", "refs/merge-requests/"} {
+		if rest, ok := strings.CutPrefix(ref, prefix); ok {
+			if n, ok := strings.CutSuffix(rest, "/head"); ok {
+				if num, err := strconv.Atoi(n); err == nil {
+					return num
+				}
+			}
+		}
 	}
-	return n
+	return 0
 }
 
 func refExists(repo, ref string) bool {

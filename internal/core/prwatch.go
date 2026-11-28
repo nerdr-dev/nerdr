@@ -9,8 +9,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -31,27 +32,22 @@ const (
 
 func PrKey(repo string, number int) string { return repo + "#" + strconv.Itoa(number) }
 
-// AskRepo reports whether a repository with remotes on github.com names,
-// and elsewhere when it has one anywhere else, has to be asked for its PRs,
-// given the repositories the search found PRs of yours in.
-func AskRepo(names []string, elsewhere bool, withPRs map[string]bool) bool {
+// AskRepo reports whether a repository whose remotes are the
+// repositories names (forge.RepoKey), and elsewhere when it has one the
+// searches do not cover, has to be asked for its PRs, given the
+// repositories the searches found PRs of yours in, and the hosts that
+// answered: a repository on a host that did not is asked, as one is
+// when there is no search at all.
+func AskRepo(names []string, elsewhere bool, withPRs map[string]bool, searched func(host string) bool) bool {
 	if elsewhere {
-		return true // the search covers github.com only
+		return true // GitHub Enterprise, say: no search covers it
 	}
 	for _, n := range names {
-		if withPRs[n] {
+		if withPRs[n] || !searched(forge.KeyHost(n)) {
 			return true
 		}
 	}
-	return false // on github.com with none of yours open, or no remote at all
-}
-
-const RemoteCacheFor = 10 * time.Minute
-
-type RemoteInfo struct {
-	Names     []string
-	Elsewhere bool
-	At        time.Time
+	return false // with none of yours open, or no remote at all
 }
 
 // SeenOf is how pr stands. A check counts by the commit it ran on, so the
@@ -59,10 +55,10 @@ type RemoteInfo struct {
 // taken for failed, being most often cancelled on purpose. Reviews by its
 // author (a reply to a review comment is one) and drafts not yet sent are
 // not counted.
-func SeenOf(repo string, pr github.PR) state.PRSeen {
+func SeenOf(repo string, pr forge.PR) state.PRSeen {
 	s := state.PRSeen{Repo: repo, Failing: map[string]bool{}, Reviews: map[string]state.ReviewSeen{}}
 	for _, c := range pr.Checks {
-		if github.Failed(c.Status) && !strings.EqualFold(c.Status, "CANCELLED") {
+		if forge.Failed(c.Status) && !strings.EqualFold(c.Status, "CANCELLED") {
 			s.Failing[pr.Head+"/"+c.Name] = true
 		}
 	}
@@ -129,43 +125,22 @@ func PrChanges(before, now state.PRSeen) []PrChange {
 // PrNewsLabel names the PR news is of: by the tab working on its branch,
 // which is how you know the work, else by its repository.
 func PrNewsLabel(n state.PRNews) string {
+	ref := forge.Kind(n.Kind).Ref(n.Number)
 	if n.Tab != "" {
-		return fmt.Sprintf("%s #%d", n.Tab, n.Number)
+		return n.Tab + " " + ref
 	}
-	return fmt.Sprintf("%s #%d", n.Repo, n.Number)
+	return n.Repo + " " + ref
 }
 
-// remoteCache keeps what a repository's remotes are, for RemoteCacheFor:
-// they hardly ever change, and the look at the pull requests would read them
-// for every repository at every look.
-var remoteCache = struct {
-	sync.Mutex
-	m map[string]RemoteInfo
-}{m: map[string]RemoteInfo{}}
-
-// RepoNames is github.RepoNames, kept for a while.
-func RepoNames(path string) ([]string, bool, error) {
-	remoteCache.Lock()
-	in, ok := remoteCache.m[path]
-	remoteCache.Unlock()
-	if ok && time.Since(in.At) < RemoteCacheFor {
-		return in.Names, in.Elsewhere, nil
-	}
-	names, elsewhere, err := github.RepoNames(path)
-	if err != nil {
-		return nil, false, err
-	}
-	remoteCache.Lock()
-	remoteCache.m[path] = RemoteInfo{Names: names, Elsewhere: elsewhere, At: time.Now()}
-	remoteCache.Unlock()
-	return names, elsewhere, nil
-}
+// RepoNames is forges.RepoNames: the remotes are kept there for a
+// while.
+func RepoNames(path string) ([]string, bool, error) { return forges.RepoNames(path) }
 
 // PREntry is one pull request, and where its branch is checked out, if
 // anywhere.
 type PREntry struct {
 	Repo workspace.Repo
-	PR   github.PR
+	PR   forge.PR
 	Wt   string // the worktree with the branch, "" when there is none
 	// Asked is set when your review of it is asked for, on you or on a
 	// team of yours.
@@ -177,7 +152,7 @@ type PREntry struct {
 func (e PREntry) Branch() string { return LocalBranch(e.PR) }
 
 // LocalBranch is the local branch pr is worked on in; see PREntry.Branch.
-func LocalBranch(pr github.PR) string {
+func LocalBranch(pr forge.PR) string {
 	if pr.Fork != "" {
 		return workspace.ForkBranch(pr.Number, pr.Branch)
 	}
@@ -306,8 +281,8 @@ func (m *Core) RefreshPRs() Cmd {
 	if w.Busy {
 		return nil
 	}
-	if !github.Available() {
-		w.Errs = map[string]string{"": "the gh CLI is not installed"}
+	if !forges.Available() {
+		w.Errs = map[string]string{"": forges.Missing}
 		m.Tell(PRsMsg{})
 		return nil
 	}
@@ -344,10 +319,19 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) PRWatchMs
 		msg.Failed[""] = err.Error()
 		return msg
 	}
-	withPRs, err := github.ReposWithMyPRs()
-	if err != nil {
-		Debugf("pr search: %v; asking every repository", err)
-		withPRs = nil
+	paths := make([]string, 0, len(repos))
+	for _, r := range repos {
+		paths = append(paths, r.Path)
+	}
+	search := forges.ReposWithMyPRs(forges.Hosts(paths))
+	if err := search.Err(); err != nil {
+		Debugf("pr search: %v; asking those repositories", err)
+	}
+	withPRs := map[string]bool{}
+	for _, found := range search.Found {
+		for k := range found {
+			withPRs[k] = true
+		}
 	}
 	var (
 		mu  sync.Mutex
@@ -355,13 +339,11 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) PRWatchMs
 		sem = make(chan struct{}, PrFetchers)
 	)
 	for _, r := range repos {
-		if withPRs != nil {
-			if names, elsewhere, err := RepoNames(r.Path); err == nil && !AskRepo(names, elsewhere, withPRs) {
-				mu.Lock()
-				msg.Answered[r.Path] = true // none of yours open in it
-				mu.Unlock()
-				continue
-			}
+		if names, elsewhere, err := RepoNames(r.Path); err == nil && !AskRepo(names, elsewhere, withPRs, search.Searched) {
+			mu.Lock()
+			msg.Answered[r.Path] = true // none of yours open in it
+			mu.Unlock()
+			continue
 		}
 		if skip[r.Path] {
 			msg.Skipped[r.Path] = true
@@ -372,11 +354,11 @@ func fetchPRs(root, wtDir string, dirs []string, skip map[string]bool) PRWatchMs
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			prs, err := github.ListMyPRs(r.Path, PRListLimit)
+			prs, err := forges.ListMyPRs(r.Path, PRListLimit)
 			if err != nil {
 				mu.Lock()
 				msg.Failed[r.Path] = r.Name + ": " + err.Error()
-				msg.NotGitHub[r.Path] = github.NotOnGitHub(err)
+				msg.NotGitHub[r.Path] = forges.NoRepo(r.Path, err)
 				mu.Unlock()
 				return
 			}
@@ -459,7 +441,7 @@ func (m *Core) OnPRWatch(msg PRWatchMsg) Cmd {
 				tabName = t.Name
 			}
 			for _, c := range PrChanges(w.Known[k], now) {
-				news = append(news, state.PRNews{Key: k, Repo: e.Repo.Name, Number: e.PR.Number, What: c.What, Tab: tabName, Checks: c.Checks})
+				news = append(news, state.PRNews{Key: k, Repo: e.Repo.Name, Number: e.PR.Number, Kind: string(e.PR.Kind), What: c.What, Tab: tabName, Checks: c.Checks})
 			}
 			jobs = append(jobs, m.AutoJobs(k, e, w.Known[k], now)...)
 		}

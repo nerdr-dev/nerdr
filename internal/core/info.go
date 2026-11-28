@@ -10,8 +10,9 @@ import (
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/config"
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -41,7 +42,7 @@ const (
 // PrState is a pull request's state in words, e.g. "open", and for a
 // branch that went on after it was merged or closed, how far, e.g.
 // "merged · 1 commit after".
-func PrState(pr github.Status) string {
+func PrState(pr forge.Status) string {
 	s := strings.ToLower(pr.State)
 	if pr.After > 0 {
 		s += " · " + Plural(pr.After, "commit") + " after"
@@ -69,7 +70,8 @@ func (m *Core) InfoTick(now time.Time) Cmd {
 	return Batch(m.RefreshInfo(), m.TickPRs(now), m.TickIssues(now), m.SleepIdle(now), m.lookForGh(), m.tickScan(now), m.lookForAgents(now), m.lookAtSkills(now), m.lookAtConfig(), m.noticeRefusedGit())
 }
 
-// GhMsg is whether the gh CLI is there, for Core.NoGh.
+// GhMsg is whether a CLI nerdr asks a service with, gh or glab, is
+// there, for Core.NoGh.
 type GhMsg struct{ Has bool }
 
 // lookForGh looks whether the gh CLI is there, and says so only when that
@@ -78,7 +80,7 @@ type GhMsg struct{ Has bool }
 func (m *Core) lookForGh() Cmd {
 	was := !m.NoGh
 	return func() Event {
-		if has := github.Available(); has != was {
+		if has := forges.Available(); has != was {
 			return GhMsg{Has: has}
 		}
 		return nil
@@ -111,9 +113,9 @@ func LookAt(wts []workspace.Worktree, prev TabInfo, withPR, skip bool) TabInfo {
 	if skip && !slices.Contains(stamps, "") && in.Stamp == prev.Stamp && len(prev.Wts) == len(wts) {
 		in.FullAt = prev.FullAt
 		in.Wts = slices.Clone(prev.Wts)
-		if withPR && github.Available() {
+		if withPR && forges.Available() {
 			for i, w := range wts {
-				in.Wts[i].Pr, in.Wts[i].HasPR = github.BranchStatus(w.Path)
+				in.Wts[i].Pr, in.Wts[i].HasPR = forges.BranchStatus(w.Path)
 			}
 		}
 		return in
@@ -137,15 +139,15 @@ func LookAt(wts []workspace.Worktree, prev TabInfo, withPR, skip bool) TabInfo {
 		// carried over to it.
 		moved := wi.Branch != "" && i < len(prev.Wts) && prev.Wts[i].Branch != "" && prev.Wts[i].Branch != wi.Branch
 		switch {
-		case (withPR || moved) && github.Available():
-			wi.Pr, wi.HasPR = github.BranchStatus(w.Path)
+		case (withPR || moved) && forges.Available():
+			wi.Pr, wi.HasPR = forges.BranchStatus(w.Path)
 		case i < len(prev.Wts):
 			wi.Pr, wi.HasPR = prev.Wts[i].Pr, prev.Wts[i].HasPR
 			if wi.HasPR && wi.Pr.State != "OPEN" {
 				// The branch may have moved since GitHub was asked: a
 				// commit on top of a merged PR is in no PR, and the tab
 				// is no longer done.
-				wi.Pr, wi.HasPR = github.Recheck(w.Path, wi.Pr)
+				wi.Pr, wi.HasPR = forge.Recheck(w.Path, wi.Pr)
 			}
 		}
 		in.Wts = append(in.Wts, wi)
@@ -223,7 +225,7 @@ type WtInfo struct {
 	// Uncommitted is how many files have changes not committed, which c
 	// would commit.
 	Uncommitted int
-	Pr          github.Status
+	Pr          forge.Status
 	HasPR       bool
 	Err         string
 }
@@ -315,8 +317,8 @@ func (in TabInfo) Ci() string {
 }
 
 // Prs are the tab's pull requests.
-func (in TabInfo) Prs() []github.Status {
-	var out []github.Status
+func (in TabInfo) Prs() []forge.Status {
+	var out []forge.Status
 	for _, w := range in.Wts {
 		if w.HasPR {
 			out = append(out, w.Pr)

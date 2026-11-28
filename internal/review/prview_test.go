@@ -8,23 +8,23 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 )
 
-func samplePR() github.PR {
-	return github.PR{
+func samplePR() forge.PR {
+	return forge.PR{
 		Number: 7, Title: "Tighten access control", URL: "https://gh/pr/7",
 		State: "OPEN", Author: "bob", Branch: "fix/access",
 		UpdatedAt: time.Date(2026, 9, 7, 12, 0, 0, 0, time.UTC),
 		Mergeable: "MERGEABLE", ReviewDecision: "CHANGES_REQUESTED",
-		Reviews: []github.Review{{Author: "alice", State: "CHANGES_REQUESTED", URL: "https://gh/r/1"}},
-		Checks: []github.Check{
+		Reviews: []forge.Review{{Author: "alice", State: "CHANGES_REQUESTED", URL: "https://gh/r/1"}},
+		Checks: []forge.Check{
 			{Name: "CI / test", Status: "SUCCESS"},
 			{Name: "CI / lint", Status: "FAILURE", DetailsURL: "https://gh/run/2"},
 			{Name: "CI / e2e", Status: "IN_PROGRESS"},
 		},
-		Comments: []github.Comment{{
+		Comments: []forge.Comment{{
 			Author: "bob", Body: "This needs a test for the denied path.",
 			CreatedAt: time.Date(2026, 9, 8, 9, 0, 0, 0, time.UTC), URL: "https://gh/c/9",
 		}},
@@ -72,7 +72,7 @@ func TestConversationShowsFailingChecksReviewsAndComments(t *testing.T) {
 // nothing under "checks not passed", so no such heading either.
 func TestPassingChecksHaveNoSection(t *testing.T) {
 	pr := samplePR()
-	pr.Checks = []github.Check{{Name: "CI / test", Status: "SUCCESS"}}
+	pr.Checks = []forge.Check{{Name: "CI / test", Status: "SUCCESS"}}
 	if got := stripANSI(rowTexts(convLines(pr, 80, true))); strings.Contains(got, "checks not passed") {
 		t.Fatalf("a heading over nothing:\n%s", got)
 	}
@@ -82,7 +82,7 @@ func TestPassingChecksHaveNoSection(t *testing.T) {
 // progress: listed with the pending glyph, not the ✗ of one that failed.
 func TestRunningChecksAreNotShownAsFailed(t *testing.T) {
 	pr := samplePR()
-	pr.Checks = []github.Check{
+	pr.Checks = []forge.Check{
 		{Name: "CI / build", Status: "QUEUED"},
 		{Name: "CI / test", Status: "IN_PROGRESS"},
 		{Name: "CI / lint", Status: "FAILURE"},
@@ -98,7 +98,7 @@ func TestRunningChecksAreNotShownAsFailed(t *testing.T) {
 // TestBareApprovalIsNotAConversationEntry covers a review with no body: the
 // list already shows the verdict, so an empty block under it is noise.
 func TestBareApprovalIsNotAConversationEntry(t *testing.T) {
-	pr := github.PR{Reviews: []github.Review{{Author: "alice", State: "APPROVED"}}}
+	pr := forge.PR{Reviews: []forge.Review{{Author: "alice", State: "APPROVED"}}}
 	got := stripANSI(rowTexts(convLines(pr, 80, true)))
 	if strings.Contains(got, "alice") {
 		t.Errorf("a wordless approval should not take a block in the conversation:\n%s", got)
@@ -112,7 +112,7 @@ func TestBareApprovalIsNotAConversationEntry(t *testing.T) {
 // comment bodies: saying "no comments" there would state as fact that a PR
 // has no discussion when nobody has looked yet.
 func TestConversationDoesNotClaimSilenceBeforeFetching(t *testing.T) {
-	pr := github.PR{} // exactly what the list returns: no comment bodies
+	pr := forge.PR{} // exactly what the list returns: no comment bodies
 
 	got := rowTexts(convLines(pr, 80, false))
 	if strings.Contains(got, "no comments") {
@@ -133,20 +133,20 @@ func TestPRRowGlyphsRankByWhatNeedsAttention(t *testing.T) {
 
 	cases := []struct {
 		name       string
-		pr         github.PR
+		pr         forge.PR
 		wantReview string
 		wantChecks string
 	}{
-		{"approved and green", github.PR{State: "OPEN", ReviewDecision: "APPROVED",
-			Checks: []github.Check{{Status: "SUCCESS"}}}, "✓", "✓"},
-		{"changes requested", github.PR{State: "OPEN", ReviewDecision: "CHANGES_REQUESTED"}, "✗", "·"},
-		{"draft", github.PR{State: "OPEN", IsDraft: true}, "◌", "·"},
-		{"draft beats a verdict", github.PR{State: "OPEN", IsDraft: true,
+		{"approved and green", forge.PR{State: "OPEN", ReviewDecision: "APPROVED",
+			Checks: []forge.Check{{Status: "SUCCESS"}}}, "✓", "✓"},
+		{"changes requested", forge.PR{State: "OPEN", ReviewDecision: "CHANGES_REQUESTED"}, "✗", "·"},
+		{"draft", forge.PR{State: "OPEN", IsDraft: true}, "◌", "·"},
+		{"draft beats a verdict", forge.PR{State: "OPEN", IsDraft: true,
 			ReviewDecision: "APPROVED"}, "◌", "·"},
-		{"one failure among passes", github.PR{State: "OPEN",
-			Checks: []github.Check{{Status: "SUCCESS"}, {Status: "FAILURE"}, {Status: "QUEUED"}}}, "·", "✗"},
-		{"still running", github.PR{State: "OPEN",
-			Checks: []github.Check{{Status: "SUCCESS"}, {Status: "IN_PROGRESS"}}}, "·", "◍"},
+		{"one failure among passes", forge.PR{State: "OPEN",
+			Checks: []forge.Check{{Status: "SUCCESS"}, {Status: "FAILURE"}, {Status: "QUEUED"}}}, "·", "✗"},
+		{"still running", forge.PR{State: "OPEN",
+			Checks: []forge.Check{{Status: "SUCCESS"}, {Status: "IN_PROGRESS"}}}, "·", "◍"},
 	}
 	for _, c := range cases {
 		if got := plain(reviewGlyph(c.pr)); got != c.wantReview {
@@ -233,7 +233,7 @@ func TestScrollToMovesTheViewAsLittleAsPossible(t *testing.T) {
 func TestConversationEntriesAnchorEachBlock(t *testing.T) {
 	pr := samplePR()
 	pr.Reviews[0].Body = "The denied path is untested."
-	pr.Comments = append(pr.Comments, github.Comment{Author: "carol", Body: "Agreed."})
+	pr.Comments = append(pr.Comments, forge.Comment{Author: "carol", Body: "Agreed."})
 
 	rows, entries := prConversation(pr, 80, true)
 
@@ -267,7 +267,7 @@ func TestConversationEntriesAnchorEachBlock(t *testing.T) {
 // TestAnswerKeyFollowsFocus covers `a` meaning "this one" in the pane and
 // "all of them" in the list.
 // prModel is the PR screen on a worktree whose PR is pr.
-func prModel(pr github.PR) Model {
+func prModel(pr forge.PR) Model {
 	// watchAsked: the watch on /wt is asked for already, as Pin's first
 	// Update would have.
 	return Model{src: Local{}, height: 40, width: 120, mode: modePRs, curWT: "/wt", watchAsked: "/wt",
@@ -277,17 +277,17 @@ func prModel(pr github.PR) Model {
 // TestStalePRReloadIsIgnored covers a slow gh answer landing after a newer
 // reload, or after the panel has moved to another worktree.
 func TestStalePRReloadIsIgnored(t *testing.T) {
-	m := prModel(github.PR{Number: 1})
+	m := prModel(forge.PR{Number: 1})
 	m.prToken = 2
-	nm, _ := m.Update(prReloadMsg{wt: "/wt", token: 1, pr: github.PR{Number: 9}, ok: true})
+	nm, _ := m.Update(prReloadMsg{wt: "/wt", token: 1, pr: forge.PR{Number: 9}, ok: true})
 	if m = nm.(Model); m.pr.Number != 1 {
 		t.Fatalf("a superseded reply was applied: #%d", m.pr.Number)
 	}
-	nm, _ = m.Update(prReloadMsg{wt: "/other", token: 2, pr: github.PR{Number: 9}, ok: true})
+	nm, _ = m.Update(prReloadMsg{wt: "/other", token: 2, pr: forge.PR{Number: 9}, ok: true})
 	if m = nm.(Model); m.pr.Number != 1 {
 		t.Fatalf("a reply about another worktree was applied: #%d", m.pr.Number)
 	}
-	nm, _ = m.Update(prReloadMsg{wt: "/wt", token: 2, pr: github.PR{Number: 2}, ok: true})
+	nm, _ = m.Update(prReloadMsg{wt: "/wt", token: 2, pr: forge.PR{Number: 2}, ok: true})
 	if m = nm.(Model); m.pr.Number != 2 {
 		t.Fatalf("the current reply was not applied: #%d", m.pr.Number)
 	}
@@ -315,7 +315,7 @@ func TestConvNavigationStepsBlockByBlock(t *testing.T) {
 	pr := samplePR()
 	pr.Checks, pr.Reviews, pr.Comments = nil, nil, nil
 	for _, a := range []string{"alice", "bob", "carol"} {
-		pr.Comments = append(pr.Comments, github.Comment{
+		pr.Comments = append(pr.Comments, forge.Comment{
 			Author: a, Body: strings.Repeat("a long comment body. ", 250),
 		})
 	}
@@ -399,7 +399,7 @@ func TestFixAsksTheAgentWithTheLog(t *testing.T) {
 	}
 
 	pass := samplePR()
-	pass.Checks = []github.Check{{Name: "ok", Status: "SUCCESS"}}
+	pass.Checks = []forge.Check{{Name: "ok", Status: "SUCCESS"}}
 	m = prModel(pass)
 	if _, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("f")}); cmd != nil {
 		t.Error("f with every check green should do nothing")
@@ -438,10 +438,10 @@ func TestPRScreenHasAnOpenInBrowserButton(t *testing.T) {
 // where it is, in the pane and in what the agent is asked; reviews come
 // from all a reviewer said, not only its latest.
 func TestLineCommentsInConversation(t *testing.T) {
-	pr := github.PR{Number: 3, Title: "t",
-		Reviews: []github.Review{{Author: "bob", State: "APPROVED"}},
-		Said:    []github.Review{{Author: "bob", State: "COMMENTED", Body: "First round."}},
-		Comments: []github.Comment{
+	pr := forge.PR{Number: 3, Title: "t",
+		Reviews: []forge.Review{{Author: "bob", State: "APPROVED"}},
+		Said:    []forge.Review{{Author: "bob", State: "COMMENTED", Body: "First round."}},
+		Comments: []forge.Comment{
 			{Author: "ann", Body: "General."},
 			{Author: "bob", Body: "Off by one.", Path: "a/b.go", Line: 12},
 		},
@@ -468,21 +468,21 @@ func TestLineCommentsInConversation(t *testing.T) {
 // TestReviewGlyphWithoutDecision: a repository that requires no review
 // gives no decision, and the reviewers' verdicts make the glyph.
 func TestReviewGlyphWithoutDecision(t *testing.T) {
-	pr := github.PR{Author: "me", Reviews: []github.Review{{Author: "ann", State: "APPROVED"}, {Author: "me", State: "COMMENTED"}}}
+	pr := forge.PR{Author: "me", Reviews: []forge.Review{{Author: "ann", State: "APPROVED"}, {Author: "me", State: "COMMENTED"}}}
 	if g := ansi.Strip(reviewGlyph(pr)); g != "✓" {
 		t.Fatalf("approved by ann: %q", g)
 	}
 	if who := Reviewers(pr, "APPROVED"); len(who) != 1 || who[0] != "ann" {
 		t.Fatalf("approvers %v", who)
 	}
-	pr.Reviews = append(pr.Reviews, github.Review{Author: "bob", State: "CHANGES_REQUESTED"})
+	pr.Reviews = append(pr.Reviews, forge.Review{Author: "bob", State: "CHANGES_REQUESTED"})
 	if g := ansi.Strip(reviewGlyph(pr)); g != "✗" {
 		t.Fatalf("changes requested by bob: %q", g)
 	}
 }
 
 // convLines is prConversation's rows alone.
-func convLines(pr github.PR, width int, fetched bool) []relLine {
+func convLines(pr forge.PR, width int, fetched bool) []relLine {
 	rows, _ := prConversation(pr, width, fetched)
 	return rows
 }

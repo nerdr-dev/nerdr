@@ -782,6 +782,8 @@ func TestHelpersAlike(t *testing.T) {
 		"credential.helper\n/usr/lib/git-core/git-credential-libsecret\x00":                                          true,
 		"credential.helper\n!gh auth git-credential\x00":                                                             true,
 		"credential.helper\n!/opt/team/gh auth git-credential\x00":                                                   false,
+		"credential.helper\n!glab auth git-credential\x00":                                                           false, // a repository may have its own token
+		"credential.helper\n!glab auth status\x00":                                                                   false,
 		"credential.helper\n!'/opt/homebrew/bin/gh' auth git-credential\x00":                                         false,
 		"credential.helper\n/home/u/bin/git-credential-store\x00":                                                    false,
 		"credential.helper\nstore --file=/$PWD/account\x00":                                                          false,

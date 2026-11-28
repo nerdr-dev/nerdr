@@ -14,71 +14,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/gitsafe"
-	"github.com/nerdr-dev/nerdr/internal/proc"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 )
-
-// PR describes a pull request: the one open for a worktree's branch, or one
-// of the repository's PRs in the overview.
-type PR struct {
-	Number         int
-	Title          string
-	URL            string
-	State          string // OPEN, CLOSED, MERGED
-	IsDraft        bool
-	Author         string
-	Branch         string
-	Head           string // the branch's head commit
-	Base           string // the branch it is to be merged into
-	UpdatedAt      time.Time
-	Mergeable      string // MERGEABLE, CONFLICTING, UNKNOWN
-	ReviewDecision string // APPROVED, CHANGES_REQUESTED, REVIEW_REQUIRED, ""
-	Reviews        []Review
-	// Said is every review that came with words, the earlier ones of a
-	// reviewer too, oldest first; only a PR fetched by itself has them.
-	// Reviews has each reviewer's latest only.
-	Said     []Review
-	Comments []Comment
-	Checks   []Check
-	// Fork is the owner of the fork the branch is in, for a pull request
-	// from a fork: the branch is not on origin, only refs/pull/N/head is.
-	Fork string
-}
-
-// Review is one reviewer's latest verdict.
-type Review struct {
-	Author      string
-	State       string // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, PENDING
-	Body        string
-	SubmittedAt time.Time
-	URL         string
-	// Association is how the reviewer stands to the repository, as GitHub
-	// says it: OWNER, MEMBER, COLLABORATOR, CONTRIBUTOR, NONE and others.
-	// See Trusted.
-	Association string
-}
-
-// Comment is a comment in a PR's conversation, or on a line of its code:
-// then Path and Line say where. Line is 0 for one on a line no longer in
-// the change, or on the whole file.
-type Comment struct {
-	Author    string
-	Body      string
-	CreatedAt time.Time
-	URL       string
-	Path      string
-	Line      int
-	// Association is as Review's.
-	Association string
-}
-
-// Check is one CI check/status, normalised across GitHub Actions check runs
-// and legacy commit statuses (which use different field names).
-type Check struct {
-	Name       string
-	Status     string // SUCCESS, FAILURE, PENDING, NEUTRAL, SKIPPED, CANCELLED, ERROR, ""
-	DetailsURL string
-}
 
 // Available reports whether the gh CLI is installed.
 func Available() bool {
@@ -99,12 +36,7 @@ func CurrentPR(worktreePath string) (pr PR, ok bool, msg string) {
 		return PR{}, false, err.Error()
 	}
 	if !ownPR(worktreePath, pr.State, pr.Head) {
-		if n := commitsAfter(worktreePath, pr.Head, pr.Base); n > 0 {
-			return PR{}, false, "no open pull request for this branch; #" + strconv.Itoa(pr.Number) + " is " +
-				strings.ToLower(pr.State) + ", and the branch has " + commits(n) + " after it"
-		}
-		return PR{}, false, "no pull request for this branch; #" + strconv.Itoa(pr.Number) +
-			" is from an earlier branch of the same name"
+		return PR{}, false, forge.Unowned(worktreePath, pr)
 	}
 	return pr, true, ""
 }
@@ -206,27 +138,6 @@ func NotOnGitHub(err error) bool {
 	}
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "no git remotes") || strings.Contains(msg, "known github host")
-}
-
-// Trusted reports whether someone who stands to a repository as
-// association (a Review's or Comment's) has a say in it: its owner, a
-// member of the organisation that owns it, or a collaborator on it. A
-// contributor of an earlier pull request, or anyone else, has not.
-func Trusted(association string) bool {
-	switch strings.ToUpper(association) {
-	case "OWNER", "MEMBER", "COLLABORATOR":
-		return true
-	}
-	return false
-}
-
-// Failed reports whether a check's Status means it failed.
-func Failed(status string) bool {
-	switch strings.ToUpper(status) {
-	case "FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED", "STARTUP_FAILURE":
-		return true
-	}
-	return false
 }
 
 // ListMyPRs returns the open pull requests you opened on this repository,
@@ -348,13 +259,6 @@ const NotLoggedInMessage = "gh is not logged in to GitHub: run gh auth login in 
 func NotLoggedIn(stderr string) bool {
 	return strings.Contains(stderr, "gh auth login") || strings.Contains(stderr, "HTTP 401") ||
 		strings.Contains(stderr, "set the GH_TOKEN environment variable")
-}
-
-func firstLine(s string) string {
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		return s[:i]
-	}
-	return s
 }
 
 type rawAuthor struct {
@@ -516,63 +420,6 @@ func FailedRunLogs(repoPath string, checks []Check, limit int) (string, error) {
 	return out.String(), nil
 }
 
-// condenseLog keeps the part of a job log that says what went wrong. A
-// full job log is hundreds of kilobytes, and neither end of it is the
-// answer: the head is runner provisioning, and the tail is post-job
-// cleanup — checking out, unsetting git credentials — which runs *after*
-// the failure. What matters is the output leading up to each line the
-// runner marked "##[error]", so that is the window kept.
-func condenseLog(log string, limit int) string {
-	if limit <= 0 {
-		limit = 8000
-	}
-	lines := strings.Split(strings.ReplaceAll(log, "\r\n", "\n"), "\n")
-
-	// Lines of context before an error marker. Enough to hold a compiler's
-	// or a test runner's output, short enough not to reach back into
-	// dependency downloads.
-	const context = 80
-
-	var windows [][2]int
-	for i, line := range lines {
-		if !strings.Contains(line, "##[error]") {
-			continue
-		}
-		start := max(0, i-context)
-		if n := len(windows); n > 0 && start <= windows[n-1][1]+1 {
-			windows[n-1][1] = i // overlaps the previous window: merge
-			continue
-		}
-		windows = append(windows, [2]int{start, i})
-	}
-	if len(windows) == 0 {
-		// Nothing was marked; the tail is the best guess left.
-		return tailOf(log, limit)
-	}
-
-	var b strings.Builder
-	for i, w := range windows {
-		if i > 0 {
-			b.WriteString("\n…\n")
-		}
-		b.WriteString(strings.Join(lines[w[0]:w[1]+1], "\n"))
-	}
-	// Later errors are usually the informative ones (the first may be a
-	// tool warning), so trim from the front.
-	return tailOf(b.String(), limit)
-}
-
-func tailOf(s string, limit int) string {
-	if len(s) <= limit {
-		return s
-	}
-	s = s[len(s)-limit:]
-	if i := strings.IndexByte(s, '\n'); i >= 0 {
-		s = s[i+1:] // start on a whole line
-	}
-	return "…\n" + s
-}
-
 // searchLimit is the most pull requests the search behind ReposWithMyPRs
 // returns; GitHub's search goes no further.
 const searchLimit = 1000
@@ -632,41 +479,9 @@ func ReviewRequested() (map[string]bool, error) {
 	}
 	asked := map[string]bool{}
 	for _, pr := range prs {
-		asked[RequestKey(pr.Repository.NameWithOwner, pr.Number)] = true
+		asked[forge.RequestKey(pr.Repository.NameWithOwner, pr.Number)] = true
 	}
 	return asked, nil
-}
-
-// RequestKey is how ReviewRequested names a pull request.
-func RequestKey(repo string, number int) string {
-	return strings.ToLower(repo) + "#" + strconv.Itoa(number)
-}
-
-// RepoNames is the github.com repositories ("owner/name", lower case) the
-// remotes of the repository at repoPath point to, and whether it has a
-// remote anywhere else: GitHub Enterprise, say, which the search behind
-// ReposWithMyPRs does not cover.
-func RepoNames(repoPath string) (names []string, elsewhere bool, err error) {
-	out, err := proc.Output(gitsafe.Command(repoPath, "remote", "-v"))
-	if err != nil {
-		return nil, false, err
-	}
-	seen := map[string]bool{}
-	for _, line := range strings.Split(string(out), "\n") {
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		name, ok := gitHubName(fields[1])
-		switch {
-		case !ok:
-			elsewhere = true
-		case !seen[name]:
-			seen[name] = true
-			names = append(names, name)
-		}
-	}
-	return names, elsewhere, nil
 }
 
 // gitHubName is the "owner/name" (lower case) of a github.com remote URL,
@@ -687,3 +502,27 @@ func gitHubName(url string) (string, bool) {
 	}
 	return strings.ToLower(owner + "/" + name), true
 }
+
+// The types are forge's: what nerdr knows of a pull request whichever
+// service it is on.
+type (
+	PR      = forge.PR
+	Review  = forge.Review
+	Comment = forge.Comment
+	Check   = forge.Check
+	Status  = forge.Status
+	Issue   = forge.Issue
+)
+
+var (
+	ownPR        = forge.OwnPR
+	commitsAfter = forge.CommitsAfter
+	firstLine    = forge.FirstLine
+)
+
+// condenseLog is forge.CondenseLog for a GitHub Actions log.
+func condenseLog(log string, limit int) string { return forge.CondenseLog(log, limit, "##[error]") }
+
+// Trusted is forge.Trusted: GitHub's own words for how someone stands to
+// a repository are those forge keeps.
+var Trusted = forge.Trusted

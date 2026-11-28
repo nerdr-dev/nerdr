@@ -177,7 +177,7 @@ func (m *Model) settingRows() []settingRow {
 			"The shell a terminal pane runs in the tab's worktree: the prefix and t t, or + terminal, open one. Empty: the one in $SHELL.",
 			`shell = "/bin/zsh"`),
 		t("browser",
-			"The program that opens a pull request or a comment on GitHub. nerdr adds the web address at the end. Empty: the one in $BROWSER, or else the system's own.",
+			"The program that opens a pull request or a comment on GitHub or GitLab. nerdr adds the web address at the end. Empty: the one in $BROWSER, or else the system's own.",
 			`browser = "open -a Safari"`),
 		t("editor",
 			"The program that o in the review panel opens a file in. Empty: the one in $VISUAL, else $EDITOR, else vim.",
@@ -297,18 +297,21 @@ func (m *Model) settingRows() []settingRow {
 				"off: never.",
 			example: `notify = "blocked"`},
 		b("pr_notify", "true",
-			"Tells you when a CI check fails on one of your open pull requests, or when someone reviews one. nerdr asks GitHub through gh.\n"+
-				"Turn it off and GitHub is not asked.",
+			"Tells you when a CI check fails on one of your open pull requests, or when someone reviews one. nerdr asks GitHub through gh, and GitLab through glab.\n"+
+				"Turn it off and they are not asked.",
 			`pr_notify = false`),
 		b("issue_notify", "true",
-			"Tells you when an issue on GitHub is newly assigned to you. nerdr asks GitHub through gh.\n"+
-				"Turn it off and GitHub is not asked.",
+			"Tells you when an issue on GitHub or GitLab is newly assigned to you. nerdr asks GitHub through gh, and GitLab through glab.\n"+
+				"Turn it off and they are not asked.",
 			`issue_notify = false`),
 		{key: "github_refresh", kind: sInt, lo: 15, hi: 3600, def: "90",
-			desc: "How many seconds apart nerdr asks GitHub about the pull request of the tab on screen, and of a tab whose agent is working: its CI checks, reviews and whether it is merged.\n" +
-				"nerdr's other questions to GitHub follow along, in the same proportion: at 90, tabs out of sight are asked about every 10 minutes, the lists of pull requests and issues in F2 and the watch on your pull requests for notifications every 2 minutes, and new issues assigned to you every 5 minutes. At 180, all of them are twice as far apart.\n" +
-				"A lower number shows a finished CI run sooner; a higher one uses less of GitHub's limit on requests, which matters with many tabs.",
+			desc: "How many seconds apart nerdr asks GitHub (or GitLab) about the pull request of the tab on screen, and of a tab whose agent is working: its CI checks, reviews and whether it is merged.\n" +
+				"nerdr's other questions to GitHub and GitLab follow along, in the same proportion: at 90, tabs out of sight are asked about every 10 minutes, the lists of pull requests and issues in F2 and the watch on your pull requests for notifications every 2 minutes, and new issues assigned to you every 5 minutes. At 180, all of them are twice as far apart.\n" +
+				"A lower number shows a finished CI run sooner; a higher one uses less of GitHub's and GitLab's limits on requests, which matters with many tabs.",
 			example: `github_refresh = 180`},
+		{key: "repo_host", kind: sText, def: `"github.com"`,
+			desc:    "Where the new-tab dialog clones a repository typed as owner/name from, and makes a new one on when you ask for it: github.com, gitlab.com or a server of your own. GitHub's are made with gh, GitLab's with glab.",
+			example: `repo_host = "gitlab.com"`},
 
 		{label: "Code review"},
 		{table: "review", key: "auto", kind: sBool, def: "false",

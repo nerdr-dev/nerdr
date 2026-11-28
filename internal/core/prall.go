@@ -3,11 +3,13 @@ package core
 import (
 	"path/filepath"
 	"slices"
+	"sort"
 	"sync"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -38,7 +40,7 @@ type RepoPRs struct {
 }
 
 // PRAll is what is known of everyone's pull requests: by repository path;
-// those your review is asked for, by github.RequestKey (Asked), and why
+// those your review is asked for, by forge.RequestKey (Asked), and why
 // that could not be asked (AskedErr). Busy is set while they are asked
 // for.
 type PRAll struct {
@@ -50,10 +52,11 @@ type PRAll struct {
 
 // PRAllMsg is a look at the repositories' open pull requests.
 type PRAllMsg struct {
-	Repos    map[string]RepoPRs
-	Asked    map[string]bool
-	AskedErr string
-	ScanErr  string
+	Repos      map[string]RepoPRs
+	Asked      map[string]bool
+	AskedHosts []string // the hosts that answered for Asked
+	AskedErr   string
+	ScanErr    string
 }
 
 // AskAllPRs asks the repositories not asked lately for their open pull
@@ -67,7 +70,7 @@ func (q AskAllPRs) Do(m *Core) Cmd {
 		return nil
 	}
 	if m.NoGh {
-		a.AskedErr = "the gh CLI is not installed"
+		a.AskedErr = forges.Missing
 		return m.Tell(PRsMsg{})
 	}
 	at := map[string]time.Time{}
@@ -88,9 +91,11 @@ func FetchAllPRs(root, wtDir string, dirs []string, at map[string]time.Time, eve
 	if err != nil {
 		msg.ScanErr = err.Error()
 	}
-	if msg.Asked, err = github.ReviewRequested(); err != nil {
-		msg.AskedErr = "review requests: " + err.Error()
+	paths := make([]string, 0, len(repos))
+	for _, r := range repos {
+		paths = append(paths, r.Path)
 	}
+	msg.Asked, msg.AskedHosts, msg.AskedErr = reviewRequested(paths)
 	var (
 		mu  sync.Mutex
 		wg  sync.WaitGroup
@@ -115,12 +120,33 @@ func FetchAllPRs(root, wtDir string, dirs []string, at map[string]time.Time, eve
 	return msg
 }
 
+// reviewRequested is the open pull requests your review is asked for, on
+// the hosts the repositories at paths are on, by forge.RequestKey; the
+// hosts that answered, and why the others did not.
+func reviewRequested(paths []string) (map[string]bool, []string, string) {
+	search := forges.ReviewRequested(forges.Hosts(paths))
+	asked := map[string]bool{}
+	var hosts []string
+	for h, found := range search.Found {
+		hosts = append(hosts, h)
+		for k := range found {
+			asked[k] = true
+		}
+	}
+	sort.Strings(hosts)
+	why := ""
+	if err := search.Err(); err != nil {
+		why = "review requests: " + err.Error()
+	}
+	return asked, hosts, why
+}
+
 // FetchRepoPRs asks repository r for its open pull requests, and finds
 // where their branches are checked out.
 func FetchRepoPRs(r workspace.Repo) RepoPRs {
 	got := RepoPRs{At: time.Now()}
 	got.Names, _, _ = RepoNames(r.Path)
-	prs, err := github.ListPRs(r.Path, PRListLimit)
+	prs, err := forges.ListPRs(r.Path, PRListLimit)
 	if err != nil {
 		got.Err = r.Name + ": " + err.Error()
 	}
@@ -142,7 +168,7 @@ func FetchRepoPRs(r workspace.Repo) RepoPRs {
 func (m *Core) OnPRAll(msg PRAllMsg) Cmd {
 	a := &m.PRAll
 	a.Busy = false
-	m.keepRepoPRs(msg.Repos, msg.Asked)
+	m.keepRepoPRs(msg.Repos, msg.Asked, msg.AskedHosts)
 	a.AskedErr = msg.AskedErr
 	if msg.ScanErr != "" {
 		a.AskedErr = msg.ScanErr
@@ -151,19 +177,39 @@ func (m *Core) OnPRAll(msg PRAllMsg) Cmd {
 }
 
 // keepRepoPRs keeps what repositories answered, and the pull requests
-// your review is asked for; a search that failed (nil) keeps what it
-// knew: the marks do not all go for a moment's trouble.
-func (m *Core) keepRepoPRs(repos map[string]RepoPRs, asked map[string]bool) {
+// your review is asked for on the hosts that answered; of a host whose
+// search failed, or was not made, what was known is kept: the marks do
+// not all go for a moment's trouble.
+func (m *Core) keepRepoPRs(repos map[string]RepoPRs, asked map[string]bool, hosts []string) {
 	a := &m.PRAll
 	if a.Repos == nil {
 		a.Repos = map[string]RepoPRs{}
 	}
 	for path, got := range repos {
+		if old, ok := a.Repos[path]; ok && got.Err != "" && len(got.Entries) == 0 {
+			// Its service did not answer: what it last said stays, with
+			// why it is not newer.
+			got.Entries, got.Names = old.Entries, old.Names
+		}
 		a.Repos[path] = got
 	}
-	if asked != nil {
-		a.Asked = asked
+	if len(hosts) == 0 {
+		return
 	}
+	answered := map[string]bool{}
+	for _, h := range hosts {
+		answered[h] = true
+	}
+	merged := map[string]bool{}
+	for k := range a.Asked {
+		if !answered[forge.KeyHost(k)] {
+			merged[k] = true
+		}
+	}
+	for k := range asked {
+		merged[k] = true
+	}
+	a.Asked = merged
 }
 
 // AskRepoPRs asks repository Repo for its open pull requests, and GitHub
@@ -183,26 +229,24 @@ type RepoPRsMsg struct {
 
 // repoPRsMsg is a repository's pull requests, asked for a client.
 type repoPRsMsg struct {
-	Job      string
-	Repo     string
-	Got      RepoPRs
-	Asked    map[string]bool
-	AskedErr string
+	Job        string
+	Repo       string
+	Got        RepoPRs
+	Asked      map[string]bool
+	AskedHosts []string
+	AskedErr   string
 }
 
 func (q AskRepoPRs) Do(m *Core) Cmd {
 	return func() Event {
 		msg := repoPRsMsg{Job: q.Job, Repo: q.Repo.Path, Got: FetchRepoPRs(q.Repo)}
-		var err error
-		if msg.Asked, err = github.ReviewRequested(); err != nil {
-			msg.AskedErr = "review requests: " + err.Error()
-		}
+		msg.Asked, msg.AskedHosts, msg.AskedErr = reviewRequested([]string{q.Repo.Path})
 		return msg
 	}
 }
 
 func (m *Core) onRepoPRs(msg repoPRsMsg) Cmd {
-	m.keepRepoPRs(map[string]RepoPRs{msg.Repo: msg.Got}, msg.Asked)
+	m.keepRepoPRs(map[string]RepoPRs{msg.Repo: msg.Got}, msg.Asked, msg.AskedHosts)
 	return Batch(m.Tell(RepoPRsMsg{Job: msg.Job, Repo: msg.Repo, AskedErr: msg.AskedErr}), m.Tell(PRsMsg{}))
 }
 
@@ -277,7 +321,7 @@ type ForkFetchedMsg struct {
 func (q FetchForkPR) Do(m *Core) Cmd {
 	return Later(func() Event {
 		msg := ForkFetchedMsg{Job: q.Job, E: q.E}
-		if err := workspace.FetchForkPR(q.E.Repo.Path, q.E.PR.Number, q.E.Branch()); err != nil {
+		if err := workspace.FetchForkPRRef(q.E.Repo.Path, q.E.PR.Number, q.E.Branch(), forges.PRRef(q.E.Repo.Path, q.E.PR.Number)); err != nil {
 			msg.Err = err.Error()
 		}
 		return msg
@@ -299,7 +343,7 @@ type FetchPR struct {
 // jobs' logs when asked; or why it could not.
 type PRFetchedMsg struct {
 	Job  string
-	PR   github.PR
+	PR   forge.PR
 	Logs string
 	Err  string
 }
@@ -307,9 +351,9 @@ type PRFetchedMsg struct {
 func (q FetchPR) Do(m *Core) Cmd {
 	return Later(func() Event {
 		msg := PRFetchedMsg{Job: q.Job}
-		pr, err := github.FetchPR(q.Dir, q.Number)
+		pr, err := forges.FetchPR(q.Dir, q.Number)
 		if err == nil && q.Logs {
-			msg.Logs, err = github.FailedRunLogs(q.Dir, pr.Checks, q.Limit)
+			msg.Logs, err = forges.FailedRunLogs(q.Dir, pr.Checks, q.Limit)
 		}
 		msg.PR = pr
 		if err != nil {

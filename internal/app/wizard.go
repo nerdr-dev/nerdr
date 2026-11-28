@@ -132,7 +132,7 @@ func (m *Model) openWizard() tea.Cmd {
 	w.agents = mc.Core.Available()
 	w.branch = textinput.New()
 	w.branch.Prompt = "branch: "
-	w.branch.Placeholder = "feature/my-change, or #123 for a GitHub issue"
+	w.branch.Placeholder = "feature/my-change, or #123 for an issue"
 	w.branch.CharLimit = 100
 	w.groupName = textinput.New()
 	w.groupName.Prompt = "group:  "
@@ -507,7 +507,7 @@ func (w *wizard) key(m *Model, msg tea.KeyMsg) tea.Cmd {
 		case "enter":
 			name := strings.TrimSpace(w.branch.Value())
 			if n, ok := issueNumber(name); ok {
-				return w.lookUpIssue(m, w.pickedRepos()[0].Path, n)
+				return w.lookUpIssue(m, w.pickedRepos()[0].Path, "", n)
 			}
 			w.err = ""
 			w.busy = "checking…"
@@ -634,11 +634,12 @@ func issueNumber(s string) (int, bool) {
 }
 
 // lookUpIssue has core read issue n of the repository at dir, to fill
-// in the branch and the task from.
-func (w *wizard) lookUpIssue(m *Model, dir string, n int) tea.Cmd {
+// in the branch and the task from; of repo, one of its remotes, when that
+// is given (see core.LookUpIssue).
+func (w *wizard) lookUpIssue(m *Model, dir, repo string, n int) tea.Cmd {
 	w.err = ""
 	w.busy = "looking up issue #" + strconv.Itoa(n) + "…"
-	return m.do(core.LookUpIssue{Job: w.id, Dir: dir, N: n})
+	return m.do(core.LookUpIssue{Job: w.id, Dir: dir, Repo: repo, N: n})
 }
 
 // handleIssue fills in the branch and the task from an issue.
@@ -824,7 +825,7 @@ func (w *wizard) existingLines(m *Model, sel lipgloss.Style) []string {
 	}
 	if !w.useExisting && diverges {
 		lines = append(lines, dim("A push is refused while origin/"+b+" has commits the new branch"),
-			dim("lacks: delete it on GitHub first, or pick another name."))
+			dim("lacks: delete it on origin first, or pick another name."))
 	}
 	use := "use origin's"
 	if local {
@@ -1010,7 +1011,7 @@ func (w *wizard) view(m *Model, width, height int) string {
 				dim("An existing local branch is checked out; otherwise a new one"),
 				dim("is made from origin's default branch, asking first if origin has one."))
 		}
-		lines = append(lines, dim("#123 fills in the branch and the task from GitHub issue 123."))
+		lines = append(lines, dim("#123 fills in the branch and the task from issue 123, on GitHub or GitLab."))
 		// The rest of the step takes some 25 rows: the list gets what is
 		// left, and scrolls.
 		lines = append(lines, w.prLines(m, boxInner(width), height-4-25, sel)...)

@@ -1,6 +1,7 @@
 package core
 
 import (
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/move"
@@ -80,6 +81,10 @@ func (m *Core) Restore(sess state.Session, now time.Time) {
 		m.WtRoot = workspace.WorktreesRoot(m.Root, m.Cfg.WorktreesDir)
 	}
 	m.Scan.NewRepoDir = workspace.NewRepoDir(m.Root, m.Cfg.RepoDirs)
+	// Which service a host is: before any repository is asked about, in a
+	// core that never watches its config file too (one in the TUI's own
+	// process).
+	forge.SetHosts(m.Cfg.Forges)
 	// Restore repository provenance before TrustWorktrees reads origins
 	// or any other host Git operation can inspect these repositories.
 	m.restoreSandboxed(sess)

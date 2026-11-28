@@ -13,8 +13,9 @@ import (
 
 	"github.com/nerdr-dev/nerdr/internal/analysis"
 	"github.com/nerdr-dev/nerdr/internal/codereview"
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/git"
-	"github.com/nerdr-dev/nerdr/internal/github"
 	"github.com/nerdr-dev/nerdr/internal/order"
 	"github.com/nerdr-dev/nerdr/internal/safefile"
 	"github.com/nerdr-dev/nerdr/internal/walkthrough"
@@ -56,11 +57,11 @@ type Source interface {
 	// GhAvailable reports whether the gh CLI is installed.
 	GhAvailable() bool
 	// CurrentPR is the pull request for worktree wt's branch; see
-	// github.CurrentPR.
-	CurrentPR(wt string) (pr github.PR, ok bool, msg string)
+	// forges.CurrentPR.
+	CurrentPR(wt string) (pr forge.PR, ok bool, msg string)
 	// FailedRunLogs are the logs of the failed jobs behind checks; see
-	// github.FailedRunLogs.
-	FailedRunLogs(wt string, checks []github.Check, limit int) (string, error)
+	// forges.FailedRunLogs.
+	FailedRunLogs(wt string, checks []forge.Check, limit int) (string, error)
 
 	// Notes are worktree wt's why notes, with the findings of its latest
 	// code review added (see internal/codereview).
@@ -143,12 +144,12 @@ func (Local) Stamps(wt string, paths []string) map[string]string {
 	return out
 }
 
-func (Local) GhAvailable() bool { return github.Available() }
+func (Local) GhAvailable() bool { return forges.Available() }
 
-func (Local) CurrentPR(wt string) (github.PR, bool, string) { return github.CurrentPR(wt) }
+func (Local) CurrentPR(wt string) (forge.PR, bool, string) { return forges.CurrentPR(wt) }
 
-func (Local) FailedRunLogs(wt string, checks []github.Check, limit int) (string, error) {
-	return github.FailedRunLogs(wt, checks, limit)
+func (Local) FailedRunLogs(wt string, checks []forge.Check, limit int) (string, error) {
+	return forges.FailedRunLogs(wt, checks, limit)
 }
 
 func (Local) Notes(wt string) why.Index {

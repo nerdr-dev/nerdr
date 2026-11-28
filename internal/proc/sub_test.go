@@ -15,6 +15,9 @@ func TestSub(t *testing.T) {
 		{"gh", []string{"api", "repos/o/r/pulls"}, "api"},
 		{"gh", []string{"api", "-X", "GET", "user"}, "api"},
 		{"gh", []string{"auth", "status"}, "auth status"},
+		{"glab", []string{"api", "projects/g%2Fr/merge_requests?state=opened", "--hostname", "gitlab.com"}, "api"},
+		{"glab", []string{"api", "user", "--hostname", "gitlab.com"}, "api"},
+		{"glab", []string{"repo", "clone", "g/r", "r"}, "repo clone"},
 		{"claude", []string{"--resume", "x"}, ""},
 	} {
 		if got := sub(c.program, c.args); got != c.want {

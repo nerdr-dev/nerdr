@@ -50,7 +50,7 @@ func TestCallsDialog(t *testing.T) {
 	// of which its one git diff may not be among the most.
 	m.dialog.(*callsDialog).pick = tb.Name
 	view := ansi.Strip(m.View())
-	if !strings.Contains(view, "git and gh calls") || !strings.Contains(view, "elsewhere") || !strings.Contains(view, "git diff") {
+	if !strings.Contains(view, "git, gh and glab calls") || !strings.Contains(view, "elsewhere") || !strings.Contains(view, "git diff") {
 		t.Fatalf("no dialog:\n%s", view)
 	}
 }

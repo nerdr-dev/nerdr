@@ -39,8 +39,8 @@ func (m *Model) details(t *core.Tab, bg lipgloss.Color, active bool) string {
 		if t.Info.Merged() {
 			parts = append(parts, m.tip(st("141").Render("✓merged"), "The branch is merged"))
 		} else if prs := t.Info.Prs(); len(prs) > 0 {
-			s := "#" + strconv.Itoa(prs[0].Number)
-			tip := "Pull request #" + strconv.Itoa(prs[0].Number)
+			s := prs[0].Ref()
+			tip := prs[0].Kind.PRTitle() + " " + prs[0].Ref()
 			switch {
 			case prs[0].After > 0:
 				// The branch went on after it: what is on top is in no

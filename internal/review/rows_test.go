@@ -10,7 +10,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 )
 
 // wrapLines is a diff with lines of every length, some wrapping onto
@@ -176,7 +176,7 @@ func TestPRConvInnerHeightIsWhatIsShown(t *testing.T) {
 // The fix prompt lists the checks that failed, not those still to run.
 func TestFixPromptListsOnlyFailedChecks(t *testing.T) {
 	pr := samplePR()
-	pr.Checks = []github.Check{
+	pr.Checks = []forge.Check{
 		{Name: "lint", Status: "FAILURE"},
 		{Name: "queued", Status: "QUEUED"},
 		{Name: "running", Status: "IN_PROGRESS"},

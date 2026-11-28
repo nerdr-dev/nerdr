@@ -4,7 +4,7 @@ import (
 	"sort"
 
 	"github.com/nerdr-dev/nerdr/internal/core"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -27,12 +27,12 @@ func (m *Model) refreshAllPRs(force bool) tea.Cmd {
 }
 
 // markedPRs is got's pull requests, those your review is asked for, by
-// github.RequestKey in asked, marked.
+// forge.RequestKey in asked, marked.
 func markedPRs(got core.RepoPRs, asked map[string]bool) []core.PREntry {
 	out := make([]core.PREntry, 0, len(got.Entries))
 	for _, e := range got.Entries {
 		for _, n := range got.Names {
-			if asked[github.RequestKey(n, e.PR.Number)] {
+			if asked[forge.RequestKey(n, e.PR.Number)] {
 				e.Asked = true
 			}
 		}

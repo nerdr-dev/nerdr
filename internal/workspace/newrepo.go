@@ -74,31 +74,45 @@ func InitRepo(parent, name string) (string, error) {
 	return p, nil
 }
 
-// ghRepoName matches owner/name, the short form of a GitHub repository.
-var ghRepoName = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+// shortName matches owner/name, the short form of a repository on the
+// host repositories are cloned from (config's repo_host).
+var shortName = regexp.MustCompile(`^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$`)
+
+// hostPath matches host/path…, a repository on another host named
+// without a URL: gitlab.com/group/name, git.example.com/a/b/c.
+var hostPath = regexp.MustCompile(`^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+(:[0-9]+)?(/[A-Za-z0-9_.-]+){2,}$`)
 
 // CloneSource reads what is typed to clone: a URL or path git clones as
-// it is, or owner/name on GitHub. It returns the folder name the clone
-// gets, and, for owner/name, the URL to clone from when gh is not there to
-// do it.
-func CloneSource(src string) (name, url string, github bool, err error) {
+// it is, owner/name on host (the config's repo_host), or host/path on
+// another. It returns the folder name the clone gets, the URL to clone
+// from with git, and, for owner/name and host/path, the host and path,
+// for the host's CLI to clone it with its login.
+func CloneSource(src, host string) (name, url, onHost, path string, err error) {
 	src = strings.TrimSpace(src)
 	if src == "" {
-		return "", "", false, errors.New("type owner/name or a URL to clone")
+		return "", "", "", "", errors.New("type owner/name or a URL to clone")
 	}
-	github = ghRepoName.MatchString(src) && !strings.HasPrefix(src, ".")
 	url = src
-	if github {
-		url = "https://github.com/" + src + ".git"
+	switch {
+	case strings.HasPrefix(src, "."):
+	case shortName.MatchString(src):
+		onHost, path = host, src
+	case hostPath.MatchString(src):
+		onHost, path, _ = strings.Cut(src, "/")
+		onHost = strings.ToLower(onHost)
+	}
+	path = strings.TrimSuffix(path, ".git")
+	if onHost != "" {
+		url = "https://" + onHost + "/" + path + ".git"
 	}
 	name = strings.TrimSuffix(strings.TrimRight(src, "/"), ".git")
 	if i := strings.LastIndexAny(name, "/:"); i >= 0 {
 		name = name[i+1:]
 	}
 	if !validRepoName.MatchString(name) {
-		return "", "", false, fmt.Errorf("found no repository name in %q", src)
+		return "", "", "", "", fmt.Errorf("found no repository name in %q", src)
 	}
-	return name, url, github, nil
+	return name, url, onHost, path, nil
 }
 
 // CloneRepo clones url into a folder named name in parent with git, and

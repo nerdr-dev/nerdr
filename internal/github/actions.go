@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nerdr-dev/nerdr/internal/forge"
 	"github.com/nerdr-dev/nerdr/internal/git"
 	"github.com/nerdr-dev/nerdr/internal/gitsafe"
 	"github.com/nerdr-dev/nerdr/internal/proc"
@@ -70,20 +71,6 @@ func ghBase(timeout time.Duration, dir string, base, env []string, args ...strin
 	return out, nil
 }
 
-// Status is the short state of a branch's PR, for the tab bar.
-type Status struct {
-	Number  int
-	URL     string
-	State   string // OPEN, CLOSED, MERGED
-	CI      string // see CISummary
-	HeadOID string // the PR's last head, including after a squash/rebase merge
-	Base    string // the branch the PR is to be merged into
-	// After is how many commits the branch has on top of a merged or
-	// closed PR's head: work carried on after it, which the PR has not
-	// got. 0 for an open PR.
-	After int
-}
-
 // BranchStatus looks up the PR for the branch checked out in dir. ok is
 // false when there is none (or gh cannot tell).
 func BranchStatus(dir string) (st Status, ok bool) {
@@ -96,116 +83,7 @@ func BranchStatus(dir string) (st Status, ok bool) {
 		return Status{}, false
 	}
 	pr := raw.toPR()
-	return Recheck(dir, Status{Number: pr.Number, URL: pr.URL, State: pr.State, CI: CISummary(pr.Checks), HeadOID: pr.Head, Base: pr.Base})
-}
-
-// Recheck works out again, with git alone, whether st, a PR gh found for
-// the branch checked out in dir, is the branch's, and how many commits
-// the branch has after it, for a branch that moved since gh was asked.
-func Recheck(dir string, st Status) (Status, bool) {
-	st.After = 0
-	if ownPR(dir, st.State, st.HeadOID) {
-		return st, true
-	}
-	if st.After = commitsAfter(dir, st.HeadOID, st.Base); st.After == 0 {
-		return Status{}, false
-	}
-	return st, true
-}
-
-// ownPR reports whether a PR that gh found by the name of the branch
-// checked out in dir is this branch's. gh also finds a merged or closed PR
-// from an earlier branch of the same name, deleted since, and a new branch
-// from main must not show as merged for it. A finished PR is this branch's
-// only when the branch has nothing the PR did not: HEAD is its head commit,
-// or behind it. An open PR is always the branch's.
-func ownPR(dir, state, head string) bool {
-	if state == "OPEN" {
-		return true
-	}
-	if head == "" {
-		return false
-	}
-	return isAncestor(dir, "HEAD", head)
-}
-
-// commitsAfter is, for a finished PR that ownPR turned down, how many
-// commits the branch checked out in dir has on top of the PR's head that
-// base has not got: the branch went on after the PR was merged or closed.
-// It is 0 when the branch did not, or it cannot be told: git does not
-// know the head or base. The head has to be on HEAD's first-parent line,
-// which a branch that went on from it keeps when it merges base in. A
-// merge commit puts the head into base too, and so into every branch
-// made from base since, the new branch of the same name among them; but
-// in those it is the merge commit's second parent, off that line. Squash
-// and rebase merges leave it out of base altogether.
-func commitsAfter(dir, head, base string) int {
-	if head == "" || base == "" {
-		return 0
-	}
-	var bases []string
-	for _, ref := range []string{"refs/remotes/origin/" + base, "refs/heads/" + base} {
-		if proc.Run(gitsafe.Command(dir, "rev-parse", "--verify", "--quiet", ref+"^{commit}")) == nil {
-			bases = append(bases, "^"+ref)
-		}
-	}
-	if len(bases) == 0 {
-		return 0
-	}
-	line, err := revCount(dir, "--first-parent", "HEAD", "^"+head+"^{commit}")
-	if err != nil || line == 0 || revParse(dir, "HEAD~"+strconv.Itoa(line)) != revParse(dir, head+"^{commit}") {
-		return 0
-	}
-	n, err := revCount(dir, append([]string{"HEAD", "^" + head + "^{commit}"}, bases...)...)
-	if err != nil {
-		return 0
-	}
-	return n
-}
-
-// revCount is how many commits git rev-list lists for args.
-func revCount(dir string, args ...string) (int, error) {
-	out, err := proc.Output(gitsafe.Command(dir, append([]string{"rev-list", "--count"}, args...)...))
-	if err != nil {
-		return 0, err
-	}
-	return strconv.Atoi(strings.TrimSpace(string(out)))
-}
-
-// revParse is the commit rev names, "" when git does not know it.
-func revParse(dir, rev string) string {
-	out, err := proc.Output(gitsafe.Command(dir, "rev-parse", "--verify", "--quiet", rev))
-	if err != nil {
-		return ""
-	}
-	return strings.TrimSpace(string(out))
-}
-
-// isAncestor says whether commit a is in b's history, a itself included.
-func isAncestor(dir, a, b string) bool {
-	return proc.Run(gitsafe.Command(dir, "merge-base", "--is-ancestor", a, b)) == nil
-}
-
-// CISummary folds a PR's checks into one word: "fail" when any failed,
-// else "pending" while any runs, else "pass"; "" when there are none.
-func CISummary(checks []Check) string {
-	if len(checks) == 0 {
-		return ""
-	}
-	pending := false
-	for _, c := range checks {
-		switch strings.ToUpper(c.Status) {
-		case "FAILURE", "ERROR", "TIMED_OUT", "ACTION_REQUIRED", "CANCELLED", "STARTUP_FAILURE":
-			return "fail"
-		case "SUCCESS", "NEUTRAL", "SKIPPED":
-		default:
-			pending = true
-		}
-	}
-	if pending {
-		return "pending"
-	}
-	return "pass"
+	return forge.Recheck(dir, Status{Number: pr.Number, URL: pr.URL, State: pr.State, CI: forge.CISummary(pr.Checks), HeadOID: pr.Head, Base: pr.Base})
 }
 
 // CreatePR opens a pull request for the branch checked out in dir, titled
@@ -289,21 +167,6 @@ func lastURL(s string) string {
 	return all[len(all)-1]
 }
 
-// Issue is a GitHub issue to start a tab from. Body is only filled in by
-// FetchIssue: the lists leave it out.
-type Issue struct {
-	Number    int
-	Title     string
-	Body      string
-	URL       string
-	Author    string
-	Labels    []string
-	UpdatedAt time.Time
-	// Repo is the repository it is in ("owner/name", lower case), filled in
-	// by MyIssues only.
-	Repo string
-}
-
 // FetchIssue reads issue number from the repository in dir.
 func FetchIssue(dir string, number int) (Issue, error) {
 	out, err := gh(dir, "issue", "view", strconv.Itoa(number), "--json", issueFields+",body")
@@ -317,76 +180,40 @@ func FetchIssue(dir string, number int) (Issue, error) {
 	return raw.toIssue(), nil
 }
 
-// BranchName suggests a branch for the issue: its number and the first
-// words of its title, e.g. 123-login-fails-on-empty-password.
-func (is Issue) BranchName() string {
-	var b strings.Builder
-	b.WriteString(strconv.Itoa(is.Number))
-	words := 0
-	dash := true
-	for _, r := range strings.ToLower(is.Title) {
-		switch {
-		case r >= 'a' && r <= 'z' || r >= '0' && r <= '9':
-			if dash {
-				if words == 6 {
-					return b.String()
-				}
-				b.WriteByte('-')
-				words++
-				dash = false
-			}
-			b.WriteRune(r)
-		default:
-			dash = true
-		}
-	}
-	return b.String()
-}
-
-// Task is what the agent is asked to do about the issue.
-func (is Issue) Task() string {
-	s := "Resolve GitHub issue #" + strconv.Itoa(is.Number) + ": " + is.Title
-	if is.URL != "" {
-		s += " (" + is.URL + ")"
-	}
-	if body := strings.TrimSpace(is.Body); body != "" {
-		s += "\n\n" + body
-	}
-	return s
-}
-
 // cloneTimeout bounds a clone made with gh, as git's own clone is.
 const cloneTimeout = 15 * time.Minute
 
-// CloneRepo clones repo, owner/name on GitHub, into a folder named name in
-// parent, with gh, so the login gh has reaches a private repository too.
-func CloneRepo(parent, repo, name string) (string, error) {
+// CloneRepo clones repo, owner/name on host (github.com or a GitHub
+// Enterprise server), into a folder named name in parent, with gh, so the
+// login gh has reaches a private repository too.
+func CloneRepo(parent, host, repo, name string) (string, error) {
 	if err := os.MkdirAll(parent, 0o755); err != nil {
 		return "", err
 	}
 	// Not pinned to a repository parent is inside: see gitsafe.EnvNoRepo.
-	if _, err := ghBase(cloneTimeout, parent, gitsafe.EnvNoRepo(), nil, "repo", "clone", repo, name, "--", "--quiet"); err != nil {
+	if _, err := ghBase(cloneTimeout, parent, gitsafe.EnvNoRepo(), hostEnv(host), "repo", "clone", repo, name, "--", "--quiet"); err != nil {
 		return "", err
 	}
 	return filepath.Join(parent, name), nil
 }
 
-// CreateRepo makes a private repository on GitHub, named as the folder
-// dir is, makes it dir's origin and pushes dir's branch to it. It returns
-// the new repository's URL.
-func CreateRepo(dir string) (string, error) {
-	out, err := gh(dir, "repo", "create", filepath.Base(dir), "--private",
+// hostEnv has gh work on host, github.com too: a GH_HOST the user has
+// set, for a GitHub Enterprise server, must not take its place.
+func hostEnv(host string) []string {
+	if host == "" {
+		host = forge.GitHubHost
+	}
+	return []string{"GH_HOST=" + host}
+}
+
+// CreateRepo makes a private repository on host, github.com or a GitHub
+// Enterprise server, named as the folder dir is, makes it dir's origin
+// and pushes dir's branch to it. It returns the new repository's URL.
+func CreateRepo(dir, host string) (string, error) {
+	out, err := ghEnv(ghTimeout, dir, hostEnv(host), "repo", "create", filepath.Base(dir), "--private",
 		"--source", ".", "--remote", "origin", "--push")
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(firstLine(string(out))), nil
-}
-
-// commits is "1 commit" or "n commits".
-func commits(n int) string {
-	if n == 1 {
-		return "1 commit"
-	}
-	return strconv.Itoa(n) + " commits"
 }

@@ -1,7 +1,6 @@
 package app
 
 import (
-	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
@@ -141,7 +140,7 @@ func (d *prTitleDialog) view(m *Model, w, h int) string {
 	if e.PR.URL != "" {
 		lines = append(lines, dim(e.PR.URL))
 	}
-	return box(fmt.Sprintf("#%d", e.PR.Number), lines, w)
+	return box(e.PR.Ref(), lines, w)
 }
 
 // goToPR goes to the tab working on e's branch. Without one it asks
@@ -182,19 +181,19 @@ func (m *Model) prCheckedOut(e core.PREntry, group *workspace.Group) tea.Cmd {
 		// Its branch is not on origin: a branch of its name made here
 		// would start from main, and not be the pull request at all.
 		lines = []string{
-			"#" + fmt.Sprint(e.PR.Number) + " is from " + e.PR.Fork + "'s fork, not a branch on origin.",
+			e.PR.Ref() + " is from " + e.PR.Fork + "'s fork, not a branch on origin.",
 			"Fetch it as " + e.Branch() + ", and make a worktree in " + m.tabOn().Core.WtRoot + " and a tab for it?",
 			"nerdr will not push it: the branch is in the fork.",
 		}
 	}
 	m.dialog = &confirm{
-		title: "#" + fmt.Sprint(e.PR.Number) + " " + headName(e),
+		title: e.PR.Ref() + " " + headName(e),
 		lines: lines,
 		yes: func(m *Model) tea.Cmd {
 			if e.PR.Fork == "" {
 				return m.openPRWizard(e)
 			}
-			m.toast("fetching #" + fmt.Sprint(e.PR.Number) + " from origin…")
+			m.toast("fetching " + e.PR.Ref() + " from origin…")
 			m.prPick, m.prPickOn = core.NewJobID(), m.dialog
 			return m.do(core.FetchForkPR{Job: m.prPick, E: e})
 		},
@@ -236,7 +235,7 @@ func (m *Model) prAnswer(ev core.Event) tea.Cmd {
 			case m.dialog != m.prPickOn:
 				// The user has gone on to something else: the branch is
 				// there for when they come back to it.
-				m.toast("fetched #" + fmt.Sprint(ev.E.PR.Number) + " as " + ev.E.Branch())
+				m.toast("fetched " + ev.E.PR.Ref() + " as " + ev.E.Branch())
 			default:
 				return m.openPRWizard(ev.E)
 			}
@@ -371,7 +370,7 @@ func (d *prList) table(m *Model, inner, rows int) []string {
 			}
 		}
 		rev = m.tip(rev, strings.Join(tip, " · "))
-		row := padTo(fmt.Sprintf("#%d", e.PR.Number), prColNum) +
+		row := padTo(e.PR.Ref(), prColNum) +
 			padTo(ansi.Truncate(term.PrintableLine(e.Repo.Name), prColRepo-1, "…"), prColRepo) +
 			padTo(ansi.Truncate(term.PrintableLine(headName(e)), prColBranch(wide)-1, "…"), prColBranch(wide)) +
 			padTo(rev, prColGlyph) + padTo(ci, 4) + padTo(m.prWhere(e), prColWhere) + when + title
@@ -386,7 +385,7 @@ func (d *prList) table(m *Model, inner, rows int) []string {
 	}
 	switch {
 	case d.loading && len(d.entries) == 0:
-		lines = append(lines, dim("asking gh…"))
+		lines = append(lines, dim("asking…"))
 	case len(d.entries) == 0 && len(d.errs) == 0 && d.all:
 		lines = append(lines, dim("(no open pull requests)"))
 	case len(d.entries) == 0 && len(d.errs) == 0:

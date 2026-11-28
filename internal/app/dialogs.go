@@ -375,7 +375,7 @@ func (c *closeTab) view(m *Model, w, h int) string {
 			note := ""
 			switch {
 			case c.merged():
-				note = dim(" — merged on GitHub")
+				note = dim(" — merged")
 			case len(c.unpushed) > 0:
 				note = warn(" — not merged, commits not pushed")
 			default:

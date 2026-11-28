@@ -6,7 +6,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/state"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
@@ -28,9 +29,12 @@ type IssueWatch struct {
 	MineErr string
 	Known   map[string]bool // every issue assigned to you, by issueKey
 	Seeded  bool            // known has been learned once: after that, new is news
-	News    []state.IssueNews
-	Busy    bool
-	At      time.Time
+	// SeededHosts is the hosts Known has been learned of once: a host
+	// asked for the first time, a GitLab added, has no news yet.
+	SeededHosts map[string]bool
+	News        []state.IssueNews
+	Busy        bool
+	At          time.Time
 
 	// All is each repository's open issues, by its path, asked for when
 	// the list shows all issues.
@@ -48,14 +52,17 @@ type RepoIssues struct {
 // IssueEntry is one issue, and the repository here it is in.
 type IssueEntry struct {
 	Repo  workspace.Repo
-	Issue github.Issue
+	Issue forge.Issue
 }
 
 // IssueWatchMsg is a look at the issues assigned to you.
 type IssueWatchMsg struct {
 	Keys    []string     // every one, by issueKey, wherever it is
 	Entries []IssueEntry // those in the repositories here
-	Err     string
+	// Searched is the hosts that answered; Err says why the others did
+	// not. Of a host that did not, what was known is kept.
+	Searched []string
+	Err      string
 }
 
 // IssueAllMsg is a look at some repositories' open issues.
@@ -71,9 +78,16 @@ func (m *Core) LoadIssueWatch(s *state.IssueWatch) {
 		return
 	}
 	w := &m.IssueWatch
-	w.Known, w.Seeded, w.News = map[string]bool{}, true, s.News
+	w.Known, w.Seeded, w.News, w.SeededHosts = map[string]bool{}, true, s.News, map[string]bool{}
 	for _, k := range s.Known {
 		w.Known[k] = true
+	}
+	for _, h := range s.Hosts {
+		w.SeededHosts[h] = true
+	}
+	if len(s.Hosts) == 0 {
+		// Kept before nerdr asked any host but GitHub.
+		w.SeededHosts[forge.GitHubHost] = true
 	}
 }
 
@@ -88,6 +102,10 @@ func (m *Core) SavedIssueWatch() *state.IssueWatch {
 		s.Known = append(s.Known, k)
 	}
 	sort.Strings(s.Known)
+	for h := range w.SeededHosts {
+		s.Hosts = append(s.Hosts, h)
+	}
+	sort.Strings(s.Hosts)
 	return s
 }
 
@@ -106,7 +124,7 @@ func FetchAllIssues(repos []workspace.Repo) IssueAllMsg {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			got := RepoIssues{At: time.Now()}
-			issues, err := github.ListIssues(r.Path, IssueListLimit)
+			issues, err := forges.ListIssues(r.Path, IssueListLimit)
 			if err != nil {
 				got.Err = r.Name + ": " + err.Error()
 			}
@@ -175,8 +193,8 @@ func (m *Core) RefreshIssues() Cmd {
 	if w.Busy {
 		return nil
 	}
-	if !github.Available() {
-		w.MineErr = "the gh CLI is not installed"
+	if !forges.Available() {
+		w.MineErr = forges.Missing
 		return nil
 	}
 	w.Busy, w.At = true, time.Now()
@@ -184,19 +202,17 @@ func (m *Core) RefreshIssues() Cmd {
 	return func() Event { return fetchMyIssues(root, wtDir, dirs) }
 }
 
-// fetchMyIssues searches for the issues assigned to you, and finds the
-// repository here each is in.
+// fetchMyIssues searches each host the repositories here are on for the
+// issues assigned to you, and finds the repository here each is in.
 func fetchMyIssues(root, wtDir string, dirs []string) IssueWatchMsg {
-	issues, err := github.MyIssues()
-	if err != nil {
-		return IssueWatchMsg{Err: err.Error()}
-	}
 	repos, err := workspace.ScanAll(root, wtDir, dirs)
 	if err != nil {
 		return IssueWatchMsg{Err: err.Error()}
 	}
 	byName := map[string]workspace.Repo{}
+	paths := make([]string, 0, len(repos))
 	for _, r := range repos {
+		paths = append(paths, r.Path)
 		names, _, err := RepoNames(r.Path)
 		if err != nil {
 			continue
@@ -207,13 +223,21 @@ func fetchMyIssues(root, wtDir string, dirs []string) IssueWatchMsg {
 			}
 		}
 	}
+	search := forges.MyIssues(forges.Hosts(paths))
 	var msg IssueWatchMsg
-	for _, is := range issues {
-		msg.Keys = append(msg.Keys, IssueKey(is.Repo, is.Number))
-		if r, ok := byName[is.Repo]; ok {
-			msg.Entries = append(msg.Entries, IssueEntry{Repo: r, Issue: is})
+	if err := search.Err(); err != nil {
+		msg.Err = err.Error()
+	}
+	for host, issues := range search.Found {
+		msg.Searched = append(msg.Searched, host)
+		for _, is := range issues {
+			msg.Keys = append(msg.Keys, IssueKey(is.Repo, is.Number))
+			if r, ok := byName[is.Repo]; ok {
+				msg.Entries = append(msg.Entries, IssueEntry{Repo: r, Issue: is})
+			}
 		}
 	}
+	sort.Strings(msg.Searched)
 	return msg
 }
 
@@ -226,22 +250,51 @@ func (m *Core) OnIssueWatch(msg IssueWatchMsg) {
 	w := &m.IssueWatch
 	w.Busy = false
 	w.MineErr = msg.Err
-	if msg.Err != "" {
+	if len(msg.Searched) == 0 {
+		// No host answered, or none was asked: nothing is known that was
+		// not. Seeded waits for a host that answers, or state saved
+		// without hosts would be taken for that of before them, all
+		// github.com's.
 		m.Tell(IssuesMsg{})
 		return
 	}
-	var news []state.IssueNews
-	if w.Seeded {
-		for _, e := range msg.Entries {
-			k := IssueKey(e.Issue.Repo, e.Issue.Number)
-			if !w.Known[k] {
-				news = append(news, state.IssueNews{Key: k, Repo: e.Repo.Name, Number: e.Issue.Number, Title: e.Issue.Title})
-			}
+	answered := map[string]bool{}
+	for _, h := range msg.Searched {
+		answered[h] = true
+	}
+	if w.SeededHosts == nil {
+		w.SeededHosts = map[string]bool{}
+		if w.Seeded {
+			w.SeededHosts[forge.GitHubHost] = true // seeded before there were hosts
 		}
 	}
-	w.Known, w.Seeded = map[string]bool{}, true
+	var news []state.IssueNews
+	for _, e := range msg.Entries {
+		k := IssueKey(e.Issue.Repo, e.Issue.Number)
+		if w.Seeded && w.SeededHosts[forge.KeyHost(k)] && !w.Known[k] {
+			news = append(news, state.IssueNews{Key: k, Repo: e.Repo.Name, Number: e.Issue.Number, Title: e.Issue.Title})
+		}
+	}
+	// A host that did not answer keeps what was known of it, so its
+	// answering again is not taken for news.
+	known := map[string]bool{}
+	for k := range w.Known {
+		if !answered[forge.KeyHost(k)] {
+			known[k] = true
+		}
+	}
 	for _, k := range msg.Keys {
-		w.Known[k] = true
+		known[k] = true
+	}
+	mine := msg.Entries
+	for _, e := range w.Mine {
+		if !answered[forge.KeyHost(e.Issue.Repo)] {
+			mine = append(mine, e)
+		}
+	}
+	w.Known, w.Seeded = known, true
+	for h := range answered {
+		w.SeededHosts[h] = true
 	}
 	// News of an issue no longer assigned to you, or closed, no longer
 	// holds.
@@ -252,7 +305,7 @@ func (m *Core) OnIssueWatch(msg IssueWatchMsg) {
 		}
 	}
 	w.News = kept
-	w.Mine = msg.Entries
+	w.Mine = mine
 	SortIssueEntries(w.Mine)
 	if len(news) > 0 && IsOn(m.Cfg.IssueNotify) {
 		w.News = append(w.News, news...)

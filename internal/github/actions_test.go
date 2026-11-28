@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nerdr-dev/nerdr/internal/forge"
 )
 
 func TestIssueBranchName(t *testing.T) {
@@ -48,7 +50,7 @@ func TestCISummary(t *testing.T) {
 		{c("SUCCESS", "IN_PROGRESS"), "pending"},
 		{c("IN_PROGRESS", "FAILURE"), "fail"},
 	} {
-		if got := CISummary(tc.checks); got != tc.want {
+		if got := forge.CISummary(tc.checks); got != tc.want {
 			t.Errorf("%v: %q, want %q", tc.checks, got, tc.want)
 		}
 	}

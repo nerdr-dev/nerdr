@@ -133,10 +133,16 @@ func doctorChecks(folder string) []check {
 	} else {
 		add("git", checkOK, "%s", p)
 	}
-	if p, err := exec.LookPath("gh"); err != nil {
-		add("gh", checkWarn, "not on PATH: without it nerdr shows no pull requests or CI; install GitHub's gh and run gh auth login")
+	_, glabErr := exec.LookPath("glab")
+	if p, err := exec.LookPath("gh"); err != nil && glabErr == nil {
+		add("gh", checkWarn, "not on PATH: only GitLab's merge requests and CI are shown (with glab); for GitHub's, install gh and run gh auth login")
+	} else if err != nil {
+		add("gh", checkWarn, "not on PATH: without it nerdr shows no pull requests or CI; install GitHub's gh and run gh auth login (glab, glab auth login, for GitLab)")
 	} else {
 		add("gh", checkOK, "%s", p)
+	}
+	if p, err := exec.LookPath("glab"); err == nil {
+		add("glab", checkOK, "%s", p)
 	}
 
 	out = append(out, socketsCheck(tab))

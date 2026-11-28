@@ -168,6 +168,15 @@ type Config struct {
 	// on screen is asked about; nerdr's other questions to GitHub are
 	// spaced the same share longer or shorter than at the default.
 	GitHubRefresh int `toml:"github_refresh" scope:"core"`
+	// Forges says which service a host nerdr cannot tell by its name
+	// runs: [forges] "git.example.com" = "gitlab". github.com and
+	// gitlab.com need no line, nor a host with gitlab in its name; any
+	// other is taken for GitHub Enterprise.
+	Forges map[string]string `toml:"forges" scope:"core"`
+	// RepoHost is the host a repository typed as owner/name is cloned
+	// from, and a new one is made on: github.com when the file does not
+	// say.
+	RepoHost string `toml:"repo_host" scope:"core"`
 
 	// KeepAwake keeps the machine from going to sleep: "busy" while an
 	// agent works (and a minute after), "always" while nerdr runs, "off"
@@ -436,6 +445,14 @@ const (
 // by the name they have now: the old name is read where the new one is
 // not set, and taken out when the new one is written.
 var renamed = map[string]string{"install": "skills"}
+
+// NewRepoHost is RepoHost, github.com when the file does not say.
+func (c Config) NewRepoHost() string {
+	if h := strings.ToLower(strings.TrimSpace(c.RepoHost)); h != "" {
+		return h
+	}
+	return "github.com"
+}
 
 // DataDirSet reports whether the config file sets data_dir.
 func (c Config) DataDirSet() bool { return c.dataDirSet }

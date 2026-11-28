@@ -6,7 +6,8 @@ import (
 	"slices"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
-	"github.com/nerdr-dev/nerdr/internal/github"
+	"github.com/nerdr-dev/nerdr/internal/forge"
+	"github.com/nerdr-dev/nerdr/internal/forges"
 	"github.com/nerdr-dev/nerdr/internal/workspace"
 )
 
@@ -63,7 +64,7 @@ func makePlan(wtRoot string, q MakePlan) (workspace.Plan, error) {
 	plan, err := workspace.MakePlanOn(wtRoot, name, q.Repos, q.On)
 	for i, it := range plan.Items {
 		if it.Mode == "remote" || it.Mode == "local" {
-			n, state, head, _ := github.BranchPR(it.Repo.Path, name)
+			n, state, head, _ := forges.BranchPR(it.Repo.Path, name)
 			plan.Items[i].SetPR(n, state, head)
 		}
 		// Not on origin, but a fork's pull request has it: a new branch
@@ -76,34 +77,37 @@ func makePlan(wtRoot string, q MakePlan) (workspace.Plan, error) {
 		if q.Fork != nil {
 			f = *q.Fork
 		} else {
-			f.Number, f.Owner, f.Is = github.ForkPR(it.Repo.Path, name)
+			f.Number, f.Owner, f.Is = forges.ForkPR(it.Repo.Path, name)
 		}
 		if f.Is {
-			return workspace.Plan{}, fmt.Errorf("%s: %s is pull request #%d from %s's fork, not on origin: pick #%d among the pull requests to fetch it",
-				it.Repo.Name, name, f.Number, f.Owner, f.Number)
+			k := forges.KindOf(it.Repo.Path)
+			return workspace.Plan{}, fmt.Errorf("%s: %s is %s %s from %s's fork, not on origin: pick %s among the %ss to fetch it",
+				it.Repo.Name, name, k.PRWord(), k.Ref(f.Number), f.Owner, k.Ref(f.Number), k.PRWord())
 		}
 	}
 	return plan, err
 }
 
 // LookUpIssue reads issue N of the repository at Dir, for the branch and
-// the task: told as an IssueMsg.
+// the task: told as an IssueMsg. Repo, when given, is which of its
+// remotes' (forge.RepoKey) the issue is of.
 type LookUpIssue struct {
-	Job string
-	Dir string
-	N   int
+	Job  string
+	Dir  string
+	Repo string `json:",omitempty"`
+	N    int
 }
 
 // IssueMsg is the issue LookUpIssue of Job read, or why it could not.
 type IssueMsg struct {
 	Job   string
-	Issue github.Issue
+	Issue forge.Issue
 	Err   string
 }
 
 func (q LookUpIssue) Do(m *Core) Cmd {
 	return Later(func() Event {
-		is, err := github.FetchIssue(q.Dir, q.N)
+		is, err := forges.FetchIssueOf(q.Dir, q.Repo, q.N)
 		msg := IssueMsg{Job: q.Job, Issue: is}
 		if err != nil {
 			msg.Err = err.Error()
