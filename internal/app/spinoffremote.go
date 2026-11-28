@@ -275,7 +275,7 @@ func (m *Model) onSpinoffRun(ev core.Event) tea.Cmd {
 		m.spinoffRun = nil
 		o := ev.Outcome
 		o.Machine = machineName(r.to)
-		cmds := []tea.Cmd{m.doOn(r.from, core.SpinoffNext{T: r.ref, Outcome: o})}
+		cmds := []tea.Cmd{m.doOn(r.from, core.SpinoffNext{T: r.ref, Outcome: o, Job: r.job})}
 		if r.packed {
 			cmds = append(cmds, m.doOn(r.from, core.SpinoffPackDrop{Job: r.job}))
 		}
@@ -294,8 +294,11 @@ func (m *Model) spinoffRunFail(why string) tea.Cmd {
 	}
 	m.spinoffRun = nil
 	var cmds []tea.Cmd
-	if r.held && !grey(r.from) {
-		// Gone, its core lets go of it in time (core.SpinoffHoldFor).
+	if !grey(r.from) {
+		// Asked for, held or not yet said to be: the release goes after
+		// the hold, to the same core, so it lets go of one an answer is
+		// still on its way for. Gone, its core lets go of it in time
+		// (core.SpinoffHoldFor).
 		cmds = append(cmds, m.doOn(r.from, core.SpinoffHold{Job: r.job, T: r.ref, Release: true}))
 	}
 	if r.packed && !grey(r.from) {

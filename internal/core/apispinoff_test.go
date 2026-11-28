@@ -291,3 +291,28 @@ func TestSpinoffHold(t *testing.T) {
 		t.Error("its own job did not let go of it")
 	}
 }
+
+// TestSpinoffOutcomeOfAHoldGone: the outcome of a job whose hold ran out,
+// another holding the part since, moves nothing and lets go of nothing;
+// nor does a skip while it is held. The outcome of the job holding it
+// goes through.
+func TestSpinoffOutcomeOfAHoldGone(t *testing.T) {
+	m, tab, _ := spinoffCore(t)
+	ref := m.Ref(tab)
+	SpinoffHold{Job: "a", T: ref, Part: "p1"}.Do(m)
+	m.ExpireSpinoffHolds(time.Now().Add(SpinoffHoldFor + time.Second))
+	SpinoffHold{Job: "b", T: ref, Part: "p1"}.Do(m)
+	if tab.SpinoffHold != "b" {
+		t.Fatalf("held by %q", tab.SpinoffHold)
+	}
+	made := spinoff.Outcome{Part: tab.Spinoff.Next[0], Branch: "fix-a", Machine: "box"}
+	SpinoffNext{T: ref, Outcome: made, Job: "a"}.Do(m)
+	SpinoffNext{T: ref, Outcome: spinoff.Outcome{Part: tab.Spinoff.Next[0], Skipped: true}}.Do(m)
+	if len(tab.Spinoff.Next) != 2 || tab.SpinoffHold != "b" || tab.SpinoffBusy == "" {
+		t.Fatalf("moved: %d parts, held by %q", len(tab.Spinoff.Next), tab.SpinoffHold)
+	}
+	SpinoffNext{T: ref, Outcome: made, Job: "b"}.Do(m)
+	if len(tab.Spinoff.Next) != 1 || tab.Spinoff.Next[0].ID != "p2" || tab.SpinoffHold != "" || tab.SpinoffBusy != "" {
+		t.Fatalf("the holder's outcome: %+v, held by %q", tab.Spinoff.Next, tab.SpinoffHold)
+	}
+}
