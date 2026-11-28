@@ -78,6 +78,8 @@ var schemaOps = []opSpec{
 		result: reflect.TypeFor[OpenedResult]()},
 	{op: "review", desc: "Start a code review of an agent's work by an agent of the kind by (the one the config gives when not given), with model if given; or add that reviewer to the review going on. The reviewer comes with an agent event once the worktree is looked at, or a notice says why not, such as there being nothing to review.",
 		fields: []string{"agent", "by", "model"}, required: []string{"agent"}},
+	{op: "close_pane", desc: "Close an agent or a terminal in a tab, stopping what runs in it, as the TUI does; an agent's conversation is kept. The tab's first agent, whose ID is the tab's, stays as long as the tab and is refused: close the tab with close_tab. The tab gets a tab event, or the agent an agent event. target is an agent's or a terminal's ID; agent works too, for an agent.",
+		fields: []string{"target", "agent"}},
 	{op: "close_tab", desc: "Close a tab, stopping everything in it, and answer once it is closed. With remove its worktrees are deleted too, never by force: it is refused, the tab left open, if that would lose changes not committed or commits not pushed. The branches are kept, unless each one's pull request is merged with the head it has.",
 		fields: []string{"tab", "remove"}, required: []string{"tab"},
 		result: reflect.TypeFor[ClosedResult]()},

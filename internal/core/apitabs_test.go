@@ -117,6 +117,47 @@ func TestAPIReviewChecksFirst(t *testing.T) {
 	}
 }
 
+// TestAPIClosePane: a terminal and an agent more close by their IDs; the
+// tab's first agent stays, and an ID that names nothing is refused.
+func TestAPIClosePane(t *testing.T) {
+	m := paneCore(t)
+	term, _, err := m.APINewTerminal("t1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ag, _, err := m.APINewAgent("t1", "codex", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := m.APIClosePane(term); err != nil {
+		t.Fatalf("terminal: %v", err)
+	}
+	if ts := m.APIState().Tabs[0].Terminals; len(ts) != 0 {
+		t.Fatalf("terminals %+v after closing", ts)
+	}
+	if _, err := m.APIClosePane(ag); err != nil {
+		t.Fatalf("agent: %v", err)
+	}
+	if ags := m.APIState().Tabs[0].Agents; len(ags) != 1 || ags[0].ID != "t1" {
+		t.Fatalf("agents %+v after closing", ags)
+	}
+	if _, err := m.APIClosePane("t1"); err == nil || !strings.Contains(err.Error(), "the tab's first agent") || !strings.Contains(err.Error(), "close_tab") {
+		t.Fatalf("first agent: %v", err)
+	}
+	if len(m.Tabs[0].Panes()) != 1 {
+		t.Fatalf("panes %d, want the first agent's", len(m.Tabs[0].Panes()))
+	}
+	for _, id := range []string{"nope", term, ag} {
+		if _, err := m.APIClosePane(id); err == nil || !strings.Contains(err.Error(), "no agent or terminal") {
+			t.Errorf("%q: %v", id, err)
+		}
+	}
+	m.Quitting = true
+	if _, err := m.APIClosePane("t1"); !errors.Is(err, ErrAPIQuitting) {
+		t.Errorf("quitting: %v", err)
+	}
+}
+
 func TestAPIPanesWhileQuitting(t *testing.T) {
 	m := paneCore(t)
 	m.Quitting = true
