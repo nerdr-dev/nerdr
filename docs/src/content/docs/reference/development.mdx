@@ -54,6 +54,14 @@ for f in "$PROF"/*.cpu; do p=${f##*-}; kill -USR2 "${p%.cpu}"; done
 go tool pprof -top "$PROF"/client-*.cpu
 ```
 
+## What a client is sent
+
+With `NERDR_WIRE_STATS` naming a file, the core writes there, every ten
+seconds, how many bytes of each kind of message it has sent its client
+since it started: screens, events, and the parts of its state, with the
+fields whose changes had them sent. Like `NERDR_PROFILE`, the core takes
+it only when it starts.
+
 ## The docs
 
 This site lives in `docs/` and is built with

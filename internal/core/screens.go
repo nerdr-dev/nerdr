@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"strconv"
@@ -458,7 +459,9 @@ func (s *ScreenServer) build(sc *shownScreen) func() []byte {
 		}
 		sc.last, sc.wrote = msg, true
 		sc.last.Rows, sc.last.Styles = nil, nil
-		return wire(wireScreen, screenWire{Ref: sc.ref, ScreenMsg: msg})
+		b := wire(wireScreen, screenWire{Ref: sc.ref, ScreenMsg: msg})
+		noteWire(fmt.Sprintf("screen full=%v", msg.Full), len(b))
+		return b
 	}
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"slices"
 	"sync"
 	"time"
 )
@@ -40,6 +41,9 @@ type Conn struct {
 	// version is the version of nerdr the other end said it is as the
 	// two said hello; see Version.
 	version string
+	// features are those the other end said it has as the two said
+	// hello; see Has.
+	features []string
 
 	done chan struct{}
 }
@@ -127,6 +131,13 @@ func (c *Conn) SendFunc(key string, build func() []byte) bool {
 	return true
 }
 
+// Waiting reports whether a message sent with key waits to be written.
+func (c *Conn) Waiting(key string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.keyed[key] != nil
+}
+
 // SendJSON is Send of v as JSON.
 func (c *Conn) SendJSON(key string, v any) bool {
 	b, err := json.Marshal(v)
@@ -196,6 +207,10 @@ func (c *Conn) Why() string {
 // said hello: the core's, to a client (Welcome), the client's, to a core
 // (Hello). It is what the other end says, "" when it said none.
 func (c *Conn) Version() string { return c.version }
+
+// Has reports whether the other end said it has feature as the two said
+// hello.
+func (c *Conn) Has(feature string) bool { return slices.Contains(c.features, feature) }
 
 // Done is closed once the connection is.
 func (c *Conn) Done() <-chan struct{} { return c.done }

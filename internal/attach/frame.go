@@ -68,6 +68,17 @@ func writeJSON(w io.Writer, typ byte, v any) error {
 // done, nothing saved.
 const Generation = 2
 
+// The features a client or core may have, as it says in its Hello or
+// Welcome.
+const (
+	// FeaturePartPatch: the client takes a part of core's state as how it
+	// differs from the one before.
+	FeaturePartPatch = "part-patch"
+)
+
+// Features are those this nerdr has, for its Hello.
+var Features = []string{FeaturePartPatch}
+
 // Hello is what a client says first. Env is the client's environment,
 // which the programs the core starts from then on run with, as they
 // would with nerdr run in the client's terminal: the holder's is that of
