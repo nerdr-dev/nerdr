@@ -21,7 +21,7 @@ func spinoffRemoteSetup(t *testing.T, m *Model, told chan any, here, box *core.C
 	commit = strings.TrimSpace(moveGit(t, wt, "rev-parse", "HEAD"))
 	here.Mu.Lock()
 	here.Tabs[0].Spinoff = &spinoff.Pending{Next: append([]spinoff.Part{
-		{Branch: "part-a", Summary: "Part A.", Prompt: "Do part A.", Commits: []string{commit[:10]}},
+		{ID: "pa", Branch: "part-a", Summary: "Part A.", Prompt: "Do part A.", Commits: []string{commit[:10]}},
 	}, more...)}
 	here.Mu.Unlock()
 	locked(m, func() { m.do(core.RenameTab{T: core.TabRef{Tab: "1"}, Name: "login"}) })
@@ -121,6 +121,72 @@ func TestFleetSpinoffOnAnotherMachine(t *testing.T) {
 	}
 }
 
+// TestFleetSpinoffOnAnotherMachineIsHeld: while a part is made on
+// another machine, the tab's core holds it: the API can neither skip it
+// nor make it again, an outcome for another part moves nothing, and once
+// it is made, the next part is the one asked about.
+func TestFleetSpinoffOnAnotherMachineIsHeld(t *testing.T) {
+	m, here, box, _, told := twoMachines(t)
+	spinoffRemoteSetup(t, m, told, here, box, spinoff.Part{ID: "pb", Branch: "part-b", Summary: "Part B.", Prompt: "Do part B."})
+	pressOn(m, "ctrl+t")
+	pump(t, m, told, "box's repository", func(v string) bool {
+		return strings.Contains(v, "Machine: box") && strings.Contains(v, "carried over to box")
+	})
+	pressOn(m, "enter")
+	pumpUntil(t, m, told, "the hold", func() bool {
+		here.Mu.Lock()
+		defer here.Mu.Unlock()
+		return here.Tabs[0].SpinoffHold != ""
+	})
+	here.Mu.Lock()
+	id := here.Tabs[0].ID
+	if _, err := here.APISpinoffSkip(id, "pa"); err == nil || !strings.Contains(err.Error(), "being made") {
+		t.Errorf("skipped while made on box: %v", err)
+	}
+	if _, err := here.APISpinoffCreate(core.APISpinoffMake{Tab: id, Part: "pa"}, nil); err == nil || !strings.Contains(err.Error(), "being made") {
+		t.Errorf("made again while made on box: %v", err)
+	}
+	if s := here.APIState().Tabs[0].Spinoff; s == nil || !strings.Contains(s.Busy, "on box") {
+		t.Errorf("the state does not say it is made on box: %+v", s)
+	}
+	here.SpinoffNext(here.Tabs[0], spinoff.Outcome{Part: spinoff.Part{ID: "pb"}, Skipped: true})
+	if n := len(here.Tabs[0].Spinoff.Next); n != 2 {
+		t.Errorf("an outcome for part B moved the parts: %d left", n)
+	}
+	here.Mu.Unlock()
+	pumpUntil(t, m, told, "part B asked about", func() bool {
+		here.Mu.Lock()
+		defer here.Mu.Unlock()
+		tb := here.Tabs[0]
+		return tb.Spinoff != nil && len(tb.Spinoff.Next) == 1 && tb.Spinoff.Next[0].ID == "pb" && tb.SpinoffBusy == "" && tb.SpinoffHold == ""
+	})
+	if dir, _, _ := boxTabNamed(box, "part-a"); dir == "" {
+		t.Error("part A was not made on box")
+	}
+}
+
+// TestFleetSpinoffHoldUnanswered: a tab's core that never says it holds
+// the part, of an older nerdr, gives the run up when the wait is over,
+// rather than keeping the dialog busy for ever.
+func TestFleetSpinoffHoldUnanswered(t *testing.T) {
+	m, here, box, _, told := twoMachines(t)
+	spinoffRemoteSetup(t, m, told, here, box)
+	pressOn(m, "ctrl+t")
+	pump(t, m, told, "box's repository", func(v string) bool { return strings.Contains(v, "Machine: box") })
+	var job string
+	locked(m, func() {
+		d := m.dialog.(*spinoffDialog)
+		// As spinoffRemote has it before its hold is answered.
+		m.spinoffRun = &spinoffRun{job: "late", ref: m.fleet.Ref(d.t), from: m.machineOf(d.t), to: d.target(m),
+			land: core.SpinoffLand{Name: "part-a"}, busy: "making part-a on box…"}
+		job = m.spinoffRun.job
+		m.spinoffHoldLate(job)
+		if m.spinoffRun != nil || !strings.Contains(d.err, "did not say it holds the part") {
+			t.Errorf("the run waits on: %q", d.err)
+		}
+	})
+}
+
 // TestFleetSpinoffOnAnotherMachineClonesAndFails: box without the
 // repository says it would clone it; a branch of the name taken there is
 // said in the dialog, and the part waits, for the user to put it right.
@@ -155,6 +221,12 @@ func TestFleetSpinoffOnAnotherMachineClonesAndFails(t *testing.T) {
 		if m.spinoffRun != nil || m.fleet.Tabs()[0].Spinoff == nil {
 			t.Error("the part does not wait for the user")
 		}
+	})
+	// And the tab's core lets go of it, for it to be answered again.
+	pumpUntil(t, m, told, "the hold let go of", func() bool {
+		here.Mu.Lock()
+		defer here.Mu.Unlock()
+		return here.Tabs[0].SpinoffHold == "" && here.Tabs[0].SpinoffBusy == ""
 	})
 }
 

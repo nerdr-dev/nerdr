@@ -3,6 +3,7 @@ package app
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/nerdr-dev/nerdr/internal/agents"
 	"github.com/nerdr-dev/nerdr/internal/core"
@@ -28,11 +29,16 @@ type spinoffRun struct {
 	land     core.SpinoffLand
 	// busy is what the dialog says is being done.
 	busy string
-	// packed is set once the source was asked for the pack, put once the
-	// target has had a chunk of it: what has to be let go of. size is the
+	// reuse is set when the part's commits are carried over. held is set
+	// once the tab's core holds the part for the run (core.SpinoffHold),
+	// packed once the source was asked for the pack, put once the target
+	// has had a chunk of it: what has to be let go of. size is the
 	// pack's, sent how much of it the target has.
+	reuse, held bool
 	packed, put bool
 	size, sent  int64
+	// froms are the tab's repositories the commits are bundled from.
+	froms []string
 }
 
 // spinoffMachines are the machines a part can be made on: every one of
@@ -155,10 +161,47 @@ func (m *Model) spinoffRemote(d *spinoffDialog, kind agents.Kind, name string, r
 	r := &spinoffRun{job: core.NewJobID(), ref: m.fleet.Ref(t), from: from, to: to}
 	r.land = core.SpinoffLand{Job: r.job, Part: pt, Kind: kind, Name: name, Group: group, Repos: wheres,
 		Parent: parent, Reuse: reuse, Elsewhere: elsewhere}
+	r.reuse, r.froms = reuse, froms
 	m.spinoffRun = r
-	if reuse {
+	// Held first, so nothing else answers the part while it is made here:
+	// the tab's core knows of it only at the end.
+	r.busy = "making " + name + " on " + machineLabel(to) + "…"
+	cmd := m.doOn(from, core.SpinoffHold{Job: r.job, T: r.ref, Part: pt.ID, Busy: r.busy})
+	if spinoffHoldWait > 0 {
+		job := r.job
+		cmd = tea.Batch(cmd, tea.Tick(spinoffHoldWait, func(time.Time) tea.Msg { return spinoffHoldLateMsg{job: job} }))
+	}
+	return cmd
+}
+
+// spinoffHoldWait is how long the tab's core has to say it holds the part:
+// one of a nerdr from before SpinoffHold says nothing. 0 waits for ever,
+// for the tests, which run a command's batch through before going on.
+var spinoffHoldWait = 10 * time.Second
+
+// spinoffHoldLateMsg is spinoffHoldWait gone by since job asked for the
+// hold.
+type spinoffHoldLateMsg struct{ job string }
+
+// spinoffHoldLate gives up the run of job if the tab's core has not said
+// it holds the part yet.
+func (m *Model) spinoffHoldLate(job string) tea.Cmd {
+	r := m.spinoffRun
+	if r == nil || r.job != job || r.held {
+		return nil
+	}
+	return m.spinoffRunFail(machineLabel(r.from) + " did not say it holds the part for it to be made elsewhere: " +
+		"update nerdr there, or make the part on its own machine")
+}
+
+// spinoffHeld goes on with the part being made on another machine, once
+// the tab's core holds it.
+func (m *Model) spinoffHeld() tea.Cmd {
+	r := m.spinoffRun
+	r.held = true
+	if r.reuse {
 		r.busy, r.packed = "bundling the commits…", true
-		return m.doOn(from, core.SpinoffPack{Job: r.job, T: r.ref, Repos: froms, Commits: pt.Commits})
+		return m.doOn(r.from, core.SpinoffPack{Job: r.job, T: r.ref, Repos: r.froms, Commits: r.land.Part.Commits})
 	}
 	return m.spinoffLand()
 }
@@ -178,6 +221,14 @@ func (m *Model) onSpinoffRun(ev core.Event) tea.Cmd {
 		return nil
 	}
 	switch ev := ev.(type) {
+	case core.SpinoffHeldMsg:
+		if ev.Job != r.job || r.held {
+			return nil
+		}
+		if ev.Err != "" {
+			return m.spinoffRunFail(ev.Err)
+		}
+		return m.spinoffHeld()
 	case core.SpinoffPackedMsg:
 		if ev.Job != r.job {
 			return nil
@@ -243,6 +294,10 @@ func (m *Model) spinoffRunFail(why string) tea.Cmd {
 	}
 	m.spinoffRun = nil
 	var cmds []tea.Cmd
+	if r.held && !grey(r.from) {
+		// Gone, its core lets go of it in time (core.SpinoffHoldFor).
+		cmds = append(cmds, m.doOn(r.from, core.SpinoffHold{Job: r.job, T: r.ref, Release: true}))
+	}
 	if r.packed && !grey(r.from) {
 		cmds = append(cmds, m.doOn(r.from, core.SpinoffPackDrop{Job: r.job}))
 	}

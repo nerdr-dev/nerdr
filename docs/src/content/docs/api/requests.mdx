@@ -169,8 +169,9 @@ waiting has no `spinoff`.
   an agent set `sandboxed = true` may run in its tab. `kinds` are the
   agents that may, and `kind` the one picked if you name none.
 - `busy` says what is being done about the first part, while it is
-  ("making fix-logout…", or waiting for the answer to a `repo_setup`
-  question): it can be neither made again nor skipped meanwhile.
+  ("making fix-logout…", waiting for the answer to a `repo_setup`
+  question, or being made on another machine from nerdr's window): it
+  can be neither made again nor skipped meanwhile.
 - `failed` is why the first part's tab was not made the last time it was
   tried, for you to put right and try again.
 

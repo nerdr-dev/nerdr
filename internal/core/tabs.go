@@ -780,6 +780,10 @@ type Tab struct {
 	// SpinoffFailed is why the tab for the part asked about was not made
 	// the last time it was tried, until it is tried again or gone through.
 	SpinoffFailed *SpinoffFailure
+	// SpinoffHold is the job a client makes the part on another machine
+	// for, while it holds it, until SpinoffHeldUntil; see spinoffhold.go.
+	SpinoffHold      string
+	SpinoffHeldUntil time.Time
 
 	// Preparing is the nerdr skill the agent took up at PreparingAt, for
 	// what it is about to send nerdr (hooks.PrepSpinoff, PrepReview): the

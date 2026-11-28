@@ -867,6 +867,9 @@ func (m *Model) updateOn(mc *fleet.Machine, msg tea.Msg) tea.Cmd {
 		msg.d.shown = true
 		return nil
 
+	case spinoffHoldLateMsg:
+		return m.spinoffHoldLate(msg.job)
+
 	case promptEnterMsg:
 		m.promptEnter(msg.t)
 		return nil

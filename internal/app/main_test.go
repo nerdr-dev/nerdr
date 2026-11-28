@@ -12,5 +12,6 @@ func TestMain(m *testing.M) {
 	os.Unsetenv("OPENCODE_CONFIG_DIR")
 	os.Unsetenv("XDG_CONFIG_HOME")
 	setPointer = func(string) {} // not onto the terminal running the tests
+	spinoffHoldWait = 0          // see TestFleetSpinoffHoldUnanswered
 	os.Exit(m.Run())
 }

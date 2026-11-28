@@ -733,7 +733,7 @@
       "description": "Spinoff is the parts a tab's agent sent to split off into new tabs, waiting for the user: Parts in the order they are gone through, only the first answered.",
       "properties": {
         "busy": {
-          "description": "busy says what is being done about the first part, while it is (\"making fix-a…\", or waiting for the answer to whether the repositories' setup may run): it cannot be answered meanwhile.",
+          "description": "busy says what is being done about the first part, while it is (\"making fix-a…\", waiting for the answer to whether the repositories' setup may run, or being made on another machine from nerdr's window): it cannot be answered meanwhile.",
           "type": "string"
         },
         "done": {

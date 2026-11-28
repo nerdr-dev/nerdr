@@ -193,9 +193,15 @@ func (m *Core) SpinoffNext(t *Tab, o spinoff.Outcome) Cmd {
 	if p == nil || len(p.Next) == 0 {
 		return nil
 	}
+	if o.Part.ID != p.Next[0].ID {
+		// Of a part gone through since, another way: the one first now is
+		// not to go in its place.
+		return nil
+	}
 	p.Done = append(p.Done, o)
 	p.Next = p.Next[1:]
-	t.SpinoffFailed = nil // that of the part gone through
+	// What was done about the part gone through, and why it failed.
+	t.SpinoffFailed, t.SpinoffBusy, t.SpinoffHold, t.SpinoffHeldUntil = nil, "", "", time.Time{}
 	if len(p.Next) > 0 {
 		m.SaveSession()
 		return m.Tell(SpinoffNextMsg{T: m.Ref(t), Left: len(p.Next)})
